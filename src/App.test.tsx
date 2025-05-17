@@ -24,6 +24,8 @@ describe('App', () => {
   it('renders Globe element', () => {
     render(<App />)
     expect(screen.getByTestId('globe')).toBeTruthy()
+    expect(screen.getByRole('slider')).toBeTruthy()
+    expect(screen.getByTestId('sim-time')).toBeTruthy()
   })
 
   it('updates satellite position over time', () => {

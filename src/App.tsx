@@ -25,6 +25,30 @@ function App() {
     globeEl.current?.globeRadius?.(EARTH_RADIUS_KM)
   }, [])
 
+  const [simulationTime, setSimulationTime] = useState(() => Date.now())
+  const [speed, setSpeed] = useState(10)
+  const speedRef = useRef(speed)
+
+  useEffect(() => {
+    speedRef.current = speed
+  }, [speed])
+
+  useEffect(() => {
+    let frameId: number
+    let last = performance.now()
+
+    const update = () => {
+      const now = performance.now()
+      const delta = now - last
+      last = now
+      setSimulationTime((t) => t + delta * speedRef.current)
+      frameId = requestAnimationFrame(update)
+    }
+
+    frameId = requestAnimationFrame(update)
+    return () => cancelAnimationFrame(frameId)
+  }, [])
+
   useEffect(() => {
     let animationFrame: number
 
@@ -71,6 +95,20 @@ function App() {
         pointAltitude={(d: any) => d.altitude}
         pointRadius={30}
       />
+      <input
+        type="range"
+        min={1}
+        max={100}
+        value={speed}
+        onChange={(e) => setSpeed(Number(e.target.value))}
+        style={{ position: 'fixed', top: '1em', right: '1em' }}
+      />
+      <div
+        data-testid="sim-time"
+        style={{ position: 'fixed', bottom: '1em', right: '1em', background: 'rgba(0,0,0,0.5)', padding: '0.25em 0.5em', borderRadius: '4px' }}
+      >
+        {new Date(simulationTime).toISOString()}
+      </div>
     </div>
   )
 }
