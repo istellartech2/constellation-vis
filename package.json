@@ -15,7 +15,8 @@
     "react-dom": "^19.1.0",
     "react-globe.gl": "^2.33.2",
     "satellite.js": "^6.0.0",
-    "three": "^0.176.0"
+    "three": "^0.176.0",
+    "toml": "^3.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.25.0",
