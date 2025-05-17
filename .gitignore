@@ -36,9 +36,6 @@ Thumbs.db
 .ipynb_checkpoints
 
 # Logs
-*.log
-
-# Logs
 logs
 *.log
 npm-debug.log*
