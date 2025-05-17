@@ -3,7 +3,8 @@ import Globe from 'react-globe.gl'
 import type { GlobeMethods } from 'react-globe.gl'
 
 function App() {
-  const globeEl = useRef<GlobeMethods | undefined>(undefined)
+  // use a null default value so the ref type matches React's expectations
+  const globeEl = useRef<GlobeMethods | null>(null)
 
   useEffect(() => {
     globeEl.current?.pointOfView({ lat: 0, lng: 0, altitude: 2 }, 0)
