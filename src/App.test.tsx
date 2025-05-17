@@ -17,4 +17,17 @@ describe('App', () => {
     render(<App />)
     expect(screen.getByTestId('globe')).toBeTruthy()
   })
+
+  it('updates satellite position over time', () => {
+    vi.useFakeTimers()
+    render(<App />)
+    vi.advanceTimersByTime(1000)
+    const globeEl = screen.getByTestId('globe') as any
+    expect(Array.isArray(globeEl.pointsData)).toBe(true)
+    expect(globeEl.pointsData.length).toBe(1)
+    const firstLng = globeEl.pointsData[0].lng
+    vi.advanceTimersByTime(1000)
+    expect(globeEl.pointsData[0].lng).not.toBe(firstLng)
+    vi.useRealTimers()
+  })
 })
