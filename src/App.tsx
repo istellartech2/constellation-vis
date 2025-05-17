@@ -34,7 +34,7 @@ function App() {
   }, [])
 
   const [simulationTime, setSimulationTime] = useState(() => Date.now())
-  const [speed, setSpeed] = useState(10)
+  const [speed, setSpeed] = useState(1)
   const speedRef = useRef(speed)
 
   useEffect(() => {
@@ -64,7 +64,8 @@ function App() {
 
     const animate = (t: number) => {
       if (lastTimeRef.current !== undefined) {
-        const deltaSec = (t - lastTimeRef.current) / 1000
+        const deltaMs = t - lastTimeRef.current
+        const deltaSec = (deltaMs / 1000) * speedRef.current
         earthRotRef.current += THREE.MathUtils.degToRad(
           EARTH_ROTATION_RATE_DEG_PER_SEC * deltaSec,
         )
