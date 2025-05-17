@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+
+import { parse } from 'toml'
 import Globe from 'react-globe.gl'
 import type { GlobeMethods } from 'react-globe.gl'
 import * as THREE from 'three'
