@@ -1,24 +1,22 @@
 import { useRef, useEffect } from "react";
-import Globe from "react-globe.gl";
+import Globe, { type GlobeMethods } from "react-globe.gl";
 
 function App() {
-  const globeRef = useRef<ReturnType<typeof Globe>>(null);
+  const globeRef = useRef<GlobeMethods>(null);
+  const EARTH_RADIUS_KM = 6371;
 
-  // slow continuous spin
   useEffect(() => {
-    let frame: number;
-    const animate = () => {
-      const g = globeRef.current?.getGlobe();
-      if (g) g.rotation.y += 0.0005; // tweak speed here
-      frame = requestAnimationFrame(animate);
-    };
-    frame = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(frame);
+    const controls = globeRef.current?.controls();
+    if (controls) {
+      controls.autoRotate = true;
+      controls.autoRotateSpeed = 0.3;
+    }
   }, []);
 
   return (
     <Globe
-      ref={globeRef as any}
+      ref={globeRef}
+      globeRadius={EARTH_RADIUS_KM}
       backgroundColor="black"
       globeImageUrl="https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
     />
