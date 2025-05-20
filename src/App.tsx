@@ -120,7 +120,7 @@ function App() {
     scene.add(graticule);
 
     // satellites
-    const satGeo = new THREE.SphereGeometry(0.02, 8, 8);
+    const satGeo = new THREE.SphereGeometry(0.015, 8, 8);
     const satMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
     const groundGeo = new THREE.SphereGeometry(0.005, 8, 8);
     const groundMat = new THREE.MeshBasicMaterial({ color: 0xa9a9a9 });
