@@ -1,100 +1,173 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import * as satellite from "satellite.js";
+import { TLE_LIST } from "./satellites";
 
 const EARTH_RADIUS_KM = 6371; // physical radius
-const SIM_SPEED = 50; // 10× real time
+const INITIAL_SPEED = 60; // initial 60× real time
 const SIDEREAL_DAY_SEC = 86164; // Earth's rotation period
+const DEG2RAD = Math.PI / 180;
 
-// ISS TLE (20 May 2025)
-const ISS_TLE = [
-  "1 25544U 98067A   25140.43166667  .00016717  00000+0  10270-3 0  9997",
-  "2 25544  51.6444  22.7332 0003643  46.9050   7.5185 15.49594111445576",
-];
+// Utility – solar position in ECI (approximate, <0.01 rad)
+function sunVectorECI(date: Date): { x: number; y: number; z: number } {
+  const jd = satellite.jday(
+    date.getUTCFullYear(),
+    date.getUTCMonth() + 1,
+    date.getUTCDate(),
+    date.getUTCHours(),
+    date.getUTCMinutes(),
+    date.getUTCSeconds() + date.getUTCMilliseconds() / 1000
+  );
+
+  const T = (jd - 2451545.0) / 36525.0;
+  const L = ((280.460 + 36000.770 * T) % 360) * DEG2RAD; // mean longitude
+  const g = ((357.528 + 35999.050 * T) % 360) * DEG2RAD; // mean anomaly
+  const lambda = L + (1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * DEG2RAD;
+  const epsilon = (23.4393 - 0.0130 * T) * DEG2RAD; // obliquity
+
+  // Ecliptic to equatorial
+  const xs = Math.cos(lambda);
+  const ys = Math.cos(epsilon) * Math.sin(lambda);
+  const zs = Math.sin(epsilon) * Math.sin(lambda);
+  return { x: xs, y: ys, z: zs };
+}
+
+// Create graticule lines every 20°
+function createGraticule(stepDeg = 20): THREE.LineSegments {
+  const vertices: number[] = [];
+  const material = new THREE.LineBasicMaterial({ color: 0xdcdcdc, linewidth: 0.1 });
+
+  // Meridians
+  for (let lon = -180; lon <= 180; lon += stepDeg) {
+    for (let lat = -90; lat < 90; lat += 2) {
+      const lat1 = lat * DEG2RAD;
+      const lat2 = (lat + 2) * DEG2RAD;
+      const lonRad = lon * DEG2RAD;
+      vertices.push(
+        Math.cos(lat1) * Math.cos(lonRad),
+        Math.sin(lat1),
+        -Math.cos(lat1) * Math.sin(lonRad),
+        Math.cos(lat2) * Math.cos(lonRad),
+        Math.sin(lat2),
+        -Math.cos(lat2) * Math.sin(lonRad)
+      );
+    }
+  }
+  // Parallels
+  for (let lat = -80; lat <= 80; lat += stepDeg) {
+    const latRad = lat * DEG2RAD;
+    for (let lon = -180; lon < 180; lon += 2) {
+      const lon1 = lon * DEG2RAD;
+      const lon2 = (lon + 2) * DEG2RAD;
+      vertices.push(
+        Math.cos(latRad) * Math.cos(lon1),
+        Math.sin(latRad),
+        -Math.cos(latRad) * Math.sin(lon1),
+        Math.cos(latRad) * Math.cos(lon2),
+        Math.sin(latRad),
+        -Math.cos(latRad) * Math.sin(lon2)
+      );
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+  return new THREE.LineSegments(geometry, material);
+}
 
 function App() {
   const mountRef = useRef<HTMLDivElement>(null);
+  const timeRef = useRef<HTMLDivElement>(null);
+
+  // speed exponent slider (0–2 → 1×–100×)
+  const [speedExp, setSpeedExp] = useState(Math.log10(INITIAL_SPEED));
+  const speedRef = useRef(INITIAL_SPEED);
+  useEffect(() => {
+    speedRef.current = Math.pow(10, speedExp);
+  }, [speedExp]);
 
   useEffect(() => {
     if (!mountRef.current) return;
 
-    // Scene
+    // Scene setup
     const scene = new THREE.Scene();
-
-    // Camera
-    const camera = new THREE.PerspectiveCamera(
-      45,
-      window.innerWidth / window.innerHeight,
-      0.1,
-      1000
-    );
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
     camera.position.set(0, 0, 3); // ~3 Earth radii away
 
-    // Renderer
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     mountRef.current.appendChild(renderer.domElement);
 
-    // Controls (rotate Earth by rotating camera around it)
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enablePan = false;
     controls.enableDamping = true;
 
     // Lighting
-    const ambient = new THREE.AmbientLight(0xffffff, 0.4); // 全体を明るく
+    const ambient = new THREE.AmbientLight(0xffffff, 0.2); // 全体を明るく
     scene.add(ambient);
-
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1.4); // 太陽光イメージ
-    dirLight.position.set(5, 3, 5);
-    dirLight.castShadow = false;
-    scene.add(dirLight);
-
+    const sunLight = new THREE.DirectionalLight(0xffffff, 1.5); // 太陽光イメージ
+    scene.add(sunLight);
 
     // Earth
-    const earthGeometry = new THREE.SphereGeometry(1, 64, 64);
+    const earthGeometry = new THREE.SphereGeometry(1, 128, 128);
     const texture = new THREE.TextureLoader().load("/assets/earth_daymap.jpg");
-    const earthMaterial = new THREE.MeshPhongMaterial({ map: texture });
+    const earthMaterial = new THREE.MeshPhongMaterial({ map: texture, shininess: 1 });
     const earthMesh = new THREE.Mesh(earthGeometry, earthMaterial);
     scene.add(earthMesh);
 
+    // Graticule
+    const graticule = createGraticule(20);
+    scene.add(graticule);
+
     // Satellite (red dot)
-    const satGeometry = new THREE.SphereGeometry(0.02, 16, 16);
+    const satGeometry = new THREE.SphereGeometry(0.02, 8, 8);
     const satMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-    const satMesh = new THREE.Mesh(satGeometry, satMaterial);
-    scene.add(satMesh);
-
-    // Satellite record
-    const satrec = satellite.twoline2satrec(ISS_TLE[0], ISS_TLE[1]);
-
+    const satRecs = TLE_LIST.map(([l1, l2]) => satellite.twoline2satrec(l1, l2));
+    const satMeshes = satRecs.map(() => new THREE.Mesh(satGeometry, satMaterial));
+    satMeshes.forEach((m) => scene.add(m));
+    
     // Timing
     const startReal = Date.now();
 
+    function pad(n: number) {
+      return n.toString().padStart(2, "0");
+    }
+    function formatTime(d: Date) {
+      return `${d.getFullYear()}年${pad(d.getMonth() + 1)}月${pad(d.getDate())}日${pad(d.getHours())}時${pad(d.getMinutes())}分`;
+    }
+
     function animate() {
       requestAnimationFrame(animate);
-
       const nowReal = Date.now();
-      const simDeltaMs = (nowReal - startReal) * SIM_SPEED;
+      const simDeltaMs = (nowReal - startReal) * speedRef.current;
       const simDate = new Date(startReal + simDeltaMs);
 
       // Earth rotation (sidereal)
-      const rotAngle =
-        ((2 * Math.PI) / SIDEREAL_DAY_SEC) * (simDeltaMs / 1000); // rad since start
+      const rotAngle = ((2 * Math.PI) / SIDEREAL_DAY_SEC) * (simDeltaMs / 1000);
       earthMesh.rotation.y = rotAngle;
+      graticule.rotation.y = rotAngle; // keep grid locked to surface      
 
-      // Satellite position (ECI → Three.js)
-      const pv = satellite.propagate(satrec, simDate);
-      if (pv.position) {
-        // ECI axes: X(vernal equinox), Y(90° east), Z(north)
-        // Map to Three: Y ↔ Z to make Y=north (up)
-        const posEci = pv.position; // km
-        satMesh.position.set(
-          posEci.x / EARTH_RADIUS_KM,
-          posEci.z / EARTH_RADIUS_KM, // north → y
-          -posEci.y / EARTH_RADIUS_KM // west → +z
-        );
-      }
+      // Update sun position
+      const sunEci = sunVectorECI(simDate);
+      // Map ECI → Three (x, z, -y)
+      sunLight.position.set(
+        sunEci.x * 10,
+        sunEci.z * 10,
+        -sunEci.y * 10
+      );
 
+      // Update satellites
+      satRecs.forEach((rec, idx) => {
+        const pv = satellite.propagate(rec, simDate);
+        if (pv.position) {
+          const { x, y, z } = pv.position;
+          satMeshes[idx].position.set(x / EARTH_RADIUS_KM, z / EARTH_RADIUS_KM, -y / EARTH_RADIUS_KM);
+        }
+      });
+
+      // update HUD time
+      if (timeRef.current) timeRef.current.textContent = formatTime(simDate);
+      
       controls.update();
       renderer.render(scene, camera);
     }
@@ -115,7 +188,27 @@ function App() {
     };
   }, []);
 
-  return <div ref={mountRef} />;
+  return (
+    <div style={{ width: "100%", height: "100%", position: "relative" }}>
+      <div ref={mountRef} style={{ width: "100%", height: "100%" }} />
+      {/* HUD */}
+      <div style={{ position: "absolute", right: "8px", bottom: "6px", color: "#fff", fontFamily: "'Noto Sans Mono', monospace", fontVariantNumeric: "tabular-nums", fontSize: "0.9rem", pointerEvents: "none" }} ref={timeRef}>
+        --
+      </div>
+      <div style={{ position: "absolute", right: "8px", top: "8px", color: "#fff", fontFamily: "sans-serif", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+        <input
+          type="range"
+          min={1}
+          max={2.6}
+          step={0.01}
+          value={speedExp}
+          onChange={(e) => setSpeedExp(parseFloat(e.target.value))}
+          style={{ width: "150px" }}
+        />
+        <span style={{ fontVariantNumeric: "tabular-nums" }}>{Math.pow(10, speedExp).toFixed(1)}×</span>
+      </div>
+    </div>
+  );
 }
 
 export default App;
