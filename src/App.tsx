@@ -105,8 +105,8 @@ function App() {
     // Lighting
     const ambient = new THREE.AmbientLight(0xffffff, 0.2); // 全体を明るく
     scene.add(ambient);
-    const sunLight = new THREE.DirectionalLight(0xffffff, 1.5); // 太陽光イメージ
-    scene.add(sunLight);
+    const sunlight = new THREE.DirectionalLight(0xffffff, 1.5); // 太陽光イメージ
+    scene.add(sunlight);
 
     // Earth
     const earthGeometry = new THREE.SphereGeometry(1, 128, 128);
@@ -119,22 +119,22 @@ function App() {
     const graticule = createGraticule(20);
     scene.add(graticule);
 
-    // Satellite (red dot)
-    const satGeometry = new THREE.SphereGeometry(0.02, 8, 8);
-    const satMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-    const satRecs = TLE_LIST.map(([l1, l2]) => satellite.twoline2satrec(l1, l2));
-    const satMeshes = satRecs.map(() => new THREE.Mesh(satGeometry, satMaterial));
-    satMeshes.forEach((m) => scene.add(m));
-    
-    // Timing
-    const startReal = Date.now();
+    // satellites
+    const satGeo = new THREE.SphereGeometry(0.02, 8, 8);
+    const satMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    const groundGeo = new THREE.SphereGeometry(0.005, 8, 8);
+    const groundMat = new THREE.MeshBasicMaterial({ color: 0xa9a9a9 });
 
-    function pad(n: number) {
-      return n.toString().padStart(2, "0");
-    }
-    function formatTime(d: Date) {
-      return `${d.getFullYear()}年${pad(d.getMonth() + 1)}月${pad(d.getDate())}日${pad(d.getHours())}時${pad(d.getMinutes())}分`;
-    }
+    const satRecs = TLE_LIST.map(([l1, l2]) => satellite.twoline2satrec(l1, l2));
+    const satMeshes = satRecs.map(() => new THREE.Mesh(satGeo, satMat));
+    const groundMeshes = satRecs.map(() => new THREE.Mesh(groundGeo, groundMat));
+    satMeshes.forEach((m) => scene.add(m));
+    groundMeshes.forEach((m) => scene.add(m));
+
+    // timing
+    const startReal = Date.now();
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    const fmt = (d: Date) => `${d.getFullYear()}年${pad(d.getMonth() + 1)}月${pad(d.getDate())}日${pad(d.getHours())}時${pad(d.getMinutes())}分`;
 
     function animate() {
       requestAnimationFrame(animate);
@@ -147,26 +147,23 @@ function App() {
       earthMesh.rotation.y = rotAngle;
       graticule.rotation.y = rotAngle; // keep grid locked to surface      
 
-      // Update sun position
-      const sunEci = sunVectorECI(simDate);
-      // Map ECI → Three (x, z, -y)
-      sunLight.position.set(
-        sunEci.x * 10,
-        sunEci.z * 10,
-        -sunEci.y * 10
-      );
+      // sunlight
+      const sun = sunVectorECI(simDate);
+      sunlight.position.set(sun.x * 10, sun.z * 10, -sun.y * 10);
 
-      // Update satellites
-      satRecs.forEach((rec, idx) => {
+      // satellites & ground points
+      satRecs.forEach((rec, i) => {
         const pv = satellite.propagate(rec, simDate);
         if (pv.position) {
-          const { x, y, z } = pv.position;
-          satMeshes[idx].position.set(x / EARTH_RADIUS_KM, z / EARTH_RADIUS_KM, -y / EARTH_RADIUS_KM);
+          const { x, y, z } = pv.position; // km ECI
+          satMeshes[i].position.set(x / EARTH_RADIUS_KM, z / EARTH_RADIUS_KM, -y / EARTH_RADIUS_KM);
+          const mag = Math.sqrt(x * x + y * y + z * z);
+          groundMeshes[i].position.set(x / mag, z / mag, -y / mag); // unit sphere
         }
       });
 
       // update HUD time
-      if (timeRef.current) timeRef.current.textContent = formatTime(simDate);
+      if (timeRef.current) timeRef.current.textContent = fmt(simDate);
       
       controls.update();
       renderer.render(scene, camera);
@@ -191,20 +188,9 @@ function App() {
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
       <div ref={mountRef} style={{ width: "100%", height: "100%" }} />
-      {/* HUD */}
-      <div style={{ position: "absolute", right: "8px", bottom: "6px", color: "#fff", fontFamily: "'Noto Sans Mono', monospace", fontVariantNumeric: "tabular-nums", fontSize: "0.9rem", pointerEvents: "none" }} ref={timeRef}>
-        --
-      </div>
-      <div style={{ position: "absolute", right: "8px", top: "8px", color: "#fff", fontFamily: "sans-serif", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-        <input
-          type="range"
-          min={1}
-          max={2.6}
-          step={0.01}
-          value={speedExp}
-          onChange={(e) => setSpeedExp(parseFloat(e.target.value))}
-          style={{ width: "150px" }}
-        />
+      <div ref={timeRef} style={{ position: "absolute", right: 8, bottom: 6, color: "#fff", fontFamily: "'Noto Sans Mono', monospace", fontVariantNumeric: "tabular-nums", fontSize: "0.9rem", pointerEvents: "none" }} />
+      <div style={{ position: "absolute", right: 8, top: 8, color: "#fff", fontFamily: "sans-serif", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+        <input type="range" min={1} max={2.5} step={0.01} value={speedExp} onChange={(e) => setSpeedExp(parseFloat(e.target.value))} style={{ width: 150 }} />
         <span style={{ fontVariantNumeric: "tabular-nums" }}>{Math.pow(10, speedExp).toFixed(1)}×</span>
       </div>
     </div>
