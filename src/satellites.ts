@@ -71,44 +71,7 @@ export function toSatrec(spec: SatelliteSpec): satellite.SatRec {
 }
 
 /** List of satellites used by the demo. */
-export const SATELLITES: SatelliteSpec[] = [
-  {
-    type: "tle",
-    lines: [
-      // ISS
-      "1 25544U 98067A   25140.43166667  .00016717  00000+0  10270-3 0  9997",
-      "2 25544  51.6444  22.7332 0003643  46.9050   7.5185 15.49594111445576",
-    ],
-  },
-  {
-    type: "tle",
-    lines: [
-      // STARLINK-30000 (dummy TLE example)
-      "1 70000U 23000A   25140.35000000  .00005300  00000+0  10000-3 0  9996",
-      "2 70000  53.0000 222.0000 0001200   0.0000  90.0000 15.00000000    04",
-    ],
-  },
-  {
-    type: "tle",
-    lines: [
-      // NOAA 15
-      "1 25338U 98030A   25140.39097223  .00000079  00000+0  70891-4 0  9992",
-      "2 25338  98.7036 169.2466 0011424 193.2015 166.8760 14.25842724203160",
-    ],
-  },
-  {
-    // Example satellite defined via orbital elements
-    type: "elements",
-    elements: {
-      satnum: 90001,
-      epoch: new Date(Date.UTC(2025, 4, 20)),
-      semiMajorAxisKm: 7000,
-      eccentricity: 0.001,
-      inclinationDeg: 40,
-      raanDeg: 0,
-      argPerigeeDeg: 0,
-      meanAnomalyDeg: 0,
-    },
-  },
-];
+import satellites from "./satellites.generated";
+
+export const SATELLITES: SatelliteSpec[] = satellites;
 
