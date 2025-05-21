@@ -65,3 +65,24 @@ export function createGraticule(stepDeg = 20): THREE.LineSegments {
   geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
   return new THREE.LineSegments(geometry, material);
 }
+
+export function createEclipticLine(stepDeg = 2): THREE.Line {
+  const tilt = 23.4393 * DEG2RAD;
+  const verts: number[] = [];
+  for (let lon = 0; lon <= 360; lon += stepDeg) {
+    const rad = lon * DEG2RAD;
+    const x = Math.cos(rad);
+    const y = Math.sin(rad) * Math.sin(tilt);
+    const z = -Math.sin(rad) * Math.cos(tilt);
+    verts.push(x, y, z);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
+  const material = new THREE.LineBasicMaterial({
+    color: 0xffff00,
+    transparent: true,
+    opacity: 0.4,
+    linewidth: 1,
+  });
+  return new THREE.Line(geometry, material);
+}
