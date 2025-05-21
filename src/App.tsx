@@ -20,7 +20,20 @@ function App() {
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
       <div ref={mountRef} style={{ width: "100%", height: "100%" }} />
-      <div ref={timeRef} style={{ position: "absolute", right: 8, bottom: 6, color: "#fff", fontFamily: "'Noto Sans Mono', monospace", fontVariantNumeric: "tabular-nums", fontSize: "0.9rem", pointerEvents: "none" }} />
+      <div
+        ref={timeRef}
+        style={{
+          position: "fixed",
+          right: 8,
+          bottom: "calc(env(safe-area-inset-bottom, 0px) + 6px)",
+          color: "#fff",
+          fontFamily: "'Noto Sans Mono', monospace",
+          fontVariantNumeric: "tabular-nums",
+          fontSize: "0.9rem",
+          pointerEvents: "none",
+          zIndex: 10,
+        }}
+      />
       <SpeedControl value={speedExp} onChange={setSpeedExp} />
     </div>
   );
