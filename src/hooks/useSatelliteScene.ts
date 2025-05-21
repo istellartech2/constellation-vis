@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import * as satellite from "satellite.js";
 import { SATELLITES, toSatrec } from "../satellites";
-import { sunVectorECI, createGraticule } from "../utils/sceneHelpers";
+import { sunVectorECI, createGraticule, createEclipticLine } from "../utils/sceneHelpers";
 
 const EARTH_RADIUS_KM = 6371;
 const SIDEREAL_DAY_SEC = 86164;
@@ -50,6 +50,14 @@ export function useSatelliteScene({ mountRef, timeRef, speedRef }: Params) {
     const graticule = createGraticule(20);
     scene.add(graticule);
 
+    const ecliptic = createEclipticLine(1);
+    scene.add(ecliptic);
+
+    const sunDotGeo = new THREE.SphereGeometry(0.01, 8, 8);
+    const sunDotMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+    const sunDot = new THREE.Mesh(sunDotGeo, sunDotMat);
+    scene.add(sunDot);
+
     const satGeo = new THREE.SphereGeometry(0.015, 8, 8);
     const satMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
     const groundGeo = new THREE.SphereGeometry(0.005, 8, 8);
@@ -78,6 +86,7 @@ export function useSatelliteScene({ mountRef, timeRef, speedRef }: Params) {
 
       const sun = sunVectorECI(simDate);
       sunlight.position.set(sun.x * 10, sun.z * 10, -sun.y * 10);
+      sunDot.position.set(sun.x, sun.z, -sun.y);
 
       satRecs.forEach((rec, i) => {
         const pv = satellite.propagate(rec, simDate);
