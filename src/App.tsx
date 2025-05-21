@@ -2,7 +2,7 @@ import { useRef, useEffect, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import * as satellite from "satellite.js";
-import { TLE_LIST } from "./satellites";
+import { SATELLITES, toSatrec } from "./satellites";
 
 const EARTH_RADIUS_KM = 6371; // physical radius
 const INITIAL_SPEED = 60; // initial 60× real time
@@ -125,7 +125,7 @@ function App() {
     const groundGeo = new THREE.SphereGeometry(0.005, 8, 8);
     const groundMat = new THREE.MeshBasicMaterial({ color: 0xa9a9a9 });
 
-    const satRecs = TLE_LIST.map(([l1, l2]) => satellite.twoline2satrec(l1, l2));
+    const satRecs = SATELLITES.map((spec) => toSatrec(spec));
     const satMeshes = satRecs.map(() => new THREE.Mesh(satGeo, satMat));
     const groundMeshes = satRecs.map(() => new THREE.Mesh(groundGeo, groundMat));
     satMeshes.forEach((m) => scene.add(m));
