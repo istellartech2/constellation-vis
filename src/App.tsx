@@ -89,6 +89,9 @@ function App() {
   useEffect(() => {
     if (!mountRef.current) return;
 
+    // Capture mountRef.current at the time this effect runs
+    const mountNode = mountRef.current;
+
     // Scene setup
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -96,7 +99,7 @@ function App() {
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    mountRef.current.appendChild(renderer.domElement);
+    mountNode.appendChild(renderer.domElement);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enablePan = false;
@@ -181,7 +184,10 @@ function App() {
     return () => {
       window.removeEventListener("resize", handleResize);
       renderer.dispose();
-      mountRef.current?.removeChild(renderer.domElement);
+      // Use the captured mountNode instead of mountRef.current
+      if (mountNode.contains(renderer.domElement)) {
+        mountNode.removeChild(renderer.domElement);
+      }
     };
   }, []);
 
