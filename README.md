@@ -36,3 +36,7 @@ npm run dev
 ```
 
 Open your browser and visit `http://localhost:5173`.
+
+
+## Deployment
+https://constellation-vis-919f.vercel.app/
