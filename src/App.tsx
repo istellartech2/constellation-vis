@@ -154,7 +154,7 @@ function App() {
       // satellites & ground points
       satRecs.forEach((rec, i) => {
         const pv = satellite.propagate(rec, simDate);
-        if (pv.position) {
+        if (pv?.position) {
           const { x, y, z } = pv.position; // km ECI
           satMeshes[i].position.set(x / EARTH_RADIUS_KM, z / EARTH_RADIUS_KM, -y / EARTH_RADIUS_KM);
           const mag = Math.sqrt(x * x + y * y + z * z);
