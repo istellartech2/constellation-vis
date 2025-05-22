@@ -9,16 +9,11 @@ A web application to visualize Earth and satellites in orbit using React, TypeSc
 
 ## Prerequisites
 
-- Node.js ≥16 or [bun](https://bun.sh/) (optional)
-- npm, yarn, or bun for package management
+- Node.js ≥16 and [bun](https://bun.sh/)
 
 ## Installation
 
 ```bash
-# Using npm
-npm install
-
-# Using bun
 bun install
 ```
 
@@ -27,8 +22,7 @@ bun install
 Start the development server with hot module replacement:
 
 ```bash
-npm run dev
-# or bun dev
+bun run dev
 ```
 
 Open your browser and visit `http://localhost:5173`.

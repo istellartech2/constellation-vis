@@ -1,15 +1,15 @@
 [constellation]
 name  = "ExampleConstellation"
-epoch = 2025-05-22T00:00:00Z
+epoch = 2025-05-20T00:00:00Z
 
 [[constellation.shells]]
-name = "LEO-550km-53deg"
-count = 8
-planes = 2
-phasing = 2
-apogee_altitude = 550
+name = "LEO-500km-43deg"
+count = 3
+planes = 1
+phasing = 1
+apogee_altitude = 500
 eccentricity = 0.0001
-inclination = 53.0
+inclination = 43.0
 raan_range = 360.0
 # raan_start = 0.0
 # argp = 0.0

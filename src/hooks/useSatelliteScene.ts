@@ -108,6 +108,9 @@ export function useSatelliteScene({ mountRef, timeRef, speedRef }: Params) {
         }
       });
 
+      debugger;
+      console.log(satRecs);
+
       if (timeRef.current) timeRef.current.textContent = fmt(simDate);
 
       controls.update();

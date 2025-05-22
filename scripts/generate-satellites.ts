@@ -39,7 +39,7 @@ const EARTH_RADIUS_KM = 6371;
 
 function generateFromShells(con: any): any[] {
   const epoch = new Date(String(con.epoch));
-  let nextSatnum = 100000;
+  let nextSatnum = 10000;
   const sats: any[] = [];
   for (const shell of con.shells ?? []) {
     const count = Number(shell.count);
@@ -53,14 +53,12 @@ function generateFromShells(con: any): any[] {
     const raanStart = Number(shell.raan_start ?? 0);
     const argp = Number(shell.argp ?? 0);
     const m0 = Number(shell.mean_anomaly_0 ?? 0);
-    const semiMajorAxisKm = (EARTH_RADIUS_KM + aAltitude) / (1 + ecc);
+    const semiMajorAxisKm = (EARTH_RADIUS_KM + aAltitude);
 
     for (let p = 0; p < planes; p++) {
       const raan = raanStart + (raanRange * p) / planes;
       for (let j = 0; j < perPlane && sats.length < count; j++) {
-        const ma =
-          m0 +
-          ((360 / count) * (p * phasing + j * planes)) % 360;
+        const ma = (m0 + (360 / count) * (p * phasing + j * planes)) % 360;
         sats.push({
           type: "elements",
           elements: {

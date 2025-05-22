@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "predev": "bun scripts/generate-satellites.ts",
     "dev": "vite",
     "prebuild": "bun scripts/generate-satellites.ts",
     "build": "tsc -b && vite build",
