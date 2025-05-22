@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 const satText = await Bun.file("public/satellites.toml").text();
 const { satellites: rawSats } = Bun.TOML.parse(satText) as { satellites: any[] };
 

@@ -2,7 +2,8 @@ import { useEffect } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import * as satellite from "satellite.js";
-import { SATELLITES, toSatrec } from "../satellites";
+import { toSatrec } from "../satellites";
+import type { SatelliteSpec } from "../satellites";
 import { sunVectorECI, createGraticule, createEclipticLine } from "../utils/sceneHelpers";
 
 const EARTH_RADIUS_KM = 6371;
@@ -12,9 +13,10 @@ interface Params {
   mountRef: React.RefObject<HTMLDivElement | null>;
   timeRef: React.RefObject<HTMLDivElement | null>;
   speedRef: React.MutableRefObject<number>;
+  satellites: SatelliteSpec[];
 }
 
-export function useSatelliteScene({ mountRef, timeRef, speedRef }: Params) {
+export function useSatelliteScene({ mountRef, timeRef, speedRef, satellites }: Params) {
   useEffect(() => {
     if (!mountRef.current) return;
     const mountNode = mountRef.current;
@@ -63,7 +65,7 @@ export function useSatelliteScene({ mountRef, timeRef, speedRef }: Params) {
     const groundGeo = new THREE.SphereGeometry(0.005, 8, 8);
     const groundMat = new THREE.MeshBasicMaterial({ color: 0xa9a9a9 });
 
-    const satRecs = SATELLITES.map((spec) => toSatrec(spec));
+    const satRecs = satellites.map((spec) => toSatrec(spec));
     const satMeshes = satRecs.map(() => new THREE.Mesh(satGeo, satMat));
     const groundMeshes = satRecs.map(() => new THREE.Mesh(groundGeo, groundMat));
     satMeshes.forEach((m) => scene.add(m));
@@ -108,8 +110,6 @@ export function useSatelliteScene({ mountRef, timeRef, speedRef }: Params) {
         }
       });
 
-      debugger;
-      console.log(satRecs);
 
       if (timeRef.current) timeRef.current.textContent = fmt(simDate);
 
@@ -133,5 +133,5 @@ export function useSatelliteScene({ mountRef, timeRef, speedRef }: Params) {
         mountNode.removeChild(renderer.domElement);
       }
     };
-  }, [mountRef, timeRef, speedRef]);
+  }, [mountRef, timeRef, speedRef, satellites]);
 }
