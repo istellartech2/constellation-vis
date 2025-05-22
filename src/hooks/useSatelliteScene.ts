@@ -93,7 +93,6 @@ export function useSatelliteScene({ mountRef, timeRef, speedRef }: Params) {
       const { x: sx, y: sy, z: sz, lambda } = sunVectorECI(simDate);
       sunlight.position.set(sx * 10, sz * 10, -sy * 10);
       sunDot.position.set(sx, sz, -sy);
-      ecliptic.rotation.y = lambda;
 
       satRecs.forEach((rec, i) => {
         const pv = satellite.propagate(rec, simDate);
