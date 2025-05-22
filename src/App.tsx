@@ -31,6 +31,8 @@ function App() {
           fontVariantNumeric: "tabular-nums",
           fontSize: "0.9rem",
           pointerEvents: "none",
+          whiteSpace: "pre",
+          textAlign: "right",
           zIndex: 10,
         }}
       />
