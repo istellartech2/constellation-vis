@@ -71,8 +71,14 @@ export function useSatelliteScene({ mountRef, timeRef, speedRef }: Params) {
 
     const startReal = Date.now();
     const pad = (n: number) => n.toString().padStart(2, "0");
-    const fmt = (d: Date) =>
-      `${d.getFullYear()}年${pad(d.getMonth() + 1)}月${pad(d.getDate())}日${pad(d.getHours())}時${pad(d.getMinutes())}分`;
+    const fmtLine = (d: Date) =>
+      `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+    const fmt = (d: Date) => {
+      const utc = fmtLine(d);
+      const jstDate = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+      const jst = fmtLine(jstDate);
+      return `${utc} UTC\n${jst} JST`;
+    };
 
     function animate() {
       requestAnimationFrame(animate);
