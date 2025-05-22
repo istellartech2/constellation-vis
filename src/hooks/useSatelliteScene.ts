@@ -90,9 +90,10 @@ export function useSatelliteScene({ mountRef, timeRef, speedRef }: Params) {
       earthMesh.rotation.y = rotAngle;
       graticule.rotation.y = rotAngle;
 
-      const sun = sunVectorECI(simDate);
-      sunlight.position.set(sun.x * 10, sun.z * 10, -sun.y * 10);
-      sunDot.position.set(sun.x, sun.z, -sun.y);
+      const { x: sx, y: sy, z: sz, lambda } = sunVectorECI(simDate);
+      sunlight.position.set(sx * 10, sz * 10, -sy * 10);
+      sunDot.position.set(sx, sz, -sy);
+      ecliptic.rotation.y = lambda;
 
       satRecs.forEach((rec, i) => {
         const pv = satellite.propagate(rec, simDate);
