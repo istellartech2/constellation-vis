@@ -6,7 +6,7 @@ import { SATELLITES, toSatrec } from "../satellites";
 import { sunVectorECI, createGraticule, createEclipticLine } from "../utils/sceneHelpers";
 
 const EARTH_RADIUS_KM = 6371;
-const SIDEREAL_DAY_SEC = 86164;
+// const SIDEREAL_DAY_SEC = 86164;
 
 interface Params {
   mountRef: React.RefObject<HTMLDivElement | null>;
@@ -42,7 +42,7 @@ export function useSatelliteScene({ mountRef, timeRef, speedRef }: Params) {
     scene.add(sunlight);
 
     const earthGeometry = new THREE.SphereGeometry(1, 128, 128);
-    const texture = new THREE.TextureLoader().load("/assets/earth_daymap.jpg");
+    const texture = new THREE.TextureLoader().load("/assets/8081_earthmap4k.jpg");
     const earthMaterial = new THREE.MeshPhongMaterial({ map: texture, shininess: 1 });
     const earthMesh = new THREE.Mesh(earthGeometry, earthMaterial);
     scene.add(earthMesh);
@@ -86,7 +86,7 @@ export function useSatelliteScene({ mountRef, timeRef, speedRef }: Params) {
       const simDeltaMs = (nowReal - startReal) * speedRef.current;
       const simDate = new Date(startReal + simDeltaMs);
 
-      const rotAngle = ((2 * Math.PI) / SIDEREAL_DAY_SEC) * (simDeltaMs / 1000);
+      const rotAngle = satellite.gstime(simDate)
       earthMesh.rotation.y = rotAngle;
       graticule.rotation.y = rotAngle;
 
