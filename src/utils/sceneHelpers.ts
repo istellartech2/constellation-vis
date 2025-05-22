@@ -39,7 +39,6 @@ export function sunVectorECI(date: Date): {
   x: number;
   y: number;
   z: number;
-  lambda: number;
 } {
   const jd     = toJulianDate(date);
   const T      = julianCenturies(jd);
@@ -50,7 +49,6 @@ export function sunVectorECI(date: Date): {
     x: Math.cos(lambda),
     y: Math.cos(eps) * Math.sin(lambda),
     z: Math.sin(eps) * Math.sin(lambda),
-    lambda,
   };
 }
 

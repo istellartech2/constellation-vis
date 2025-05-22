@@ -90,7 +90,7 @@ export function useSatelliteScene({ mountRef, timeRef, speedRef }: Params) {
       earthMesh.rotation.y = rotAngle;
       graticule.rotation.y = rotAngle;
 
-      const { x: sx, y: sy, z: sz, lambda } = sunVectorECI(simDate);
+      const { x: sx, y: sy, z: sz } = sunVectorECI(simDate);
       sunlight.position.set(sx * 10, sz * 10, -sy * 10);
       sunDot.position.set(sx, sz, -sy);
 
