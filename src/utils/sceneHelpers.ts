@@ -2,8 +2,9 @@ import * as THREE from "three";
 import * as satellite from "satellite.js";
 
 const DEG2RAD = Math.PI / 180;
+export const OBLIQUITY = 23.4393 * DEG2RAD;
 
-export function sunVectorECI(date: Date): { x: number; y: number; z: number } {
+export function sunTrueLongitude(date: Date): number {
   const jd = satellite.jday(
     date.getUTCFullYear(),
     date.getUTCMonth() + 1,
@@ -12,17 +13,25 @@ export function sunVectorECI(date: Date): { x: number; y: number; z: number } {
     date.getUTCMinutes(),
     date.getUTCSeconds() + date.getUTCMilliseconds() / 1000,
   );
-
   const T = (jd - 2451545.0) / 36525.0;
   const L = ((280.460 + 36000.770 * T) % 360) * DEG2RAD;
   const g = ((357.528 + 35999.050 * T) % 360) * DEG2RAD;
-  const lambda = L + (1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * DEG2RAD;
-  const epsilon = (23.4393 - 0.0130 * T) * DEG2RAD;
+  return L + (1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * DEG2RAD;
+}
+
+export function sunVectorECI(date: Date): {
+  x: number;
+  y: number;
+  z: number;
+  lambda: number;
+} {
+  const lambda = sunTrueLongitude(date);
+  const epsilon = OBLIQUITY;
 
   const xs = Math.cos(lambda);
   const ys = Math.cos(epsilon) * Math.sin(lambda);
   const zs = Math.sin(epsilon) * Math.sin(lambda);
-  return { x: xs, y: ys, z: zs };
+  return { x: xs, y: ys, z: zs, lambda };
 }
 
 export function createGraticule(stepDeg = 20): THREE.LineSegments {
@@ -67,7 +76,7 @@ export function createGraticule(stepDeg = 20): THREE.LineSegments {
 }
 
 export function createEclipticLine(stepDeg = 2): THREE.Line {
-  const tilt = 23.4393 * DEG2RAD;
+  const tilt = OBLIQUITY;
   const verts: number[] = [];
   for (let lon = 0; lon <= 360; lon += stepDeg) {
     const rad = lon * DEG2RAD;

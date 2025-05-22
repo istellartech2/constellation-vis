@@ -9,6 +9,7 @@ A minimal web application to visualize Earth and satellites in orbit in real tim
 - Adjustable simulation speed (1×–100× real time) via slider.
 - Interactive orbit controls for zooming, rotating, and panning.
 - Display current simulated UTC date and time.
+- Ecliptic line, Sun direction, and solar marker rotate with the seasons using the Sun's true longitude.
 - Responsive viewport that adjusts on window resize.
 
 ## Prerequisites
