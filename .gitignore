@@ -25,3 +25,7 @@ dist-ssr
 
 # generated files
 src/satellites.generated.ts
+
+# input files
+public/assets/satellites.toml
+public/assets/constellation.toml
