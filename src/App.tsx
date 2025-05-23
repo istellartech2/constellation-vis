@@ -14,6 +14,12 @@ function App() {
   const [satellites, setSatellites] = useState(INITIAL_SATS);
   const [groundStations, setGroundStations] = useState<GroundStation[]>([]);
 
+  const [startTime, setStartTime] = useState(() => {
+    const d = new Date();
+    d.setSeconds(0, 0);
+    return d;
+  });
+
   // speed exponent slider (0–2 → 1×–100×)
   const [speedExp, setSpeedExp] = useState(Math.log10(INITIAL_SPEED));
   const speedRef = useRef(INITIAL_SPEED);
@@ -24,7 +30,14 @@ function App() {
     loadGroundStations().then(setGroundStations);
   }, []);
 
-  useSatelliteScene({ mountRef, timeRef, speedRef, satellites, groundStations });
+  useSatelliteScene({
+    mountRef,
+    timeRef,
+    speedRef,
+    startTime,
+    satellites,
+    groundStations,
+  });
 
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
@@ -46,7 +59,13 @@ function App() {
         }}
       />
       <SpeedControl value={speedExp} onChange={setSpeedExp} />
-      <SatelliteEditor onUpdate={(s, gs) => { setSatellites(s); setGroundStations(gs); }} />
+      <SatelliteEditor
+        onUpdate={(s, gs, start) => {
+          setSatellites(s);
+          setGroundStations(gs);
+          setStartTime(start);
+        }}
+      />
     </div>
   );
 }
