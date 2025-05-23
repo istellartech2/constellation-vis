@@ -13,6 +13,7 @@ function App() {
 
   const [satellites, setSatellites] = useState(INITIAL_SATS);
   const [groundStations, setGroundStations] = useState<GroundStation[]>([]);
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
 
   const [startTime, setStartTime] = useState(() => {
     const d = new Date();
@@ -37,7 +38,29 @@ function App() {
     startTime,
     satellites,
     groundStations,
+    onSelect: setSelectedIdx,
   });
+
+  function formatInfo(idx: number | null): string {
+    if (idx === null) return "";
+    const spec = satellites[idx];
+    if (!spec) return "";
+    if (spec.type === "tle") {
+      return spec.lines.join("\n");
+    }
+    const e = spec.elements;
+    return (
+      `satnum: ${e.satnum}\n` +
+      `a: ${e.semiMajorAxisKm} km\n` +
+      `e: ${e.eccentricity}\n` +
+      `i: ${e.inclinationDeg} deg\n` +
+      `RAAN: ${e.raanDeg} deg\n` +
+      `argP: ${e.argPerigeeDeg} deg\n` +
+      `M: ${e.meanAnomalyDeg} deg`
+    );
+  }
+
+  const infoText = formatInfo(selectedIdx);
 
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
@@ -58,6 +81,23 @@ function App() {
           zIndex: 10,
         }}
       />
+      {infoText && (
+        <pre
+          style={{
+            position: "fixed",
+            left: 8,
+            bottom: "calc(env(safe-area-inset-bottom, 0px) + 6px)",
+            color: "#fff",
+            fontFamily: "'Noto Sans Mono', monospace",
+            fontSize: "0.9rem",
+            pointerEvents: "none",
+            whiteSpace: "pre",
+            zIndex: 10,
+          }}
+        >
+          {infoText}
+        </pre>
+      )}
       <SpeedControl value={speedExp} onChange={setSpeedExp} />
       <SatelliteEditor
         onUpdate={(s, gs, start) => {
