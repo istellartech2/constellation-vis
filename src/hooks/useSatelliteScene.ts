@@ -5,7 +5,11 @@ import * as satellite from "satellite.js";
 import { toSatrec } from "../satellites";
 import type { SatelliteSpec } from "../satellites";
 import type { GroundStation } from "../groundStations";
-import { sunVectorECI, createGraticule, createEclipticLine } from "../utils/sceneHelpers";
+import {
+  sunVectorECI,
+  createGraticule,
+  createEclipticLine,
+} from "../utils/sceneHelpers";
 
 const EARTH_RADIUS_KM = 6371;
 // const SIDEREAL_DAY_SEC = 86164;
@@ -18,11 +22,26 @@ interface Params {
   groundStations: GroundStation[];
 }
 
-export function useSatelliteScene({ mountRef, timeRef, speedRef, satellites, groundStations }: Params) {
+/**
+ * Create and update the Three.js scene used to render the Earth, satellites and
+ * ground stations. The scene is attached to the element pointed by
+ * `mountRef` and cleaned up automatically when the component unmounts.
+ */
+export function useSatelliteScene({
+  mountRef,
+  timeRef,
+  speedRef,
+  satellites,
+  groundStations,
+}: Params) {
   useEffect(() => {
+    // DOM node where the renderer will be attached
     if (!mountRef.current) return;
     const mountNode = mountRef.current;
 
+    // Basic Three.js scene setup ------------------------------------------------
+
+    // Scene, camera and renderer ------------------------------------------------
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(
       45,
@@ -36,32 +55,38 @@ export function useSatelliteScene({ mountRef, timeRef, speedRef, satellites, gro
     renderer.setSize(window.innerWidth, window.innerHeight);
     mountNode.appendChild(renderer.domElement);
 
+    // Camera controls
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enablePan = false;
     controls.enableDamping = true;
 
+    // Lighting setup
     const ambient = new THREE.AmbientLight(0xffffff, 0.2);
     scene.add(ambient);
     const sunlight = new THREE.DirectionalLight(0xffffff, 1.5);
     scene.add(sunlight);
 
+    // Earth model --------------------------------------------------------------
     const earthGeometry = new THREE.SphereGeometry(1, 128, 128);
     const texture = new THREE.TextureLoader().load("/assets/8081_earthmap4k.jpg");
     const earthMaterial = new THREE.MeshPhongMaterial({ map: texture, shininess: 1 });
     const earthMesh = new THREE.Mesh(earthGeometry, earthMaterial);
     scene.add(earthMesh);
 
+    // Reference lines
     const graticule = createGraticule(20);
     scene.add(graticule);
 
     const ecliptic = createEclipticLine(1);
     scene.add(ecliptic);
 
+    // Small marker for the sun position
     const sunDotGeo = new THREE.SphereGeometry(0.01, 8, 8);
     const sunDotMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
     const sunDot = new THREE.Mesh(sunDotGeo, sunDotMat);
     scene.add(sunDot);
 
+    // Geometries for satellites, their subpoints and ground stations
     const satGeo = new THREE.SphereGeometry(0.015, 8, 8);
     const satMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
     const groundGeo = new THREE.SphereGeometry(0.005, 8, 8);
@@ -74,6 +99,7 @@ export function useSatelliteScene({ mountRef, timeRef, speedRef, satellites, gro
     const satMeshes = satRecs.map(() => new THREE.Mesh(satGeo, satMat));
     const groundMeshes = satRecs.map(() => new THREE.Mesh(groundGeo, groundMat));
     const stationMeshes = groundStations.map(() => new THREE.Mesh(stationGeo, stationMat));
+    // Lines connecting visible satellites to ground stations
     const linkMaterial = new THREE.LineBasicMaterial({ color: 0xffffff });
     const linkGeometries = groundStations.map(() =>
       satRecs.map(() => new THREE.BufferGeometry()),
@@ -82,6 +108,7 @@ export function useSatelliteScene({ mountRef, timeRef, speedRef, satellites, gro
       arr.map((g) => new THREE.Line(g, linkMaterial)),
     );
 
+    // Add all objects to the scene
     satMeshes.forEach((m) => scene.add(m));
     groundMeshes.forEach((m) => scene.add(m));
     stationMeshes.forEach((m) => scene.add(m));
@@ -92,6 +119,7 @@ export function useSatelliteScene({ mountRef, timeRef, speedRef, satellites, gro
       });
     });
 
+    // Simulation time helpers
     const startReal = Date.now();
     const pad = (n: number) => n.toString().padStart(2, "0");
     const fmtLine = (d: Date) =>
@@ -103,6 +131,7 @@ export function useSatelliteScene({ mountRef, timeRef, speedRef, satellites, gro
       return `${utc} UTC\n${jst} JST`;
     };
 
+    // Precompute observer coordinates in radians
     const observerGds = groundStations.map((gs) => ({
       longitude: satellite.degreesToRadians(gs.longitudeDeg),
       latitude: satellite.degreesToRadians(gs.latitudeDeg),
@@ -112,16 +141,19 @@ export function useSatelliteScene({ mountRef, timeRef, speedRef, satellites, gro
       THREE.MathUtils.degToRad(gs.minElevationDeg),
     );
 
+    // Main animation loop ----------------------------------------------------
     function animate() {
       requestAnimationFrame(animate);
       const nowReal = Date.now();
       const simDeltaMs = (nowReal - startReal) * speedRef.current;
       const simDate = new Date(startReal + simDeltaMs);
 
+      // Rotate Earth using sidereal time
       const rotAngle = satellite.gstime(simDate)
       earthMesh.rotation.y = rotAngle;
       graticule.rotation.y = rotAngle;
 
+      // Position the sun and a small marker
       const { x: sx, y: sy, z: sz } = sunVectorECI(simDate);
       sunlight.position.set(sx * 10, sz * 10, -sy * 10);
       sunDot.position.set(sx, sz, -sy);
@@ -131,6 +163,7 @@ export function useSatelliteScene({ mountRef, timeRef, speedRef, satellites, gro
         const ecf = satellite.geodeticToEcf(gd);
         return satellite.ecfToEci(ecf, gmst);
       });
+      // Update ground station positions
       stationMeshes.forEach((m, idx) => {
         const p = gsEcis[idx];
         m.position.set(p.x / EARTH_RADIUS_KM, p.z / EARTH_RADIUS_KM, -p.y / EARTH_RADIUS_KM);
@@ -178,14 +211,17 @@ export function useSatelliteScene({ mountRef, timeRef, speedRef, satellites, gro
       });
 
 
+      // Display current simulation time
       if (timeRef.current) timeRef.current.textContent = fmt(simDate);
 
       controls.update();
       renderer.render(scene, camera);
     }
 
+    // Kick off the animation loop
     animate();
 
+    // Keep renderer size in sync with the window
     const handleResize = () => {
       renderer.setSize(window.innerWidth, window.innerHeight);
       camera.aspect = window.innerWidth / window.innerHeight;
