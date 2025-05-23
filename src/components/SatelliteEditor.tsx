@@ -8,13 +8,22 @@ import {
 } from "../utils/tomlParse";
 
 interface Props {
-  onUpdate: (sats: SatelliteSpec[], stations: GroundStation[]) => void;
+  onUpdate: (
+    sats: SatelliteSpec[],
+    stations: GroundStation[],
+    startTime: Date,
+  ) => void;
 }
 
 export default function SatelliteEditor({ onUpdate }: Props) {
   const [satText, setSatText] = useState("");
   const [constText, setConstText] = useState("");
   const [gsText, setGsText] = useState("");
+  const [startText, setStartText] = useState(() => {
+    const d = new Date();
+    d.setSeconds(0, 0);
+    return d.toISOString().slice(0, 16);
+  });
   const [open, setOpen] = useState(false);
 
   const satInputRef = useRef<HTMLInputElement | null>(null);
@@ -100,7 +109,7 @@ export default function SatelliteEditor({ onUpdate }: Props) {
       const gs = parseGroundStationsToml(gsText);
       validateSatellites([...base, ...con]);
       validateGroundStations(gs);
-      onUpdate([...base, ...con], gs);
+      onUpdate([...base, ...con], gs, new Date(startText));
     } catch (e) {
       alert("Failed to parse files: " + (e as Error).message);
     }
@@ -257,7 +266,29 @@ export default function SatelliteEditor({ onUpdate }: Props) {
             style={{ width: "100%", height: 80 }}
           />
         </div>
-        <button onClick={handleUpdate} style={{ marginTop: 4 }}>
+        <hr style={{ marginTop: 8, marginBottom: 8 }} />
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <label>
+            Simulation start
+            <input
+              type="datetime-local"
+              value={startText}
+              onChange={(e) => setStartText(e.target.value)}
+              style={{ width: "100%" }}
+            />
+          </label>
+        </div>
+        <button
+          onClick={handleUpdate}
+          style={{
+            marginTop: 8,
+            padding: "6px 12px",
+            background: "#1976d2",
+            color: "#fff",
+            border: "none",
+            fontWeight: "bold",
+          }}
+        >
           Update
         </button>
       </div>
