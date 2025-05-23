@@ -3,6 +3,7 @@ import SpeedControl from "./components/SpeedControl";
 import SatelliteEditor from "./components/SatelliteEditor";
 import { useSatelliteScene } from "./hooks/useSatelliteScene";
 import { SATELLITES as INITIAL_SATS } from "./satellites";
+import { loadGroundStations, type GroundStation } from "./groundStations";
 
 const INITIAL_SPEED = 60; // initial 60× real time
 
@@ -11,6 +12,7 @@ function App() {
   const timeRef = useRef<HTMLDivElement | null>(null);
 
   const [satellites, setSatellites] = useState(INITIAL_SATS);
+  const [groundStations, setGroundStations] = useState<GroundStation[]>([]);
 
   // speed exponent slider (0–2 → 1×–100×)
   const [speedExp, setSpeedExp] = useState(Math.log10(INITIAL_SPEED));
@@ -18,8 +20,11 @@ function App() {
   useEffect(() => {
     speedRef.current = Math.pow(10, speedExp);
   }, [speedExp]);
+  useEffect(() => {
+    loadGroundStations().then(setGroundStations);
+  }, []);
 
-  useSatelliteScene({ mountRef, timeRef, speedRef, satellites });
+  useSatelliteScene({ mountRef, timeRef, speedRef, satellites, groundStations });
 
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
@@ -41,7 +46,7 @@ function App() {
         }}
       />
       <SpeedControl value={speedExp} onChange={setSpeedExp} />
-      <SatelliteEditor onUpdate={setSatellites} />
+      <SatelliteEditor onUpdate={(s, gs) => { setSatellites(s); setGroundStations(gs); }} />
     </div>
   );
 }

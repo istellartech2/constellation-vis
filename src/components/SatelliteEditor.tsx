@@ -1,14 +1,20 @@
 import { useEffect, useState } from "react";
 import type { SatelliteSpec } from "../satellites";
-import { parseSatellitesToml, parseConstellationToml } from "../utils/tomlParse";
+import type { GroundStation } from "../groundStations";
+import {
+  parseSatellitesToml,
+  parseConstellationToml,
+  parseGroundStationsToml,
+} from "../utils/tomlParse";
 
 interface Props {
-  onUpdate: (sats: SatelliteSpec[]) => void;
+  onUpdate: (sats: SatelliteSpec[], stations: GroundStation[]) => void;
 }
 
 export default function SatelliteEditor({ onUpdate }: Props) {
   const [satText, setSatText] = useState("");
   const [constText, setConstText] = useState("");
+  const [gsText, setGsText] = useState("");
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -19,13 +25,18 @@ export default function SatelliteEditor({ onUpdate }: Props) {
       .then((r) => r.text())
       .then(setConstText)
       .catch(() => setConstText(""));
+    fetch("/groundstations.toml")
+      .then((r) => r.text())
+      .then(setGsText)
+      .catch(() => setGsText(""));
   }, []);
 
   const handleUpdate = () => {
     try {
       const base = parseSatellitesToml(satText);
       const con = constText ? parseConstellationToml(constText) : [];
-      onUpdate([...base, ...con]);
+      const gs = parseGroundStationsToml(gsText);
+      onUpdate([...base, ...con], gs);
     } catch (e) {
       alert("Failed to parse files: " + (e as Error).message);
     }
@@ -96,6 +107,14 @@ export default function SatelliteEditor({ onUpdate }: Props) {
           <textarea
             value={constText}
             onChange={(e) => setConstText(e.target.value)}
+            style={{ width: "100%", height: 80 }}
+          />
+        </div>
+        <div style={{ marginTop: 4 }}>
+          <div>groundstations.toml</div>
+          <textarea
+            value={gsText}
+            onChange={(e) => setGsText(e.target.value)}
             style={{ width: "100%", height: 80 }}
           />
         </div>

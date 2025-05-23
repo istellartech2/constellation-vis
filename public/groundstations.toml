@@ -1,0 +1,13 @@
+[[groundstations]]
+name = "Tokyo"
+latitudeDeg = 35.6895
+longitudeDeg = 139.6917
+heightKm = 0
+minElevationDeg = 10
+
+[[groundstations]]
+name = "Sydney"
+latitudeDeg = -33.8688
+longitudeDeg = 151.2093
+heightKm = 0
+minElevationDeg = 5
