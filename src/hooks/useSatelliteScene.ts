@@ -21,6 +21,7 @@ interface Params {
   startTime: Date;
   satellites: SatelliteSpec[];
   groundStations: GroundStation[];
+  onSelect?: (idx: number | null) => void;
 }
 
 /**
@@ -35,6 +36,7 @@ export function useSatelliteScene({
   startTime,
   satellites,
   groundStations,
+  onSelect,
 }: Params) {
   useEffect(() => {
     // DOM node where the renderer will be attached
@@ -123,6 +125,60 @@ export function useSatelliteScene({
       });
     });
 
+    // Selection handling ------------------------------------------------------
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    let selectedIndex: number | null = null;
+    let orbitLine: THREE.Line | null = null;
+    let currentSimDate = startTime;
+
+    function updateTrack() {
+      if (orbitLine) {
+        orbitLine.geometry.dispose();
+        scene.remove(orbitLine);
+        orbitLine = null;
+      }
+      if (selectedIndex === null) return;
+      const rec = satRecs[selectedIndex];
+      const points: THREE.Vector3[] = [];
+      for (let m = 0; m <= 180; m += 1) {
+        const d = new Date(currentSimDate.getTime() + m * 60000);
+        const pv = satellite.propagate(rec, d);
+        if (pv?.position) {
+          const { x, y, z } = pv.position;
+          points.push(
+            new THREE.Vector3(
+              x / EARTH_RADIUS_KM,
+              z / EARTH_RADIUS_KM,
+              -y / EARTH_RADIUS_KM,
+            ),
+          );
+        }
+      }
+      const geom = new THREE.BufferGeometry().setFromPoints(points);
+      const mat = new THREE.LineBasicMaterial({ color: 0xffffff });
+      orbitLine = new THREE.Line(geom, mat);
+      scene.add(orbitLine);
+    }
+
+    function handlePointer(event: PointerEvent) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObjects(satMeshes, false);
+      if (hits.length > 0) {
+        selectedIndex = satMeshes.indexOf(hits[0].object as THREE.Mesh<any, any>);
+        if (onSelect) onSelect(selectedIndex);
+        updateTrack();
+      } else {
+        selectedIndex = null;
+        if (onSelect) onSelect(null);
+        updateTrack();
+      }
+    }
+    renderer.domElement.addEventListener('pointerdown', handlePointer);
+
     // Simulation time helpers
     const startReal = Date.now();
     const startSim = startTime.getTime();
@@ -152,6 +208,7 @@ export function useSatelliteScene({
       const nowReal = Date.now();
       const simDeltaMs = (nowReal - startReal) * speedRef.current;
       const simDate = new Date(startSim + simDeltaMs);
+      currentSimDate = simDate;
 
       // Rotate Earth using sidereal time
       const rotAngle = satellite.gstime(simDate)
@@ -236,10 +293,14 @@ export function useSatelliteScene({
 
     return () => {
       window.removeEventListener("resize", handleResize);
+      renderer.domElement.removeEventListener('pointerdown', handlePointer);
+      if (orbitLine) {
+        orbitLine.geometry.dispose();
+      }
       renderer.dispose();
       if (mountNode.contains(renderer.domElement)) {
         mountNode.removeChild(renderer.domElement);
       }
     };
-  }, [mountRef, timeRef, speedRef, startTime, satellites, groundStations]);
+  }, [mountRef, timeRef, speedRef, startTime, satellites, groundStations, onSelect]);
 }
