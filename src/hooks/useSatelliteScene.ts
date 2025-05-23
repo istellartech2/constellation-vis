@@ -88,7 +88,7 @@ export function useSatelliteScene({
 
     // Geometries for satellites, their subpoints and ground stations
     const satGeo = new THREE.SphereGeometry(0.015, 8, 8);
-    const satMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    const baseSatMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
     const groundGeo = new THREE.SphereGeometry(0.005, 8, 8);
     const groundMat = new THREE.MeshBasicMaterial({ color: 0xa9a9a9 });
 
@@ -96,7 +96,9 @@ export function useSatelliteScene({
     const stationMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
 
     const satRecs = satellites.map((spec) => toSatrec(spec));
-    const satMeshes = satRecs.map(() => new THREE.Mesh(satGeo, satMat));
+    const satMeshes = satRecs.map(
+      () => new THREE.Mesh(satGeo, baseSatMat.clone()),
+    );
     const groundMeshes = satRecs.map(() => new THREE.Mesh(groundGeo, groundMat));
     const stationMeshes = groundStations.map(() => new THREE.Mesh(stationGeo, stationMat));
     // Lines connecting visible satellites to ground stations
