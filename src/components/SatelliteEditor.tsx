@@ -7,6 +7,75 @@ import {
   parseGroundStationsToml,
 } from "../utils/tomlParse";
 
+const CELESTRACK_GROUPS = [
+  { label: "Last 30 Days' Launches", group: "last-30-days" },
+  { label: "Space Stations", group: "stations" },
+  { label: "100 Brightest", group: "visual" },
+  { label: "Active Satellites", group: "active" },
+  { label: "Starlink", group: "starlink" },
+  { label: "Oneweb", group: "oneweb" },
+] as const;
+
+const MU = 398600.4418; // km^3/s^2
+
+interface CelestrakEntry {
+  MEAN_MOTION: number;
+  ECCENTRICITY: number;
+  INCLINATION: number;
+  RA_OF_ASC_NODE: number;
+  ARG_OF_PERICENTER: number;
+  MEAN_ANOMALY: number;
+  NORAD_CAT_ID: number;
+  EPOCH: string;
+}
+
+function celestrakEntryToSat(entry: CelestrakEntry): SatelliteSpec {
+  const mm = Number(entry.MEAN_MOTION);
+  const n = (mm * 2 * Math.PI) / 86400; // rad/s
+  const a = Math.pow(MU / (n * n), 1 / 3);
+  return {
+    type: "elements",
+    elements: {
+      satnum: Number(entry.NORAD_CAT_ID),
+      epoch: new Date(String(entry.EPOCH)),
+      semiMajorAxisKm: a,
+      eccentricity: Number(entry.ECCENTRICITY),
+      inclinationDeg: Number(entry.INCLINATION),
+      raanDeg: Number(entry.RA_OF_ASC_NODE),
+      argPerigeeDeg: Number(entry.ARG_OF_PERICENTER),
+      meanAnomalyDeg: Number(entry.MEAN_ANOMALY),
+    },
+  };
+}
+
+function satellitesToToml(list: SatelliteSpec[]): string {
+  return list
+    .map((s) => {
+      if (s.type === "tle") {
+        return (
+          "[[satellites]]\n" +
+          'type = "tle"\n' +
+          `line1 = ${JSON.stringify(s.lines[0])}\n` +
+          `line2 = ${JSON.stringify(s.lines[1])}`
+        );
+      }
+      const e = s.elements;
+      return (
+        "[[satellites]]\n" +
+        'type = "elements"\n' +
+        `satnum = ${e.satnum}\n` +
+        `epoch = ${JSON.stringify(e.epoch.toISOString())}\n` +
+        `semiMajorAxisKm = ${e.semiMajorAxisKm}\n` +
+        `eccentricity = ${e.eccentricity}\n` +
+        `inclinationDeg = ${e.inclinationDeg}\n` +
+        `raanDeg = ${e.raanDeg}\n` +
+        `argPerigeeDeg = ${e.argPerigeeDeg}\n` +
+        `meanAnomalyDeg = ${e.meanAnomalyDeg}`
+      );
+    })
+    .join("\n\n");
+}
+
 interface Props {
   onUpdate: (
     sats: SatelliteSpec[],
@@ -25,6 +94,8 @@ export default function SatelliteEditor({ onUpdate }: Props) {
     return d.toISOString().slice(0, 16);
   });
   const [open, setOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
 
   const satInputRef = useRef<HTMLInputElement | null>(null);
   const constInputRef = useRef<HTMLInputElement | null>(null);
@@ -53,6 +124,35 @@ export default function SatelliteEditor({ onUpdate }: Props) {
       setter(text);
     } catch (e) {
       alert("Invalid file: " + (e as Error).message);
+    }
+  }
+
+  function toggleGroup(g: string) {
+    setSelectedGroups((prev) =>
+      prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g],
+    );
+  }
+
+  async function handleImport() {
+    try {
+      const base = parseSatellitesToml(satText);
+      for (const g of selectedGroups) {
+        const url =
+          "https://celestrak.org/NORAD/elements/gp.php?GROUP=" +
+          g +
+          "&FORMAT=json";
+        const resp = await fetch(url);
+        const data = await resp.json();
+        for (const e of data) {
+          base.push(celestrakEntryToSat(e));
+        }
+      }
+      setSatText(satellitesToToml(base));
+    } catch (e) {
+      alert("Failed to import satellites: " + (e as Error).message);
+    } finally {
+      setImportOpen(false);
+      setSelectedGroups([]);
     }
   }
 
@@ -117,6 +217,44 @@ export default function SatelliteEditor({ onUpdate }: Props) {
 
   return (
     <>
+      {importOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.7)",
+            color: "#fff",
+            zIndex: 40,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontFamily: "monospace",
+          }}
+        >
+          <div style={{ background: "rgba(0,0,0,0.8)", padding: 16 }}>
+            <h3 style={{ marginTop: 0 }}>Import from CelesTrak</h3>
+            {CELESTRACK_GROUPS.map(({ label, group }) => (
+              <label key={group} style={{ display: "block" }}>
+                <input
+                  type="checkbox"
+                  checked={selectedGroups.includes(group)}
+                  onChange={() => toggleGroup(group)}
+                />
+                <span style={{ marginLeft: 4 }}>{label}</span>
+              </label>
+            ))}
+            <div style={{ marginTop: 8, textAlign: "right" }}>
+              <button
+                onClick={() => setImportOpen(false)}
+                style={{ marginRight: 8 }}
+              >
+                Cancel
+              </button>
+              <button onClick={handleImport}>Import</button>
+            </div>
+          </div>
+        </div>
+      )}
       {!open && (
         <button
           onClick={() => setOpen(true)}
@@ -181,6 +319,12 @@ export default function SatelliteEditor({ onUpdate }: Props) {
               style={{ marginLeft: 4, background: "transparent", border: "none", color: "#fff" }}
             >
               📂
+            </button>
+            <button
+              onClick={() => setImportOpen(true)}
+              style={{ marginLeft: 4, background: "transparent", border: "none", color: "#fff" }}
+            >
+              🌐
             </button>
             <input
               ref={satInputRef}
