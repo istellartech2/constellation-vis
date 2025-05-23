@@ -4,21 +4,10 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import * as satellite from "satellite.js";
 import { toSatrec } from "../satellites";
 import type { SatelliteSpec } from "../satellites";
+import type { GroundStation } from "../groundStations";
 import { sunVectorECI, createGraticule, createEclipticLine } from "../utils/sceneHelpers";
 
 const EARTH_RADIUS_KM = 6371;
-
-// Ground station definition (Tokyo)
-const GROUND_STATIONS = [
-  {
-    name: "Tokyo",
-    latitudeDeg: 35.6895,
-    longitudeDeg: 139.6917,
-    heightKm: 0,
-  },
-];
-
-const MIN_ELEVATION_DEG = 10; // minimum elevation for visibility
 // const SIDEREAL_DAY_SEC = 86164;
 
 interface Params {
@@ -26,9 +15,10 @@ interface Params {
   timeRef: React.RefObject<HTMLDivElement | null>;
   speedRef: React.MutableRefObject<number>;
   satellites: SatelliteSpec[];
+  groundStations: GroundStation[];
 }
 
-export function useSatelliteScene({ mountRef, timeRef, speedRef, satellites }: Params) {
+export function useSatelliteScene({ mountRef, timeRef, speedRef, satellites, groundStations }: Params) {
   useEffect(() => {
     if (!mountRef.current) return;
     const mountNode = mountRef.current;
@@ -83,17 +73,23 @@ export function useSatelliteScene({ mountRef, timeRef, speedRef, satellites }: P
     const satRecs = satellites.map((spec) => toSatrec(spec));
     const satMeshes = satRecs.map(() => new THREE.Mesh(satGeo, satMat));
     const groundMeshes = satRecs.map(() => new THREE.Mesh(groundGeo, groundMat));
-    const stationMeshes = GROUND_STATIONS.map(() => new THREE.Mesh(stationGeo, stationMat));
+    const stationMeshes = groundStations.map(() => new THREE.Mesh(stationGeo, stationMat));
     const linkMaterial = new THREE.LineBasicMaterial({ color: 0xffffff });
-    const linkGeometries = satRecs.map(() => new THREE.BufferGeometry());
-    const linkLines = linkGeometries.map((g) => new THREE.Line(g, linkMaterial));
+    const linkGeometries = groundStations.map(() =>
+      satRecs.map(() => new THREE.BufferGeometry()),
+    );
+    const linkLines = linkGeometries.map((arr) =>
+      arr.map((g) => new THREE.Line(g, linkMaterial)),
+    );
 
     satMeshes.forEach((m) => scene.add(m));
     groundMeshes.forEach((m) => scene.add(m));
     stationMeshes.forEach((m) => scene.add(m));
-    linkLines.forEach((l) => {
-      l.visible = false;
-      scene.add(l);
+    linkLines.forEach((arr) => {
+      arr.forEach((l) => {
+        l.visible = false;
+        scene.add(l);
+      });
     });
 
     const startReal = Date.now();
@@ -107,12 +103,14 @@ export function useSatelliteScene({ mountRef, timeRef, speedRef, satellites }: P
       return `${utc} UTC\n${jst} JST`;
     };
 
-    const observerGd = {
-      longitude: satellite.degreesToRadians(GROUND_STATIONS[0].longitudeDeg),
-      latitude: satellite.degreesToRadians(GROUND_STATIONS[0].latitudeDeg),
-      height: GROUND_STATIONS[0].heightKm,
-    };
-    const minElevationRad = THREE.MathUtils.degToRad(MIN_ELEVATION_DEG);
+    const observerGds = groundStations.map((gs) => ({
+      longitude: satellite.degreesToRadians(gs.longitudeDeg),
+      latitude: satellite.degreesToRadians(gs.latitudeDeg),
+      height: gs.heightKm,
+    }));
+    const minElevationRads = groundStations.map((gs) =>
+      THREE.MathUtils.degToRad(gs.minElevationDeg),
+    );
 
     function animate() {
       requestAnimationFrame(animate);
@@ -129,13 +127,14 @@ export function useSatelliteScene({ mountRef, timeRef, speedRef, satellites }: P
       sunDot.position.set(sx, sz, -sy);
 
       const gmst = rotAngle;
-      const gsEcf = satellite.geodeticToEcf(observerGd);
-      const gsEci = satellite.ecfToEci(gsEcf, gmst);
-      stationMeshes[0].position.set(
-        gsEci.x / EARTH_RADIUS_KM,
-        gsEci.z / EARTH_RADIUS_KM,
-        -gsEci.y / EARTH_RADIUS_KM,
-      );
+      const gsEcis = observerGds.map((gd) => {
+        const ecf = satellite.geodeticToEcf(gd);
+        return satellite.ecfToEci(ecf, gmst);
+      });
+      stationMeshes.forEach((m, idx) => {
+        const p = gsEcis[idx];
+        m.position.set(p.x / EARTH_RADIUS_KM, p.z / EARTH_RADIUS_KM, -p.y / EARTH_RADIUS_KM);
+      });
 
       satRecs.forEach((rec, i) => {
         const pv = satellite.propagate(rec, simDate);
@@ -150,27 +149,31 @@ export function useSatelliteScene({ mountRef, timeRef, speedRef, satellites }: P
           groundMeshes[i].position.set(x / mag, z / mag, -y / mag);
 
           const satEcf = satellite.eciToEcf(pv.position, gmst);
-          const look = satellite.ecfToLookAngles(observerGd, satEcf);
-          const visible = look.elevation > minElevationRad;
+          let anyVisible = false;
+          groundStations.forEach((_, gi) => {
+            const look = satellite.ecfToLookAngles(observerGds[gi], satEcf);
+            const visible = look.elevation > minElevationRads[gi];
+            if (visible) {
+              anyVisible = true;
+              const p1 = new THREE.Vector3(
+                gsEcis[gi].x / EARTH_RADIUS_KM,
+                gsEcis[gi].z / EARTH_RADIUS_KM,
+                -gsEcis[gi].y / EARTH_RADIUS_KM,
+              );
+              const p2 = new THREE.Vector3(
+                x / EARTH_RADIUS_KM,
+                z / EARTH_RADIUS_KM,
+                -y / EARTH_RADIUS_KM,
+              );
+              linkGeometries[gi][i].setFromPoints([p1, p2]);
+              linkLines[gi][i].visible = true;
+            } else {
+              linkLines[gi][i].visible = false;
+            }
+          });
           (satMeshes[i].material as THREE.MeshBasicMaterial).color.setHex(
-            visible ? 0x00ff00 : 0xff0000,
+            anyVisible ? 0x00ff00 : 0xff0000,
           );
-          if (visible) {
-            const p1 = new THREE.Vector3(
-              gsEci.x / EARTH_RADIUS_KM,
-              gsEci.z / EARTH_RADIUS_KM,
-              -gsEci.y / EARTH_RADIUS_KM,
-            );
-            const p2 = new THREE.Vector3(
-              x / EARTH_RADIUS_KM,
-              z / EARTH_RADIUS_KM,
-              -y / EARTH_RADIUS_KM,
-            );
-            linkGeometries[i].setFromPoints([p1, p2]);
-            linkLines[i].visible = true;
-          } else {
-            linkLines[i].visible = false;
-          }
         }
       });
 
@@ -197,5 +200,5 @@ export function useSatelliteScene({ mountRef, timeRef, speedRef, satellites }: P
         mountNode.removeChild(renderer.domElement);
       }
     };
-  }, [mountRef, timeRef, speedRef, satellites]);
+  }, [mountRef, timeRef, speedRef, satellites, groundStations]);
 }

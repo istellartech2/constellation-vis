@@ -125,3 +125,39 @@ export function parseConstellationToml(text: string): SatelliteSpec[] {
   if (current) con.shells.push(current);
   return generateFromShells(con);
 }
+
+export interface GroundStation {
+  name: string;
+  latitudeDeg: number;
+  longitudeDeg: number;
+  heightKm: number;
+  minElevationDeg: number;
+}
+
+export function parseGroundStationsToml(text: string): GroundStation[] {
+  const lines = text.split(/\r?\n/);
+  const result: any[] = [];
+  let current: Record<string, any> | null = null;
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    if (line === '[[groundstations]]') {
+      if (current) result.push(current);
+      current = {};
+      continue;
+    }
+    const m = line.match(/^([A-Za-z0-9_]+)\s*=\s*(.+)$/);
+    if (m && current) {
+      current[m[1]] = parseValue(m[2]);
+    }
+  }
+  if (current) result.push(current);
+
+  return result.map((gs) => ({
+    name: String(gs.name ?? ''),
+    latitudeDeg: Number(gs.latitudeDeg),
+    longitudeDeg: Number(gs.longitudeDeg),
+    heightKm: Number(gs.heightKm ?? 0),
+    minElevationDeg: Number(gs.minElevationDeg ?? 0),
+  }));
+}
