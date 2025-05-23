@@ -100,9 +100,10 @@ export function useSatelliteScene({
     const stationMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
 
     const satRecs = satellites.map((spec) => toSatrec(spec));
-    const satMeshes = satRecs.map(
-      () => new THREE.Mesh(satGeo, baseSatMat.clone()),
-    );
+    const satMeshes: THREE.Mesh<
+      THREE.SphereGeometry,
+      THREE.MeshBasicMaterial
+    >[] = satRecs.map(() => new THREE.Mesh(satGeo, baseSatMat.clone()));
     const groundMeshes = satRecs.map(() => new THREE.Mesh(groundGeo, groundMat));
     const stationMeshes = groundStations.map(() => new THREE.Mesh(stationGeo, stationMat));
     // Lines connecting visible satellites to ground stations
@@ -168,7 +169,12 @@ export function useSatelliteScene({
       raycaster.setFromCamera(pointer, camera);
       const hits = raycaster.intersectObjects(satMeshes, false);
       if (hits.length > 0) {
-        selectedIndex = satMeshes.indexOf(hits[0].object as THREE.Mesh<any, any>);
+        selectedIndex = satMeshes.indexOf(
+          hits[0].object as THREE.Mesh<
+            THREE.SphereGeometry,
+            THREE.MeshBasicMaterial
+          >,
+        );
         if (onSelect) onSelect(selectedIndex);
         updateTrack();
       } else {
