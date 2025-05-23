@@ -6,6 +6,7 @@ A web application to visualize Earth and satellites in orbit using React, TypeSc
 
 - Render a 3D Earth.
 - Visualize satellite positions.
+- Show visibility of satellites from a ground station in Tokyo.
 
 ## Prerequisites
 
