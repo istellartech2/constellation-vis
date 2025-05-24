@@ -7,8 +7,9 @@ interface Props {
 
 const SIZE_OPTIONS: { label: string; value: number }[] = [
   { label: "S", value: 0.01 },
-  { label: "M", value: 0.015 },
-  { label: "L", value: 0.02 },
+  { label: "M", value: 0.02 },
+  { label: "L", value: 0.03 },
+  { label: "LL", value: 0.05 },
 ];
 
 const SatelliteSizeControl: FC<Props> = ({ value, onChange }) => (
