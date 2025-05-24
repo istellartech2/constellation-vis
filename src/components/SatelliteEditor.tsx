@@ -127,6 +127,7 @@ export default function SatelliteEditor({ onUpdate }: Props) {
   const [open, setOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
+  const [importing, setImporting] = useState(false);
 
   const satInputRef = useRef<HTMLInputElement | null>(null);
   const constInputRef = useRef<HTMLInputElement | null>(null);
@@ -170,6 +171,7 @@ export default function SatelliteEditor({ onUpdate }: Props) {
   // Fetch orbital data for the selected CelesTrak groups and merge it
   // with whatever the user already has in the satellites text area.
   async function handleImport() {
+    setImporting(true);
     try {
       const base = parseSatellitesToml(satText);
       for (const g of selectedGroups) {
@@ -187,6 +189,7 @@ export default function SatelliteEditor({ onUpdate }: Props) {
     } catch (e) {
       alert("Failed to import satellites: " + (e as Error).message);
     } finally {
+      setImporting(false);
       setImportOpen(false);
       setSelectedGroups([]);
     }
@@ -273,21 +276,26 @@ export default function SatelliteEditor({ onUpdate }: Props) {
               <label key={group} style={{ display: "block" }}>
                 <input
                   type="checkbox"
+                  disabled={importing}
                   checked={selectedGroups.includes(group)}
                   onChange={() => toggleGroup(group)}
                 />
                 <span style={{ marginLeft: 4 }}>{label}</span>
               </label>
             ))}
-            <div style={{ marginTop: 8, textAlign: "right" }}>
-              <button
-                onClick={() => setImportOpen(false)}
-                style={{ marginRight: 8 }}
-              >
-                Cancel
-              </button>
-              <button onClick={handleImport}>Import</button>
-            </div>
+            {importing ? (
+              <div style={{ marginTop: 8, textAlign: "center" }}>Loading...</div>
+            ) : (
+              <div style={{ marginTop: 8, textAlign: "right" }}>
+                <button
+                  onClick={() => setImportOpen(false)}
+                  style={{ marginRight: 8 }}
+                >
+                  Cancel
+                </button>
+                <button onClick={handleImport}>Import</button>
+              </div>
+            )}
           </div>
         </div>
       )}
