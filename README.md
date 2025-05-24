@@ -1,12 +1,14 @@
 # Constellation Viewer
 
-A web application to visualize Earth and satellites in orbit using React, TypeScript, Vite, Three.js, and satellite.js.
+A web application that visualizes satellite constellations in Earth orbit.
+Technologies used are React, TypeScript, Vite, Three.js, and satellite.js.
 
 ## Features
 
-- Render a 3D Earth.
-- Visualize satellite positions.
-- Show visibility of satellites from a ground station in Tokyo.
+- Draws a 3D Earth
+- Displays satellite positions from orbital elements
+- Gets and displays satellite orbital elements from CelesTrak
+- Checks visibility from ground stations
 
 ## Prerequisites
 
@@ -77,13 +79,15 @@ https://constellation-vis.vercel.app/
 
 # Constellation Viewer (日本語)
 
-React、TypeScript、Vite、Three.js、satellite.js を使用して地球と衛星を可視化する Web アプリケーションです。
+地球周回軌道の衛星コンステレーションを可視化する Web アプリケーション。
+利用している技術はReact、TypeScript、Vite、Three.js、satellite.js。
 
 ## 機能
 
-- 3D の地球を描画
-- 衛星の位置を表示
-- 東京の地上局からの可視性を確認
+- 3Dの地球を描画
+- 軌道要素から衛星の位置を表示
+- CelesTrakから衛星軌道要素を取得し、表示
+- 地上局からの可視性を確認
 
 ## 前提条件
 
@@ -91,13 +95,15 @@ React、TypeScript、Vite、Three.js、satellite.js を使用して地球と衛�
 
 ## インストール
 
+リポジトリのフォルダにおいて以下を実行。
+
 ```bash
 bun install
 ```
 
 ## 開発
 
-以下で開発サーバーを起動できます:
+以下で開発サーバーを起動。
 
 ```bash
 bun run dev
@@ -105,7 +111,7 @@ bun run dev
 
 ブラウザで `http://localhost:5173` を開いてください。
 
-## デプロイ
+## アプリケーションURL
 https://constellation-vis.vercel.app/
 
 ## ファイル形式
