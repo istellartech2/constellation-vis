@@ -1,4 +1,4 @@
-import { parseGroundStationsToml, type GroundStation } from './utils/tomlParse';
+import { parseGroundStationsToml, type GroundStation } from '../utils/tomlParse';
 
 export async function loadGroundStations(): Promise<GroundStation[]> {
   const resp = await fetch('/groundstations.toml');

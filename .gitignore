@@ -24,7 +24,7 @@ dist-ssr
 *.sw?
 
 # generated files
-src/satellites.generated.ts
+src/data/satellites.generated.ts
 
 # input files
 public/assets/satellites.toml

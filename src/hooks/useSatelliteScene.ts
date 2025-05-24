@@ -2,9 +2,9 @@ import { useEffect } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import * as satellite from "satellite.js";
-import { toSatrec } from "../satellites";
-import type { SatelliteSpec } from "../satellites";
-import type { GroundStation } from "../groundStations";
+import { toSatrec } from "../data/satellites";
+import type { SatelliteSpec } from "../data/satellites";
+import type { GroundStation } from "../data/groundStations";
 import {
   sunVectorECI,
   createGraticule,

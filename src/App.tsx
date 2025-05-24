@@ -2,8 +2,9 @@ import { useRef, useEffect, useState } from "react";
 import SpeedControl from "./components/SpeedControl";
 import SatelliteEditor from "./components/SatelliteEditor";
 import { useSatelliteScene } from "./hooks/useSatelliteScene";
-import { SATELLITES as INITIAL_SATS } from "./satellites";
-import { loadGroundStations, type GroundStation } from "./groundStations";
+import { SATELLITES as INITIAL_SATS } from "./data/satellites";
+import { loadGroundStations, type GroundStation } from "./data/groundStations";
+import { formatSatelliteInfo } from "./utils/formatSatelliteInfo";
 
 const INITIAL_SPEED = 60; // initial 60× real time
 
@@ -41,26 +42,7 @@ function App() {
     onSelect: setSelectedIdx,
   });
 
-  function formatInfo(idx: number | null): string {
-    if (idx === null) return "";
-    const spec = satellites[idx];
-    if (!spec) return "";
-    if (spec.type === "tle") {
-      return spec.lines.join("\n");
-    }
-    const e = spec.elements;
-    return (
-      `satnum: ${e.satnum}\n` +
-      `a: ${e.semiMajorAxisKm} km\n` +
-      `e: ${e.eccentricity}\n` +
-      `i: ${e.inclinationDeg} deg\n` +
-      `RAAN: ${e.raanDeg} deg\n` +
-      `argP: ${e.argPerigeeDeg} deg\n` +
-      `M: ${e.meanAnomalyDeg} deg`
-    );
-  }
-
-  const infoText = formatInfo(selectedIdx);
+  const infoText = formatSatelliteInfo(satellites, selectedIdx);
 
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
