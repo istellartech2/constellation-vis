@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState } from "react";
 import SpeedControl from "./components/SpeedControl";
+import SatelliteSizeControl from "./components/SatelliteSizeControl";
 import SatelliteEditor from "./components/SatelliteEditor";
 import { useSatelliteScene } from "./hooks/useSatelliteScene";
 import { SATELLITES as INITIAL_SATS } from "./data/satellites";
@@ -15,6 +16,10 @@ function App() {
   const [satellites, setSatellites] = useState(INITIAL_SATS);
   const [groundStations, setGroundStations] = useState<GroundStation[]>([]);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+
+  const [satRadius, setSatRadius] = useState(() =>
+    window.innerWidth <= 600 ? 0.02 : 0.015,
+  );
 
   const [startTime, setStartTime] = useState(() => {
     const d = new Date();
@@ -39,6 +44,7 @@ function App() {
     startTime,
     satellites,
     groundStations,
+    satRadius,
     onSelect: setSelectedIdx,
   });
 
@@ -81,6 +87,7 @@ function App() {
         </pre>
       )}
       <SpeedControl value={speedExp} onChange={setSpeedExp} />
+      <SatelliteSizeControl value={satRadius} onChange={setSatRadius} />
       <SatelliteEditor
         onUpdate={(s, gs, start) => {
           setSatellites(s);

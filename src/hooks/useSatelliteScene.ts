@@ -21,6 +21,7 @@ interface Params {
   startTime: Date;
   satellites: SatelliteSpec[];
   groundStations: GroundStation[];
+  satRadius: number;
   onSelect?: (idx: number | null) => void;
 }
 
@@ -36,6 +37,7 @@ export function useSatelliteScene({
   startTime,
   satellites,
   groundStations,
+  satRadius,
   onSelect,
 }: Params) {
   useEffect(() => {
@@ -91,7 +93,7 @@ export function useSatelliteScene({
     scene.add(sunDot);
 
     // Geometries for satellites, their subpoints and ground stations
-    const satGeo = new THREE.SphereGeometry(0.015, 8, 8);
+    const satGeo = new THREE.SphereGeometry(satRadius, 8, 8);
     const baseSatMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
     const groundGeo = new THREE.SphereGeometry(0.005, 8, 8);
     const groundMat = new THREE.MeshBasicMaterial({ color: 0xa9a9a9 });
@@ -310,5 +312,5 @@ export function useSatelliteScene({
         mountNode.removeChild(renderer.domElement);
       }
     };
-  }, [mountRef, timeRef, speedRef, startTime, satellites, groundStations, onSelect]);
+  }, [mountRef, timeRef, speedRef, startTime, satellites, groundStations, satRadius, onSelect]);
 }
