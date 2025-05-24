@@ -1,7 +1,10 @@
-// Utility to parse minimal TOML used for satellites and constellations
+// Utility to parse the small subset of TOML used by the demo
+// configuration files. These parsers are intentionally simple and are
+// not meant to be fully-featured TOML implementations.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { SatelliteSpec } from "../data/satellites";
 
+// Minimal value parser handling strings, numbers and ISO dates.
 function parseValue(v: string): any {
   const s = v.trim();
   if (s.startsWith('"') && s.endsWith('"')) return s.slice(1, -1);
@@ -12,6 +15,7 @@ function parseValue(v: string): any {
   return s;
 }
 
+// Parse a satellites.toml file into an array of SatelliteSpec objects.
 export function parseSatellitesToml(text: string): SatelliteSpec[] {
   const lines = text.split(/\r?\n/);
   const result: any[] = [];
@@ -118,6 +122,8 @@ function generateFromShells(con: any): SatelliteSpec[] {
   return sats;
 }
 
+// Parse a constellation.toml file describing shell distributions into a
+// list of SatelliteSpec objects.
 export function parseConstellationToml(text: string): SatelliteSpec[] {
   const lines = text.split(/\r?\n/);
   const con: any = { shells: [] };
@@ -155,6 +161,7 @@ export interface GroundStation {
   minElevationDeg: number;
 }
 
+// Parse a groundstations.toml file into a list of ground station objects.
 export function parseGroundStationsToml(text: string): GroundStation[] {
   const lines = text.split(/\r?\n/);
   const result: any[] = [];

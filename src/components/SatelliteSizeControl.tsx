@@ -5,6 +5,9 @@ interface Props {
   onChange: (v: number) => void;
 }
 
+// Simple dropdown to change the rendered size of satellites. Useful
+// when viewing on small or high-resolution displays.
+
 const SIZE_OPTIONS: { label: string; value: number }[] = [
   { label: "S", value: 0.01 },
   { label: "M", value: 0.02 },

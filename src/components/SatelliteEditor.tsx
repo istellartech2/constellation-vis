@@ -7,6 +7,13 @@ import {
   parseGroundStationsToml,
 } from "../utils/tomlParse";
 
+/**
+ * Editor side panel allowing the user to load, edit and save TOML files
+ * describing satellites, constellations and ground stations. The parsed
+ * data is fed back into the visualization via the provided `onUpdate`
+ * callback.
+ */
+
 const CELESTRACK_GROUPS = [
   { label: "Last 30 Days' Launches", group: "last-30-days" },
   { label: "Space Stations", group: "stations" },
@@ -32,6 +39,8 @@ interface CelestrakEntry {
   OBJECT_ID?: string;
 }
 
+// Convert an entry from the CelesTrak API into our internal satellite
+// representation (classical orbital elements).
 function celestrakEntryToSat(entry: CelestrakEntry): SatelliteSpec {
   const mm = Number(entry.MEAN_MOTION);
   const n = (mm * 2 * Math.PI) / 86400; // rad/s
@@ -56,6 +65,8 @@ function celestrakEntryToSat(entry: CelestrakEntry): SatelliteSpec {
   };
 }
 
+// Helper to convert our satellite list back into TOML so it can be saved
+// to disk or shared with other tools.
 function satellitesToToml(list: SatelliteSpec[]): string {
   return list
     .map((s) => {
@@ -92,6 +103,11 @@ function satellitesToToml(list: SatelliteSpec[]): string {
 }
 
 interface Props {
+  /**
+   * Called when the user clicks Update. Provides the parsed satellite list,
+   * ground station list and simulation start time back to the parent
+   * component.
+   */
   onUpdate: (
     sats: SatelliteSpec[],
     stations: GroundStation[],
@@ -126,6 +142,9 @@ export default function SatelliteEditor({ onUpdate }: Props) {
     URL.revokeObjectURL(url);
   }
 
+  // Read a user-provided file, parse it and update the corresponding
+  // text box. Optional validation logic can be supplied to reject
+  // invalid input before it reaches the state.
   async function handleFileLoad<T>(
     file: File,
     setter: (t: string) => void,
@@ -148,6 +167,8 @@ export default function SatelliteEditor({ onUpdate }: Props) {
     );
   }
 
+  // Fetch orbital data for the selected CelesTrak groups and merge it
+  // with whatever the user already has in the satellites text area.
   async function handleImport() {
     try {
       const base = parseSatellitesToml(satText);

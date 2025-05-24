@@ -1,5 +1,10 @@
 import type { SatelliteSpec } from "../data/satellites";
 
+/**
+ * Build a human readable block of text describing the satellite at the
+ * provided index. Returns an empty string when no satellite is selected.
+ */
+
 export function formatSatelliteInfo(satellites: SatelliteSpec[], idx: number | null): string {
   if (idx === null) return "";
   const spec = satellites[idx];
