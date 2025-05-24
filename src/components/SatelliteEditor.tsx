@@ -28,6 +28,8 @@ interface CelestrakEntry {
   MEAN_ANOMALY: number;
   NORAD_CAT_ID: number;
   EPOCH: string;
+  OBJECT_NAME?: string;
+  OBJECT_ID?: string;
 }
 
 function celestrakEntryToSat(entry: CelestrakEntry): SatelliteSpec {
@@ -46,16 +48,27 @@ function celestrakEntryToSat(entry: CelestrakEntry): SatelliteSpec {
       argPerigeeDeg: Number(entry.ARG_OF_PERICENTER),
       meanAnomalyDeg: Number(entry.MEAN_ANOMALY),
     },
+    meta: {
+      objectName: entry.OBJECT_NAME,
+      objectId: entry.OBJECT_ID,
+      noradCatId: Number(entry.NORAD_CAT_ID),
+    },
   };
 }
 
 function satellitesToToml(list: SatelliteSpec[]): string {
   return list
     .map((s) => {
+      const meta = s.meta
+        ? ((s.meta.objectName ? `name = ${JSON.stringify(s.meta.objectName)}\n` : "") +
+            (s.meta.objectId ? `objectId = ${JSON.stringify(s.meta.objectId)}\n` : "") +
+            (s.meta.noradCatId !== undefined ? `noradCatId = ${s.meta.noradCatId}\n` : ""))
+        : "";
       if (s.type === "tle") {
         return (
           "[[satellites]]\n" +
           'type = "tle"\n' +
+          meta +
           `line1 = ${JSON.stringify(s.lines[0])}\n` +
           `line2 = ${JSON.stringify(s.lines[1])}`
         );
@@ -64,6 +77,7 @@ function satellitesToToml(list: SatelliteSpec[]): string {
       return (
         "[[satellites]]\n" +
         'type = "elements"\n' +
+        meta +
         `satnum = ${e.satnum}\n` +
         `epoch = ${JSON.stringify(e.epoch.toISOString())}\n` +
         `semiMajorAxisKm = ${e.semiMajorAxisKm}\n` +

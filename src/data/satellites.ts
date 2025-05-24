@@ -19,9 +19,15 @@ export interface OrbitalElements {
   meanAnomalyDeg: number;
 }
 
+export interface SatelliteMetadata {
+  objectName?: string;
+  objectId?: string;
+  noradCatId?: number;
+}
+
 export type SatelliteSpec =
-  | { type: "tle"; lines: [string, string] }
-  | { type: "elements"; elements: OrbitalElements };
+  | { type: "tle"; lines: [string, string]; meta?: SatelliteMetadata }
+  | { type: "elements"; elements: OrbitalElements; meta?: SatelliteMetadata };
 
 /** Convert epoch date to `YYDDD.DDDDDDDD` format used by TLEs. */
 function formatTleEpoch(date: Date): string {
