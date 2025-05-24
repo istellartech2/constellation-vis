@@ -10,8 +10,9 @@ import {
 const CELESTRACK_GROUPS = [
   { label: "Last 30 Days' Launches", group: "last-30-days" },
   { label: "Space Stations", group: "stations" },
-  { label: "100 Brightest", group: "visual" },
-  { label: "Active Satellites", group: "active" },
+  { label: "Active GEO", group: "geo" },
+  { label: "Weather", group: "weather" },
+  { label: "GNSS", group: "gnss" },
   { label: "Starlink", group: "starlink" },
   { label: "Oneweb", group: "oneweb" },
 ] as const;
@@ -427,7 +428,7 @@ export default function SatelliteEditor({ onUpdate }: Props) {
           onClick={handleUpdate}
           style={{
             marginTop: 8,
-            padding: "6px 12px",
+            padding: "8px 20px",
             background: "#1976d2",
             color: "#fff",
             border: "none",

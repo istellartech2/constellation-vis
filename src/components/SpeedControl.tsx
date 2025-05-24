@@ -11,7 +11,7 @@ export default function SpeedControl({ value, onChange }: Props) {
         right: 8,
         top: 8,
         color: "#fff",
-        fontFamily: "sans-serif",
+        fontFamily: "'Noto Sans Mono', monospace",
         display: "flex",
         flexDirection: "column",
         alignItems: "flex-end",
