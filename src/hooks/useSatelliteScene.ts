@@ -106,8 +106,11 @@ export function useSatelliteScene({
     const satColorAttr = new THREE.BufferAttribute(satColors, 3);
     satGeometry.setAttribute('position', satPosAttr);
     satGeometry.setAttribute('color', satColorAttr);
+    const texture_circle = new THREE.TextureLoader().load('/assets/circle.png');
     const satMaterial = new THREE.PointsMaterial({
       size: satRadius * 2,
+      map: texture_circle,
+      transparent: true,
       sizeAttenuation: true,
       vertexColors: true,
     });
@@ -120,6 +123,8 @@ export function useSatelliteScene({
     groundGeometry.setAttribute('position', groundPosAttr);
     const groundMaterial = new THREE.PointsMaterial({
       color: 0xa9a9a9,
+      map: texture_circle,
+      transparent: true,
       size: 0.01,
       sizeAttenuation: true,
     });

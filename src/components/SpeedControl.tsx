@@ -19,8 +19,8 @@ export default function SpeedControl({ value, onChange }: Props) {
     >
       <input
         type="range"
-        min={1}
-        max={2.5}
+        min={0}
+        max={2.56}
         step={0.01}
         value={value}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
