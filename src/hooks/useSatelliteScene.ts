@@ -72,7 +72,7 @@ export function useSatelliteScene({
 
     // Earth model --------------------------------------------------------------
     const earthGeometry = new THREE.SphereGeometry(1, 128, 128);
-    const texture = new THREE.TextureLoader().load("/assets/8081_earthmap4k.jpg");
+    const texture = new THREE.TextureLoader().load("/assets/8081_earthmap4k.webp");
     const earthMaterial = new THREE.MeshPhongMaterial({ map: texture, shininess: 1 });
     const earthMesh = new THREE.Mesh(earthGeometry, earthMaterial);
     scene.add(earthMesh);
