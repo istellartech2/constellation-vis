@@ -93,20 +93,38 @@ export function useSatelliteScene({
     scene.add(sunDot);
 
     // Geometries for satellites, their subpoints and ground stations
-    const satGeo = new THREE.SphereGeometry(satRadius, 8, 8);
-    const baseSatMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-    const groundGeo = new THREE.SphereGeometry(0.005, 8, 8);
-    const groundMat = new THREE.MeshBasicMaterial({ color: 0xa9a9a9 });
-
     const stationGeo = new THREE.SphereGeometry(0.01, 8, 8);
     const stationMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
 
     const satRecs = satellites.map((spec) => toSatrec(spec));
-    const satMeshes: THREE.Mesh<
-      THREE.SphereGeometry,
-      THREE.MeshBasicMaterial
-    >[] = satRecs.map(() => new THREE.Mesh(satGeo, baseSatMat.clone()));
-    const groundMeshes = satRecs.map(() => new THREE.Mesh(groundGeo, groundMat));
+
+    // --- Satellites rendered as a single Points object ----------------------
+    const satPositions = new Float32Array(satRecs.length * 3);
+    const satColors = new Float32Array(satRecs.length * 3);
+    const satGeometry = new THREE.BufferGeometry();
+    const satPosAttr = new THREE.BufferAttribute(satPositions, 3);
+    const satColorAttr = new THREE.BufferAttribute(satColors, 3);
+    satGeometry.setAttribute('position', satPosAttr);
+    satGeometry.setAttribute('color', satColorAttr);
+    const satMaterial = new THREE.PointsMaterial({
+      size: satRadius * 2,
+      sizeAttenuation: true,
+      vertexColors: true,
+    });
+    const satPoints = new THREE.Points(satGeometry, satMaterial);
+
+    // --- Ground subpoints rendered as a single Points object ----------------
+    const groundPositions = new Float32Array(satRecs.length * 3);
+    const groundGeometry = new THREE.BufferGeometry();
+    const groundPosAttr = new THREE.BufferAttribute(groundPositions, 3);
+    groundGeometry.setAttribute('position', groundPosAttr);
+    const groundMaterial = new THREE.PointsMaterial({
+      color: 0xa9a9a9,
+      size: 0.01,
+      sizeAttenuation: true,
+    });
+    const groundPoints = new THREE.Points(groundGeometry, groundMaterial);
+
     const stationMeshes = groundStations.map(() => new THREE.Mesh(stationGeo, stationMat));
     // Lines connecting visible satellites to ground stations
     const linkMaterial = new THREE.LineBasicMaterial({ color: 0xffffff });
@@ -118,8 +136,8 @@ export function useSatelliteScene({
     );
 
     // Add all objects to the scene
-    satMeshes.forEach((m) => scene.add(m));
-    groundMeshes.forEach((m) => scene.add(m));
+    scene.add(satPoints);
+    scene.add(groundPoints);
     stationMeshes.forEach((m) => scene.add(m));
     linkLines.forEach((arr) => {
       arr.forEach((l) => {
@@ -170,15 +188,11 @@ export function useSatelliteScene({
       const rect = renderer.domElement.getBoundingClientRect();
       pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.params.Points!.threshold = satRadius * 2;
       raycaster.setFromCamera(pointer, camera);
-      const hits = raycaster.intersectObjects(satMeshes, false);
-      if (hits.length > 0) {
-        selectedIndex = satMeshes.indexOf(
-          hits[0].object as THREE.Mesh<
-            THREE.SphereGeometry,
-            THREE.MeshBasicMaterial
-          >,
-        );
+      const hits = raycaster.intersectObject(satPoints, false);
+      if (hits.length > 0 && hits[0].index !== undefined) {
+        selectedIndex = hits[0].index;
         if (onSelect) onSelect(selectedIndex);
         updateTrack();
       } else {
@@ -241,17 +255,14 @@ export function useSatelliteScene({
         m.position.set(p.x / EARTH_RADIUS_KM, p.z / EARTH_RADIUS_KM, -p.y / EARTH_RADIUS_KM);
       });
 
-      satRecs.forEach((rec, i) => {
+      for (let i = 0; i < satRecs.length; i++) {
+        const rec = satRecs[i];
         const pv = satellite.propagate(rec, simDate);
         if (pv?.position) {
           const { x, y, z } = pv.position;
-          satMeshes[i].position.set(
-            x / EARTH_RADIUS_KM,
-            z / EARTH_RADIUS_KM,
-            -y / EARTH_RADIUS_KM,
-          );
+          satPosAttr.setXYZ(i, x / EARTH_RADIUS_KM, z / EARTH_RADIUS_KM, -y / EARTH_RADIUS_KM);
           const mag = Math.sqrt(x * x + y * y + z * z);
-          groundMeshes[i].position.set(x / mag, z / mag, -y / mag);
+          groundPosAttr.setXYZ(i, x / mag, z / mag, -y / mag);
 
           const satEcf = satellite.eciToEcf(pv.position, gmst);
           let anyVisible = false;
@@ -276,11 +287,14 @@ export function useSatelliteScene({
               linkLines[gi][i].visible = false;
             }
           });
-          (satMeshes[i].material as THREE.MeshBasicMaterial).color.setHex(
-            anyVisible ? 0x00ff00 : 0xff0000,
-          );
+          const c = new THREE.Color(anyVisible ? 0x00ff00 : 0xff0000);
+          satColorAttr.setXYZ(i, c.r, c.g, c.b);
         }
-      });
+      }
+
+      satPosAttr.needsUpdate = true;
+      satColorAttr.needsUpdate = true;
+      groundPosAttr.needsUpdate = true;
 
 
       // Display current simulation time
@@ -308,6 +322,8 @@ export function useSatelliteScene({
         orbitLine.geometry.dispose();
       }
       renderer.dispose();
+      satGeometry.dispose();
+      groundGeometry.dispose();
       if (mountNode.contains(renderer.domElement)) {
         mountNode.removeChild(renderer.domElement);
       }
