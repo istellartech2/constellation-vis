@@ -80,11 +80,29 @@ function generateFromShells(con: any): any[] {
 }
 
 const baseSatellites = rawSats.map((s) => {
+  const meta = {
+    objectName: s.name ?? s.OBJECT_NAME,
+    objectId: s.objectId ?? s.OBJECT_ID,
+    noradCatId:
+      s.noradCatId !== undefined && s.noradCatId !== null
+        ? Number(s.noradCatId)
+        : s.NORAD_CAT_ID !== undefined
+          ? Number(s.NORAD_CAT_ID)
+          : undefined,
+  };
+  const metaClean =
+    meta.objectName !== undefined ||
+    meta.objectId !== undefined ||
+    meta.noradCatId !== undefined
+      ? meta
+      : undefined;
   if (s.type === "tle") {
-    return { type: "tle", lines: [s.line1, s.line2] };
+    const obj: any = { type: "tle", lines: [s.line1, s.line2] };
+    if (metaClean) obj.meta = metaClean;
+    return obj;
   }
   if (s.type === "elements") {
-    return {
+    const obj: any = {
       type: "elements",
       elements: {
         satnum: Number(s.satnum),
@@ -97,6 +115,8 @@ const baseSatellites = rawSats.map((s) => {
         meanAnomalyDeg: Number(s.meanAnomalyDeg),
       },
     };
+    if (metaClean) obj.meta = metaClean;
+    return obj;
   }
   throw new Error("Unknown satellite type");
 });

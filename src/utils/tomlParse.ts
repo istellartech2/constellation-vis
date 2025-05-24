@@ -32,8 +32,28 @@ export function parseSatellitesToml(text: string): SatelliteSpec[] {
   if (current) result.push(current);
 
   return result.map((s) => {
+    const meta = {
+      objectName: s.name ?? s.OBJECT_NAME,
+      objectId: s.objectId ?? s.OBJECT_ID,
+      noradCatId:
+        s.noradCatId !== undefined && s.noradCatId !== null
+          ? Number(s.noradCatId)
+          : s.NORAD_CAT_ID !== undefined
+            ? Number(s.NORAD_CAT_ID)
+            : undefined,
+    };
+    const metaClean =
+      meta.objectName !== undefined ||
+      meta.objectId !== undefined ||
+      meta.noradCatId !== undefined
+        ? meta
+        : undefined;
     if (s.type === 'tle') {
-      return { type: 'tle', lines: [String(s.line1 || ''), String(s.line2 || '')] } as SatelliteSpec;
+      return {
+        type: 'tle',
+        lines: [String(s.line1 || ''), String(s.line2 || '')],
+        meta: metaClean,
+      } as SatelliteSpec;
     }
     if (s.type === 'elements') {
       return {
@@ -48,6 +68,7 @@ export function parseSatellitesToml(text: string): SatelliteSpec[] {
           argPerigeeDeg: Number(s.argPerigeeDeg),
           meanAnomalyDeg: Number(s.meanAnomalyDeg),
         },
+        meta: metaClean,
       } as SatelliteSpec;
     }
     throw new Error('Unknown satellite type');
