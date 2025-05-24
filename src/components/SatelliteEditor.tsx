@@ -305,24 +305,24 @@ export default function SatelliteEditor({ onUpdate }: Props) {
         >
           ✕
         </button>
-        <div style={{ paddingTop: 24 }}>
+        <div style={{ paddingTop: 36 }}>
           <div style={{ display: "flex", alignItems: "center" }}>
             <span>satellites.toml</span>
             <button
               onClick={() => downloadFile("satellites.toml", satText)}
-              style={{ marginLeft: 4, background: "transparent", border: "none", color: "#fff" }}
+              style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
             >
               💾
             </button>
             <button
               onClick={() => satInputRef.current?.click()}
-              style={{ marginLeft: 4, background: "transparent", border: "none", color: "#fff" }}
+              style={{ marginLeft: 0, background: "transparent", border: "none", color: "#fff" }}
             >
               📂
             </button>
             <button
               onClick={() => setImportOpen(true)}
-              style={{ marginLeft: 4, background: "transparent", border: "none", color: "#fff" }}
+              style={{ marginLeft: 0, background: "transparent", border: "none", color: "#fff" }}
             >
               🌐
             </button>
@@ -341,7 +341,7 @@ export default function SatelliteEditor({ onUpdate }: Props) {
           <textarea
             value={satText}
             onChange={(e) => setSatText(e.target.value)}
-            style={{ width: "100%", height: 80 }}
+            style={{ width: "98%", height: 80 }}
           />
         </div>
         <div style={{ marginTop: 4 }}>
@@ -349,13 +349,13 @@ export default function SatelliteEditor({ onUpdate }: Props) {
             <span>constellation.toml</span>
             <button
               onClick={() => downloadFile("constellation.toml", constText)}
-              style={{ marginLeft: 4, background: "transparent", border: "none", color: "#fff" }}
+              style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
             >
               💾
             </button>
             <button
               onClick={() => constInputRef.current?.click()}
-              style={{ marginLeft: 4, background: "transparent", border: "none", color: "#fff" }}
+              style={{ marginLeft: 0, background: "transparent", border: "none", color: "#fff" }}
             >
               📂
             </button>
@@ -374,7 +374,7 @@ export default function SatelliteEditor({ onUpdate }: Props) {
           <textarea
             value={constText}
             onChange={(e) => setConstText(e.target.value)}
-            style={{ width: "100%", height: 80 }}
+            style={{ width: "98%", height: 80 }}
           />
         </div>
         <div style={{ marginTop: 4 }}>
@@ -382,13 +382,13 @@ export default function SatelliteEditor({ onUpdate }: Props) {
             <span>groundstations.toml</span>
             <button
               onClick={() => downloadFile("groundstations.toml", gsText)}
-              style={{ marginLeft: 4, background: "transparent", border: "none", color: "#fff" }}
+              style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
             >
               💾
             </button>
             <button
               onClick={() => gsInputRef.current?.click()}
-              style={{ marginLeft: 4, background: "transparent", border: "none", color: "#fff" }}
+              style={{ marginLeft: 0, background: "transparent", border: "none", color: "#fff" }}
             >
               📂
             </button>
@@ -407,21 +407,22 @@ export default function SatelliteEditor({ onUpdate }: Props) {
           <textarea
             value={gsText}
             onChange={(e) => setGsText(e.target.value)}
-            style={{ width: "100%", height: 80 }}
+            style={{ width: "98%", height: 100 }}
           />
         </div>
         <hr style={{ marginTop: 8, marginBottom: 8 }} />
         <div style={{ display: "flex", flexDirection: "column" }}>
           <label>
-            Simulation start
+            Simulation start (UTC)
             <input
               type="datetime-local"
               value={startText}
               onChange={(e) => setStartText(e.target.value)}
-              style={{ width: "100%" }}
+              style={{ width: "98%" }}
             />
           </label>
         </div>
+        <hr style={{ marginTop: 12, marginBottom: 6 }} />
         <button
           onClick={handleUpdate}
           style={{
