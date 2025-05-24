@@ -142,7 +142,9 @@ export function useSatelliteScene({
       if (selectedIndex === null) return;
       const rec = satRecs[selectedIndex];
       const points: THREE.Vector3[] = [];
-      for (let m = 0; m <= 180; m += 1) {
+      const periodMinutes = (2 * Math.PI) / rec.no; // minutes per orbit
+      const trackMinutes = Math.round(periodMinutes * 2); // two orbits
+      for (let m = 0; m <= trackMinutes; m += 1) {
         const d = new Date(currentSimDate.getTime() + m * 60000);
         const pv = satellite.propagate(rec, d);
         if (pv?.position) {
