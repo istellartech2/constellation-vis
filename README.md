@@ -1,4 +1,4 @@
-# Constellation Viewer
+# Constellation Visualizer
 
 A web application that visualizes satellite constellations in Earth orbit.
 Technologies used are React, TypeScript, Vite, Three.js, and satellite.js.
@@ -79,7 +79,7 @@ https://constellation-vis.vercel.app/
 
 ---
 
-# Constellation Viewer (日本語)
+# Constellation Visualizer (日本語)
 
 地球周回軌道の衛星コンステレーションを可視化する Web アプリケーション。
 利用している技術はReact、TypeScript、Vite、Three.js、satellite.js。
