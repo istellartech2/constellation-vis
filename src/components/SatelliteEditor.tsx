@@ -341,6 +341,12 @@ export default function SatelliteEditor({ onUpdate }: Props) {
             >
               🌐
             </button>
+            <button
+              onClick={() => setSatText("")}
+              style={{ marginLeft: 0, background: "transparent", border: "none", color: "#fff" }}
+            >
+              🗑️
+            </button>
             <input
               ref={satInputRef}
               type="file"
@@ -374,6 +380,12 @@ export default function SatelliteEditor({ onUpdate }: Props) {
             >
               📂
             </button>
+            <button
+              onClick={() => setConstText("")}
+              style={{ marginLeft: 0, background: "transparent", border: "none", color: "#fff" }}
+            >
+              🗑️
+            </button>
             <input
               ref={constInputRef}
               type="file"
@@ -406,6 +418,12 @@ export default function SatelliteEditor({ onUpdate }: Props) {
               style={{ marginLeft: 0, background: "transparent", border: "none", color: "#fff" }}
             >
               📂
+            </button>
+            <button
+              onClick={() => setGsText("")}
+              style={{ marginLeft: 0, background: "transparent", border: "none", color: "#fff" }}
+            >
+              🗑️
             </button>
             <input
               ref={gsInputRef}
