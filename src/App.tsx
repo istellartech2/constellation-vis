@@ -7,8 +7,15 @@ import { SATELLITES as INITIAL_SATS } from "./data/satellites";
 import { loadGroundStations, type GroundStation } from "./data/groundStations";
 import { formatSatelliteInfo } from "./utils/formatSatelliteInfo";
 
+/**
+ * Top level React component hosting the visualization. It sets up
+ * the Three.js scene via {@link useSatelliteScene} and exposes a few UI
+ * controls for manipulating the simulation.
+ */
+
 const INITIAL_SPEED = 60; // initial 60× real time
 
+// Main UI component that wires together scene and UI controls
 function App() {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const timeRef = useRef<HTMLDivElement | null>(null);

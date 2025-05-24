@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import { jday } from "satellite.js";
 
+// A grab bag of helper functions used when building the Three.js scene.
+
 const DEG2RAD = Math.PI / 180;
 export const OBLIQUITY = 23.4393 * DEG2RAD;
 

@@ -11,6 +11,7 @@ import {
   createEclipticLine,
 } from "../utils/sceneHelpers";
 
+/** Radius of Earth in kilometres, used to normalise coordinates. */
 const EARTH_RADIUS_KM = 6371;
 // const SIDEREAL_DAY_SEC = 86164;
 
@@ -158,6 +159,8 @@ export function useSatelliteScene({
     let orbitLine: THREE.Line | null = null;
     let currentSimDate = startTime;
 
+    // When a satellite is selected, draw lines showing two full orbits
+    // starting from the current simulation time.
     function updateTrack() {
       if (orbitLine) {
         orbitLine.geometry.dispose();
@@ -189,6 +192,7 @@ export function useSatelliteScene({
       scene.add(orbitLine);
     }
 
+    // Check if a satellite was clicked/tapped and update selection state.
     function handlePointer(event: PointerEvent) {
       const rect = renderer.domElement.getBoundingClientRect();
       pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -232,6 +236,8 @@ export function useSatelliteScene({
     );
 
     // Main animation loop ----------------------------------------------------
+    // Advances simulation time based on `speedRef` and updates all
+    // scene objects accordingly before rendering.
     function animate() {
       requestAnimationFrame(animate);
       const nowReal = Date.now();

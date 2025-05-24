@@ -3,6 +3,9 @@ interface Props {
   onChange: (value: number) => void;
 }
 
+// Slider widget used to adjust the simulation speed. The slider
+// represents the exponent of the speed multiplier (10^value).
+
 export default function SpeedControl({ value, onChange }: Props) {
   return (
     <div
