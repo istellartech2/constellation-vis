@@ -321,8 +321,14 @@ export default function SatelliteEditor({ onUpdate }: Props) {
           ✕
         </button>
         <div style={{ paddingTop: 36 }}>
-          <div style={{ display: "flex", alignItems: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap" }}>
             <span>satellites.toml</span>
+            <textarea
+              value={satText}
+              onChange={(e) => setSatText(e.target.value)}
+              style={{ width: "98%", height: 80 }}
+            />            
+            <div style={{ flexBasis: "100%", height: 0 }} />
             <button
               onClick={() => downloadFile("satellites.toml", satText)}
               style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
@@ -331,21 +337,21 @@ export default function SatelliteEditor({ onUpdate }: Props) {
             </button>
             <button
               onClick={() => satInputRef.current?.click()}
-              style={{ marginLeft: 0, background: "transparent", border: "none", color: "#fff" }}
+              style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
             >
               📂
             </button>
             <button
-              onClick={() => setImportOpen(true)}
-              style={{ marginLeft: 0, background: "transparent", border: "none", color: "#fff" }}
-            >
-              🌐
-            </button>
-            <button
               onClick={() => setSatText("")}
-              style={{ marginLeft: 0, background: "transparent", border: "none", color: "#fff" }}
+              style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
             >
               🗑️
+            </button>
+            <button
+              onClick={() => setImportOpen(true)}
+              style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
+            >
+              🌐
             </button>
             <input
               ref={satInputRef}
@@ -359,15 +365,18 @@ export default function SatelliteEditor({ onUpdate }: Props) {
               }}
             />
           </div>
-          <textarea
-            value={satText}
-            onChange={(e) => setSatText(e.target.value)}
-            style={{ width: "98%", height: 80 }}
-          />
+
         </div>
+        <hr style={{ marginTop: 8, marginBottom: 8 }} />
         <div style={{ marginTop: 4 }}>
-          <div style={{ display: "flex", alignItems: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap" }}>
             <span>constellation.toml</span>
+            <textarea
+              value={constText}
+              onChange={(e) => setConstText(e.target.value)}
+              style={{ width: "98%", height: 80 }}
+            />            
+            <div style={{ flexBasis: "100%", height: 0 }} />
             <button
               onClick={() => downloadFile("constellation.toml", constText)}
               style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
@@ -376,13 +385,13 @@ export default function SatelliteEditor({ onUpdate }: Props) {
             </button>
             <button
               onClick={() => constInputRef.current?.click()}
-              style={{ marginLeft: 0, background: "transparent", border: "none", color: "#fff" }}
+              style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
             >
               📂
             </button>
             <button
               onClick={() => setConstText("")}
-              style={{ marginLeft: 0, background: "transparent", border: "none", color: "#fff" }}
+              style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
             >
               🗑️
             </button>
@@ -398,15 +407,17 @@ export default function SatelliteEditor({ onUpdate }: Props) {
               }}
             />
           </div>
-          <textarea
-            value={constText}
-            onChange={(e) => setConstText(e.target.value)}
-            style={{ width: "98%", height: 80 }}
-          />
         </div>
-        <div style={{ marginTop: 4 }}>
-          <div style={{ display: "flex", alignItems: "center" }}>
+        <hr style={{ marginTop: 8, marginBottom: 8 }} />
+        <div style={{ marginTop: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap" }}>
             <span>groundstations.toml</span>
+            <textarea
+              value={gsText}
+              onChange={(e) => setGsText(e.target.value)}
+              style={{ width: "98%", height: 100 }}
+            />            
+            <div style={{ flexBasis: "100%", height: 0 }} />
             <button
               onClick={() => downloadFile("groundstations.toml", gsText)}
               style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
@@ -415,13 +426,13 @@ export default function SatelliteEditor({ onUpdate }: Props) {
             </button>
             <button
               onClick={() => gsInputRef.current?.click()}
-              style={{ marginLeft: 0, background: "transparent", border: "none", color: "#fff" }}
+              style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
             >
               📂
             </button>
             <button
               onClick={() => setGsText("")}
-              style={{ marginLeft: 0, background: "transparent", border: "none", color: "#fff" }}
+              style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
             >
               🗑️
             </button>
@@ -437,11 +448,6 @@ export default function SatelliteEditor({ onUpdate }: Props) {
               }}
             />
           </div>
-          <textarea
-            value={gsText}
-            onChange={(e) => setGsText(e.target.value)}
-            style={{ width: "98%", height: 100 }}
-          />
         </div>
         <hr style={{ marginTop: 8, marginBottom: 8 }} />
         <div style={{ display: "flex", flexDirection: "column" }}>
