@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { SatelliteSpec } from "../satellites";
-import type { GroundStation } from "../groundStations";
+import type { SatelliteSpec } from "../data/satellites";
+import type { GroundStation } from "../data/groundStations";
 import {
   parseSatellitesToml,
   parseConstellationToml,
