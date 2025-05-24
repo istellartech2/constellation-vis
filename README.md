@@ -3,6 +3,8 @@
 A web application that visualizes satellite constellations in Earth orbit.
 Technologies used are React, TypeScript, Vite, Three.js, and satellite.js.
 
+[constellation-viewer-demo.webm](https://github.com/user-attachments/assets/5389ebab-c38b-4a5f-9e25-4042f1ca3824)
+
 ## Features
 
 - Draws a 3D Earth
