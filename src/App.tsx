@@ -6,6 +6,7 @@ import { useSatelliteScene } from "./hooks/useSatelliteScene";
 import { SATELLITES as INITIAL_SATS } from "./data/satellites";
 import { loadGroundStations, type GroundStation } from "./data/groundStations";
 import { formatSatelliteInfo } from "./utils/formatSatelliteInfo";
+import { formatGroundStationInfo } from "./utils/formatGroundStationInfo";
 
 /**
  * Top level React component hosting the visualization. It sets up
@@ -19,10 +20,12 @@ const INITIAL_SPEED = 60; // initial 60× real time
 function App() {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const timeRef = useRef<HTMLDivElement | null>(null);
+  const gsInfoRef = useRef<HTMLPreElement | null>(null);
 
   const [satellites, setSatellites] = useState(INITIAL_SATS);
   const [groundStations, setGroundStations] = useState<GroundStation[]>([]);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  const [selectedGsIdx, setSelectedGsIdx] = useState<number | null>(null);
 
   const [satRadius, setSatRadius] = useState(() =>
     window.innerWidth <= 600 ? 0.02 : 0.015,
@@ -53,9 +56,12 @@ function App() {
     groundStations,
     satRadius,
     onSelect: setSelectedIdx,
+    onSelectStation: setSelectedGsIdx,
+    stationInfoRef: gsInfoRef,
   });
 
   const infoText = formatSatelliteInfo(satellites, selectedIdx);
+  const gsInfoText = formatGroundStationInfo(groundStations, selectedGsIdx);
 
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
@@ -91,6 +97,25 @@ function App() {
           }}
         >
           {infoText}
+        </pre>
+      )}
+      {gsInfoText && (
+        <pre
+          ref={gsInfoRef}
+          style={{
+            position: "fixed",
+            left: 0,
+            top: 0,
+            transform: "translate(-50%, -100%)",
+            color: "#fff",
+            fontFamily: "'Noto Sans Mono', monospace",
+            fontSize: "0.9rem",
+            pointerEvents: "none",
+            whiteSpace: "pre",
+            zIndex: 10,
+          }}
+        >
+          {gsInfoText}
         </pre>
       )}
       <SpeedControl value={speedExp} onChange={setSpeedExp} />

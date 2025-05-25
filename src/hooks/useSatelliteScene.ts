@@ -24,6 +24,8 @@ interface Params {
   groundStations: GroundStation[];
   satRadius: number;
   onSelect?: (idx: number | null) => void;
+  onSelectStation?: (idx: number | null) => void;
+  stationInfoRef?: React.RefObject<HTMLPreElement | null>;
 }
 
 /**
@@ -40,6 +42,8 @@ export function useSatelliteScene({
   groundStations,
   satRadius,
   onSelect,
+  onSelectStation,
+  stationInfoRef,
 }: Params) {
   useEffect(() => {
     // DOM node where the renderer will be attached
@@ -156,6 +160,7 @@ export function useSatelliteScene({
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
     let selectedIndex: number | null = null;
+    let selectedStationIndex: number | null = null;
     let orbitLine: THREE.Line | null = null;
     let currentSimDate = startTime;
 
@@ -192,13 +197,21 @@ export function useSatelliteScene({
       scene.add(orbitLine);
     }
 
-    // Check if a satellite was clicked/tapped and update selection state.
+    // Check if a ground station or satellite was clicked/tapped and update selection state.
     function handlePointer(event: PointerEvent) {
       const rect = renderer.domElement.getBoundingClientRect();
       pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.params.Points!.threshold = satRadius * 2;
       raycaster.setFromCamera(pointer, camera);
+      const stationHits = raycaster.intersectObjects(stationMeshes, false);
+      if (stationHits.length > 0) {
+        const hitObj = stationHits[0].object as THREE.Object3D;
+        const idx = stationMeshes.findIndex((m) => m === hitObj);
+        selectedStationIndex = idx;
+        if (onSelectStation) onSelectStation(idx);
+        return;
+      }
       const hits = raycaster.intersectObject(satPoints, false);
       if (hits.length > 0 && hits[0].index !== undefined) {
         selectedIndex = hits[0].index;
@@ -207,6 +220,8 @@ export function useSatelliteScene({
       } else {
         selectedIndex = null;
         if (onSelect) onSelect(null);
+        selectedStationIndex = null;
+        if (onSelectStation) onSelectStation(null);
         updateTrack();
       }
     }
@@ -265,6 +280,15 @@ export function useSatelliteScene({
         const p = gsEcis[idx];
         m.position.set(p.x / EARTH_RADIUS_KM, p.z / EARTH_RADIUS_KM, -p.y / EARTH_RADIUS_KM);
       });
+
+      if (stationInfoRef && stationInfoRef.current && selectedStationIndex !== null) {
+        const m = stationMeshes[selectedStationIndex];
+        const v = m.position.clone().project(camera);
+        const x = ((v.x + 1) / 2) * renderer.domElement.clientWidth;
+        const y = ((-v.y + 1) / 2) * renderer.domElement.clientHeight;
+        stationInfoRef.current.style.left = `${x}px`;
+        stationInfoRef.current.style.top = `${y}px`;
+      }
 
       for (let i = 0; i < satRecs.length; i++) {
         const rec = satRecs[i];
@@ -339,5 +363,16 @@ export function useSatelliteScene({
         mountNode.removeChild(renderer.domElement);
       }
     };
-  }, [mountRef, timeRef, speedRef, startTime, satellites, groundStations, satRadius, onSelect]);
+  }, [
+    mountRef,
+    timeRef,
+    speedRef,
+    startTime,
+    satellites,
+    groundStations,
+    satRadius,
+    onSelect,
+    onSelectStation,
+    stationInfoRef,
+  ]);
 }
