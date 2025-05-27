@@ -14,7 +14,7 @@ def main(filename):
     df = pd.read_csv(filename)
 
     # 秒 → 時間
-    df["Hour"] = df["Time"] / 3600
+    df["Hour"] = df["Time(sec)"] / 3600
 
     # プロット
     fig, ax = plt.subplots(figsize=(10, 6))
