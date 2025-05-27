@@ -4,6 +4,7 @@ import * as satellite from "satellite.js";
 import type { SatelliteSpec } from "../data/satellites";
 import { toSatrec } from "../data/satellites";
 import type { GroundStation } from "../data/groundStations";
+import SatelliteSizeControl from "./SatelliteSizeControl";
 import {
   parseSatellitesToml,
   parseConstellationToml,
@@ -29,7 +30,7 @@ const CELESTRACK_GROUPS = [
 
 const HELP_TEXT = `\
 Use this panel to edit or load TOML files defining satellites,\
-ground stations and constellations.\n\nClick Update to apply changes.\n\nSelect the Report tab to generate ground station visibility information.`;
+ground stations and constellations.\n\nClick Update to apply changes.\n\nSelect the Option tab to adjust settings and generate ground station visibility information.`;
 
 const MU = 398600.4418; // km^3/s^2
 
@@ -120,9 +121,17 @@ interface Props {
     stations: GroundStation[],
     startTime: Date,
   ) => void;
+  /** Current satellite draw radius */
+  satRadius: number;
+  /** Called when satellite size is changed */
+  onSatRadiusChange: (r: number) => void;
 }
 
-export default function SatelliteEditor({ onUpdate }: Props) {
+export default function SatelliteEditor({
+  onUpdate,
+  satRadius,
+  onSatRadiusChange,
+}: Props) {
   const [satText, setSatText] = useState("");
   const [constText, setConstText] = useState("");
   const [gsText, setGsText] = useState("");
@@ -132,7 +141,7 @@ export default function SatelliteEditor({ onUpdate }: Props) {
     return d.toISOString().slice(0, 16);
   });
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<"editor" | "report" | "help">("editor");
+  const [tab, setTab] = useState<"editor" | "option" | "help">("editor");
   const [reportText, setReportText] = useState("");
   const [importOpen, setImportOpen] = useState(false);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
@@ -320,6 +329,7 @@ export default function SatelliteEditor({ onUpdate }: Props) {
         new Date(startText),
       );
       setReportText(text);
+      downloadFile("report.csv", text);
     } catch (e) {
       alert("Failed to generate report: " + (e as Error).message);
     }
@@ -434,15 +444,15 @@ export default function SatelliteEditor({ onUpdate }: Props) {
               Editor
             </button>
             <button
-              onClick={() => setTab("report")}
+              onClick={() => setTab("option")}
               style={{
-                background: tab === "report" ? "#1976d2" : "transparent",
+                background: tab === "option" ? "#1976d2" : "transparent",
                 color: "#fff",
                 border: "none",
                 padding: "4px 8px",
               }}
             >
-              Report
+              Option
             </button>
             <button
               onClick={() => setTab("help")}
@@ -613,8 +623,13 @@ export default function SatelliteEditor({ onUpdate }: Props) {
               </button>
             </>
           )}
-          {tab === "report" && (
+          {tab === "option" && (
             <div>
+              <SatelliteSizeControl
+                value={satRadius}
+                onChange={onSatRadiusChange}
+              />
+              <hr style={{ marginTop: 8, marginBottom: 8 }} />
               <button onClick={handleGenerateReport}>Generate</button>
               <pre style={{ whiteSpace: "pre-wrap", marginTop: 8 }}>{reportText}</pre>
             </div>

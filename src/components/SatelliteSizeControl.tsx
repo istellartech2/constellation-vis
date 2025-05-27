@@ -1,8 +1,9 @@
-import type { FC } from "react";
+import type { FC, CSSProperties } from "react";
 
 interface Props {
   value: number;
   onChange: (v: number) => void;
+  style?: CSSProperties;
 }
 
 // Simple dropdown to change the rendered size of satellites. Useful
@@ -15,17 +16,15 @@ const SIZE_OPTIONS: { label: string; value: number }[] = [
   { label: "LL", value: 0.05 },
 ];
 
-const SatelliteSizeControl: FC<Props> = ({ value, onChange }) => (
+const SatelliteSizeControl: FC<Props> = ({ value, onChange, style }) => (
   <div
     style={{
-      position: "absolute",
-      right: 8,
-      top: 62,
       color: "#fff",
       fontFamily: "'Noto Sans Mono', monospace",
       display: "flex",
       alignItems: "center",
       gap: 4,
+      ...style,
     }}
   >
     <label htmlFor="sat-size-select">Sat size</label>

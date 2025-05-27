@@ -1,6 +1,5 @@
 import { useRef, useEffect, useState } from "react";
 import SpeedControl from "./components/SpeedControl";
-import SatelliteSizeControl from "./components/SatelliteSizeControl";
 import SatelliteEditor from "./components/SatelliteEditor";
 import { useSatelliteScene } from "./hooks/useSatelliteScene";
 import { SATELLITES as INITIAL_SATS } from "./data/satellites";
@@ -119,8 +118,9 @@ function App() {
         </pre>
       )}
       <SpeedControl value={speedExp} onChange={setSpeedExp} />
-      <SatelliteSizeControl value={satRadius} onChange={setSatRadius} />
       <SatelliteEditor
+        satRadius={satRadius}
+        onSatRadiusChange={setSatRadius}
         onUpdate={(s, gs, start) => {
           setSatellites(s);
           setGroundStations(gs);
