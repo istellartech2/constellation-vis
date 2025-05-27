@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import * as THREE from "three";
+import * as satellite from "satellite.js";
 import type { SatelliteSpec } from "../data/satellites";
+import { toSatrec } from "../data/satellites";
 import type { GroundStation } from "../data/groundStations";
 import {
   parseSatellitesToml,
@@ -23,6 +26,10 @@ const CELESTRACK_GROUPS = [
   { label: "Starlink", group: "starlink" },
   { label: "Oneweb", group: "oneweb" },
 ] as const;
+
+const HELP_TEXT = `\
+Use this panel to edit or load TOML files defining satellites,\
+ground stations and constellations.\n\nClick Update to apply changes.\n\nSelect the Report tab to generate ground station visibility information.`;
 
 const MU = 398600.4418; // km^3/s^2
 
@@ -125,6 +132,8 @@ export default function SatelliteEditor({ onUpdate }: Props) {
     return d.toISOString().slice(0, 16);
   });
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<"editor" | "report" | "help">("editor");
+  const [reportText, setReportText] = useState("");
   const [importOpen, setImportOpen] = useState(false);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
@@ -227,6 +236,45 @@ export default function SatelliteEditor({ onUpdate }: Props) {
     }
   }
 
+  function satelliteLabel(spec: SatelliteSpec, idx: number): string {
+    return (
+      spec.meta?.objectName ??
+      spec.meta?.objectId ??
+      (spec.meta?.noradCatId !== undefined ? String(spec.meta.noradCatId) : `sat${idx}`)
+    );
+  }
+
+  function generateVisibilityReport(
+    sats: SatelliteSpec[],
+    stations: GroundStation[],
+    date: Date,
+  ): string {
+    const satRecs = sats.map((s) => toSatrec(s));
+    const gmst = satellite.gstime(date);
+    const observerGds = stations.map((gs) => ({
+      longitude: satellite.degreesToRadians(gs.longitudeDeg),
+      latitude: satellite.degreesToRadians(gs.latitudeDeg),
+      height: gs.heightKm,
+    }));
+    const minEl = stations.map((gs) => THREE.MathUtils.degToRad(gs.minElevationDeg));
+    let text = "";
+    stations.forEach((gs, gi) => {
+      text += `${gs.name}\n`;
+      satRecs.forEach((rec, si) => {
+        const pv = satellite.propagate(rec, date);
+        if (pv?.position) {
+          const ecf = satellite.eciToEcf(pv.position, gmst);
+          const look = satellite.ecfToLookAngles(observerGds[gi], ecf);
+          if (look.elevation > minEl[gi]) {
+            text += `  - ${satelliteLabel(sats[si], si)}\n`;
+          }
+        }
+      });
+      text += "\n";
+    });
+    return text.trimEnd();
+  }
+
   useEffect(() => {
     fetch("/satellites.toml")
       .then((r) => r.text())
@@ -251,6 +299,24 @@ export default function SatelliteEditor({ onUpdate }: Props) {
       onUpdate([...base, ...con], gs, new Date(startText));
     } catch (e) {
       alert("Failed to parse files: " + (e as Error).message);
+    }
+  };
+
+  const handleGenerateReport = () => {
+    try {
+      const base = parseSatellitesToml(satText);
+      const con = constText ? parseConstellationToml(constText) : [];
+      const gs = parseGroundStationsToml(gsText);
+      validateSatellites([...base, ...con]);
+      validateGroundStations(gs);
+      const text = generateVisibilityReport(
+        [...base, ...con],
+        gs,
+        new Date(startText),
+      );
+      setReportText(text);
+    } catch (e) {
+      alert("Failed to generate report: " + (e as Error).message);
     }
   };
 
@@ -350,160 +416,208 @@ export default function SatelliteEditor({ onUpdate }: Props) {
           ✕
         </button>
         <div style={{ paddingTop: 36 }}>
-          <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap" }}>
-            <span>satellites.toml</span>
-            <textarea
-              value={satText}
-              onChange={(e) => setSatText(e.target.value)}
-              style={{ width: "98%", height: 80 }}
-            />            
-            <div style={{ flexBasis: "100%", height: 0 }} />
+          <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
             <button
-              onClick={() => downloadFile("satellites.toml", satText)}
-              style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
-            >
-              💾
-            </button>
-            <button
-              onClick={() => satInputRef.current?.click()}
-              style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
-            >
-              📂
-            </button>
-            <button
-              onClick={() => setSatText("")}
-              style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
-            >
-              🗑️
-            </button>
-            <button
-              onClick={() => setImportOpen(true)}
-              style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
-            >
-              🌐
-            </button>
-            <input
-              ref={satInputRef}
-              type="file"
-              accept=".toml"
-              style={{ display: "none" }}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) handleFileLoad(f, setSatText, parseSatellitesToml, validateSatellites);
-                e.target.value = "";
+              onClick={() => setTab("editor")}
+              style={{
+                background: tab === "editor" ? "#1976d2" : "transparent",
+                color: "#fff",
+                border: "none",
+                padding: "4px 8px",
               }}
-            />
+            >
+              Editor
+            </button>
+            <button
+              onClick={() => setTab("report")}
+              style={{
+                background: tab === "report" ? "#1976d2" : "transparent",
+                color: "#fff",
+                border: "none",
+                padding: "4px 8px",
+              }}
+            >
+              Report
+            </button>
+            <button
+              onClick={() => setTab("help")}
+              style={{
+                background: tab === "help" ? "#1976d2" : "transparent",
+                color: "#fff",
+                border: "none",
+                padding: "4px 8px",
+              }}
+            >
+              Help
+            </button>
           </div>
+          {tab === "editor" && (
+            <>
+              <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap" }}>
+                <span>satellites.toml</span>
+                <textarea
+                  value={satText}
+                  onChange={(e) => setSatText(e.target.value)}
+                  style={{ width: "98%", height: 80 }}
+                />
+                <div style={{ flexBasis: "100%", height: 0 }} />
+                <button
+                  onClick={() => downloadFile("satellites.toml", satText)}
+                  style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
+                >
+                  💾
+                </button>
+                <button
+                  onClick={() => satInputRef.current?.click()}
+                  style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
+                >
+                  📂
+                </button>
+                <button
+                  onClick={() => setSatText("")}
+                  style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
+                >
+                  🗑️
+                </button>
+                <button
+                  onClick={() => setImportOpen(true)}
+                  style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
+                >
+                  🌐
+                </button>
+                <input
+                  ref={satInputRef}
+                  type="file"
+                  accept=".toml"
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleFileLoad(f, setSatText, parseSatellitesToml, validateSatellites);
+                    e.target.value = "";
+                  }}
+                />
+              </div>
 
+              <hr style={{ marginTop: 8, marginBottom: 8 }} />
+              <div style={{ marginTop: 4 }}>
+                <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap" }}>
+                  <span>constellation.toml</span>
+                  <textarea
+                    value={constText}
+                    onChange={(e) => setConstText(e.target.value)}
+                    style={{ width: "98%", height: 80 }}
+                  />
+                  <div style={{ flexBasis: "100%", height: 0 }} />
+                  <button
+                    onClick={() => downloadFile("constellation.toml", constText)}
+                    style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
+                  >
+                    💾
+                  </button>
+                  <button
+                    onClick={() => constInputRef.current?.click()}
+                    style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
+                  >
+                    📂
+                  </button>
+                  <button
+                    onClick={() => setConstText("")}
+                    style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
+                  >
+                    🗑️
+                  </button>
+                  <input
+                    ref={constInputRef}
+                    type="file"
+                    accept=".toml"
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleFileLoad(f, setConstText, parseConstellationToml, validateSatellites);
+                      e.target.value = "";
+                    }}
+                  />
+                </div>
+              </div>
+              <hr style={{ marginTop: 8, marginBottom: 8 }} />
+              <div style={{ marginTop: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap" }}>
+                  <span>groundstations.toml</span>
+                  <textarea
+                    value={gsText}
+                    onChange={(e) => setGsText(e.target.value)}
+                    style={{ width: "98%", height: 100 }}
+                  />
+                  <div style={{ flexBasis: "100%", height: 0 }} />
+                  <button
+                    onClick={() => downloadFile("groundstations.toml", gsText)}
+                    style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
+                  >
+                    💾
+                  </button>
+                  <button
+                    onClick={() => gsInputRef.current?.click()}
+                    style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
+                  >
+                    📂
+                  </button>
+                  <button
+                    onClick={() => setGsText("")}
+                    style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
+                  >
+                    🗑️
+                  </button>
+                  <input
+                    ref={gsInputRef}
+                    type="file"
+                    accept=".toml"
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleFileLoad(f, setGsText, parseGroundStationsToml, validateGroundStations);
+                      e.target.value = "";
+                    }}
+                  />
+                </div>
+              </div>
+              <hr style={{ marginTop: 8, marginBottom: 8 }} />
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                <label>
+                  Simulation start (UTC)
+                  <input
+                    type="datetime-local"
+                    value={startText}
+                    onChange={(e) => setStartText(e.target.value)}
+                    style={{ width: "98%" }}
+                  />
+                </label>
+              </div>
+              <hr style={{ marginTop: 12, marginBottom: 6 }} />
+              <button
+                onClick={handleUpdate}
+                style={{
+                  marginTop: 8,
+                  padding: "8px 20px",
+                  background: "#1976d2",
+                  color: "#fff",
+                  border: "none",
+                  fontWeight: "bold",
+                }}
+              >
+                Update
+              </button>
+            </>
+          )}
+          {tab === "report" && (
+            <div>
+              <button onClick={handleGenerateReport}>Generate</button>
+              <pre style={{ whiteSpace: "pre-wrap", marginTop: 8 }}>{reportText}</pre>
+            </div>
+          )}
+          {tab === "help" && (
+            <div style={{ whiteSpace: "pre-wrap" }}>{HELP_TEXT}</div>
+          )}
         </div>
-        <hr style={{ marginTop: 8, marginBottom: 8 }} />
-        <div style={{ marginTop: 4 }}>
-          <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap" }}>
-            <span>constellation.toml</span>
-            <textarea
-              value={constText}
-              onChange={(e) => setConstText(e.target.value)}
-              style={{ width: "98%", height: 80 }}
-            />            
-            <div style={{ flexBasis: "100%", height: 0 }} />
-            <button
-              onClick={() => downloadFile("constellation.toml", constText)}
-              style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
-            >
-              💾
-            </button>
-            <button
-              onClick={() => constInputRef.current?.click()}
-              style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
-            >
-              📂
-            </button>
-            <button
-              onClick={() => setConstText("")}
-              style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
-            >
-              🗑️
-            </button>
-            <input
-              ref={constInputRef}
-              type="file"
-              accept=".toml"
-              style={{ display: "none" }}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) handleFileLoad(f, setConstText, parseConstellationToml, validateSatellites);
-                e.target.value = "";
-              }}
-            />
-          </div>
-        </div>
-        <hr style={{ marginTop: 8, marginBottom: 8 }} />
-        <div style={{ marginTop: 8 }}>
-          <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap" }}>
-            <span>groundstations.toml</span>
-            <textarea
-              value={gsText}
-              onChange={(e) => setGsText(e.target.value)}
-              style={{ width: "98%", height: 100 }}
-            />            
-            <div style={{ flexBasis: "100%", height: 0 }} />
-            <button
-              onClick={() => downloadFile("groundstations.toml", gsText)}
-              style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
-            >
-              💾
-            </button>
-            <button
-              onClick={() => gsInputRef.current?.click()}
-              style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
-            >
-              📂
-            </button>
-            <button
-              onClick={() => setGsText("")}
-              style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
-            >
-              🗑️
-            </button>
-            <input
-              ref={gsInputRef}
-              type="file"
-              accept=".toml"
-              style={{ display: "none" }}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) handleFileLoad(f, setGsText, parseGroundStationsToml, validateGroundStations);
-                e.target.value = "";
-              }}
-            />
-          </div>
-        </div>
-        <hr style={{ marginTop: 8, marginBottom: 8 }} />
-        <div style={{ display: "flex", flexDirection: "column" }}>
-          <label>
-            Simulation start (UTC)
-            <input
-              type="datetime-local"
-              value={startText}
-              onChange={(e) => setStartText(e.target.value)}
-              style={{ width: "98%" }}
-            />
-          </label>
-        </div>
-        <hr style={{ marginTop: 12, marginBottom: 6 }} />
-        <button
-          onClick={handleUpdate}
-          style={{
-            marginTop: 8,
-            padding: "8px 20px",
-            background: "#1976d2",
-            color: "#fff",
-            border: "none",
-            fontWeight: "bold",
-          }}
-        >
-          Update
-        </button>
       </div>
     </>
   );
