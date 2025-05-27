@@ -236,13 +236,6 @@ export default function SatelliteEditor({ onUpdate }: Props) {
     }
   }
 
-  function satelliteLabel(spec: SatelliteSpec, idx: number): string {
-    return (
-      spec.meta?.objectName ??
-      spec.meta?.objectId ??
-      (spec.meta?.noradCatId !== undefined ? String(spec.meta.noradCatId) : `sat${idx}`)
-    );
-  }
 
   function generateVisibilityReport(
     sats: SatelliteSpec[],
@@ -250,29 +243,41 @@ export default function SatelliteEditor({ onUpdate }: Props) {
     date: Date,
   ): string {
     const satRecs = sats.map((s) => toSatrec(s));
-    const gmst = satellite.gstime(date);
     const observerGds = stations.map((gs) => ({
       longitude: satellite.degreesToRadians(gs.longitudeDeg),
       latitude: satellite.degreesToRadians(gs.latitudeDeg),
       height: gs.heightKm,
     }));
-    const minEl = stations.map((gs) => THREE.MathUtils.degToRad(gs.minElevationDeg));
-    let text = "";
-    stations.forEach((gs, gi) => {
-      text += `${gs.name}\n`;
-      satRecs.forEach((rec, si) => {
-        const pv = satellite.propagate(rec, date);
-        if (pv?.position) {
-          const ecf = satellite.eciToEcf(pv.position, gmst);
+    const minEl = stations.map((gs) =>
+      THREE.MathUtils.degToRad(gs.minElevationDeg),
+    );
+
+    const header = ["Time", ...stations.map((s) => s.name)].join(",");
+    const lines: string[] = [header];
+
+    const startMs = date.getTime();
+    const endMs = startMs + 24 * 60 * 60 * 1000; // one day
+
+    for (let ms = startMs, t = 0; ms <= endMs; ms += 10000, t += 10) {
+      const current = new Date(ms);
+      const gmst = satellite.gstime(current);
+
+      const counts = stations.map(() => 0);
+
+      satRecs.forEach((rec) => {
+        const pv = satellite.propagate(rec, current);
+        if (!pv?.position) return;
+        const ecf = satellite.eciToEcf(pv.position, gmst);
+        stations.forEach((_, gi) => {
           const look = satellite.ecfToLookAngles(observerGds[gi], ecf);
-          if (look.elevation > minEl[gi]) {
-            text += `  - ${satelliteLabel(sats[si], si)}\n`;
-          }
-        }
+          if (look.elevation > minEl[gi]) counts[gi]++;
+        });
       });
-      text += "\n";
-    });
-    return text.trimEnd();
+
+      lines.push([String(t), ...counts.map(String)].join(","));
+    }
+
+    return lines.join("\n");
   }
 
   useEffect(() => {
