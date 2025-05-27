@@ -27,7 +27,7 @@ const SatelliteSizeControl: FC<Props> = ({ value, onChange, style }) => (
       ...style,
     }}
   >
-    <label htmlFor="sat-size-select">Sat size</label>
+    <label htmlFor="sat-size-select">Satellite display size</label>
     <select
       id="sat-size-select"
       value={value}

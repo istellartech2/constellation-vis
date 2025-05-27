@@ -261,7 +261,7 @@ export default function SatelliteEditor({
       THREE.MathUtils.degToRad(gs.minElevationDeg),
     );
 
-    const header = ["Time", ...stations.map((s) => s.name)].join(",");
+    const header = ["Time(sec)", ...stations.map((s) => s.name)].join(",");
     const lines: string[] = [header];
 
     const startMs = date.getTime();
@@ -629,7 +629,8 @@ export default function SatelliteEditor({
                 value={satRadius}
                 onChange={onSatRadiusChange}
               />
-              <hr style={{ marginTop: 8, marginBottom: 8 }} />
+              <hr style={{ marginTop: 12, marginBottom: 12 }} />
+              <span>Ground Station Visibility Report</span>
               <button onClick={handleGenerateReport}>Generate</button>
               <pre style={{ whiteSpace: "pre-wrap", marginTop: 8 }}>{reportText}</pre>
             </div>
