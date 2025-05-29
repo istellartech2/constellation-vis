@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import * as THREE from "three";
-import * as satellite from "satellite.js";
 import type { SatelliteSpec } from "../data/satellites";
-import { toSatrec } from "../data/satellites";
+import { generateVisibilityReport } from "../utils/visibility";
 import type { GroundStation } from "../data/groundStations";
 import SatelliteSizeControl from "./SatelliteSizeControl";
 import {
@@ -246,48 +244,6 @@ export default function SatelliteEditor({
   }
 
 
-  function generateVisibilityReport(
-    sats: SatelliteSpec[],
-    stations: GroundStation[],
-    date: Date,
-  ): string {
-    const satRecs = sats.map((s) => toSatrec(s));
-    const observerGds = stations.map((gs) => ({
-      longitude: satellite.degreesToRadians(gs.longitudeDeg),
-      latitude: satellite.degreesToRadians(gs.latitudeDeg),
-      height: gs.heightKm,
-    }));
-    const minEl = stations.map((gs) =>
-      THREE.MathUtils.degToRad(gs.minElevationDeg),
-    );
-
-    const header = ["Time(sec)", ...stations.map((s) => s.name)].join(",");
-    const lines: string[] = [header];
-
-    const startMs = date.getTime();
-    const endMs = startMs + 24 * 60 * 60 * 1000; // one day
-
-    for (let ms = startMs, t = 0; ms <= endMs; ms += 10000, t += 10) {
-      const current = new Date(ms);
-      const gmst = satellite.gstime(current);
-
-      const counts = stations.map(() => 0);
-
-      satRecs.forEach((rec) => {
-        const pv = satellite.propagate(rec, current);
-        if (!pv?.position) return;
-        const ecf = satellite.eciToEcf(pv.position, gmst);
-        stations.forEach((_, gi) => {
-          const look = satellite.ecfToLookAngles(observerGds[gi], ecf);
-          if (look.elevation > minEl[gi]) counts[gi]++;
-        });
-      });
-
-      lines.push([String(t), ...counts.map(String)].join(","));
-    }
-
-    return lines.join("\n");
-  }
 
   useEffect(() => {
     fetch("/satellites.toml")
