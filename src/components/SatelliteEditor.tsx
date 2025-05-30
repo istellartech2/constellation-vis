@@ -136,6 +136,14 @@ interface Props {
   showGraticule: boolean;
   /** Called when graticule visibility changes */
   onShowGraticuleChange: (v: boolean) => void;
+  /** Show or hide ecliptic plane */
+  showEcliptic: boolean;
+  /** Called when ecliptic visibility changes */
+  onShowEclipticChange: (v: boolean) => void;
+  /** Show or hide sun direction marker */
+  showSunDirection: boolean;
+  /** Called when sun direction visibility changes */
+  onShowSunDirectionChange: (v: boolean) => void;
 }
 
 export default function SatelliteEditor({
@@ -146,6 +154,10 @@ export default function SatelliteEditor({
   onEarthTextureChange,
   showGraticule,
   onShowGraticuleChange,
+  showEcliptic,
+  onShowEclipticChange,
+  showSunDirection,
+  onShowSunDirectionChange,
 }: Props) {
   const [satText, setSatText] = useState("");
   const [constText, setConstText] = useState("");
@@ -592,6 +604,28 @@ export default function SatelliteEditor({
                     onChange={(e) => onShowGraticuleChange(e.target.checked)}
                   />
                   <span style={{ marginLeft: 4 }}>Show latitude/longitude lines</span>
+                </label>
+              </div>
+              <div style={{ marginTop: 4 }}>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={showEcliptic}
+                    onChange={(e) => onShowEclipticChange(e.target.checked)}
+                  />
+                  <span style={{ marginLeft: 4 }}>Show ecliptic plane</span>
+                </label>
+              </div>
+              <div style={{ marginTop: 4 }}>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={showSunDirection}
+                    onChange={(e) =>
+                      onShowSunDirectionChange(e.target.checked)
+                    }
+                  />
+                  <span style={{ marginLeft: 4 }}>Show sun direction</span>
                 </label>
               </div>
               <hr style={{ marginTop: 12, marginBottom: 12 }} />

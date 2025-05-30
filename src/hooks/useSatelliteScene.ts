@@ -25,6 +25,10 @@ interface Params {
   satRadius: number;
   earthTexture: string;
   showGraticule: boolean;
+  /** Show or hide ecliptic plane line */
+  showEcliptic: boolean;
+  /** Show or hide sun direction marker */
+  showSunDirection: boolean;
   onSelect?: (idx: number | null) => void;
   onSelectStation?: (idx: number | null) => void;
   stationInfoRef?: React.RefObject<HTMLPreElement | null>;
@@ -45,6 +49,8 @@ export function useSatelliteScene({
   satRadius,
   earthTexture,
   showGraticule,
+  showEcliptic,
+  showSunDirection,
   onSelect,
   onSelectStation,
   stationInfoRef,
@@ -94,12 +100,14 @@ export function useSatelliteScene({
     scene.add(graticule);
 
     const ecliptic = createEclipticLine(1);
+    ecliptic.visible = showEcliptic;
     scene.add(ecliptic);
 
     // Small marker for the sun position
     const sunDotGeo = new THREE.SphereGeometry(0.01, 8, 8);
     const sunDotMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
     const sunDot = new THREE.Mesh(sunDotGeo, sunDotMat);
+    sunDot.visible = showSunDirection;
     scene.add(sunDot);
 
     // Geometries for satellites, their subpoints and ground stations
@@ -378,6 +386,8 @@ export function useSatelliteScene({
     satRadius,
     earthTexture,
     showGraticule,
+    showEcliptic,
+    showSunDirection,
     onSelect,
     onSelectStation,
     stationInfoRef,

@@ -32,6 +32,8 @@ function App() {
 
   const [earthTexture, setEarthTexture] = useState("/assets/earth01.webp");
   const [showGraticule, setShowGraticule] = useState(true);
+  const [showEcliptic, setShowEcliptic] = useState(true);
+  const [showSunDirection, setShowSunDirection] = useState(true);
 
   const [startTime, setStartTime] = useState(() => {
     const d = new Date();
@@ -59,6 +61,8 @@ function App() {
     satRadius,
     earthTexture,
     showGraticule,
+    showEcliptic,
+    showSunDirection,
     onSelect: setSelectedIdx,
     onSelectStation: setSelectedGsIdx,
     stationInfoRef: gsInfoRef,
@@ -130,6 +134,10 @@ function App() {
         onEarthTextureChange={setEarthTexture}
         showGraticule={showGraticule}
         onShowGraticuleChange={setShowGraticule}
+        showEcliptic={showEcliptic}
+        onShowEclipticChange={setShowEcliptic}
+        showSunDirection={showSunDirection}
+        onShowSunDirectionChange={setShowSunDirection}
         onUpdate={(s, gs, start) => {
           setSatellites(s);
           setGroundStations(gs);
