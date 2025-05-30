@@ -23,6 +23,8 @@ interface Params {
   satellites: SatelliteSpec[];
   groundStations: GroundStation[];
   satRadius: number;
+  earthTexture: string;
+  showGraticule: boolean;
   onSelect?: (idx: number | null) => void;
   onSelectStation?: (idx: number | null) => void;
   stationInfoRef?: React.RefObject<HTMLPreElement | null>;
@@ -41,6 +43,8 @@ export function useSatelliteScene({
   satellites,
   groundStations,
   satRadius,
+  earthTexture,
+  showGraticule,
   onSelect,
   onSelectStation,
   stationInfoRef,
@@ -79,13 +83,14 @@ export function useSatelliteScene({
 
     // Earth model --------------------------------------------------------------
     const earthGeometry = new THREE.SphereGeometry(1, 128, 128);
-    const texture = new THREE.TextureLoader().load("/assets/8081_earthmap4k.webp");
+    const texture = new THREE.TextureLoader().load(earthTexture);
     const earthMaterial = new THREE.MeshPhongMaterial({ map: texture, shininess: 1 });
     const earthMesh = new THREE.Mesh(earthGeometry, earthMaterial);
     scene.add(earthMesh);
 
     // Reference lines
     const graticule = createGraticule(20);
+    graticule.visible = showGraticule;
     scene.add(graticule);
 
     const ecliptic = createEclipticLine(1);
@@ -371,6 +376,8 @@ export function useSatelliteScene({
     satellites,
     groundStations,
     satRadius,
+    earthTexture,
+    showGraticule,
     onSelect,
     onSelectStation,
     stationInfoRef,
