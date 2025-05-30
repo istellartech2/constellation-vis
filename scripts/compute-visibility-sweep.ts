@@ -3,10 +3,8 @@
  * Defines arrays of values for each ShellParams field and computes the averageVisibility
  * for each value while keeping other parameters at defaults.
  */
-import { generateConstellationToml } from './generate-constellation';
 import type { ShellParams } from './generate-constellation';
-import { parseConstellationToml, parseGroundStationsToml } from '../src/utils/tomlParse';
-import { averageVisibility } from '../src/utils/visibility';
+import { parseGroundStationsToml } from '../src/utils/tomlParse';
 const workerModule = new URL('./worker-visibility.ts', import.meta.url);
 
 async function main() {
