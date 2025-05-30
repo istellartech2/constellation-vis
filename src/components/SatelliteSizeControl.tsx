@@ -17,16 +17,7 @@ const SIZE_OPTIONS: { label: string; value: number }[] = [
 ];
 
 const SatelliteSizeControl: FC<Props> = ({ value, onChange, style }) => (
-  <div
-    style={{
-      color: "#fff",
-      fontFamily: "'Noto Sans Mono', monospace",
-      display: "flex",
-      alignItems: "center",
-      gap: 4,
-      ...style,
-    }}
-  >
+  <div className="sat-size-control" style={style}>
     <label htmlFor="sat-size-select">Satellite display size</label>
     <select
       id="sat-size-select"

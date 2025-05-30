@@ -324,20 +324,8 @@ export default function SatelliteEditor({
   return (
     <>
       {importOpen && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.7)",
-            color: "#fff",
-            zIndex: 40,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontFamily: "monospace",
-          }}
-        >
-          <div style={{ background: "rgba(0,0,0,0.8)", padding: 16 }}>
+        <div className="overlay">
+          <div className="overlay-box">
             <h3 style={{ marginTop: 0 }}>Import from CelesTrak</h3>
             {CELESTRACK_GROUPS.map(({ label, group }) => (
               <label key={group} style={{ display: "block" }}>
@@ -354,10 +342,7 @@ export default function SatelliteEditor({
               <div style={{ marginTop: 8, textAlign: "center" }}>Loading...</div>
             ) : (
               <div style={{ marginTop: 8, textAlign: "right" }}>
-                <button
-                  onClick={() => setImportOpen(false)}
-                  style={{ marginRight: 8 }}
-                >
+                <button onClick={() => setImportOpen(false)} style={{ marginRight: 8 }}>
                   Cancel
                 </button>
                 <button onClick={handleImport}>Import</button>
@@ -367,87 +352,31 @@ export default function SatelliteEditor({
         </div>
       )}
       {!open && (
-        <button
-          onClick={() => setOpen(true)}
-          style={{
-            position: "absolute",
-            left: 8,
-            top: 8,
-            background: "rgba(0,0,0,0.6)",
-            color: "#fff",
-            border: "none",
-            padding: "4px 8px",
-            fontSize: "1.2rem",
-            zIndex: 30,
-          }}
-        >
+        <button className="side-panel-button" onClick={() => setOpen(true)}>
           ☰
         </button>
       )}
-      <div
-        style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          height: "100%",
-          width: 300,
-          maxWidth: "80%",
-          background: "rgba(0,0,0,0.6)",
-          color: "#fff",
-          padding: 8,
-          fontFamily: "monospace",
-          zIndex: 20,
-          transform: open ? "translateX(0)" : "translateX(-100%)",
-          transition: "transform 0.3s ease-out",
-          boxSizing: "border-box",
-        }}
-      >
-        <button
-          onClick={() => setOpen(false)}
-          style={{
-            position: "absolute",
-            right: 8,
-            top: 8,
-            background: "transparent",
-            border: "none",
-            color: "#fff",
-            fontSize: "1.2rem",
-          }}
-        >
+      <div className={`side-panel ${open ? "" : "closed"}`}>
+        <button className="side-panel-close" onClick={() => setOpen(false)}>
           ✕
         </button>
         <div style={{ paddingTop: 36 }}>
           <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
             <button
+              className={`tab-button ${tab === "editor" ? "active" : ""}`}
               onClick={() => setTab("editor")}
-              style={{
-                background: tab === "editor" ? "#1976d2" : "transparent",
-                color: "#fff",
-                border: "none",
-                padding: "4px 8px",
-              }}
             >
               Editor
             </button>
             <button
+              className={`tab-button ${tab === "option" ? "active" : ""}`}
               onClick={() => setTab("option")}
-              style={{
-                background: tab === "option" ? "#1976d2" : "transparent",
-                color: "#fff",
-                border: "none",
-                padding: "4px 8px",
-              }}
             >
               Option
             </button>
             <button
+              className={`tab-button ${tab === "help" ? "active" : ""}`}
               onClick={() => setTab("help")}
-              style={{
-                background: tab === "help" ? "#1976d2" : "transparent",
-                color: "#fff",
-                border: "none",
-                padding: "4px 8px",
-              }}
             >
               Help
             </button>
