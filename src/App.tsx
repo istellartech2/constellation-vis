@@ -30,6 +30,9 @@ function App() {
     window.innerWidth <= 600 ? 0.02 : 0.015,
   );
 
+  const [earthTexture, setEarthTexture] = useState("/assets/earth01.webp");
+  const [showGraticule, setShowGraticule] = useState(true);
+
   const [startTime, setStartTime] = useState(() => {
     const d = new Date();
     d.setSeconds(0, 0);
@@ -54,6 +57,8 @@ function App() {
     satellites,
     groundStations,
     satRadius,
+    earthTexture,
+    showGraticule,
     onSelect: setSelectedIdx,
     onSelectStation: setSelectedGsIdx,
     stationInfoRef: gsInfoRef,
@@ -121,6 +126,10 @@ function App() {
       <SatelliteEditor
         satRadius={satRadius}
         onSatRadiusChange={setSatRadius}
+        earthTexture={earthTexture}
+        onEarthTextureChange={setEarthTexture}
+        showGraticule={showGraticule}
+        onShowGraticuleChange={setShowGraticule}
         onUpdate={(s, gs, start) => {
           setSatellites(s);
           setGroundStations(gs);

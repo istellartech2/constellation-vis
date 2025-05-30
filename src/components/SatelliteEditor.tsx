@@ -3,6 +3,7 @@ import type { SatelliteSpec } from "../data/satellites";
 import { generateVisibilityReport } from "../utils/visibility";
 import type { GroundStation } from "../data/groundStations";
 import SatelliteSizeControl from "./SatelliteSizeControl";
+import EarthTextureSelector from "./EarthTextureSelector";
 import {
   parseSatellitesToml,
   parseConstellationToml,
@@ -127,12 +128,24 @@ interface Props {
   satRadius: number;
   /** Called when satellite size is changed */
   onSatRadiusChange: (r: number) => void;
+  /** Current earth texture URL */
+  earthTexture: string;
+  /** Called when earth texture is changed */
+  onEarthTextureChange: (t: string) => void;
+  /** Show or hide graticule */
+  showGraticule: boolean;
+  /** Called when graticule visibility changes */
+  onShowGraticuleChange: (v: boolean) => void;
 }
 
 export default function SatelliteEditor({
   onUpdate,
   satRadius,
   onSatRadiusChange,
+  earthTexture,
+  onEarthTextureChange,
+  showGraticule,
+  onShowGraticuleChange,
 }: Props) {
   const [satText, setSatText] = useState("");
   const [constText, setConstText] = useState("");
@@ -566,6 +579,21 @@ export default function SatelliteEditor({
                 value={satRadius}
                 onChange={onSatRadiusChange}
               />
+              <EarthTextureSelector
+                value={earthTexture}
+                onChange={onEarthTextureChange}
+                style={{ marginTop: 8 }}
+              />
+              <div style={{ marginTop: 8 }}>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={showGraticule}
+                    onChange={(e) => onShowGraticuleChange(e.target.checked)}
+                  />
+                  <span style={{ marginLeft: 4 }}>Show latitude/longitude lines</span>
+                </label>
+              </div>
               <hr style={{ marginTop: 12, marginBottom: 12 }} />
               <span>Ground Station Visibility Report</span>
               <button onClick={handleGenerateReport}>Generate</button>
