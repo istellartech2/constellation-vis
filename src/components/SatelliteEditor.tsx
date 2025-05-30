@@ -428,7 +428,7 @@ export default function SatelliteEditor({
                 />
               </div>
 
-              <hr style={{ marginTop: 8, marginBottom: 8 }} />
+              <hr className="hr-dashed" />
               <div style={{ marginTop: 4 }}>
                 <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap" }}>
                   <span>constellation.toml</span>
@@ -469,7 +469,7 @@ export default function SatelliteEditor({
                   />
                 </div>
               </div>
-              <hr style={{ marginTop: 8, marginBottom: 8 }} />
+              <hr className="hr-dashed" />
               <div style={{ marginTop: 8 }}>
                 <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap" }}>
                   <span>groundstations.toml</span>
@@ -510,40 +510,16 @@ export default function SatelliteEditor({
                   />
                 </div>
               </div>
-              <hr style={{ marginTop: 8, marginBottom: 8 }} />
-              <div style={{ display: "flex", flexDirection: "column" }}>
-                <label>
-                  Simulation start (UTC)
-                  <input
-                    type="datetime-local"
-                    value={startText}
-                    onChange={(e) => setStartText(e.target.value)}
-                    style={{ width: "98%" }}
-                  />
-                </label>
-              </div>
-              <hr style={{ marginTop: 12, marginBottom: 6 }} />
-              <button
-                onClick={handleUpdate}
-                style={{
-                  marginTop: 8,
-                  padding: "8px 20px",
-                  background: "#1976d2",
-                  color: "#fff",
-                  border: "none",
-                  fontWeight: "bold",
-                }}
-              >
-                Update
-              </button>
+              <hr className="hr-dashed" />
               <div style={{ marginTop: 8 }}>
                 <button
+                  className="secondary"
                   onClick={handleSaveBundle}
                   style={{ marginRight: 4 }}
                 >
                   Save All
                 </button>
-                <button onClick={() => bundleInputRef.current?.click()}>
+                <button className="secondary" onClick={() => bundleInputRef.current?.click()}>
                   Load All
                 </button>
                 <input
@@ -558,6 +534,30 @@ export default function SatelliteEditor({
                   }}
                 />
               </div>
+              <hr style={{ marginTop: 8, marginBottom: 8 }} />              
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                <label>
+                  Simulation start (UTC)
+                  <input
+                    type="datetime-local"
+                    value={startText}
+                    onChange={(e) => setStartText(e.target.value)}
+                    style={{ width: "98%" }}
+                  />
+                </label>
+              </div>
+              <hr style={{ marginTop: 12, marginBottom: 6 }} />
+              <button
+                className="primary"
+                onClick={handleUpdate}
+                style={{
+                  marginTop: 8,
+                  padding: "8px 20px",
+                  fontWeight: "bold",
+                }}
+              >
+                Update
+              </button>
             </>
           )}
           {tab === "option" && (

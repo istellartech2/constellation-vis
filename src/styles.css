@@ -35,6 +35,20 @@ h1 {
   line-height: 1.1;
 }
 
+.hr-solid {
+  margin-top: 6px;
+  margin-bottom: 6px;
+  border: none;
+  border-top: 1px solid #ccc; /* 実線 */
+}
+
+.hr-dashed {
+  margin-top: 6px;
+  margin-bottom: 6px;
+  border: none;
+  border-top: 1px dashed #ccc; /* 破線 */
+}
+
 button {
   border-radius: 8px;
   border: 1px solid transparent;
@@ -42,16 +56,58 @@ button {
   font-size: 1em;
   font-weight: 500;
   font-family: inherit;
-  background-color: #1a1a1a;
   cursor: pointer;
-  transition: border-color 0.25s;
+  transition: all 0.25s;
 }
-button:hover {
-  border-color: #646cff;
+
+/* 目立つ（Primary） */
+button.primary {
+  background-color: #646cff;
+  color: white;
 }
+button.primary:hover {
+  background-color: #4e52d1;
+}
+
+/* 控えめ（Secondary） */
+button.secondary {
+  background-color: #f0f0f0;
+  color: #333;
+  border: 1px solid #ccc;
+}
+button.secondary:hover {
+  background-color: #e0e0e0;
+}
+
+/* フォーカス共通 */
 button:focus,
 button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
+}
+
+/* タブボタン（中間強調） */
+button.tab-button {
+  background-color: #e6e6fa;
+  color: #333;
+  border: 1px solid #ccc;
+  border-radius: 6px 6px 0 0;
+  margin-right: 4px;
+  padding: 0.5em 1em;
+  font-size: 0.95em;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+button.tab-button:hover {
+  background-color: #dcdcff;
+}
+
+button.tab-button.active {
+  background-color: #646cff;
+  color: white;
+  border-color: #646cff;
+  font-weight: 600;
 }
 
 @media (prefers-color-scheme: light) {
