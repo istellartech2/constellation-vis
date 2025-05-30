@@ -1,0 +1,148 @@
+:root {
+  --bg-color: #141518;
+  --panel-bg: rgba(30, 32, 36, 0.9);
+  --accent-color: #4e9af1;
+  --text-color: #f1f1f1;
+  --font-family-ui: 'Inter', system-ui, sans-serif;
+}
+
+body {
+  background-color: var(--bg-color);
+  font-family: var(--font-family-ui);
+}
+
+.speed-control {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  color: var(--text-color);
+  font-family: var(--font-family-ui);
+}
+
+.speed-control input[type='range'] {
+  width: 160px;
+  accent-color: var(--accent-color);
+}
+
+.speed-control .speed-value {
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.side-panel-button {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  background: var(--panel-bg);
+  color: var(--text-color);
+  border: none;
+  padding: 6px 10px;
+  font-size: 1.4rem;
+  cursor: pointer;
+  border-radius: 4px;
+  z-index: 30;
+}
+
+.side-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 320px;
+  max-width: 80%;
+  background: var(--panel-bg);
+  color: var(--text-color);
+  padding: 12px;
+  box-sizing: border-box;
+  font-family: var(--font-family-ui);
+  transition: transform 0.3s ease-out;
+  z-index: 20;
+  overflow-y: auto;
+}
+
+.side-panel.closed {
+  transform: translateX(-100%);
+}
+
+.side-panel h3 {
+  margin-top: 0;
+}
+
+.side-panel button {
+  background: var(--accent-color);
+  color: #fff;
+  border: none;
+  padding: 6px 12px;
+  font-weight: 500;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.side-panel button.secondary {
+  background: transparent;
+  border: 1px solid var(--accent-color);
+}
+
+.side-panel-close {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-color);
+  font-size: 1.4rem;
+  cursor: pointer;
+}
+
+.side-panel input,
+.side-panel textarea,
+.side-panel select {
+  background: #222;
+  color: var(--text-color);
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 4px;
+  font-family: var(--font-family-ui);
+}
+
+.sat-size-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-color);
+  font-family: var(--font-family-ui);
+}
+
+.tab-button {
+  background: transparent;
+  border: none;
+  padding: 4px 8px;
+  color: var(--text-color);
+  cursor: pointer;
+}
+
+.tab-button.active {
+  background: var(--accent-color);
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+  color: var(--text-color);
+  font-family: var(--font-family-ui);
+}
+
+.overlay-box {
+  background: var(--panel-bg);
+  padding: 16px;
+  border-radius: 6px;
+  min-width: 250px;
+}

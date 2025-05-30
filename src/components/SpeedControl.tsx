@@ -8,18 +8,7 @@ interface Props {
 
 export default function SpeedControl({ value, onChange }: Props) {
   return (
-    <div
-      style={{
-        position: "absolute",
-        right: 8,
-        top: 8,
-        color: "#fff",
-        fontFamily: "'Noto Sans Mono', monospace",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "flex-end",
-      }}
-    >
+    <div className="speed-control">
       <input
         type="range"
         min={0}
@@ -29,11 +18,8 @@ export default function SpeedControl({ value, onChange }: Props) {
         onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
           onChange(parseFloat(e.target.value))
         }
-        style={{ width: 150 }}
       />
-      <span style={{ fontVariantNumeric: "tabular-nums" }}>
-        {Math.pow(10, value).toFixed(1)}×
-      </span>
+      <span className="speed-value">{Math.pow(10, value).toFixed(1)}×</span>
     </div>
   );
 }
