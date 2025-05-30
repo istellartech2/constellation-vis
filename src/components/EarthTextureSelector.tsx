@@ -12,9 +12,10 @@ interface Props {
 }
 
 const TEXTURE_OPTIONS: Option[] = [
-  { label: "Texture 1", value: "/assets/earth01.webp" },
-  { label: "Texture 2", value: "/assets/earth02.webp" },
-  { label: "Texture 3", value: "/assets/earth03.webp" },
+  { label: "Base", value: "/assets/earth01.webp" },
+  { label: "Simple", value: "/assets/earth02.webp" },
+  { label: "Pale", value: "/assets/earth03.webp" },
+  { label: "Blue Marbel", value: "/assets/earth04.webp" },
 ];
 
 const EarthTextureSelector: FC<Props> = ({ value, onChange, style }) => (
