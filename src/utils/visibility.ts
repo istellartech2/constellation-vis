@@ -37,6 +37,41 @@ export function countVisibleSatellites(
  * Compute the average number of visible satellites over the given duration.
  * The average is taken across regular time steps.
  */
+export interface VisibilityStats {
+  avg: number;
+  median: number;
+  nonZeroRate: number;
+}
+
+/**
+ * Compute visibility statistics (average, median, non-zero rate) over the given duration.
+ */
+export function visibilityStats(
+  sats: SatelliteSpec[],
+  station: GroundStation,
+  start: Date,
+  durationHours = 12,
+  stepSec = 10,
+): VisibilityStats {
+  const satRecs = toSatrecs(sats);
+  const startMs = start.getTime();
+  const endMs = startMs + durationHours * 3600 * 1000;
+  const counts: number[] = [];
+  for (let ms = startMs; ms <= endMs; ms += stepSec * 1000) {
+    counts.push(countVisibleSatellites(satRecs, station, new Date(ms)));
+  }
+  const steps = counts.length;
+  const total = counts.reduce((a, b) => a + b, 0);
+  const sorted = counts.slice().sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median =
+    sorted.length % 2 === 0
+      ? (sorted[mid - 1] + sorted[mid]) / 2
+      : sorted[mid];
+  const nonZeroRate = counts.filter((c) => c > 0).length / steps;
+  return { avg: total / steps, median, nonZeroRate };
+}
+
 export function averageVisibility(
   sats: SatelliteSpec[],
   station: GroundStation,
@@ -44,16 +79,7 @@ export function averageVisibility(
   durationHours = 12,
   stepSec = 10,
 ): number {
-  const satRecs = toSatrecs(sats);
-  const startMs = start.getTime();
-  const endMs = startMs + durationHours * 3600 * 1000;
-  let total = 0;
-  let steps = 0;
-  for (let ms = startMs; ms <= endMs; ms += stepSec * 1000) {
-    total += countVisibleSatellites(satRecs, station, new Date(ms));
-    steps++;
-  }
-  return total / steps;
+  return visibilityStats(sats, station, start, durationHours, stepSec).avg;
 }
 
 /**
