@@ -75,6 +75,8 @@ https://constellation-vis.vercel.app/
   - `eccentricity`
   - `inclination`
   - `raan_range`
+- The semi-major axis is computed from apogee altitude and eccentricity as
+  `a = (earth_radius + apogee_altitude) / (1 + eccentricity)`.
 - Optional: `raan_start`, `argp`, `mean_anomaly_0`.
 
 ---
@@ -156,4 +158,6 @@ https://constellation-vis.vercel.app/
   - `eccentricity`
   - `inclination`
   - `raan_range`
+ - 遠地点高度と離心率から半長軸を計算します。
+   数式は `a = (earth_radius + apogee_altitude) / (1 + eccentricity)` です。
 - 任意項目: `raan_start`、`argp`、`mean_anomaly_0`。

@@ -54,7 +54,8 @@ function generateFromShells(con: any): any[] {
     const raanStart = Number(shell.raan_start ?? 0);
     const argp = Number(shell.argp ?? 0);
     const m0 = Number(shell.mean_anomaly_0 ?? 0);
-    const semiMajorAxisKm = (EARTH_RADIUS_KM + aAltitude);
+    const apogeeRadius = EARTH_RADIUS_KM + aAltitude;
+    const semiMajorAxisKm = apogeeRadius / (1 + ecc);
 
     for (let p = 0; p < planes; p++) {
       const raan = raanStart + (raanRange * p) / planes;
