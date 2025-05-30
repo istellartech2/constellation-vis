@@ -8,6 +8,10 @@ import {
   parseConstellationToml,
   parseGroundStationsToml,
 } from "../utils/tomlParse";
+import {
+  parseConfigBundle,
+  buildConfigBundle,
+} from "../utils/configBundle";
 
 /**
  * Editor side panel allowing the user to load, edit and save TOML files
@@ -148,6 +152,7 @@ export default function SatelliteEditor({
   const satInputRef = useRef<HTMLInputElement | null>(null);
   const constInputRef = useRef<HTMLInputElement | null>(null);
   const gsInputRef = useRef<HTMLInputElement | null>(null);
+  const bundleInputRef = useRef<HTMLInputElement | null>(null);
 
   function downloadFile(name: string, text: string) {
     const blob = new Blob([text], { type: "text/plain" });
@@ -290,6 +295,31 @@ export default function SatelliteEditor({
       alert("Failed to generate report: " + (e as Error).message);
     }
   };
+
+  const handleSaveBundle = () => {
+    const bundle = buildConfigBundle(
+      satText,
+      constText,
+      gsText,
+      new Date(startText),
+    );
+    downloadFile("settings.toml", bundle);
+  };
+
+  async function handleBundleFile(file: File) {
+    const text = await file.text();
+    try {
+      const parsed = parseConfigBundle(text);
+      validateSatellites(parsed.satellites);
+      validateGroundStations(parsed.groundStations);
+      setSatText(parsed.satText);
+      setConstText(parsed.constText);
+      setGsText(parsed.gsText);
+      setStartText(parsed.startTime.toISOString().slice(0, 16));
+    } catch (e) {
+      alert("Invalid file: " + (e as Error).message);
+    }
+  }
 
   return (
     <>
@@ -577,6 +607,28 @@ export default function SatelliteEditor({
               >
                 Update
               </button>
+              <div style={{ marginTop: 8 }}>
+                <button
+                  onClick={handleSaveBundle}
+                  style={{ marginRight: 4 }}
+                >
+                  Save All
+                </button>
+                <button onClick={() => bundleInputRef.current?.click()}>
+                  Load All
+                </button>
+                <input
+                  ref={bundleInputRef}
+                  type="file"
+                  accept=".toml"
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleBundleFile(f);
+                    e.target.value = "";
+                  }}
+                />
+              </div>
             </>
           )}
           {tab === "option" && (
