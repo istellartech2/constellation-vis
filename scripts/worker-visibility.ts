@@ -4,7 +4,7 @@
 import { generateConstellationToml } from "./generate-constellation";
 import type { ShellParams } from "./generate-constellation";
 import { parseConstellationToml } from "../src/utils/tomlParse";
-import { averageVisibility } from "../src/utils/visibility";
+import { visibilityStats } from "../src/utils/visibility";
 import type { GroundStation } from "../src/data/groundStations";
 
 self.onmessage = (e) => {
@@ -25,12 +25,12 @@ self.onmessage = (e) => {
   } = e.data;
   const toml = generateConstellationToml(shell, epoch);
   const sats = parseConstellationToml(toml);
-  const avg = averageVisibility(
+  const { avg, median, nonZeroRate } = visibilityStats(
     sats,
     station,
     new Date(startMs),
     durationHours,
     stepSec,
   );
-  self.postMessage({ name: shell.name, avg });
+  self.postMessage({ name: shell.name, avg, median, nonZeroRate });
 };

@@ -1,7 +1,7 @@
 /**
- * Script to sweep average visibility for different constellation shell parameters.
- * Defines arrays of values for each ShellParams field and computes the averageVisibility
- * for each value while keeping other parameters at defaults.
+ * Script to sweep visibility statistics for different constellation shell parameters.
+ * Computes every combination of parameter values and prints the average visibility,
+ * median, and non-zero rate for each.
  */
 import type { ShellParams } from './generate-constellation';
 import { parseGroundStationsToml } from '../src/utils/tomlParse';
@@ -32,39 +32,52 @@ async function main() {
     raan_range: 360,
   };
 
-  const sweeps: Array<{ param: keyof Omit<ShellParams, 'name'>; values: number[] }> = [
-    { param: 'count', values: [10, 20, 30, 40, 50] },
-    { param: 'planes', values: [1, 2, 4, 6] },
-    { param: 'phasing', values: [0, 90, 180, 270] },
-    { param: 'apogee_altitude', values: [300, 500, 700, 1000] },
-    { param: 'eccentricity', values: [0, 0.1, 0.2] },
-    { param: 'inclination', values: [30, 45, 60, 90] },
-    { param: 'raan_range', values: [180, 360] },
-  ];
+  const sweeps: Record<keyof Omit<ShellParams, 'name'>, number[]> = {
+    count: [10, 20, 30, 40, 50],
+    planes: [1, 2, 4, 6],
+    phasing: [0, 90, 180, 270],
+    apogee_altitude: [300, 500, 700, 1000],
+    eccentricity: [0, 0.1, 0.2],
+    inclination: [30, 45, 60, 90],
+    raan_range: [180, 360],
+  };
 
-  for (const { param, values } of sweeps) {
-    console.log(`\nSweeping parameter: ${param}`);
-    const promises: Promise<{ name: string; avg: number }>[] = values.map((v) => {
-      const shell: ShellParams = { ...defaults, [param]: v, name: `${param}=${v}` } as ShellParams;
-      return new Promise((resolve, reject) => {
-        const worker = new Worker(workerModule, { type: 'module' });
-        worker.onmessage = (e) => {
-          resolve(e.data);
-          worker.terminate();
-        };
-        worker.onerror = (e) => {
-          // Propagate worker errors with message if no Error object is provided
-          reject(e.error ?? new Error(e.message));
-          worker.terminate();
-        };
-        worker.postMessage({ shell, epoch, startMs: start.getTime(), durationHours, stepSec, station });
-      });
-    });
-    // Await all worker promises and print results once ready
-    const results = await Promise.all(promises);
-    for (const { name, avg } of results) {
-      console.log(`  ${name}: ${avg.toFixed(2)}`);
+  const params = Object.keys(sweeps) as Array<keyof Omit<ShellParams, 'name'>>;
+
+  function generateCombos(index: number, current: Partial<ShellParams>, out: ShellParams[]) {
+    if (index === params.length) {
+      const name = params.map((p) => `${p}=${(current[p] ?? defaults[p]) as number}`).join('_');
+      out.push({ ...defaults, ...current, name } as ShellParams);
+      return;
     }
+    const key = params[index];
+    for (const v of sweeps[key]) {
+      generateCombos(index + 1, { ...current, [key]: v }, out);
+    }
+  }
+
+  const combos: ShellParams[] = [];
+  generateCombos(0, {}, combos);
+
+  for (const shell of combos) {
+    const result: { name: string; avg: number; median: number; nonZeroRate: number } = await new Promise((resolve, reject) => {
+      const worker = new Worker(workerModule, { type: 'module' });
+      worker.onmessage = (e) => {
+        resolve(e.data);
+        worker.terminate();
+      };
+      worker.onerror = (e) => {
+        reject(e.error ?? new Error(e.message));
+        worker.terminate();
+      };
+      worker.postMessage({ shell, epoch, startMs: start.getTime(), durationHours, stepSec, station });
+    });
+    const { name, avg, median, nonZeroRate } = result;
+    console.log(
+      `${name}: avg=${avg.toFixed(2)}, median=${median.toFixed(2)}, nonZero=${(
+        nonZeroRate * 100
+      ).toFixed(1)}%`,
+    );
   }
 }
 
