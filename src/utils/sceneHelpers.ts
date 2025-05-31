@@ -6,6 +6,9 @@ import { jday } from "satellite.js";
 const DEG2RAD = Math.PI / 180;
 export const OBLIQUITY = 23.4393 * DEG2RAD;
 
+/** Ratio of Earth's polar to equatorial radius. */
+export const EARTH_FLATTENING = 6356.7523142 / 6378.137;
+
 /** Convert a UTC Date to Julian Date */
 function toJulianDate(date: Date): number {
   return jday(
@@ -66,8 +69,12 @@ export function createGraticule(stepDeg = 20): THREE.LineSegments {
       const a = lat * DEG2RAD;
       const b = (lat + 2) * DEG2RAD;
       verts.push(
-        Math.cos(a) * Math.cos(lonRad), Math.sin(a), -Math.cos(a) * Math.sin(lonRad),
-        Math.cos(b) * Math.cos(lonRad), Math.sin(b), -Math.cos(b) * Math.sin(lonRad)
+        Math.cos(a) * Math.cos(lonRad),
+        Math.sin(a) * EARTH_FLATTENING,
+        -Math.cos(a) * Math.sin(lonRad),
+        Math.cos(b) * Math.cos(lonRad),
+        Math.sin(b) * EARTH_FLATTENING,
+        -Math.cos(b) * Math.sin(lonRad)
       );
     }
   }
@@ -79,8 +86,12 @@ export function createGraticule(stepDeg = 20): THREE.LineSegments {
       const a = lon * DEG2RAD;
       const b = (lon + 2) * DEG2RAD;
       verts.push(
-        Math.cos(latRad) * Math.cos(a), Math.sin(latRad), -Math.cos(latRad) * Math.sin(a),
-        Math.cos(latRad) * Math.cos(b), Math.sin(latRad), -Math.cos(latRad) * Math.sin(b)
+        Math.cos(latRad) * Math.cos(a),
+        Math.sin(latRad) * EARTH_FLATTENING,
+        -Math.cos(latRad) * Math.sin(a),
+        Math.cos(latRad) * Math.cos(b),
+        Math.sin(latRad) * EARTH_FLATTENING,
+        -Math.cos(latRad) * Math.sin(b)
       );
     }
   }

@@ -36,7 +36,7 @@ function serialize(value: any): string {
   return JSON.stringify(value);
 }
 
-const EARTH_RADIUS_KM = 6371;
+const EARTH_RADIUS_KM = 6378.137;
 
 function generateFromShells(con: any): any[] {
   const epoch = new Date(String(con.epoch));
