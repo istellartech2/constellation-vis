@@ -79,7 +79,7 @@ export function parseSatellitesToml(text: string): SatelliteSpec[] {
   });
 }
 
-const EARTH_RADIUS_KM = 6371;
+const EARTH_RADIUS_KM = 6378.137;
 
 function generateFromShells(con: any): SatelliteSpec[] {
   const epoch = new Date(String(con.epoch));

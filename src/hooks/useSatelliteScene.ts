@@ -9,10 +9,12 @@ import {
   sunVectorECI,
   createGraticule,
   createEclipticLine,
+  EARTH_FLATTENING,
 } from "../utils/sceneHelpers";
 
-/** Radius of Earth in kilometres, used to normalise coordinates. */
-const EARTH_RADIUS_KM = 6371;
+/** Equatorial and polar radii of Earth in kilometres. */
+const EARTH_RADIUS_EQUATOR_KM = 6378.137;
+const EARTH_RADIUS_POLAR_KM = 6356.7523142;
 // const SIDEREAL_DAY_SEC = 86164;
 
 interface Params {
@@ -92,6 +94,7 @@ export function useSatelliteScene({
     const texture = new THREE.TextureLoader().load(earthTexture);
     const earthMaterial = new THREE.MeshPhongMaterial({ map: texture, shininess: 1 });
     const earthMesh = new THREE.Mesh(earthGeometry, earthMaterial);
+    earthMesh.scale.set(1, EARTH_FLATTENING, 1);
     scene.add(earthMesh);
 
     // Reference lines
@@ -197,9 +200,9 @@ export function useSatelliteScene({
           const { x, y, z } = pv.position;
           points.push(
             new THREE.Vector3(
-              x / EARTH_RADIUS_KM,
-              z / EARTH_RADIUS_KM,
-              -y / EARTH_RADIUS_KM,
+              x / EARTH_RADIUS_EQUATOR_KM,
+              z / EARTH_RADIUS_POLAR_KM,
+              -y / EARTH_RADIUS_EQUATOR_KM,
             ),
           );
         }
@@ -291,7 +294,11 @@ export function useSatelliteScene({
       // Update ground station positions
       stationMeshes.forEach((m, idx) => {
         const p = gsEcis[idx];
-        m.position.set(p.x / EARTH_RADIUS_KM, p.z / EARTH_RADIUS_KM, -p.y / EARTH_RADIUS_KM);
+        m.position.set(
+          p.x / EARTH_RADIUS_EQUATOR_KM,
+          p.z / EARTH_RADIUS_POLAR_KM,
+          -p.y / EARTH_RADIUS_EQUATOR_KM,
+        );
       });
 
       if (stationInfoRef && stationInfoRef.current && selectedStationIndex !== null) {
@@ -308,9 +315,25 @@ export function useSatelliteScene({
         const pv = satellite.propagate(rec, simDate);
         if (pv?.position) {
           const { x, y, z } = pv.position;
-          satPosAttr.setXYZ(i, x / EARTH_RADIUS_KM, z / EARTH_RADIUS_KM, -y / EARTH_RADIUS_KM);
-          const mag = Math.sqrt(x * x + y * y + z * z);
-          groundPosAttr.setXYZ(i, x / mag, z / mag, -y / mag);
+          satPosAttr.setXYZ(
+            i,
+            x / EARTH_RADIUS_EQUATOR_KM,
+            z / EARTH_RADIUS_POLAR_KM,
+            -y / EARTH_RADIUS_EQUATOR_KM,
+          );
+          const geo = satellite.eciToGeodetic(pv.position, gmst);
+          const groundEcf = satellite.geodeticToEcf({
+            longitude: geo.longitude,
+            latitude: geo.latitude,
+            height: 0,
+          });
+          const groundEci = satellite.ecfToEci(groundEcf, gmst);
+          groundPosAttr.setXYZ(
+            i,
+            groundEci.x / EARTH_RADIUS_EQUATOR_KM,
+            groundEci.z / EARTH_RADIUS_POLAR_KM,
+            -groundEci.y / EARTH_RADIUS_EQUATOR_KM,
+          );
 
           const satEcf = satellite.eciToEcf(pv.position, gmst);
           let anyVisible = false;
@@ -320,14 +343,14 @@ export function useSatelliteScene({
             if (visible) {
               anyVisible = true;
               const p1 = new THREE.Vector3(
-                gsEcis[gi].x / EARTH_RADIUS_KM,
-                gsEcis[gi].z / EARTH_RADIUS_KM,
-                -gsEcis[gi].y / EARTH_RADIUS_KM,
+                gsEcis[gi].x / EARTH_RADIUS_EQUATOR_KM,
+                gsEcis[gi].z / EARTH_RADIUS_POLAR_KM,
+                -gsEcis[gi].y / EARTH_RADIUS_EQUATOR_KM,
               );
               const p2 = new THREE.Vector3(
-                x / EARTH_RADIUS_KM,
-                z / EARTH_RADIUS_KM,
-                -y / EARTH_RADIUS_KM,
+                x / EARTH_RADIUS_EQUATOR_KM,
+                z / EARTH_RADIUS_POLAR_KM,
+                -y / EARTH_RADIUS_EQUATOR_KM,
               );
               linkGeometries[gi][i].setFromPoints([p1, p2]);
               linkLines[gi][i].visible = true;
