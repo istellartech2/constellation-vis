@@ -201,7 +201,7 @@ export default class SatelliteScene {
           this.shadowLine.geometry.dispose();
           this.scene.remove(this.shadowLine);
         }
-        const mat = new THREE.LineBasicMaterial({ color: 0xffff00 });
+        const mat = new THREE.LineBasicMaterial({ color: 0x00ffff });
         this.shadowLine = new THREE.Line(new THREE.BufferGeometry(), mat);
         this.scene.add(this.shadowLine);
         this.updateShadow();
