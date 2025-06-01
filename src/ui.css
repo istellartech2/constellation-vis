@@ -22,14 +22,8 @@ body {
   font-family: var(--font-family-ui);
 }
 
-.speed-control input[type='range'] {
-  width: 160px;
-  accent-color: var(--accent-color);
-}
-
-.speed-control .speed-value {
-  margin-top: 4px;
-  font-variant-numeric: tabular-nums;
+.speed-control select {
+  font-family: var(--font-family-ui);
 }
 
 .side-panel-button {
