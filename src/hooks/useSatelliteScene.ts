@@ -178,8 +178,12 @@ export function useSatelliteScene({
     let selectedIndex: number | null = null;
     let selectedStationIndex: number | null = null;
     let orbitLine: THREE.Line | null = null;
+    let shadowLine: THREE.Line | null = null;
+    let shadowStartDate: Date | null = null;
     let currentSimDate = startTime;
+    let shadowMinutes = 0;
 
+    let shadowCoords: { longitude: number; latitude: number }[] = [];
     // When a satellite is selected, draw lines showing two full orbits
     // starting from the current simulation time.
     function updateTrack() {
@@ -213,6 +217,31 @@ export function useSatelliteScene({
       scene.add(orbitLine);
     }
 
+    function updateShadow() {
+      if (!shadowLine || selectedIndex === null || !shadowStartDate) return;
+      const rec = satRecs[selectedIndex];
+      const totalMinutes = Math.ceil((currentSimDate.getTime() - shadowStartDate.getTime()) / 60000);
+      for (let m = shadowMinutes; m <= totalMinutes; m += 1) {
+        const d = new Date(shadowStartDate.getTime() + m * 60000);
+        const pv = satellite.propagate(rec, d);
+        if (pv?.position) {
+          const gmst = satellite.gstime(d);
+          const geo = satellite.eciToGeodetic(pv.position, gmst);
+          shadowCoords.push({ longitude: geo.longitude, latitude: geo.latitude });
+        }
+      }
+      shadowMinutes = totalMinutes;
+      const gmstNow = satellite.gstime(currentSimDate);
+      const pts = shadowCoords.map(gd => {
+        const ecf = satellite.geodeticToEcf({ longitude: gd.longitude, latitude: gd.latitude, height: 0 });
+        const eci = satellite.ecfToEci(ecf, gmstNow);
+        return new THREE.Vector3(eci.x / EARTH_RADIUS_EQUATOR_KM, eci.z / EARTH_RADIUS_POLAR_KM, -eci.y / EARTH_RADIUS_EQUATOR_KM);
+      });
+      const geom = new THREE.BufferGeometry().setFromPoints(pts);
+      shadowLine.geometry.dispose();
+      shadowLine.geometry = geom;
+    }
+
     // Check if a ground station or satellite was clicked/tapped and update selection state.
     function handlePointer(event: PointerEvent) {
       const rect = renderer.domElement.getBoundingClientRect();
@@ -233,12 +262,31 @@ export function useSatelliteScene({
         selectedIndex = hits[0].index;
         if (onSelect) onSelect(selectedIndex);
         updateTrack();
+        shadowStartDate = currentSimDate;
+        shadowMinutes = 0;
+        shadowCoords = [];
+        if (shadowLine) {
+          shadowLine.geometry.dispose();
+          scene.remove(shadowLine);
+        }
+        const mat = new THREE.LineBasicMaterial({ color: 0xffff00 });
+        shadowLine = new THREE.Line(new THREE.BufferGeometry(), mat);
+        scene.add(shadowLine);
+        updateShadow();
       } else {
         selectedIndex = null;
         if (onSelect) onSelect(null);
         selectedStationIndex = null;
         if (onSelectStation) onSelectStation(null);
         updateTrack();
+        shadowStartDate = null;
+        shadowMinutes = 0;
+        shadowCoords = [];
+        if (shadowLine) {
+          shadowLine.geometry.dispose();
+          scene.remove(shadowLine);
+          shadowLine = null;
+        }
       }
     }
     renderer.domElement.addEventListener('pointerdown', handlePointer);
@@ -367,6 +415,8 @@ export function useSatelliteScene({
       satColorAttr.needsUpdate = true;
       groundPosAttr.needsUpdate = true;
 
+      updateShadow();
+
 
       // Display current simulation time
       if (timeRef.current) timeRef.current.textContent = fmt(simDate);
@@ -392,6 +442,13 @@ export function useSatelliteScene({
       if (orbitLine) {
         orbitLine.geometry.dispose();
       }
+      if (shadowLine) {
+        shadowLine.geometry.dispose();
+        scene.remove(shadowLine);
+        shadowLine = null;
+      }
+        shadowMinutes = 0;
+        shadowCoords = [];
       renderer.dispose();
       satGeometry.dispose();
       groundGeometry.dispose();
