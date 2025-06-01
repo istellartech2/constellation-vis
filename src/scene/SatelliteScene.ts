@@ -391,7 +391,10 @@ export default class SatelliteScene {
             this.linkLines[gi][i].visible = false;
           }
         });
-        const c = new THREE.Color(anyVisible ? 0x00ff00 : 0xff0000);
+        const isSelected = this.selectedIndex === i;
+        const c = new THREE.Color(
+          isSelected ? 0x00ffff : (anyVisible ? 0x00ff00 : 0xff0000)
+        );
         this.satColorAttr.setXYZ(i, c.r, c.g, c.b);
       }
     }
