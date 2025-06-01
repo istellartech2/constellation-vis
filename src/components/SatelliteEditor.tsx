@@ -406,40 +406,48 @@ export default function SatelliteEditor({
               Help
             </button>
           </div>
+          <div className="tab-content">
           {tab === "editor" && (
             <>
-              <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap" }}>
-                <span>satellites.toml</span>
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                  <span style={{ fontSize: "0.9em", fontWeight: 500 }}>satellites.toml</span>
+                  <div style={{ display: "flex", gap: 2 }}>
+                    <button
+                      onClick={() => downloadFile("satellites.toml", satText)}
+                      style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
+                      title="Download"
+                    >
+                      💾
+                    </button>
+                    <button
+                      onClick={() => satInputRef.current?.click()}
+                      style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
+                      title="Open file"
+                    >
+                      📂
+                    </button>
+                    <button
+                      onClick={() => setSatText("")}
+                      style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
+                      title="Clear"
+                    >
+                      🗑️
+                    </button>
+                    <button
+                      onClick={() => setImportOpen(true)}
+                      style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
+                      title="Import from CelesTrak"
+                    >
+                      🌐
+                    </button>
+                  </div>
+                </div>
                 <textarea
                   value={satText}
                   onChange={(e) => setSatText(e.target.value)}
-                  style={{ width: "98%", height: 80 }}
+                  style={{ width: "100%", height: 60, fontSize: "0.85em" }}
                 />
-                <div style={{ flexBasis: "100%", height: 0 }} />
-                <button
-                  onClick={() => downloadFile("satellites.toml", satText)}
-                  style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
-                >
-                  💾
-                </button>
-                <button
-                  onClick={() => satInputRef.current?.click()}
-                  style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
-                >
-                  📂
-                </button>
-                <button
-                  onClick={() => setSatText("")}
-                  style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
-                >
-                  🗑️
-                </button>
-                <button
-                  onClick={() => setImportOpen(true)}
-                  style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
-                >
-                  🌐
-                </button>
                 <input
                   ref={satInputRef}
                   type="file"
@@ -453,98 +461,110 @@ export default function SatelliteEditor({
                 />
               </div>
 
-              <hr className="hr-dashed" />
-              <div style={{ marginTop: 4 }}>
-                <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap" }}>
-                  <span>constellation.toml</span>
-                  <textarea
-                    value={constText}
-                    onChange={(e) => setConstText(e.target.value)}
-                    style={{ width: "98%", height: 80 }}
-                  />
-                  <div style={{ flexBasis: "100%", height: 0 }} />
-                  <button
-                    onClick={() => downloadFile("constellation.toml", constText)}
-                    style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
-                  >
-                    💾
-                  </button>
-                  <button
-                    onClick={() => constInputRef.current?.click()}
-                    style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
-                  >
-                    📂
-                  </button>
-                  <button
-                    onClick={() => setConstText("")}
-                    style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
-                  >
-                    🗑️
-                  </button>
-                  <input
-                    ref={constInputRef}
-                    type="file"
-                    accept=".toml"
-                    style={{ display: "none" }}
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) handleFileLoad(f, setConstText, parseConstellationToml, validateSatellites);
-                      e.target.value = "";
-                    }}
-                  />
+              <hr className="hr-dashed" style={{ margin: "8px 0" }} />
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                  <span style={{ fontSize: "0.9em", fontWeight: 500 }}>constellation.toml</span>
+                  <div style={{ display: "flex", gap: 2 }}>
+                    <button
+                      onClick={() => downloadFile("constellation.toml", constText)}
+                      style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
+                      title="Download"
+                    >
+                      💾
+                    </button>
+                    <button
+                      onClick={() => constInputRef.current?.click()}
+                      style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
+                      title="Open file"
+                    >
+                      📂
+                    </button>
+                    <button
+                      onClick={() => setConstText("")}
+                      style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
+                      title="Clear"
+                    >
+                      🗑️
+                    </button>
+                  </div>
                 </div>
+                <textarea
+                  value={constText}
+                  onChange={(e) => setConstText(e.target.value)}
+                  style={{ width: "100%", height: 60, fontSize: "0.85em" }}
+                />
+                <input
+                  ref={constInputRef}
+                  type="file"
+                  accept=".toml"
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleFileLoad(f, setConstText, parseConstellationToml, validateSatellites);
+                    e.target.value = "";
+                  }}
+                />
               </div>
-              <hr className="hr-dashed" />
-              <div style={{ marginTop: 8 }}>
-                <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap" }}>
-                  <span>groundstations.toml</span>
-                  <textarea
-                    value={gsText}
-                    onChange={(e) => setGsText(e.target.value)}
-                    style={{ width: "98%", height: 100 }}
-                  />
-                  <div style={{ flexBasis: "100%", height: 0 }} />
-                  <button
-                    onClick={() => downloadFile("groundstations.toml", gsText)}
-                    style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
-                  >
-                    💾
-                  </button>
-                  <button
-                    onClick={() => gsInputRef.current?.click()}
-                    style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
-                  >
-                    📂
-                  </button>
-                  <button
-                    onClick={() => setGsText("")}
-                    style={{ marginLeft: 2, background: "transparent", border: "none", color: "#fff" }}
-                  >
-                    🗑️
-                  </button>
-                  <input
-                    ref={gsInputRef}
-                    type="file"
-                    accept=".toml"
-                    style={{ display: "none" }}
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) handleFileLoad(f, setGsText, parseGroundStationsToml, validateGroundStations);
-                      e.target.value = "";
-                    }}
-                  />
+              <hr className="hr-dashed" style={{ margin: "8px 0" }} />
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                  <span style={{ fontSize: "0.9em", fontWeight: 500 }}>groundstations.toml</span>
+                  <div style={{ display: "flex", gap: 2 }}>
+                    <button
+                      onClick={() => downloadFile("groundstations.toml", gsText)}
+                      style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
+                      title="Download"
+                    >
+                      💾
+                    </button>
+                    <button
+                      onClick={() => gsInputRef.current?.click()}
+                      style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
+                      title="Open file"
+                    >
+                      📂
+                    </button>
+                    <button
+                      onClick={() => setGsText("")}
+                      style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
+                      title="Clear"
+                    >
+                      🗑️
+                    </button>
+                  </div>
                 </div>
+                <textarea
+                  value={gsText}
+                  onChange={(e) => setGsText(e.target.value)}
+                  style={{ width: "100%", height: 60, fontSize: "0.85em" }}
+                />
+                <input
+                  ref={gsInputRef}
+                  type="file"
+                  accept=".toml"
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleFileLoad(f, setGsText, parseGroundStationsToml, validateGroundStations);
+                    e.target.value = "";
+                  }}
+                />
               </div>
-              <hr className="hr-dashed" />
-              <div style={{ marginTop: 8 }}>
+              <hr className="hr-dashed" style={{ margin: "8px 0" }} />
+              <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
                 <button
                   className="secondary"
                   onClick={handleSaveBundle}
-                  style={{ marginRight: 4 }}
+                  style={{ fontSize: "0.85em", padding: "4px 10px" }}
                 >
                   Save All
                 </button>
-                <button className="secondary" onClick={() => bundleInputRef.current?.click()}>
+                <button 
+                  className="secondary" 
+                  onClick={() => bundleInputRef.current?.click()}
+                  style={{ fontSize: "0.85em", padding: "4px 10px" }}
+                >
                   Load All
                 </button>
                 <input
@@ -559,26 +579,27 @@ export default function SatelliteEditor({
                   }}
                 />
               </div>
-              <hr style={{ marginTop: 8, marginBottom: 8 }} />              
-              <div style={{ display: "flex", flexDirection: "column" }}>
-                <label>
+              <hr style={{ margin: "8px 0" }} />
+              <div style={{ marginBottom: 8 }}>
+                <label style={{ fontSize: "0.9em", fontWeight: 500, display: "block", marginBottom: 4 }}>
                   Simulation start (UTC)
-                  <input
-                    type="datetime-local"
-                    value={startText}
-                    onChange={(e) => setStartText(e.target.value)}
-                    style={{ width: "98%" }}
-                  />
                 </label>
+                <input
+                  type="datetime-local"
+                  value={startText}
+                  onChange={(e) => setStartText(e.target.value)}
+                  style={{ width: "100%", fontSize: "0.85em" }}
+                />
               </div>
-              <hr style={{ marginTop: 12, marginBottom: 6 }} />
+              <hr style={{ margin: "8px 0" }} />
               <button
                 className="primary"
                 onClick={handleUpdate}
                 style={{
-                  marginTop: 8,
-                  padding: "8px 20px",
+                  padding: "6px 16px",
                   fontWeight: "bold",
+                  fontSize: "0.9em",
+                  width: "100%"
                 }}
               >
                 Update
@@ -610,22 +631,13 @@ export default function SatelliteEditor({
                 <label>
                   <input
                     type="checkbox"
-                    checked={showEcliptic}
-                    onChange={(e) => onShowEclipticChange(e.target.checked)}
+                    checked={showEcliptic && showSunDirection}
+                    onChange={(e) => {
+                      onShowEclipticChange(e.target.checked);
+                      onShowSunDirectionChange(e.target.checked);
+                    }}
                   />
                   <span style={{ marginLeft: 4 }}>Show ecliptic plane</span>
-                </label>
-              </div>
-              <div style={{ marginTop: 4 }}>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={showSunDirection}
-                    onChange={(e) =>
-                      onShowSunDirectionChange(e.target.checked)
-                    }
-                  />
-                  <span style={{ marginLeft: 4 }}>Show sun direction</span>
                 </label>
               </div>
               <hr style={{ marginTop: 12, marginBottom: 12 }} />
@@ -637,6 +649,7 @@ export default function SatelliteEditor({
           {tab === "help" && (
             <div style={{ whiteSpace: "pre-wrap" }}>{HELP_TEXT}</div>
           )}
+          </div>
         </div>
       </div>
     </>

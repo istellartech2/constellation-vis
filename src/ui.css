@@ -117,15 +117,38 @@ body {
 }
 
 .tab-button {
-  background: transparent;
-  border: none;
-  padding: 4px 8px;
-  color: var(--text-color);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: none;
+  padding: 8px 16px;
+  color: rgba(255, 255, 255, 0.7);
   cursor: pointer;
+  border-radius: 4px 4px 0 0;
+  position: relative;
+  top: 1px;
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+.tab-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-color);
 }
 
 .tab-button.active {
-  background: var(--accent-color);
+  background: var(--panel-bg);
+  color: var(--text-color);
+  border-color: rgba(255, 255, 255, 0.2);
+  border-bottom: 1px solid var(--panel-bg);
+  z-index: 1;
+}
+
+.tab-content {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0 4px 4px 4px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  margin-top: -1px;
 }
 
 .overlay {
