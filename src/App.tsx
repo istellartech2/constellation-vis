@@ -34,6 +34,7 @@ function App() {
   const [showGraticule, setShowGraticule] = useState(true);
   const [showEcliptic, setShowEcliptic] = useState(true);
   const [showSunDirection, setShowSunDirection] = useState(true);
+  const [ecef, setEcef] = useState(false);
 
   const [startTime, setStartTime] = useState(() => {
     const d = new Date();
@@ -63,6 +64,7 @@ function App() {
     showGraticule,
     showEcliptic,
     showSunDirection,
+    ecef,
     onSelect: setSelectedIdx,
     onSelectStation: setSelectedGsIdx,
     stationInfoRef: gsInfoRef,
@@ -138,6 +140,8 @@ function App() {
         onShowEclipticChange={setShowEcliptic}
         showSunDirection={showSunDirection}
         onShowSunDirectionChange={setShowSunDirection}
+        ecef={ecef}
+        onEcefChange={setEcef}
         onUpdate={(s, gs, start) => {
           setSatellites(s);
           setGroundStations(gs);
