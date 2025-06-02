@@ -1,9 +1,15 @@
 :root {
   --bg-color: #141518;
   --panel-bg: rgba(30, 32, 36, 0.9);
-  --accent-color: #4e9af1;
+  --accent-color: #ed6d00;
   --text-color: #f1f1f1;
   --font-family-ui: 'Inter', system-ui, sans-serif;
+  --orange: #ed6d00;
+  --gradation-start: #ed6d00;
+  --gradation-end: #da9e20;
+  --light-gray: #f0f2f5;
+  --gray: #999faa;
+  --dark-gray: #444753;
 }
 
 body {
@@ -30,14 +36,21 @@ body {
   position: absolute;
   left: 12px;
   top: 12px;
-  background: var(--panel-bg);
-  color: var(--text-color);
-  border: none;
+  background: var(--dark-gray);
+  color: var(--light-gray);
+  border: 1px solid var(--gray);
   padding: 6px 10px;
   font-size: 1.4rem;
   cursor: pointer;
   border-radius: 4px;
   z-index: 30;
+  transition: all 0.2s ease;
+}
+
+.side-panel-button:hover {
+  background: var(--orange);
+  border-color: var(--orange);
+  color: #ffffff;
 }
 
 .side-panel {
@@ -63,21 +76,33 @@ body {
 
 .side-panel h3 {
   margin-top: 0;
+  color: var(--orange);
 }
 
 .side-panel button {
-  background: var(--accent-color);
+  background: var(--orange);
   color: #fff;
   border: none;
   padding: 6px 12px;
   font-weight: 500;
   border-radius: 4px;
   cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.side-panel button:hover {
+  background: #da5800;
 }
 
 .side-panel button.secondary {
   background: transparent;
-  border: 1px solid var(--accent-color);
+  border: 1px solid var(--orange);
+  color: var(--orange);
+}
+
+.side-panel button.secondary:hover {
+  background: rgba(237, 109, 0, 0.1);
+  border-color: #da5800;
 }
 
 .side-panel-close {
@@ -86,20 +111,33 @@ body {
   top: 12px;
   background: transparent;
   border: none;
-  color: var(--text-color);
+  color: var(--gray);
   font-size: 1.4rem;
   cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.side-panel-close:hover {
+  color: var(--orange);
 }
 
 .side-panel input,
 .side-panel textarea,
 .side-panel select {
-  background: #222;
+  background: var(--dark-gray);
   color: var(--text-color);
-  border: 1px solid #444;
+  border: 1px solid var(--gray);
   border-radius: 4px;
   padding: 4px;
   font-family: var(--font-family-ui);
+}
+
+.side-panel input:focus,
+.side-panel textarea:focus,
+.side-panel select:focus {
+  outline: none;
+  border-color: var(--orange);
+  box-shadow: 0 0 0 2px rgba(237, 109, 0, 0.2);
 }
 
 .sat-size-control {
@@ -111,11 +149,11 @@ body {
 }
 
 .tab-button {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #fef0e6;
+  border: 1px solid #fed4b8;
   border-bottom: none;
   padding: 8px 16px;
-  color: rgba(255, 255, 255, 0.7);
+  color: #444753;
   cursor: pointer;
   border-radius: 4px 4px 0 0;
   position: relative;
@@ -125,23 +163,25 @@ body {
 }
 
 .tab-button:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text-color);
+  background: #fde5d4;
+  color: #444753;
+  border-color: #fcba8a;
 }
 
 .tab-button.active {
-  background: var(--panel-bg);
-  color: var(--text-color);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: linear-gradient(135deg, var(--gradation-start), var(--gradation-end));
+  color: #ffffff;
+  border-color: var(--orange);
   border-bottom: 1px solid var(--panel-bg);
   z-index: 1;
+  font-weight: 600;
 }
 
 .tab-content {
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--gray);
   border-radius: 0 4px 4px 4px;
   padding: 12px;
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(68, 71, 83, 0.1);
   margin-top: -1px;
 }
 
