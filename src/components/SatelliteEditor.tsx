@@ -144,6 +144,10 @@ interface Props {
   showSunDirection: boolean;
   /** Called when sun direction visibility changes */
   onShowSunDirectionChange: (v: boolean) => void;
+  /** Display scene in Earth-fixed (ECEF) mode */
+  ecef: boolean;
+  /** Called when ECEF mode changes */
+  onEcefChange: (v: boolean) => void;
 }
 
 export default function SatelliteEditor({
@@ -158,6 +162,8 @@ export default function SatelliteEditor({
   onShowEclipticChange,
   showSunDirection,
   onShowSunDirectionChange,
+  ecef,
+  onEcefChange,
 }: Props) {
   const [satText, setSatText] = useState("");
   const [constText, setConstText] = useState("");
@@ -638,6 +644,16 @@ export default function SatelliteEditor({
                     }}
                   />
                   <span style={{ marginLeft: 4 }}>Show ecliptic plane</span>
+                </label>
+              </div>
+              <div style={{ marginTop: 4 }}>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={ecef}
+                    onChange={(e) => onEcefChange(e.target.checked)}
+                  />
+                  <span style={{ marginLeft: 4 }}>ECEF mode</span>
                 </label>
               </div>
               <hr style={{ marginTop: 12, marginBottom: 12 }} />

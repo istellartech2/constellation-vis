@@ -30,6 +30,8 @@ export interface SatelliteSceneParams {
   showGraticule: boolean;
   showEcliptic: boolean;
   showSunDirection: boolean;
+  /** Rotate the camera with the Earth to approximate an ECEF view */
+  ecef: boolean;
   onSelect?: (idx: number | null) => void;
   onSelectStation?: (idx: number | null) => void;
   stationInfoRef?: React.RefObject<HTMLPreElement | null>;
@@ -40,6 +42,7 @@ export default class SatelliteScene {
   private readonly camera: THREE.PerspectiveCamera;
   private readonly renderer: THREE.WebGLRenderer;
   private readonly controls: OrbitControls;
+  private readonly cameraHolder: THREE.Group;
   private readonly disposeFns: (() => void)[] = [];
 
   private readonly satRecs: satellite.SatRec[];
@@ -84,6 +87,9 @@ export default class SatelliteScene {
       1000,
     );
     this.camera.position.set(0, 0, 3);
+    this.cameraHolder = new THREE.Group();
+    this.cameraHolder.add(this.camera);
+    this.scene.add(this.cameraHolder);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -306,6 +312,7 @@ export default class SatelliteScene {
     const rotAngle = satellite.gstime(simDate);
     this.earthMesh.rotation.y = rotAngle;
     this.graticule.rotation.y = rotAngle;
+    this.cameraHolder.rotation.y = this.params.ecef ? rotAngle : 0;
 
     const { x: sx, y: sy, z: sz } = sunVectorECI(simDate);
     this.sunlight.position.set(sx * 10, sz * 10, -sy * 10);

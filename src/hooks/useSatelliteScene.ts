@@ -27,6 +27,7 @@ export function useSatelliteScene(params: SatelliteSceneParams) {
     params.showGraticule,
     params.showEcliptic,
     params.showSunDirection,
+    params.ecef,
     params.onSelect,
     params.onSelectStation,
     params.stationInfoRef,
