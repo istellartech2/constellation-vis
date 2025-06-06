@@ -282,17 +282,41 @@ export default function SatelliteEditor({
 
 
   useEffect(() => {
+    // Load satellites.toml
     fetch(import.meta.env.BASE_URL + 'satellites.toml')
-      .then((r) => r.text())
-      .then(setSatText);
+      .then((r) => {
+        if (!r.ok) throw new Error(`Failed to load satellites.toml: ${r.status}`);
+        return r.text();
+      })
+      .then(setSatText)
+      .catch((error) => {
+        console.error('Error loading satellites.toml:', error);
+        setSatText("# Failed to load default satellites.toml\n# Please manually enter satellite data");
+      });
+
+    // Load constellation.toml
     fetch(import.meta.env.BASE_URL + 'constellation.toml')
-      .then((r) => r.text())
+      .then((r) => {
+        if (!r.ok) throw new Error(`Failed to load constellation.toml: ${r.status}`);
+        return r.text();
+      })
       .then(setConstText)
-      .catch(() => setConstText(""));
+      .catch((error) => {
+        console.error('Error loading constellation.toml:', error);
+        setConstText("# Failed to load default constellation.toml\n# This file is optional");
+      });
+
+    // Load groundstations.toml
     fetch(import.meta.env.BASE_URL + 'groundstations.toml')
-      .then((r) => r.text())
+      .then((r) => {
+        if (!r.ok) throw new Error(`Failed to load groundstations.toml: ${r.status}`);
+        return r.text();
+      })
       .then(setGsText)
-      .catch(() => setGsText(""));
+      .catch((error) => {
+        console.error('Error loading groundstations.toml:', error);
+        setGsText("# Failed to load default groundstations.toml\n# Please manually enter ground station data");
+      });
   }, []);
 
   const handleUpdate = () => {

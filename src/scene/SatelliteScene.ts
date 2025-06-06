@@ -18,6 +18,9 @@ import {
 const EARTH_RADIUS_EQUATOR_KM = 6378.137;
 const EARTH_RADIUS_POLAR_KM = 6356.7523142;
 
+/** Maximum number of shadow trail points to keep in memory */
+const MAX_SHADOW_COORDS = 1440; // 24 hours at 1 minute intervals
+
 export interface SatelliteSceneParams {
   mountRef: React.RefObject<HTMLDivElement | null>;
   timeRef: React.RefObject<HTMLDivElement | null>;
@@ -66,6 +69,7 @@ export default class SatelliteScene {
   private currentSimDate: Date;
   private shadowMinutes = 0;
   private shadowCoords: { longitude: number; latitude: number }[] = [];
+  private animationFrameId: number | null = null;
 
   // Store references for proper disposal
   private satGeometry: THREE.BufferGeometry;
@@ -298,6 +302,11 @@ export default class SatelliteScene {
         const gmst = satellite.gstime(d);
         const geo = satellite.eciToGeodetic(pv.position, gmst);
         this.shadowCoords.push({ longitude: geo.longitude, latitude: geo.latitude });
+        
+        // Limit the array size to prevent unbounded growth
+        if (this.shadowCoords.length > MAX_SHADOW_COORDS) {
+          this.shadowCoords.shift(); // Remove oldest point
+        }
       }
     }
     this.shadowMinutes = totalMinutes;
@@ -317,7 +326,7 @@ export default class SatelliteScene {
   }
 
   private animate = () => {
-    requestAnimationFrame(this.animate);
+    this.animationFrameId = requestAnimationFrame(this.animate);
     const nowReal = Date.now();
     const simDeltaMs = (nowReal - this.startReal) * this.params.speedRef.current;
     const simDate = new Date(this.startSim + simDeltaMs);
@@ -443,6 +452,12 @@ export default class SatelliteScene {
   }
 
   dispose() {
+    // Cancel animation frame first
+    if (this.animationFrameId !== null) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
+    }
+    
     this.disposeFns.forEach((fn) => fn());
     
     // Clear the scene first
