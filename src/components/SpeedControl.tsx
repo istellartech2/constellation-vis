@@ -4,7 +4,7 @@ interface Props {
 }
 
 // Speed control with predefined speed steps
-const SPEED_OPTIONS = [1, 2, 5, 10, 30, 60, 120, 240, 360, 480, 600];
+const SPEED_OPTIONS = [1, 5, 10, 30, 60, 120, 240, 360, 600];
 
 export default function SpeedControl({ value, onChange }: Props) {
   const currentSpeed = Math.pow(10, value);
