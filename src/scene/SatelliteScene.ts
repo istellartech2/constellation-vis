@@ -67,6 +67,15 @@ export default class SatelliteScene {
   private shadowMinutes = 0;
   private shadowCoords: { longitude: number; latitude: number }[] = [];
 
+  // Store references for proper disposal
+  private satGeometry: THREE.BufferGeometry;
+  private satMaterial: THREE.PointsMaterial;
+  private groundGeometry: THREE.BufferGeometry;
+  private groundMaterial: THREE.PointsMaterial;
+  private stationGeo: THREE.SphereGeometry;
+  private stationMat: THREE.MeshBasicMaterial;
+  private linkMaterial: THREE.LineBasicMaterial;
+
   private readonly startReal: number;
   private readonly startSim: number;
 
@@ -126,48 +135,48 @@ export default class SatelliteScene {
     this.sunDot.visible = this.params.showSunDirection;
     this.scene.add(this.sunDot);
 
-    const stationGeo = new THREE.SphereGeometry(0.01, 8, 8);
-    const stationMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    this.stationGeo = new THREE.SphereGeometry(0.01, 8, 8);
+    this.stationMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
 
     this.satRecs = this.params.satellites.map((spec) => toSatrec(spec));
 
     const satPositions = new Float32Array(this.satRecs.length * 3);
     const satColors = new Float32Array(this.satRecs.length * 3);
-    const satGeometry = new THREE.BufferGeometry();
+    this.satGeometry = new THREE.BufferGeometry();
     this.satPosAttr = new THREE.BufferAttribute(satPositions, 3);
     this.satColorAttr = new THREE.BufferAttribute(satColors, 3);
-    satGeometry.setAttribute("position", this.satPosAttr);
-    satGeometry.setAttribute("color", this.satColorAttr);
+    this.satGeometry.setAttribute("position", this.satPosAttr);
+    this.satGeometry.setAttribute("color", this.satColorAttr);
     const textureCircle = new THREE.TextureLoader().load("./assets/circle.png");
-    const satMaterial = new THREE.PointsMaterial({
+    this.satMaterial = new THREE.PointsMaterial({
       size: this.params.satRadius * 2,
       map: textureCircle,
       transparent: true,
       sizeAttenuation: true,
       vertexColors: true,
     });
-    const satPoints = new THREE.Points(satGeometry, satMaterial);
+    const satPoints = new THREE.Points(this.satGeometry, this.satMaterial);
 
     const groundPositions = new Float32Array(this.satRecs.length * 3);
-    const groundGeometry = new THREE.BufferGeometry();
+    this.groundGeometry = new THREE.BufferGeometry();
     this.groundPosAttr = new THREE.BufferAttribute(groundPositions, 3);
-    groundGeometry.setAttribute("position", this.groundPosAttr);
-    const groundMaterial = new THREE.PointsMaterial({
+    this.groundGeometry.setAttribute("position", this.groundPosAttr);
+    this.groundMaterial = new THREE.PointsMaterial({
       color: 0xa9a9a9,
       map: textureCircle,
       transparent: true,
       size: 0.01,
       sizeAttenuation: true,
     });
-    const groundPoints = new THREE.Points(groundGeometry, groundMaterial);
+    const groundPoints = new THREE.Points(this.groundGeometry, this.groundMaterial);
 
-    this.stationMeshes = this.params.groundStations.map(() => new THREE.Mesh(stationGeo, stationMat));
-    const linkMaterial = new THREE.LineBasicMaterial({ color: 0xffffff });
+    this.stationMeshes = this.params.groundStations.map(() => new THREE.Mesh(this.stationGeo, this.stationMat));
+    this.linkMaterial = new THREE.LineBasicMaterial({ color: 0xffffff });
     this.linkGeometries = this.params.groundStations.map(() =>
       this.satRecs.map(() => new THREE.BufferGeometry()),
     );
     this.linkLines = this.linkGeometries.map((arr) =>
-      arr.map((g) => new THREE.Line(g, linkMaterial)),
+      arr.map((g) => new THREE.Line(g, this.linkMaterial)),
     );
 
     this.scene.add(satPoints);
@@ -435,6 +444,44 @@ export default class SatelliteScene {
 
   dispose() {
     this.disposeFns.forEach((fn) => fn());
+    
+    // Clear the scene first
+    while(this.scene.children.length > 0) {
+      this.scene.remove(this.scene.children[0]);
+    }
+    
+    // Dispose all geometries
+    this.satGeometry.dispose();
+    this.groundGeometry.dispose();
+    this.stationGeo.dispose();
+    this.linkGeometries.forEach(arr => arr.forEach(g => g.dispose()));
+    
+    // Dispose all materials
+    this.satMaterial.dispose();
+    if (this.satMaterial.map) this.satMaterial.map.dispose();
+    this.groundMaterial.dispose();
+    if (this.groundMaterial.map) this.groundMaterial.map.dispose();
+    this.stationMat.dispose();
+    this.linkMaterial.dispose();
+    
+    // Dispose earth mesh
+    this.earthMesh.geometry.dispose();
+    if (this.earthMesh.material instanceof THREE.Material) {
+      this.earthMesh.material.dispose();
+      const mat = this.earthMesh.material as THREE.MeshPhongMaterial;
+      if (mat.map) {
+        mat.map.dispose();
+      }
+    }
+    
+    // Dispose graticule, ecliptic, and sun dot
+    this.graticule.geometry.dispose();
+    this.ecliptic.geometry.dispose();
+    this.sunDot.geometry.dispose();
+    if (this.sunDot.material instanceof THREE.Material) {
+      this.sunDot.material.dispose();
+    }
+    
     if (this.orbitLine) {
       this.orbitLine.geometry.dispose();
     }
@@ -443,9 +490,13 @@ export default class SatelliteScene {
       this.scene.remove(this.shadowLine);
       this.shadowLine = null;
     }
+    
     this.shadowMinutes = 0;
     this.shadowCoords = [];
+    
+    this.controls.dispose();
     this.renderer.dispose();
+    
     if (this.params.mountRef.current && this.params.mountRef.current.contains(this.renderer.domElement)) {
       this.params.mountRef.current.removeChild(this.renderer.domElement);
     }

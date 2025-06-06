@@ -12,8 +12,19 @@ export type { SatelliteSceneParams } from "../scene/SatelliteScene";
 export function useSatelliteScene(params: SatelliteSceneParams) {
   useEffect(() => {
     if (!params.mountRef.current) return;
-    const scene = new SatelliteScene(params);
-    return () => scene.dispose();
+    
+    // Use a small delay to ensure proper cleanup timing
+    let scene: SatelliteScene | null = null;
+    const timeout = setTimeout(() => {
+      scene = new SatelliteScene(params);
+    }, 10);
+    
+    return () => {
+      clearTimeout(timeout);
+      if (scene) {
+        scene.dispose();
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     params.mountRef,
