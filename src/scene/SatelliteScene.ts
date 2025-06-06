@@ -293,7 +293,11 @@ export default class SatelliteScene {
     this.shadowMinutes = totalMinutes;
     const gmstNow = satellite.gstime(this.currentSimDate);
     const pts = this.shadowCoords.map((gd) => {
-      const ecf = satellite.geodeticToEcf({ longitude: gd.longitude, latitude: gd.latitude, height: 0 });
+      const ecf = satellite.geodeticToEcf({
+        longitude: gd.longitude,
+        latitude: gd.latitude,
+        height: EARTH_RADIUS_EQUATOR_KM * 0.001,
+      });
       const eci = satellite.ecfToEci(ecf, gmstNow);
       return new THREE.Vector3(eci.x / EARTH_RADIUS_EQUATOR_KM, eci.z / EARTH_RADIUS_POLAR_KM, -eci.y / EARTH_RADIUS_EQUATOR_KM);
     });

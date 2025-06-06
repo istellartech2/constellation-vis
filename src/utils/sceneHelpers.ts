@@ -64,12 +64,16 @@ export function sunVectorECI(date: Date): {
  */
 export function createGraticule(stepDeg = 20, offset = 0): THREE.LineSegments {
   const verts: number[] = [];
+  const colors: number[] = [];
   const r = 1 + offset;
-  const material = new THREE.LineBasicMaterial({ color: 0xdcdcdc });
+  const gray = new THREE.Color(0xdcdcdc);
+  const red = new THREE.Color(0xff6666);
+  const blue = new THREE.Color(0x6666ff);
 
   // Longitude lines
   for (let lon = -180; lon <= 180; lon += stepDeg) {
     const lonRad = lon * DEG2RAD;
+    const c = lon === 0 ? blue : gray;
     for (let lat = -90; lat < 90; lat += 2) {
       const a = lat * DEG2RAD;
       const b = (lat + 2) * DEG2RAD;
@@ -81,12 +85,16 @@ export function createGraticule(stepDeg = 20, offset = 0): THREE.LineSegments {
         Math.sin(b) * EARTH_FLATTENING * r,
         -Math.cos(b) * Math.sin(lonRad) * r
       );
+      for (let j = 0; j < 2; j++) {
+        colors.push(c.r, c.g, c.b);
+      }
     }
   }
 
   // Latitude lines
   for (let lat = -80; lat <= 80; lat += stepDeg) {
     const latRad = lat * DEG2RAD;
+    const c = lat === 0 ? red : gray;
     for (let lon = -180; lon < 180; lon += 2) {
       const a = lon * DEG2RAD;
       const b = (lon + 2) * DEG2RAD;
@@ -98,11 +106,16 @@ export function createGraticule(stepDeg = 20, offset = 0): THREE.LineSegments {
         Math.sin(latRad) * EARTH_FLATTENING * r,
         -Math.cos(latRad) * Math.sin(b) * r
       );
+      for (let j = 0; j < 2; j++) {
+        colors.push(c.r, c.g, c.b);
+      }
     }
   }
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
+  geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+  const material = new THREE.LineBasicMaterial({ vertexColors: true });
   return new THREE.LineSegments(geometry, material);
 }
 
