@@ -106,6 +106,7 @@ export default class SatelliteScene {
 
     const earthGeometry = new THREE.SphereGeometry(1, 128, 128);
     const texture = new THREE.TextureLoader().load(this.params.earthTexture);
+    texture.colorSpace = THREE.SRGBColorSpace;
     const earthMaterial = new THREE.MeshPhongMaterial({ map: texture, shininess: 1 });
     this.earthMesh = new THREE.Mesh(earthGeometry, earthMaterial);
     this.earthMesh.scale.set(1, EARTH_FLATTENING, 1);
@@ -137,7 +138,7 @@ export default class SatelliteScene {
     this.satColorAttr = new THREE.BufferAttribute(satColors, 3);
     satGeometry.setAttribute("position", this.satPosAttr);
     satGeometry.setAttribute("color", this.satColorAttr);
-    const textureCircle = new THREE.TextureLoader().load("/assets/circle.png");
+    const textureCircle = new THREE.TextureLoader().load("./assets/circle.png");
     const satMaterial = new THREE.PointsMaterial({
       size: this.params.satRadius * 2,
       map: textureCircle,
