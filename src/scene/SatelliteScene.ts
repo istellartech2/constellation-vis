@@ -111,7 +111,7 @@ export default class SatelliteScene {
     this.earthMesh.scale.set(1, EARTH_FLATTENING, 1);
     this.scene.add(this.earthMesh);
 
-    this.graticule = createGraticule(20);
+    this.graticule = createGraticule(20, 0.001);
     this.graticule.visible = this.params.showGraticule;
     this.scene.add(this.graticule);
 

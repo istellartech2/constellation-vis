@@ -57,9 +57,14 @@ export function sunVectorECI(date: Date): {
   };
 }
 
-/** Generate Earth graticule as line segments */
-export function createGraticule(stepDeg = 20): THREE.LineSegments {
+/**
+ * Generate Earth graticule as line segments.
+ * @param stepDeg Angular spacing between lines in degrees.
+ * @param offset  Fractional radial offset from the surface.
+ */
+export function createGraticule(stepDeg = 20, offset = 0): THREE.LineSegments {
   const verts: number[] = [];
+  const r = 1 + offset;
   const material = new THREE.LineBasicMaterial({ color: 0xdcdcdc });
 
   // Longitude lines
@@ -69,12 +74,12 @@ export function createGraticule(stepDeg = 20): THREE.LineSegments {
       const a = lat * DEG2RAD;
       const b = (lat + 2) * DEG2RAD;
       verts.push(
-        Math.cos(a) * Math.cos(lonRad),
-        Math.sin(a) * EARTH_FLATTENING,
-        -Math.cos(a) * Math.sin(lonRad),
-        Math.cos(b) * Math.cos(lonRad),
-        Math.sin(b) * EARTH_FLATTENING,
-        -Math.cos(b) * Math.sin(lonRad)
+        Math.cos(a) * Math.cos(lonRad) * r,
+        Math.sin(a) * EARTH_FLATTENING * r,
+        -Math.cos(a) * Math.sin(lonRad) * r,
+        Math.cos(b) * Math.cos(lonRad) * r,
+        Math.sin(b) * EARTH_FLATTENING * r,
+        -Math.cos(b) * Math.sin(lonRad) * r
       );
     }
   }
@@ -86,12 +91,12 @@ export function createGraticule(stepDeg = 20): THREE.LineSegments {
       const a = lon * DEG2RAD;
       const b = (lon + 2) * DEG2RAD;
       verts.push(
-        Math.cos(latRad) * Math.cos(a),
-        Math.sin(latRad) * EARTH_FLATTENING,
-        -Math.cos(latRad) * Math.sin(a),
-        Math.cos(latRad) * Math.cos(b),
-        Math.sin(latRad) * EARTH_FLATTENING,
-        -Math.cos(latRad) * Math.sin(b)
+        Math.cos(latRad) * Math.cos(a) * r,
+        Math.sin(latRad) * EARTH_FLATTENING * r,
+        -Math.cos(latRad) * Math.sin(a) * r,
+        Math.cos(latRad) * Math.cos(b) * r,
+        Math.sin(latRad) * EARTH_FLATTENING * r,
+        -Math.cos(latRad) * Math.sin(b) * r
       );
     }
   }
