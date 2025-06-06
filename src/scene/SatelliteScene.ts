@@ -446,9 +446,6 @@ export default class SatelliteScene {
     this.shadowMinutes = 0;
     this.shadowCoords = [];
     this.renderer.dispose();
-    this.satPosAttr.array = new Float32Array();
-    this.satColorAttr.array = new Float32Array();
-    this.groundPosAttr.array = new Float32Array();
     if (this.params.mountRef.current && this.params.mountRef.current.contains(this.renderer.domElement)) {
       this.params.mountRef.current.removeChild(this.renderer.domElement);
     }
