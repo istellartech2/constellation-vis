@@ -30,7 +30,7 @@ function App() {
     window.innerWidth <= 600 ? 0.02 : 0.015,
   );
 
-  const [earthTexture, setEarthTexture] = useState("/assets/earth01.webp");
+  const [earthTexture, setEarthTexture] = useState("./assets/earth01.webp");
   const [showGraticule, setShowGraticule] = useState(true);
   const [showEcliptic, setShowEcliptic] = useState(true);
   const [showSunDirection, setShowSunDirection] = useState(true);
