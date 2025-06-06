@@ -282,14 +282,14 @@ export default function SatelliteEditor({
 
 
   useEffect(() => {
-    fetch("/satellites.toml")
+    fetch(import.meta.env.BASE_URL + 'satellites.toml')
       .then((r) => r.text())
       .then(setSatText);
-    fetch("/constellation.toml")
+    fetch(import.meta.env.BASE_URL + 'constellation.toml')
       .then((r) => r.text())
       .then(setConstText)
       .catch(() => setConstText(""));
-    fetch("/groundstations.toml")
+    fetch(import.meta.env.BASE_URL + 'groundstations.toml')
       .then((r) => r.text())
       .then(setGsText)
       .catch(() => setGsText(""));
