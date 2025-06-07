@@ -136,6 +136,10 @@ interface Props {
   ecef: boolean;
   /** Called when ECEF mode changes */
   onEcefChange: (v: boolean) => void;
+  /** Show perturbation information */
+  showPerturbation: boolean;
+  /** Called when perturbation visibility changes */
+  onShowPerturbationChange: (v: boolean) => void;
   /** Called when analysis is started (to pause animation) */
   onAnalysisStart?: () => void;
   /** Called when analysis is closed (to resume animation) */
@@ -156,6 +160,8 @@ export default function SatelliteEditor({
   onShowSunDirectionChange,
   ecef,
   onEcefChange,
+  showPerturbation,
+  onShowPerturbationChange,
   onAnalysisStart,
   onAnalysisEnd,
 }: Props) {
@@ -423,6 +429,8 @@ export default function SatelliteEditor({
               onShowSunDirectionChange={onShowSunDirectionChange}
               ecef={ecef}
               onEcefChange={onEcefChange}
+              showPerturbation={showPerturbation}
+              onShowPerturbationChange={onShowPerturbationChange}
               reportText={reportText}
               onGenerateReport={handleGenerateReport}
             />

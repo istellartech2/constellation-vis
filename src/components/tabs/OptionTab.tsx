@@ -14,6 +14,8 @@ interface Props {
   onShowSunDirectionChange: (v: boolean) => void;
   ecef: boolean;
   onEcefChange: (v: boolean) => void;
+  showPerturbation: boolean;
+  onShowPerturbationChange: (v: boolean) => void;
   reportText: string;
   onGenerateReport: () => void;
 }
@@ -31,6 +33,8 @@ export default function OptionTab({
   onShowSunDirectionChange,
   ecef,
   onEcefChange,
+  showPerturbation,
+  onShowPerturbationChange,
   reportText,
   onGenerateReport,
 }: Props) {
@@ -76,6 +80,16 @@ export default function OptionTab({
             onChange={(e) => onEcefChange(e.target.checked)}
           />
           <span style={{ marginLeft: 4 }}>ECEF mode</span>
+        </label>
+      </div>
+      <div style={{ marginTop: 4 }}>
+        <label>
+          <input
+            type="checkbox"
+            checked={showPerturbation}
+            onChange={(e) => onShowPerturbationChange(e.target.checked)}
+          />
+          <span style={{ marginLeft: 4 }}>Show perturbation</span>
         </label>
       </div>
       <hr style={{ marginTop: 12, marginBottom: 12 }} />

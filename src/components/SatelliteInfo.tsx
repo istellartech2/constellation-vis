@@ -3,10 +3,16 @@ import katex from "katex";
 import "katex/dist/katex.min.css";
 import type { SatelliteSpec } from "../lib/satellites";
 import * as satellite from "satellite.js";
+import { 
+  calculateDetailedPerturbationRates, 
+  formatJ2PerturbationRates,
+  formatJ3PerturbationRates
+} from "../lib/perturbation";
 
 interface Props {
   satellites: SatelliteSpec[];
   selectedIdx: number | null;
+  showPerturbation: boolean;
 }
 
 function renderMath(expression: string): string {
@@ -20,7 +26,7 @@ function renderMath(expression: string): string {
   }
 }
 
-export default function SatelliteInfo({ satellites, selectedIdx }: Props) {
+export default function SatelliteInfo({ satellites, selectedIdx, showPerturbation }: Props) {
   if (selectedIdx === null) return null;
   
   const spec = satellites[selectedIdx];
@@ -86,6 +92,52 @@ export default function SatelliteInfo({ satellites, selectedIdx }: Props) {
       <div>
         <span dangerouslySetInnerHTML={{ __html: renderMath("M") }} /> (平均近点角)    : {e.meanAnomalyDeg.toFixed(1)} deg
       </div>
+      {showPerturbation && (
+        <>
+          <hr style={{ margin: "8px 0", borderColor: "rgba(255, 255, 255, 0.3)" }} />
+          <div style={{ fontSize: "0.85em", color: "#ccc" }}>摂動</div>
+          {(() => {
+            const detailedRates = calculateDetailedPerturbationRates({
+              semiMajorAxisKm: e.semiMajorAxisKm,
+              eccentricity: e.eccentricity,
+              inclinationDeg: e.inclinationDeg,
+              raanDeg: e.raanDeg,
+              argPerigeeDeg: e.argPerigeeDeg,
+              meanAnomalyDeg: e.meanAnomalyDeg,
+            });
+            
+            const j2Rates = formatJ2PerturbationRates(detailedRates.j2);
+            const j3Rates = formatJ3PerturbationRates(detailedRates.j3);
+            
+            return (
+              <>
+                {j2Rates.length > 0 && (
+                  <div style={{ marginTop: "6px" }}>
+                    <div style={{ fontSize: "0.8em", color: "#999", marginBottom: "2px" }}>J₂項</div>
+                    {j2Rates.map((rate, index) => (
+                      <div key={index} style={{ fontSize: "0.85em", paddingLeft: "10px", display: "flex", alignItems: "center", gap: "4px" }}>
+                        <span dangerouslySetInnerHTML={{ __html: renderMath(rate.latex) }} />
+                        <span>: {rate.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {j3Rates.length > 0 && (
+                  <div style={{ marginTop: "6px" }}>
+                    <div style={{ fontSize: "0.8em", color: "#999", marginBottom: "2px" }}>J₃項</div>
+                    {j3Rates.map((rate, index) => (
+                      <div key={index} style={{ fontSize: "0.85em", paddingLeft: "10px", display: "flex", alignItems: "center", gap: "4px" }}>
+                        <span dangerouslySetInnerHTML={{ __html: renderMath(rate.latex) }} />
+                        <span>: {rate.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            );
+          })()}
+        </>
+      )}
     </div>
   );
 }

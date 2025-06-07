@@ -35,6 +35,7 @@ function App() {
   const [showEcliptic, setShowEcliptic] = useState(true);
   const [showSunDirection, setShowSunDirection] = useState(true);
   const [ecef, setEcef] = useState(false);
+  const [showPerturbation, setShowPerturbation] = useState(false);
 
   const [startTime, setStartTime] = useState(() => {
     const d = new Date();
@@ -104,7 +105,7 @@ function App() {
           zIndex: 10,
         }}
       />
-      <SatelliteInfo satellites={satellites} selectedIdx={selectedIdx} />
+      <SatelliteInfo satellites={satellites} selectedIdx={selectedIdx} showPerturbation={showPerturbation} />
       {gsInfoText && (
         <pre
           ref={gsInfoRef}
@@ -138,6 +139,8 @@ function App() {
         onShowSunDirectionChange={setShowSunDirection}
         ecef={ecef}
         onEcefChange={setEcef}
+        showPerturbation={showPerturbation}
+        onShowPerturbationChange={setShowPerturbation}
         onUpdate={(s, gs, start) => {
           setSatellites(s);
           setGroundStations(gs);

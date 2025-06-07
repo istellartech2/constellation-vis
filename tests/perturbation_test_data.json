@@ -1,0 +1,94 @@
+[
+  {
+    "name": "LEO circular orbit",
+    "input": {
+      "semiMajorAxisKm": 6778.137,
+      "eccentricity": 0.001,
+      "inclinationDeg": 51.6,
+      "raanDeg": 0.0,
+      "argPerigeeDeg": 0.0,
+      "meanAnomalyDeg": 0.0
+    },
+    "expected": {
+      "j2": {
+        "dOmega_dt_deg_per_day": -5.002347679308267,
+        "domega_dt_deg_per_day": 3.7412959955880063
+      },
+      "j3": {
+        "de_dt_per_year": 2.9653152720074722e-06,
+        "di_dt_deg_per_year": -0.670162969410144,
+        "dOmega_dt_deg_per_year": 1.6910704703266126,
+        "domega_dt_deg_per_year": -0.7856060860980618
+      }
+    }
+  },
+  {
+    "name": "GEO orbit",
+    "input": {
+      "semiMajorAxisKm": 42164.0,
+      "eccentricity": 0.0002,
+      "inclinationDeg": 0.1,
+      "raanDeg": 0.0,
+      "argPerigeeDeg": 0.0,
+      "meanAnomalyDeg": 0.0
+    },
+    "expected": {
+      "j2": {
+        "dOmega_dt_deg_per_day": -0.013414278636485342,
+        "domega_dt_deg_per_day": 0.026828495979626492
+      },
+      "j3": {
+        "de_dt_per_year": 2.016870591686647e-09,
+        "di_dt_deg_per_year": -0.0002888963118478478,
+        "dOmega_dt_deg_per_year": 1.0084393916835425e-06,
+        "domega_dt_deg_per_year": -2.0168711036697456e-06
+      }
+    }
+  },
+  {
+    "name": "Molniya orbit",
+    "input": {
+      "semiMajorAxisKm": 26600.0,
+      "eccentricity": 0.72,
+      "inclinationDeg": 63.4,
+      "raanDeg": 90.0,
+      "argPerigeeDeg": 270.0,
+      "meanAnomalyDeg": 0.0
+    },
+    "expected": {
+      "j2": {
+        "dOmega_dt_deg_per_day": -0.12985240290080297,
+        "domega_dt_deg_per_day": 0.00035395171865494905
+      },
+      "j3": {
+        "de_dt_per_year": -0.00010295102943603602,
+        "di_dt_deg_per_year": -0.009204460480768357,
+        "dOmega_dt_deg_per_year": 0.03676176569156809,
+        "domega_dt_deg_per_year": -4.4867803238677926e-05
+      }
+    }
+  },
+  {
+    "name": "Sun-synchronous orbit",
+    "input": {
+      "semiMajorAxisKm": 7078.137,
+      "eccentricity": 0.001,
+      "inclinationDeg": 98.2,
+      "raanDeg": 0.0,
+      "argPerigeeDeg": 0.0,
+      "meanAnomalyDeg": 0.0
+    },
+    "expected": {
+      "j2": {
+        "dOmega_dt_deg_per_day": 0.9870891882966879,
+        "domega_dt_deg_per_day": -3.1083712317157355
+      },
+      "j3": {
+        "de_dt_per_year": -1.4550443154478567e-05,
+        "di_dt_deg_per_year": 0.12663516679979112,
+        "dOmega_dt_deg_per_year": 1.75757435520438,
+        "domega_dt_deg_per_year": 0.7894012838977063
+      }
+    }
+  }
+]
