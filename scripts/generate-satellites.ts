@@ -133,5 +133,5 @@ const SATELLITES: SatelliteSpec[] = ${serialize(normalized)};
 export default SATELLITES;
 `;
 
-await Bun.write("src/data/satellites.generated.ts", content);
+await Bun.write("src/lib/satellites.generated.ts", content);
 

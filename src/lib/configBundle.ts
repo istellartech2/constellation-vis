@@ -1,6 +1,6 @@
 import { parseSatellitesToml, parseConstellationToml, parseGroundStationsToml } from './tomlParse';
-import type { SatelliteSpec } from '../data/satellites';
-import type { GroundStation } from '../data/groundStations';
+import type { SatelliteSpec } from './satellites';
+import type { GroundStation } from './groundStations';
 
 export interface ConfigBundle {
   satText: string;

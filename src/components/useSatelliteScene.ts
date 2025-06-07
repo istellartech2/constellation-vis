@@ -1,8 +1,8 @@
 import { useEffect } from "react";
-import SatelliteScene, { type SatelliteSceneParams } from "../scene/SatelliteScene";
+import SatelliteScene, { type SatelliteSceneParams } from "../lib/visualization";
 
 // Re-export the parameter type for convenience
-export type { SatelliteSceneParams } from "../scene/SatelliteScene";
+export type { SatelliteSceneParams } from "../lib/visualization";
 
 /**
  * React hook creating and managing the underlying Three.js scene. The heavy

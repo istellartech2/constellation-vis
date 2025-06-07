@@ -3,9 +3,9 @@ import {
   parseSatellitesToml,
   parseConstellationToml,
   parseGroundStationsToml,
-} from "../../utils/tomlParse";
-import type { SatelliteSpec } from "../../data/satellites";
-import type { GroundStation } from "../../data/groundStations";
+} from "../../lib/tomlParse";
+import type { SatelliteSpec } from "../../lib/satellites";
+import type { GroundStation } from "../../lib/groundStations";
 
 interface Props {
   satText: string;

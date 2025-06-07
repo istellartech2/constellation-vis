@@ -1,8 +1,8 @@
 import * as satellite from "satellite.js";
 import * as THREE from "three";
-import type { SatelliteSpec } from "../data/satellites";
-import { toSatrec } from "../data/satellites";
-import type { GroundStation } from "../data/groundStations";
+import type { SatelliteSpec } from "./satellites";
+import { toSatrec } from "./satellites";
+import type { GroundStation } from "./groundStations";
 
 /** Convert a list of satellite specs to satrec objects. */
 function toSatrecs(sats: SatelliteSpec[]): satellite.SatRec[] {

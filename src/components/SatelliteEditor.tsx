@@ -1,16 +1,16 @@
 import { useEffect, useState } from "react";
-import type { SatelliteSpec } from "../data/satellites";
-import { generateVisibilityReport } from "../utils/visibility";
-import type { GroundStation } from "../data/groundStations";
+import type { SatelliteSpec } from "../lib/satellites";
+import { generateVisibilityReport } from "../lib/visibility";
+import type { GroundStation } from "../lib/groundStations";
 import {
   parseSatellitesToml,
   parseConstellationToml,
   parseGroundStationsToml,
-} from "../utils/tomlParse";
+} from "../lib/tomlParse";
 import {
   parseConfigBundle,
   buildConfigBundle,
-} from "../utils/configBundle";
+} from "../lib/configBundle";
 import EditorTab from "./tabs/EditorTab";
 import AnalysisTab from "./tabs/AnalysisTab";
 import OptionTab from "./tabs/OptionTab";

@@ -2,7 +2,7 @@
 // configuration files. These parsers are intentionally simple and are
 // not meant to be fully-featured TOML implementations.
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { SatelliteSpec } from "../data/satellites";
+import type { SatelliteSpec } from "./satellites";
 
 // Minimal value parser handling strings, numbers and ISO dates.
 function parseValue(v: string): any {

@@ -4,15 +4,15 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import * as satellite from "satellite.js";
-import { toSatrec } from "../data/satellites";
-import type { SatelliteSpec } from "../data/satellites";
-import type { GroundStation } from "../data/groundStations";
+import { toSatrec } from "./satellites";
+import type { SatelliteSpec } from "./satellites";
+import type { GroundStation } from "./groundStations";
 import {
   sunVectorECI,
   createGraticule,
   createEclipticLine,
   EARTH_FLATTENING,
-} from "../utils/sceneHelpers";
+} from "./astronomy";
 
 /** Equatorial and polar radii of Earth in kilometres. */
 const EARTH_RADIUS_EQUATOR_KM = 6378.137;
