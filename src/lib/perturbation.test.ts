@@ -171,19 +171,19 @@ describe('Perturbation calculations', () => {
     it('should format J2 rates with correct units and precision', () => {
       const formatted = formatJ2PerturbationRates(sampleRates);
       expect(formatted).toHaveLength(2); // Should only include non-zero values
-      expect(formatted[0].latex).toBe('\\frac{d\\Omega}{dt}');
+      expect(formatted[0].latex).toBe('d\\Omega/dt');
       expect(formatted[0].value).toBe('-5.00 deg/day');
-      expect(formatted[1].latex).toBe('\\frac{d\\omega}{dt}');
+      expect(formatted[1].latex).toBe('d\\omega/dt');
       expect(formatted[1].value).toBe('3.74 deg/day');
     });
     
     it('should format J3 rates with correct units and precision', () => {
       const formatted = formatJ3PerturbationRates(sampleRates);
       expect(formatted).toHaveLength(4);
-      expect(formatted.find(f => f.latex === '\\frac{de}{dt}')?.value).toBe('1.50e-6 /year');
-      expect(formatted.find(f => f.latex === '\\frac{di}{dt}')?.value).toBe('-0.67 deg/year');
-      expect(formatted.find(f => f.latex === '\\frac{d\\Omega}{dt}')?.value).toBe('-1827.86 deg/year');
-      expect(formatted.find(f => f.latex === '\\frac{d\\omega}{dt}')?.value).toBe('1365.73 deg/year');
+      expect(formatted.find(f => f.latex === 'de/dt')?.value).toBe('1.50e-6 /year');
+      expect(formatted.find(f => f.latex === 'di/dt')?.value).toBe('-0.67 deg/year');
+      expect(formatted.find(f => f.latex === 'd\\Omega/dt')?.value).toBe('-1827.86 deg/year');
+      expect(formatted.find(f => f.latex === 'd\\omega/dt')?.value).toBe('1365.73 deg/year');
     });
     
     it('should filter out zero values', () => {
