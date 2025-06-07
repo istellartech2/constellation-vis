@@ -4,7 +4,7 @@ import SatelliteEditor from "./components/SatelliteEditor";
 import { useSatelliteScene } from "./components/useSatelliteScene";
 import { SATELLITES as INITIAL_SATS } from "./lib/satellites";
 import { loadGroundStations, type GroundStation } from "./lib/groundStations";
-import { formatSatelliteInfo } from "./components/formatSatelliteInfo";
+import SatelliteInfo from "./components/SatelliteInfo";
 import { formatGroundStationInfo } from "./components/formatGroundStationInfo";
 
 /**
@@ -83,7 +83,6 @@ function App() {
     stationInfoRef: gsInfoRef,
   });
 
-  const infoText = formatSatelliteInfo(satellites, selectedIdx);
   const gsInfoText = formatGroundStationInfo(groundStations, selectedGsIdx);
 
   return (
@@ -105,23 +104,7 @@ function App() {
           zIndex: 10,
         }}
       />
-      {infoText && (
-        <pre
-          style={{
-            position: "fixed",
-            left: 8,
-            bottom: "calc(env(safe-area-inset-bottom, 0px) + 6px)",
-            color: "#fff",
-            fontFamily: "'Noto Sans Mono', monospace",
-            fontSize: "0.9rem",
-            pointerEvents: "none",
-            whiteSpace: "pre",
-            zIndex: 10,
-          }}
-        >
-          {infoText}
-        </pre>
-      )}
+      <SatelliteInfo satellites={satellites} selectedIdx={selectedIdx} />
       {gsInfoText && (
         <pre
           ref={gsInfoRef}

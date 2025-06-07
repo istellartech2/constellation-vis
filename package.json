@@ -12,8 +12,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@types/katex": "^0.16.7",
     "echarts": "^5.6.0",
     "echarts-for-react": "^3.0.2",
+    "katex": "^0.16.22",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "satellite.js": "^6.0.0",
