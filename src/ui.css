@@ -203,3 +203,25 @@ body {
   border-radius: 6px;
   min-width: 250px;
 }
+
+.analysis-button {
+  width: 100%;
+  text-align: left;
+  padding: 10px 16px !important;
+  font-size: 0.9em;
+  background: var(--dark-gray) !important;
+  border: 1px solid var(--gray) !important;
+  color: var(--text-color) !important;
+  transition: all 0.2s ease;
+}
+
+.analysis-button:hover:not(:disabled) {
+  background: var(--orange) !important;
+  border-color: var(--orange) !important;
+  color: #ffffff !important;
+}
+
+.analysis-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}

@@ -45,12 +45,25 @@ function App() {
   // speed exponent slider (0–2 → 1×–100×)
   const [speedExp, setSpeedExp] = useState(Math.log10(INITIAL_SPEED));
   const speedRef = useRef(INITIAL_SPEED);
+  const [isPaused, setIsPaused] = useState(false);
+  const savedSpeedRef = useRef(INITIAL_SPEED);
+  
   useEffect(() => {
-    speedRef.current = Math.pow(10, speedExp);
-  }, [speedExp]);
+    speedRef.current = isPaused ? 0 : Math.pow(10, speedExp);
+  }, [speedExp, isPaused]);
+  
   useEffect(() => {
     loadGroundStations().then(setGroundStations);
   }, []);
+
+  const handleAnalysisStart = () => {
+    savedSpeedRef.current = speedRef.current;
+    setIsPaused(true);
+  };
+
+  const handleAnalysisEnd = () => {
+    setIsPaused(false);
+  };
 
   useSatelliteScene({
     mountRef,
@@ -147,6 +160,8 @@ function App() {
           setGroundStations(gs);
           setStartTime(start);
         }}
+        onAnalysisStart={handleAnalysisStart}
+        onAnalysisEnd={handleAnalysisEnd}
       />
     </div>
   );

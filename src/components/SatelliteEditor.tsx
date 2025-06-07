@@ -1,9 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { SatelliteSpec } from "../data/satellites";
 import { generateVisibilityReport } from "../utils/visibility";
 import type { GroundStation } from "../data/groundStations";
-import SatelliteSizeControl from "./SatelliteSizeControl";
-import EarthTextureSelector from "./EarthTextureSelector";
 import {
   parseSatellitesToml,
   parseConstellationToml,
@@ -13,6 +11,10 @@ import {
   parseConfigBundle,
   buildConfigBundle,
 } from "../utils/configBundle";
+import EditorTab from "./tabs/EditorTab";
+import AnalysisTab from "./tabs/AnalysisTab";
+import OptionTab from "./tabs/OptionTab";
+import ImportDialog from "./ImportDialog";
 
 /**
  * Editor side panel allowing the user to load, edit and save TOML files
@@ -20,20 +22,6 @@ import {
  * data is fed back into the visualization via the provided `onUpdate`
  * callback.
  */
-
-const CELESTRACK_GROUPS = [
-  { label: "Last 30 Days' Launches", group: "last-30-days" },
-  { label: "Space Stations", group: "stations" },
-  { label: "Active GEO", group: "geo" },
-  { label: "Weather", group: "weather" },
-  { label: "GNSS", group: "gnss" },
-  { label: "Starlink", group: "starlink" },
-  { label: "Oneweb", group: "oneweb" },
-] as const;
-
-const HELP_TEXT = `\
-Use this panel to edit or load TOML files defining satellites,\
-ground stations and constellations.\n\nClick Update to apply changes.\n\nSelect the Option tab to adjust settings and generate ground station visibility information.`;
 
 const MU = 398600.4418; // km^3/s^2
 
@@ -148,6 +136,10 @@ interface Props {
   ecef: boolean;
   /** Called when ECEF mode changes */
   onEcefChange: (v: boolean) => void;
+  /** Called when analysis is started (to pause animation) */
+  onAnalysisStart?: () => void;
+  /** Called when analysis is closed (to resume animation) */
+  onAnalysisEnd?: () => void;
 }
 
 export default function SatelliteEditor({
@@ -164,6 +156,8 @@ export default function SatelliteEditor({
   onShowSunDirectionChange,
   ecef,
   onEcefChange,
+  onAnalysisStart,
+  onAnalysisEnd,
 }: Props) {
   const [satText, setSatText] = useState("");
   const [constText, setConstText] = useState("");
@@ -174,16 +168,11 @@ export default function SatelliteEditor({
     return d.toISOString().slice(0, 16);
   });
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<"editor" | "option" | "help">("editor");
+  const [tab, setTab] = useState<"editor" | "analysis" | "option">("editor");
   const [reportText, setReportText] = useState("");
   const [importOpen, setImportOpen] = useState(false);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
-
-  const satInputRef = useRef<HTMLInputElement | null>(null);
-  const constInputRef = useRef<HTMLInputElement | null>(null);
-  const gsInputRef = useRef<HTMLInputElement | null>(null);
-  const bundleInputRef = useRef<HTMLInputElement | null>(null);
 
   function downloadFile(name: string, text: string) {
     const blob = new Blob([text], { type: "text/plain" });
@@ -193,25 +182,6 @@ export default function SatelliteEditor({
     a.download = name;
     a.click();
     URL.revokeObjectURL(url);
-  }
-
-  // Read a user-provided file, parse it and update the corresponding
-  // text box. Optional validation logic can be supplied to reject
-  // invalid input before it reaches the state.
-  async function handleFileLoad<T>(
-    file: File,
-    setter: (t: string) => void,
-    parser: (t: string) => T,
-    validator?: (v: T) => void,
-  ) {
-    const text = await file.text();
-    try {
-      const parsed = parser(text);
-      if (validator) validator(parsed);
-      setter(text);
-    } catch (e) {
-      alert("Invalid file: " + (e as Error).message);
-    }
   }
 
   function toggleGroup(g: string) {
@@ -378,34 +348,14 @@ export default function SatelliteEditor({
 
   return (
     <>
-      {importOpen && (
-        <div className="overlay">
-          <div className="overlay-box">
-            <h3 style={{ marginTop: 0 }}>Import from CelesTrak</h3>
-            {CELESTRACK_GROUPS.map(({ label, group }) => (
-              <label key={group} style={{ display: "block" }}>
-                <input
-                  type="checkbox"
-                  disabled={importing}
-                  checked={selectedGroups.includes(group)}
-                  onChange={() => toggleGroup(group)}
-                />
-                <span style={{ marginLeft: 4 }}>{label}</span>
-              </label>
-            ))}
-            {importing ? (
-              <div style={{ marginTop: 8, textAlign: "center" }}>Loading...</div>
-            ) : (
-              <div style={{ marginTop: 8, textAlign: "right" }}>
-                <button onClick={() => setImportOpen(false)} style={{ marginRight: 8 }}>
-                  Cancel
-                </button>
-                <button onClick={handleImport}>Import</button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <ImportDialog
+        open={importOpen}
+        importing={importing}
+        selectedGroups={selectedGroups}
+        onToggleGroup={toggleGroup}
+        onImport={handleImport}
+        onClose={() => setImportOpen(false)}
+      />
       {!open && (
         <button className="side-panel-button" onClick={() => setOpen(true)}>
           ☰
@@ -424,270 +374,58 @@ export default function SatelliteEditor({
               Editor
             </button>
             <button
+              className={`tab-button ${tab === "analysis" ? "active" : ""}`}
+              onClick={() => setTab("analysis")}
+            >
+              Analysis
+            </button>
+            <button
               className={`tab-button ${tab === "option" ? "active" : ""}`}
               onClick={() => setTab("option")}
             >
               Option
             </button>
-            <button
-              className={`tab-button ${tab === "help" ? "active" : ""}`}
-              onClick={() => setTab("help")}
-            >
-              Help
-            </button>
           </div>
           <div className="tab-content">
           {tab === "editor" && (
-            <>
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                  <span style={{ fontSize: "0.9em", fontWeight: 500 }}>satellites.toml</span>
-                  <div style={{ display: "flex", gap: 2 }}>
-                    <button
-                      onClick={() => downloadFile("satellites.toml", satText)}
-                      style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
-                      title="Download"
-                    >
-                      💾
-                    </button>
-                    <button
-                      onClick={() => satInputRef.current?.click()}
-                      style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
-                      title="Open file"
-                    >
-                      📂
-                    </button>
-                    <button
-                      onClick={() => setSatText("")}
-                      style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
-                      title="Clear"
-                    >
-                      🗑️
-                    </button>
-                    <button
-                      onClick={() => setImportOpen(true)}
-                      style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
-                      title="Import from CelesTrak"
-                    >
-                      🌐
-                    </button>
-                  </div>
-                </div>
-                <textarea
-                  value={satText}
-                  onChange={(e) => setSatText(e.target.value)}
-                  style={{ width: "100%", height: 60, fontSize: "0.85em" }}
-                />
-                <input
-                  ref={satInputRef}
-                  type="file"
-                  accept=".toml"
-                  style={{ display: "none" }}
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) handleFileLoad(f, setSatText, parseSatellitesToml, validateSatellites);
-                    e.target.value = "";
-                  }}
-                />
-              </div>
-
-              <hr className="hr-dashed" style={{ margin: "8px 0" }} />
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                  <span style={{ fontSize: "0.9em", fontWeight: 500 }}>constellation.toml</span>
-                  <div style={{ display: "flex", gap: 2 }}>
-                    <button
-                      onClick={() => downloadFile("constellation.toml", constText)}
-                      style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
-                      title="Download"
-                    >
-                      💾
-                    </button>
-                    <button
-                      onClick={() => constInputRef.current?.click()}
-                      style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
-                      title="Open file"
-                    >
-                      📂
-                    </button>
-                    <button
-                      onClick={() => setConstText("")}
-                      style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
-                      title="Clear"
-                    >
-                      🗑️
-                    </button>
-                  </div>
-                </div>
-                <textarea
-                  value={constText}
-                  onChange={(e) => setConstText(e.target.value)}
-                  style={{ width: "100%", height: 60, fontSize: "0.85em" }}
-                />
-                <input
-                  ref={constInputRef}
-                  type="file"
-                  accept=".toml"
-                  style={{ display: "none" }}
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) handleFileLoad(f, setConstText, parseConstellationToml, validateSatellites);
-                    e.target.value = "";
-                  }}
-                />
-              </div>
-              <hr className="hr-dashed" style={{ margin: "8px 0" }} />
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                  <span style={{ fontSize: "0.9em", fontWeight: 500 }}>groundstations.toml</span>
-                  <div style={{ display: "flex", gap: 2 }}>
-                    <button
-                      onClick={() => downloadFile("groundstations.toml", gsText)}
-                      style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
-                      title="Download"
-                    >
-                      💾
-                    </button>
-                    <button
-                      onClick={() => gsInputRef.current?.click()}
-                      style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
-                      title="Open file"
-                    >
-                      📂
-                    </button>
-                    <button
-                      onClick={() => setGsText("")}
-                      style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
-                      title="Clear"
-                    >
-                      🗑️
-                    </button>
-                  </div>
-                </div>
-                <textarea
-                  value={gsText}
-                  onChange={(e) => setGsText(e.target.value)}
-                  style={{ width: "100%", height: 60, fontSize: "0.85em" }}
-                />
-                <input
-                  ref={gsInputRef}
-                  type="file"
-                  accept=".toml"
-                  style={{ display: "none" }}
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) handleFileLoad(f, setGsText, parseGroundStationsToml, validateGroundStations);
-                    e.target.value = "";
-                  }}
-                />
-              </div>
-              <hr className="hr-dashed" style={{ margin: "8px 0" }} />
-              <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
-                <button
-                  className="secondary"
-                  onClick={handleSaveBundle}
-                  style={{ fontSize: "0.85em", padding: "4px 10px" }}
-                >
-                  Save All
-                </button>
-                <button 
-                  className="secondary" 
-                  onClick={() => bundleInputRef.current?.click()}
-                  style={{ fontSize: "0.85em", padding: "4px 10px" }}
-                >
-                  Load All
-                </button>
-                <input
-                  ref={bundleInputRef}
-                  type="file"
-                  accept=".toml"
-                  style={{ display: "none" }}
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) handleBundleFile(f);
-                    e.target.value = "";
-                  }}
-                />
-              </div>
-              <hr style={{ margin: "8px 0" }} />
-              <div style={{ marginBottom: 8 }}>
-                <label style={{ fontSize: "0.9em", fontWeight: 500, display: "block", marginBottom: 4 }}>
-                  Simulation start (UTC)
-                </label>
-                <input
-                  type="datetime-local"
-                  value={startText}
-                  onChange={(e) => setStartText(e.target.value)}
-                  style={{ width: "100%", fontSize: "0.85em" }}
-                />
-              </div>
-              <hr style={{ margin: "8px 0" }} />
-              <button
-                className="primary"
-                onClick={handleUpdate}
-                style={{
-                  padding: "6px 16px",
-                  fontWeight: "bold",
-                  fontSize: "0.9em",
-                  width: "100%"
-                }}
-              >
-                Update
-              </button>
-            </>
+            <EditorTab
+              satText={satText}
+              constText={constText}
+              gsText={gsText}
+              startText={startText}
+              onSatTextChange={setSatText}
+              onConstTextChange={setConstText}
+              onGsTextChange={setGsText}
+              onStartTextChange={setStartText}
+              onImportClick={() => setImportOpen(true)}
+              onUpdate={handleUpdate}
+              onSaveBundle={handleSaveBundle}
+              onLoadBundle={handleBundleFile}
+            />
+          )}
+          {tab === "analysis" && (
+            <AnalysisTab
+              onAnalysisStart={onAnalysisStart}
+              onAnalysisEnd={onAnalysisEnd}
+            />
           )}
           {tab === "option" && (
-            <div>
-              <SatelliteSizeControl
-                value={satRadius}
-                onChange={onSatRadiusChange}
-              />
-              <EarthTextureSelector
-                value={earthTexture}
-                onChange={onEarthTextureChange}
-                style={{ marginTop: 8 }}
-              />
-              <div style={{ marginTop: 8 }}>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={showGraticule}
-                    onChange={(e) => onShowGraticuleChange(e.target.checked)}
-                  />
-                  <span style={{ marginLeft: 4 }}>Show latitude/longitude lines</span>
-                </label>
-              </div>
-              <div style={{ marginTop: 4 }}>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={showEcliptic && showSunDirection}
-                    onChange={(e) => {
-                      onShowEclipticChange(e.target.checked);
-                      onShowSunDirectionChange(e.target.checked);
-                    }}
-                  />
-                  <span style={{ marginLeft: 4 }}>Show ecliptic plane</span>
-                </label>
-              </div>
-              <div style={{ marginTop: 4 }}>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={ecef}
-                    onChange={(e) => onEcefChange(e.target.checked)}
-                  />
-                  <span style={{ marginLeft: 4 }}>ECEF mode</span>
-                </label>
-              </div>
-              <hr style={{ marginTop: 12, marginBottom: 12 }} />
-              <span>Ground Station Visibility Report</span>
-              <button onClick={handleGenerateReport}>Generate</button>
-              <pre style={{ whiteSpace: "pre-wrap", marginTop: 8 }}>{reportText}</pre>
-            </div>
-          )}
-          {tab === "help" && (
-            <div style={{ whiteSpace: "pre-wrap" }}>{HELP_TEXT}</div>
+            <OptionTab
+              satRadius={satRadius}
+              onSatRadiusChange={onSatRadiusChange}
+              earthTexture={earthTexture}
+              onEarthTextureChange={onEarthTextureChange}
+              showGraticule={showGraticule}
+              onShowGraticuleChange={onShowGraticuleChange}
+              showEcliptic={showEcliptic}
+              onShowEclipticChange={onShowEclipticChange}
+              showSunDirection={showSunDirection}
+              onShowSunDirectionChange={onShowSunDirectionChange}
+              ecef={ecef}
+              onEcefChange={onEcefChange}
+              reportText={reportText}
+              onGenerateReport={handleGenerateReport}
+            />
           )}
           </div>
         </div>
