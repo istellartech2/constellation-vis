@@ -106,29 +106,29 @@ export default function EditorTab({
           <span style={{ fontSize: "0.9em", fontWeight: 500 }}>satellites.toml</span>
           <div style={{ display: "flex", gap: 2 }}>
             <button
+              className="editor-icon-button"
               onClick={() => downloadFile("satellites.toml", satText)}
-              style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
               title="Download"
             >
               💾
             </button>
             <button
+              className="editor-icon-button"
               onClick={() => satInputRef.current?.click()}
-              style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
               title="Open file"
             >
               📂
             </button>
             <button
+              className="editor-icon-button"
               onClick={() => onSatTextChange("")}
-              style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
               title="Clear"
             >
               🗑️
             </button>
             <button
+              className="editor-icon-button"
               onClick={onImportClick}
-              style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
               title="Import from CelesTrak"
             >
               🌐
@@ -138,7 +138,7 @@ export default function EditorTab({
         <textarea
           value={satText}
           onChange={(e) => onSatTextChange(e.target.value)}
-          style={{ width: "100%", height: 60, fontSize: "0.85em" }}
+          style={{ width: "100%", height: 80, fontSize: "0.85em", boxSizing: "border-box" }}
         />
         <input
           ref={satInputRef}
@@ -159,22 +159,22 @@ export default function EditorTab({
           <span style={{ fontSize: "0.9em", fontWeight: 500 }}>constellation.toml</span>
           <div style={{ display: "flex", gap: 2 }}>
             <button
+              className="editor-icon-button"
               onClick={() => downloadFile("constellation.toml", constText)}
-              style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
               title="Download"
             >
               💾
             </button>
             <button
+              className="editor-icon-button"
               onClick={() => constInputRef.current?.click()}
-              style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
               title="Open file"
             >
               📂
             </button>
             <button
+              className="editor-icon-button"
               onClick={() => onConstTextChange("")}
-              style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
               title="Clear"
             >
               🗑️
@@ -184,7 +184,7 @@ export default function EditorTab({
         <textarea
           value={constText}
           onChange={(e) => onConstTextChange(e.target.value)}
-          style={{ width: "100%", height: 60, fontSize: "0.85em" }}
+          style={{ width: "100%", height: 80, fontSize: "0.85em", boxSizing: "border-box" }}
         />
         <input
           ref={constInputRef}
@@ -205,22 +205,22 @@ export default function EditorTab({
           <span style={{ fontSize: "0.9em", fontWeight: 500 }}>groundstations.toml</span>
           <div style={{ display: "flex", gap: 2 }}>
             <button
+              className="editor-icon-button"
               onClick={() => downloadFile("groundstations.toml", gsText)}
-              style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
               title="Download"
             >
               💾
             </button>
             <button
+              className="editor-icon-button"
               onClick={() => gsInputRef.current?.click()}
-              style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
               title="Open file"
             >
               📂
             </button>
             <button
+              className="editor-icon-button"
               onClick={() => onGsTextChange("")}
-              style={{ background: "transparent", border: "none", color: "#fff", padding: "2px 6px", fontSize: "0.9em" }}
               title="Clear"
             >
               🗑️
@@ -230,7 +230,7 @@ export default function EditorTab({
         <textarea
           value={gsText}
           onChange={(e) => onGsTextChange(e.target.value)}
-          style={{ width: "100%", height: 60, fontSize: "0.85em" }}
+          style={{ width: "100%", height: 80, fontSize: "0.85em", boxSizing: "border-box" }}
         />
         <input
           ref={gsInputRef}
@@ -248,16 +248,14 @@ export default function EditorTab({
       <hr className="hr-dashed" style={{ margin: "8px 0" }} />
       <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
         <button
-          className="secondary"
+          className="editor-action-button"
           onClick={onSaveBundle}
-          style={{ fontSize: "0.85em", padding: "4px 10px" }}
         >
           Save All
         </button>
         <button 
-          className="secondary" 
+          className="editor-action-button" 
           onClick={() => bundleInputRef.current?.click()}
-          style={{ fontSize: "0.85em", padding: "4px 10px" }}
         >
           Load All
         </button>
@@ -283,7 +281,7 @@ export default function EditorTab({
           type="datetime-local"
           value={startText}
           onChange={(e) => onStartTextChange(e.target.value)}
-          style={{ width: "100%", fontSize: "0.85em" }}
+          style={{ width: "100%", fontSize: "0.85em", boxSizing: "border-box" }}
         />
       </div>
       

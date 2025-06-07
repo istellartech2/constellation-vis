@@ -148,12 +148,18 @@ body {
   font-family: var(--font-family-ui);
 }
 
+.sat-size-control select {
+  box-sizing: border-box;
+  min-width: 0;
+  flex-shrink: 1;
+}
+
 .tab-button {
-  background: #fef0e6;
-  border: 1px solid #fed4b8;
+  background: var(--dark-gray);
+  border: 1px solid var(--gray);
   border-bottom: none;
   padding: 8px 16px;
-  color: #444753;
+  color: var(--text-color);
   cursor: pointer;
   border-radius: 4px 4px 0 0;
   position: relative;
@@ -163,9 +169,9 @@ body {
 }
 
 .tab-button:hover {
-  background: #fde5d4;
-  color: #444753;
-  border-color: #fcba8a;
+  background: var(--orange);
+  border-color: var(--orange);
+  color: #ffffff;
 }
 
 .tab-button.active {
@@ -224,4 +230,40 @@ body {
 .analysis-button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+.editor-icon-button {
+  background: var(--dark-gray) !important;
+  border: 1px solid var(--gray) !important;
+  color: var(--text-color) !important;
+  padding: 2px 6px !important;
+  font-size: 0.9em !important;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.editor-icon-button:hover {
+  background: var(--orange) !important;
+  border-color: var(--orange) !important;
+  color: #ffffff !important;
+}
+
+.editor-action-button {
+  background: var(--dark-gray) !important;
+  border: 1px solid var(--gray) !important;
+  color: var(--text-color) !important;
+  padding: 6px 12px !important;
+  font-size: 0.85em !important;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+  flex: 1;
+}
+
+.editor-action-button:hover {
+  background: var(--orange) !important;
+  border-color: var(--orange) !important;
+  color: #ffffff !important;
 }
