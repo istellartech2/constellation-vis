@@ -3,9 +3,9 @@ import {
   parseSatellitesToml,
   parseConstellationToml,
   parseGroundStationsToml,
-} from "../../lib/tomlParse";
-import type { SatelliteSpec } from "../../lib/satellites";
-import type { GroundStation } from "../../lib/groundStations";
+} from "../../utils/tomlParse";
+import { downloadFile, handleFileLoad } from "../../utils/fileUtils";
+import { validateSatellites, validateGroundStations } from "../../utils/validators";
 
 interface Props {
   satText: string;
@@ -41,63 +41,6 @@ export default function EditorTab({
   const gsInputRef = useRef<HTMLInputElement | null>(null);
   const bundleInputRef = useRef<HTMLInputElement | null>(null);
 
-  function downloadFile(name: string, text: string) {
-    const blob = new Blob([text], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = name;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  async function handleFileLoad<T>(
-    file: File,
-    setter: (t: string) => void,
-    parser: (t: string) => T,
-    validator?: (v: T) => void,
-  ) {
-    const text = await file.text();
-    try {
-      const parsed = parser(text);
-      if (validator) validator(parsed);
-      setter(text);
-    } catch (e) {
-      alert("Invalid file: " + (e as Error).message);
-    }
-  }
-
-  function validateSatellites(list: SatelliteSpec[]) {
-    for (const s of list) {
-      if (s.type === "tle") {
-        if (!s.lines[0] || !s.lines[1]) {
-          throw new Error("satellites.toml: missing TLE lines");
-        }
-      } else if (s.type === "elements") {
-        const e = s.elements;
-        if (
-          e.satnum === undefined ||
-          !(e.epoch instanceof Date) ||
-          Number.isNaN(e.semiMajorAxisKm) ||
-          Number.isNaN(e.eccentricity) ||
-          Number.isNaN(e.inclinationDeg) ||
-          Number.isNaN(e.raanDeg) ||
-          Number.isNaN(e.argPerigeeDeg) ||
-          Number.isNaN(e.meanAnomalyDeg)
-        ) {
-          throw new Error("satellites.toml: incomplete elements entry");
-        }
-      }
-    }
-  }
-
-  function validateGroundStations(list: GroundStation[]) {
-    for (const g of list) {
-      if (!g.name || Number.isNaN(g.latitudeDeg) || Number.isNaN(g.longitudeDeg)) {
-        throw new Error("groundstations.toml: missing required fields");
-      }
-    }
-  }
 
   return (
     <>

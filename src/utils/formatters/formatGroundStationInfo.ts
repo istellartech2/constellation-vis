@@ -1,4 +1,4 @@
-import type { GroundStation } from '../lib/groundStations';
+import type { GroundStation } from '../../lib/groundStations';
 
 /**
  * Build a human readable block of text describing the ground station at the

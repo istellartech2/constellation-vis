@@ -1,19 +1,22 @@
 import { useEffect, useState } from "react";
-import type { SatelliteSpec } from "../lib/satellites";
-import type { GroundStation } from "../lib/groundStations";
+import type { SatelliteSpec } from "../../lib/satellites";
+import type { GroundStation } from "../../lib/groundStations";
 import {
   parseSatellitesToml,
   parseConstellationToml,
   parseGroundStationsToml,
-} from "../lib/tomlParse";
+} from "../../utils/tomlParse";
 import {
   parseConfigBundle,
   buildConfigBundle,
-} from "../lib/configBundle";
-import EditorTab from "./tabs/EditorTab";
-import AnalysisTab from "./tabs/AnalysisTab";
-import OptionTab from "./tabs/OptionTab";
+} from "../../utils/configBundle";
+import EditorTab from "./EditorTab";
+import AnalysisTab from "./AnalysisTab";
+import OptionTab from "./OptionTab";
 import ImportDialog from "./ImportDialog";
+import { celestrakEntryToSat, satellitesToToml } from "../../utils/celestrakUtils";
+import { downloadFile } from "../../utils/fileUtils";
+import { validateSatellites, validateGroundStations } from "../../utils/validators";
 
 /**
  * Editor side panel allowing the user to load, edit and save TOML files
@@ -21,84 +24,6 @@ import ImportDialog from "./ImportDialog";
  * data is fed back into the visualization via the provided `onUpdate`
  * callback.
  */
-
-const MU = 398600.4418; // km^3/s^2
-
-interface CelestrakEntry {
-  MEAN_MOTION: number;
-  ECCENTRICITY: number;
-  INCLINATION: number;
-  RA_OF_ASC_NODE: number;
-  ARG_OF_PERICENTER: number;
-  MEAN_ANOMALY: number;
-  NORAD_CAT_ID: number;
-  EPOCH: string;
-  OBJECT_NAME?: string;
-  OBJECT_ID?: string;
-}
-
-// Convert an entry from the CelesTrak API into our internal satellite
-// representation (classical orbital elements).
-function celestrakEntryToSat(entry: CelestrakEntry): SatelliteSpec {
-  const mm = Number(entry.MEAN_MOTION);
-  const n = (mm * 2 * Math.PI) / 86400; // rad/s
-  const a = Math.pow(MU / (n * n), 1 / 3);
-  return {
-    type: "elements",
-    elements: {
-      satnum: Number(entry.NORAD_CAT_ID),
-      epoch: new Date(String(entry.EPOCH)),
-      semiMajorAxisKm: a,
-      eccentricity: Number(entry.ECCENTRICITY),
-      inclinationDeg: Number(entry.INCLINATION),
-      raanDeg: Number(entry.RA_OF_ASC_NODE),
-      argPerigeeDeg: Number(entry.ARG_OF_PERICENTER),
-      meanAnomalyDeg: Number(entry.MEAN_ANOMALY),
-    },
-    meta: {
-      objectName: entry.OBJECT_NAME,
-      objectId: entry.OBJECT_ID,
-      noradCatId: Number(entry.NORAD_CAT_ID),
-    },
-  };
-}
-
-// Helper to convert our satellite list back into TOML so it can be saved
-// to disk or shared with other tools.
-function satellitesToToml(list: SatelliteSpec[]): string {
-  return list
-    .map((s) => {
-      const meta = s.meta
-        ? ((s.meta.objectName ? `name = ${JSON.stringify(s.meta.objectName)}\n` : "") +
-            (s.meta.objectId ? `objectId = ${JSON.stringify(s.meta.objectId)}\n` : "") +
-            (s.meta.noradCatId !== undefined ? `noradCatId = ${s.meta.noradCatId}\n` : ""))
-        : "";
-      if (s.type === "tle") {
-        return (
-          "[[satellites]]\n" +
-          'type = "tle"\n' +
-          meta +
-          `line1 = ${JSON.stringify(s.lines[0])}\n` +
-          `line2 = ${JSON.stringify(s.lines[1])}`
-        );
-      }
-      const e = s.elements;
-      return (
-        "[[satellites]]\n" +
-        'type = "elements"\n' +
-        meta +
-        `satnum = ${e.satnum}\n` +
-        `epoch = ${JSON.stringify(e.epoch.toISOString())}\n` +
-        `semiMajorAxisKm = ${e.semiMajorAxisKm}\n` +
-        `eccentricity = ${e.eccentricity}\n` +
-        `inclinationDeg = ${e.inclinationDeg}\n` +
-        `raanDeg = ${e.raanDeg}\n` +
-        `argPerigeeDeg = ${e.argPerigeeDeg}\n` +
-        `meanAnomalyDeg = ${e.meanAnomalyDeg}`
-      );
-    })
-    .join("\n\n");
-}
 
 interface Props {
   /**
@@ -178,15 +103,6 @@ export default function SatelliteEditor({
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
 
-  function downloadFile(name: string, text: string) {
-    const blob = new Blob([text], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = name;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
 
   function toggleGroup(g: string) {
     setSelectedGroups((prev) =>
@@ -221,37 +137,6 @@ export default function SatelliteEditor({
     }
   }
 
-  function validateSatellites(list: SatelliteSpec[]) {
-    for (const s of list) {
-      if (s.type === "tle") {
-        if (!s.lines[0] || !s.lines[1]) {
-          throw new Error("satellites.toml: missing TLE lines");
-        }
-      } else if (s.type === "elements") {
-        const e = s.elements;
-        if (
-          e.satnum === undefined ||
-          !(e.epoch instanceof Date) ||
-          Number.isNaN(e.semiMajorAxisKm) ||
-          Number.isNaN(e.eccentricity) ||
-          Number.isNaN(e.inclinationDeg) ||
-          Number.isNaN(e.raanDeg) ||
-          Number.isNaN(e.argPerigeeDeg) ||
-          Number.isNaN(e.meanAnomalyDeg)
-        ) {
-          throw new Error("satellites.toml: incomplete elements entry");
-        }
-      }
-    }
-  }
-
-  function validateGroundStations(list: GroundStation[]) {
-    for (const g of list) {
-      if (!g.name || Number.isNaN(g.latitudeDeg) || Number.isNaN(g.longitudeDeg)) {
-        throw new Error("groundstations.toml: missing required fields");
-      }
-    }
-  }
 
 
 

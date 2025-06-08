@@ -5,7 +5,7 @@ import {
   parseConstellationToml,
 } from '../src/utils/tomlParse';
 import { parseConfigBundle } from '../src/utils/configBundle';
-import { generateVisibilityReport } from '../src/utils/visibility';
+import { generateVisibilityReport } from '../src/lib/visibility';
 
 async function ask(question: string): Promise<string> {
   const rl = readline.createInterface({ input, output });

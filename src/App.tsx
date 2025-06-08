@@ -1,11 +1,11 @@
 import { useRef, useEffect, useState } from "react";
-import SpeedControl from "./components/SpeedControl";
-import SatelliteEditor from "./components/SatelliteEditor";
+import SpeedControl from "./components/ui/SpeedControl";
+import SatelliteEditor from "./components/ui/SatelliteEditor";
 import { useSatelliteScene } from "./components/useSatelliteScene";
 import { SATELLITES as INITIAL_SATS } from "./lib/satellites";
 import { loadGroundStations, type GroundStation } from "./lib/groundStations";
-import SatelliteInfo from "./components/SatelliteInfo";
-import { formatGroundStationInfo } from "./components/formatGroundStationInfo";
+import SatelliteInfo from "./components/ui/SatelliteInfo";
+import { formatGroundStationInfo } from "./utils/formatters/formatGroundStationInfo";
 
 /**
  * Top level React component hosting the visualization. It sets up

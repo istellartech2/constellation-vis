@@ -1,12 +1,12 @@
 import { useState, useRef } from "react";
 import ReactECharts from "echarts-for-react";
 import { calculateStationAccessData, calculateStationStats, averageVisibilityData, calculateAvailabilityMetrics } from "../../lib/visibility";
-import { parseSatellitesToml, parseConstellationToml, parseGroundStationsToml } from "../../lib/tomlParse";
+import { parseSatellitesToml, parseConstellationToml, parseGroundStationsToml } from "../../utils/tomlParse";
 import type { GroundStation } from "../../lib/groundStations";
 import { downloadPNG, downloadHTML, downloadCSV } from "./utils/downloadUtils";
 import { createStationAccessChartOption } from "./utils/chartOptions";
-import StationAvailabilityPopup from "./components/StationAvailabilityPopup";
-import "../../styles.css";
+import StationAvailabilityPopup from "./popups/StationAvailabilityPopup";
+import "../../styles/styles.css";
 
 interface AvailabilityMetrics {
   stationName: string;

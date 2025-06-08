@@ -1,6 +1,6 @@
 import { parseSatellitesToml, parseConstellationToml, parseGroundStationsToml } from '../src/utils/tomlParse';
-import { averageVisibility } from '../src/utils/visibility';
-import type { SatelliteSpec } from '../src/data/satellites';
+import { averageVisibility } from '../src/lib/visibility';
+import type { SatelliteSpec } from '../src/lib/satellites';
 
 const args = process.argv.slice(2);
 const isCustom = args.length === 2;

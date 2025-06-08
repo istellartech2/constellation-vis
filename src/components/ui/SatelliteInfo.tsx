@@ -1,13 +1,13 @@
 import React from "react";
 import katex from "katex";
 import "katex/dist/katex.min.css";
-import type { SatelliteSpec } from "../lib/satellites";
+import type { SatelliteSpec } from "../../lib/satellites";
 import * as satellite from "satellite.js";
 import { 
   calculateDetailedPerturbationRates, 
   formatJ2PerturbationRates,
   formatJ3PerturbationRates
-} from "../lib/perturbation";
+} from "../../lib/perturbation";
 
 interface Props {
   satellites: SatelliteSpec[];

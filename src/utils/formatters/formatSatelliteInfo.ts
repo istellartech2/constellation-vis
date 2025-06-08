@@ -1,5 +1,5 @@
 import * as satellite from "satellite.js";
-import type { SatelliteSpec } from "../lib/satellites";
+import type { SatelliteSpec } from "../../lib/satellites";
 
 /**
  * Build a human readable block of text describing the satellite at the

@@ -1,12 +1,12 @@
 import { useState, useRef } from "react";
 import ReactECharts from "echarts-for-react";
 import { calculateStationAccessData, calculateStationStats, averageVisibilityData, calculateAvailabilityMetrics } from "../../lib/visibility";
-import { parseSatellitesToml, parseConstellationToml } from "../../lib/tomlParse";
+import { parseSatellitesToml, parseConstellationToml } from "../../utils/tomlParse";
 import type { GroundStation } from "../../lib/groundStations";
 import { downloadPNG, downloadHTML, downloadCSV } from "./utils/downloadUtils";
 import { createGlobalAccessChartOption } from "./utils/chartOptions";
-import GlobalAvailabilityPopup from "./components/GlobalAvailabilityPopup";
-import "../../styles.css";
+import GlobalAvailabilityPopup from "./popups/GlobalAvailabilityPopup";
+import "../../styles/styles.css";
 
 interface AvailabilityMetrics {
   latitude: number;

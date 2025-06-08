@@ -1,4 +1,4 @@
-import { parseGroundStationsToml, type GroundStation } from './tomlParse';
+import { parseGroundStationsToml, type GroundStation } from '../utils/tomlParse';
 
 // Helper used by the demo to fetch and parse the bundled ground station list.
 

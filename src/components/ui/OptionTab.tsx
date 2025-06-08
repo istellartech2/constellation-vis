@@ -1,6 +1,6 @@
-import SatelliteSizeControl from "../SatelliteSizeControl";
-import EarthTextureSelector from "../EarthTextureSelector";
-import "../../styles.css";
+import SatelliteSizeControl from "./SatelliteSizeControl";
+import EarthTextureSelector from "./EarthTextureSelector";
+import "../../styles/styles.css";
 
 interface Props {
   satRadius: number;
