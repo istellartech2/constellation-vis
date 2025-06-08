@@ -285,3 +285,70 @@ export function generateVisibilityReport(
 
   return lines.join("\n");
 }
+
+// Calculate availability metrics for stations
+export function calculateAvailabilityMetrics(
+  visibilityData: any[], 
+  stationIndices: number[],
+  intervalSeconds: number = 10
+): Array<{
+  timeAvailability: number;
+  interruptionFrequency: number;
+  maxInterruptionTime: number;
+  avgInterruptionTime: number;
+}> {
+  const intervalMinutes = intervalSeconds / 60;
+  
+  return stationIndices.map(stationIndex => {
+    // Extract visibility data for this station
+    const stationData = visibilityData.map(timePoint => 
+      timePoint.stations[stationIndex]?.visibleCount || 0
+    );
+    
+    // Calculate time availability (percentage of time with satellites visible)
+    const availablePoints = stationData.filter(count => count > 0).length;
+    const timeAvailability = (availablePoints / stationData.length) * 100;
+    
+    // Calculate interruption frequency and times
+    let interruptionFrequency = 0;
+    const interruptionDurations: number[] = [];
+    let currentInterruptionStart = -1;
+    
+    for (let i = 0; i < stationData.length; i++) {
+      if (stationData[i] === 0) {
+        if (currentInterruptionStart === -1) {
+          // Start of interruption
+          currentInterruptionStart = i;
+          if (i > 0) interruptionFrequency++; // Don't count initial state
+        }
+      } else {
+        if (currentInterruptionStart !== -1) {
+          // End of interruption
+          const duration = (i - currentInterruptionStart) * intervalMinutes;
+          interruptionDurations.push(duration);
+          currentInterruptionStart = -1;
+        }
+      }
+    }
+    
+    // Handle case where data ends during interruption
+    if (currentInterruptionStart !== -1) {
+      const duration = (stationData.length - currentInterruptionStart) * intervalMinutes;
+      interruptionDurations.push(duration);
+    }
+    
+    const maxInterruptionTime = interruptionDurations.length > 0 
+      ? Math.max(...interruptionDurations) 
+      : 0;
+    const avgInterruptionTime = interruptionDurations.length > 0 
+      ? interruptionDurations.reduce((sum, dur) => sum + dur, 0) / interruptionDurations.length 
+      : 0;
+    
+    return {
+      timeAvailability,
+      interruptionFrequency,
+      maxInterruptionTime,
+      avgInterruptionTime
+    };
+  });
+}

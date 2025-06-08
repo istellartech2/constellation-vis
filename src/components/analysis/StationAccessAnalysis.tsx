@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import ReactECharts from "echarts-for-react";
-import { calculateStationAccessData, calculateStationStats, averageVisibilityData } from "../../lib/visibility";
+import { calculateStationAccessData, calculateStationStats, averageVisibilityData, calculateAvailabilityMetrics } from "../../lib/visibility";
 import { parseSatellitesToml, parseConstellationToml, parseGroundStationsToml } from "../../lib/tomlParse";
 import type { SatelliteSpec } from "../../lib/satellites";
 import type { GroundStation } from "../../lib/groundStations";
@@ -68,7 +68,12 @@ export default function StationAccessAnalysis({ satText, constText, gsText, star
       const stationStats = calculateStationStats(visibilityData);
 
       // Calculate availability metrics
-      const availability = calculateAvailabilityMetrics(visibilityData, groundStations);
+      const stationIndices = groundStations.map((_, index) => index);
+      const availabilityData = calculateAvailabilityMetrics(visibilityData, stationIndices, 10);
+      const availability = groundStations.map((station, index) => ({
+        stationName: station.name,
+        ...availabilityData[index]
+      }));
 
       setData(averagedData);
       setStations(groundStations);
@@ -88,64 +93,6 @@ export default function StationAccessAnalysis({ satText, constText, gsText, star
     }
   };
 
-  const calculateAvailabilityMetrics = (visibilityData: any[], stations: GroundStation[]): AvailabilityMetrics[] => {
-    const intervalMinutes = 10 / 60; // 10 seconds = 1/6 minute
-    const totalMinutes = 24 * 60; // 24 hours in minutes
-    
-    return stations.map((station, stationIndex) => {
-      // Extract visibility data for this station
-      const stationData = visibilityData.map(timePoint => 
-        timePoint.stations[stationIndex]?.visibleCount || 0
-      );
-      
-      // Calculate time availability (percentage of time with satellites visible)
-      const availablePoints = stationData.filter(count => count > 0).length;
-      const timeAvailability = (availablePoints / stationData.length) * 100;
-      
-      // Calculate interruption frequency and times
-      let interruptionFrequency = 0;
-      const interruptionDurations: number[] = [];
-      let currentInterruptionStart = -1;
-      
-      for (let i = 0; i < stationData.length; i++) {
-        if (stationData[i] === 0) {
-          if (currentInterruptionStart === -1) {
-            // Start of interruption
-            currentInterruptionStart = i;
-            if (i > 0) interruptionFrequency++; // Don't count initial state
-          }
-        } else {
-          if (currentInterruptionStart !== -1) {
-            // End of interruption
-            const duration = (i - currentInterruptionStart) * intervalMinutes;
-            interruptionDurations.push(duration);
-            currentInterruptionStart = -1;
-          }
-        }
-      }
-      
-      // Handle case where data ends during interruption
-      if (currentInterruptionStart !== -1) {
-        const duration = (stationData.length - currentInterruptionStart) * intervalMinutes;
-        interruptionDurations.push(duration);
-      }
-      
-      const maxInterruptionTime = interruptionDurations.length > 0 
-        ? Math.max(...interruptionDurations) 
-        : 0;
-      const avgInterruptionTime = interruptionDurations.length > 0 
-        ? interruptionDurations.reduce((sum, dur) => sum + dur, 0) / interruptionDurations.length 
-        : 0;
-      
-      return {
-        stationName: station.name,
-        timeAvailability,
-        interruptionFrequency,
-        maxInterruptionTime,
-        avgInterruptionTime
-      };
-    });
-  };
 
   const downloadChartAsPNG = () => {
     if (chartRef.current) {

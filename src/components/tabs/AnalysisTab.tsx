@@ -1,7 +1,6 @@
 import { useState } from "react";
 import StationAccessAnalysis from "../analysis/StationAccessAnalysis";
 import GlobalAccessAnalysis from "../analysis/GlobalAccessAnalysis";
-import GlobalAvailabilityAnalysis from "../analysis/GlobalAvailabilityAnalysis";
 import OrbitMaintenanceAnalysis from "../analysis/OrbitMaintenanceAnalysis";
 import SolarImpactAnalysis from "../analysis/SolarImpactAnalysis";
 
@@ -17,7 +16,6 @@ interface Props {
 type AnalysisType = 
   | "地上局アクセス解析"
   | "全球アクセス解析"
-  | "全球可用性解析"
   | "軌道維持燃料解析"
   | "太陽光影響解析"
   | "";
@@ -53,8 +51,6 @@ export default function AnalysisTab({ satText, constText, gsText, startTime, onA
           constText={constText}
           startTime={startTime}
         />;
-      case "全球可用性解析":
-        return <GlobalAvailabilityAnalysis />;
       case "軌道維持燃料解析":
         return <OrbitMaintenanceAnalysis />;
       case "太陽光影響解析":
@@ -82,12 +78,6 @@ export default function AnalysisTab({ satText, constText, gsText, startTime, onA
             >
               全球アクセス解析
             </button>
-            <button 
-              className="analysis-button"
-              onClick={() => handleAnalysisClick("全球可用性解析")}
-            >
-              全球可用性解析
-            </button>
           </div>
         </div>
         
@@ -96,13 +86,15 @@ export default function AnalysisTab({ satText, constText, gsText, startTime, onA
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <button 
               className="analysis-button"
-              onClick={() => handleAnalysisClick("軌道維持燃料解析")}
+              disabled
+              style={{ opacity: 0.5 }}
             >
               軌道維持燃料解析
             </button>
             <button 
               className="analysis-button"
-              onClick={() => handleAnalysisClick("太陽光影響解析")}
+              disabled
+              style={{ opacity: 0.5 }}
             >
               太陽光影響解析
             </button>

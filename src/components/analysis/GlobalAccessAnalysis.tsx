@@ -1,9 +1,16 @@
 import { useState, useRef } from "react";
 import ReactECharts from "echarts-for-react";
-import { calculateStationAccessData, calculateStationStats, averageVisibilityData } from "../../lib/visibility";
+import { calculateStationAccessData, calculateStationStats, averageVisibilityData, calculateAvailabilityMetrics } from "../../lib/visibility";
 import { parseSatellitesToml, parseConstellationToml } from "../../lib/tomlParse";
-import type { SatelliteSpec } from "../../lib/satellites";
 import type { GroundStation } from "../../lib/groundStations";
+
+interface AvailabilityMetrics {
+  latitude: number;
+  timeAvailability: number; // 時間的可用性（%）
+  interruptionFrequency: number; // 中断頻度（回/日）
+  maxInterruptionTime: number; // 最大中断時間（分）
+  avgInterruptionTime: number; // 平均中断時間（分）
+}
 
 interface Props {
   satText: string;
@@ -15,11 +22,15 @@ export default function GlobalAccessAnalysis({ satText, constText, startTime }: 
   const [data, setData] = useState<any[]>([]);
   const [latitudeStations, setLatitudeStations] = useState<GroundStation[]>([]);
   const [stats, setStats] = useState<Array<{name: string; averageVisible: number; nonZeroRate: number}>>([]);
+  const [availabilityMetrics, setAvailabilityMetrics] = useState<AvailabilityMetrics[]>([]);
+  const [showAvailabilityPopup, setShowAvailabilityPopup] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string>("");
   const [minElevationAngle, setMinElevationAngle] = useState(30);
   const [observationLongitude, setObservationLongitude] = useState(0);
   const chartRef = useRef<any>(null);
+  const availabilityChartRef1 = useRef<any>(null);
+  const availabilityChartRef2 = useRef<any>(null);
 
   const analyzeGlobalCoverage = async () => {
     setIsAnalyzing(true);
@@ -65,9 +76,18 @@ export default function GlobalAccessAnalysis({ satText, constText, startTime }: 
       // Calculate statistics from original data
       const stationStats = calculateStationStats(visibilityData);
 
+      // Calculate availability metrics
+      const stationIndices = generatedStations.map((_, index) => index);
+      const availabilityData = calculateAvailabilityMetrics(visibilityData, stationIndices, 10);
+      const availability = generatedStations.map((station, index) => ({
+        latitude: station.latitudeDeg,
+        ...availabilityData[index]
+      }));
+
       setData(averagedData);
       setLatitudeStations(generatedStations);
       setStats(stationStats);
+      setAvailabilityMetrics(availability);
       
       console.log(`Generated ${visibilityData.length} data points for 24 hours`);
       console.log(`Averaged to ${averagedData.length} data points (1 minute intervals)`);
@@ -77,6 +97,7 @@ export default function GlobalAccessAnalysis({ satText, constText, startTime }: 
       setIsAnalyzing(false);
     }
   };
+
 
   const downloadChartAsPNG = () => {
     if (chartRef.current) {
@@ -146,7 +167,7 @@ export default function GlobalAccessAnalysis({ satText, constText, startTime }: 
         const row = [
           timeData.time,
           timeData.timestamp,
-          ...timeData.stations.map(s => s.visibleCount)
+          ...timeData.stations.map((s: any) => s.visibleCount)
         ];
         csvRows.push(row.join(','));
       });
@@ -218,7 +239,7 @@ export default function GlobalAccessAnalysis({ satText, constText, startTime }: 
     series: [{
       type: 'heatmap',
       data: data.flatMap((timeData, timeIndex) => 
-        timeData.stations.map((station, stationIndex) => [
+        timeData.stations.map((station: any, stationIndex: number) => [
           timeIndex,
           stationIndex, 
           station.visibleCount
@@ -404,6 +425,29 @@ export default function GlobalAccessAnalysis({ satText, constText, startTime }: 
             >
               CSV保存
             </button>
+            <button
+              onClick={() => setShowAvailabilityPopup(true)}
+              style={{
+                backgroundColor: "transparent",
+                color: "#999faa",
+                border: "1px solid #444",
+                padding: "2px 8px",
+                borderRadius: "3px",
+                cursor: "pointer",
+                fontSize: "0.8em",
+                transition: "all 0.2s ease"
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = "#333";
+                e.currentTarget.style.color = "#f1f1f1";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+                e.currentTarget.style.color = "#999faa";
+              }}
+            >
+              可用性
+            </button>
           </>
         )}
         
@@ -458,6 +502,231 @@ export default function GlobalAccessAnalysis({ satText, constText, startTime }: 
           }
         `}</style>
       </div>
+      
+      {/* Availability Popup */}
+      {showAvailabilityPopup && availabilityMetrics.length > 0 && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: "rgba(0, 0, 0, 0.7)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 2000
+        }}>
+          <div style={{
+            backgroundColor: "#1e2024",
+            border: "1px solid #444",
+            borderRadius: "8px",
+            padding: "16px",
+            width: "90vw",
+            maxWidth: "1400px",
+            height: "80vh",
+            display: "flex",
+            flexDirection: "column",
+            color: "#f1f1f1"
+          }}>
+            <div style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: "12px",
+              borderBottom: "1px solid #444",
+              paddingBottom: "8px"
+            }}>
+              <h2 style={{ margin: 0, color: "#ed6d00", fontSize: "1.3em" }}>全球可用性解析</h2>
+              <button
+                onClick={() => setShowAvailabilityPopup(false)}
+                style={{
+                  backgroundColor: "transparent",
+                  border: "none",
+                  color: "#999faa",
+                  fontSize: "20px",
+                  cursor: "pointer",
+                  padding: "0 5px"
+                }}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div style={{ flex: 1, display: "flex", gap: "16px", minHeight: 0 }}>
+              <div style={{ flex: 1, minHeight: 0 }}>
+                <ReactECharts
+                  ref={availabilityChartRef1}
+                  option={{
+                    title: {
+                      text: "時間的可用性",
+                      textStyle: { color: "#ed6d00", fontSize: 14 },
+                      left: 'center'
+                    },
+                    backgroundColor: "rgba(30, 32, 36, 0.95)",
+                    textStyle: { color: "#f1f1f1" },
+                    grid: {
+                      left: 60,
+                      right: 20,
+                      top: 40,
+                      bottom: 40
+                    },
+                    xAxis: {
+                      type: 'value',
+                      name: '可用性 (%)',
+                      nameLocation: 'middle',
+                      nameGap: 25,
+                      nameTextStyle: { color: "#999faa" },
+                      min: 0,
+                      max: 100,
+                      axisLabel: { color: "#999faa" }
+                    },
+                    yAxis: {
+                      type: 'category',
+                      name: '緯度 (°)',
+                      nameLocation: 'middle',
+                      nameGap: 40,
+                      nameTextStyle: { color: "#999faa" },
+                      data: availabilityMetrics.map(m => m.latitude),
+                      axisLabel: { color: "#999faa" }
+                    },
+                    series: [{
+                      type: 'line',
+                      data: availabilityMetrics.map(m => m.timeAvailability),
+                      smooth: true,
+                      lineStyle: { color: "#ed6d00", width: 2 },
+                      itemStyle: { color: "#ed6d00" },
+                      markLine: {
+                        data: [{
+                          yAxis: 90, // Index for latitude 0 (90 + 0 = 90)
+                          lineStyle: {
+                            color: '#999faa',
+                            type: 'dashed',
+                            width: 1
+                          },
+                          label: {
+                            show: false
+                          }
+                        }]
+                      }
+                    }],
+                    tooltip: {
+                      trigger: 'axis',
+                      formatter: (params: any) => {
+                        const data = params[0];
+                        return `緯度 ${data.name}°<br/>可用性: ${data.value.toFixed(1)}%`;
+                      }
+                    }
+                  }}
+                  style={{ height: "100%", width: "100%" }}
+                  theme="dark"
+                />
+              </div>
+              
+              <div style={{ flex: 1, minHeight: 0 }}>
+                <ReactECharts
+                  ref={availabilityChartRef2}
+                  option={{
+                    title: {
+                      text: "中断特性",
+                      textStyle: { color: "#ed6d00", fontSize: 14 },
+                      left: 'center'
+                    },
+                    backgroundColor: "rgba(30, 32, 36, 0.95)",
+                    textStyle: { color: "#f1f1f1" },
+                    grid: {
+                      left: 60,
+                      right: 60,
+                      top: 40,
+                      bottom: 40
+                    },
+                    xAxis: {
+                      type: 'value',
+                      name: '値',
+                      nameLocation: 'middle',
+                      nameGap: 25,
+                      nameTextStyle: { color: "#999faa" },
+                      axisLabel: { color: "#999faa" },
+                      min: 0
+                    },
+                    yAxis: {
+                      type: 'category',
+                      name: '緯度 (°)',
+                      nameLocation: 'middle',
+                      nameGap: 40,
+                      nameTextStyle: { color: "#999faa" },
+                      data: availabilityMetrics.map(m => m.latitude),
+                      axisLabel: { color: "#999faa" }
+                    },
+                    legend: {
+                      data: ['中断頻度 (回/日)', '最大中断時間 (分)', '平均中断時間 (分)'],
+                      textStyle: { color: "#999faa" },
+                      top: 'bottom'
+                    },
+                    series: [
+                      {
+                        name: '中断頻度 (回/日)',
+                        type: 'line',
+                        data: availabilityMetrics.map(m => m.interruptionFrequency),
+                        smooth: true,
+                        lineStyle: { color: "#38a169", width: 2 },
+                        itemStyle: { color: "#38a169" },
+                        markLine: {
+                          data: [{
+                            yAxis: 90, // Index for latitude 0
+                            lineStyle: {
+                              color: '#999faa',
+                              type: 'dashed',
+                              width: 1
+                            },
+                            label: {
+                              show: false
+                            }
+                          }]
+                        }
+                      },
+                      {
+                        name: '最大中断時間 (分)',
+                        type: 'line',
+                        data: availabilityMetrics.map(m => m.maxInterruptionTime > 720 ? null : m.maxInterruptionTime),
+                        smooth: true,
+                        lineStyle: { color: "#d69e2e", width: 2 },
+                        itemStyle: { color: "#d69e2e" },
+                        connectNulls: false
+                      },
+                      {
+                        name: '平均中断時間 (分)',
+                        type: 'line',
+                        data: availabilityMetrics.map(m => m.avgInterruptionTime > 720 ? null : m.avgInterruptionTime),
+                        smooth: true,
+                        lineStyle: { color: "#e53e3e", width: 2 },
+                        itemStyle: { color: "#e53e3e" },
+                        connectNulls: false
+                      }
+                    ],
+                    tooltip: {
+                      trigger: 'axis',
+                      formatter: (params: any) => {
+                        let result = `緯度 ${params[0].name}°<br/>`;
+                        params.forEach((param: any) => {
+                          if (param.value !== null && param.value !== undefined) {
+                            result += `${param.seriesName}: ${param.value.toFixed(1)}<br/>`;
+                          } else {
+                            result += `${param.seriesName}: 可用性なし<br/>`;
+                          }
+                        });
+                        return result;
+                      }
+                    }
+                  }}
+                  style={{ height: "100%", width: "100%" }}
+                  theme="dark"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
