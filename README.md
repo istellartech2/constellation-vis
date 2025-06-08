@@ -1,7 +1,6 @@
 # Constellation Visualizer
 
 A web application that visualizes satellite constellations in Earth orbit.
-Technologies used are React, TypeScript, Vite, Three.js, and satellite.js.
 
 [constellation-viewer-demo.webm](https://github.com/user-attachments/assets/5389ebab-c38b-4a5f-9e25-4042f1ca3824)
 
@@ -33,7 +32,7 @@ bun run dev
 Open your browser and visit `http://localhost:5173`.
 
 ## Deployment
-https://constellation-vis.vercel.app/
+https://istellartech2.github.io/constellation-vis/
 
 ## File Formats
 
@@ -84,7 +83,6 @@ https://constellation-vis.vercel.app/
 # Constellation Visualizer (日本語)
 
 地球周回軌道の衛星コンステレーションを可視化する Web アプリケーション。
-利用している技術はReact、TypeScript、Vite、Three.js、satellite.js。
 
 ## 機能
 
@@ -116,7 +114,7 @@ bun run dev
 ブラウザで `http://localhost:5173` を開いてください。
 
 ## アプリケーションURL
-https://constellation-vis.vercel.app/
+https://istellartech2.github.io/constellation-vis/
 
 ## ファイル形式
 
