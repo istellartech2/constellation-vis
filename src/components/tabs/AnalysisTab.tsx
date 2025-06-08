@@ -1,6 +1,6 @@
 import { useState } from "react";
 import StationAccessAnalysis from "../analysis/StationAccessAnalysis";
-import GlobalCoverageAnalysis from "../analysis/GlobalCoverageAnalysis";
+import GlobalAccessAnalysis from "../analysis/GlobalAccessAnalysis";
 import StationAvailabilityAnalysis from "../analysis/StationAvailabilityAnalysis";
 import GlobalAvailabilityAnalysis from "../analysis/GlobalAvailabilityAnalysis";
 import OrbitMaintenanceAnalysis from "../analysis/OrbitMaintenanceAnalysis";
@@ -17,7 +17,7 @@ interface Props {
 
 type AnalysisType = 
   | "地上局アクセス解析"
-  | "全球カバレッジ解析"
+  | "全球アクセス解析"
   | "地上局可用性解析"
   | "全球可用性解析"
   | "軌道維持燃料解析"
@@ -49,8 +49,12 @@ export default function AnalysisTab({ satText, constText, gsText, startTime, onA
           gsText={gsText}
           startTime={startTime}
         />;
-      case "全球カバレッジ解析":
-        return <GlobalCoverageAnalysis />;
+      case "全球アクセス解析":
+        return <GlobalAccessAnalysis 
+          satText={satText}
+          constText={constText}
+          startTime={startTime}
+        />;
       case "地上局可用性解析":
         return <StationAvailabilityAnalysis />;
       case "全球可用性解析":
@@ -78,9 +82,9 @@ export default function AnalysisTab({ satText, constText, gsText, startTime, onA
             </button>
             <button 
               className="analysis-button"
-              onClick={() => handleAnalysisClick("全球カバレッジ解析")}
+              onClick={() => handleAnalysisClick("全球アクセス解析")}
             >
-              全球カバレッジ解析
+              全球アクセス解析
             </button>
             <button 
               className="analysis-button"

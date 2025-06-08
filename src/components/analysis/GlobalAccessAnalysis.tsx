@@ -1,26 +1,27 @@
 import { useState, useRef } from "react";
 import ReactECharts from "echarts-for-react";
 import { calculateStationAccessData, calculateStationStats, averageVisibilityData } from "../../lib/visibility";
-import { parseSatellitesToml, parseConstellationToml, parseGroundStationsToml } from "../../lib/tomlParse";
+import { parseSatellitesToml, parseConstellationToml } from "../../lib/tomlParse";
 import type { SatelliteSpec } from "../../lib/satellites";
 import type { GroundStation } from "../../lib/groundStations";
 
 interface Props {
   satText: string;
   constText: string;
-  gsText: string;
   startTime: Date;
 }
 
-export default function StationAccessAnalysis({ satText, constText, gsText, startTime }: Props) {
+export default function GlobalAccessAnalysis({ satText, constText, startTime }: Props) {
   const [data, setData] = useState<any[]>([]);
-  const [stations, setStations] = useState<GroundStation[]>([]);
+  const [latitudeStations, setLatitudeStations] = useState<GroundStation[]>([]);
   const [stats, setStats] = useState<Array<{name: string; averageVisible: number; nonZeroRate: number}>>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string>("");
+  const [minElevationAngle, setMinElevationAngle] = useState(30);
+  const [observationLongitude, setObservationLongitude] = useState(0);
   const chartRef = useRef<any>(null);
 
-  const analyzeAccess = async () => {
+  const analyzeGlobalCoverage = async () => {
     setIsAnalyzing(true);
     setError("");
     
@@ -31,42 +32,45 @@ export default function StationAccessAnalysis({ satText, constText, gsText, star
       // Parse TOML data
       const baseSats = satText ? parseSatellitesToml(satText) : [];
       const constSats = constText ? parseConstellationToml(constText) : [];
-      const groundStations = gsText ? parseGroundStationsToml(gsText) : [];
-      
-      if (groundStations.length === 0) {
-        throw new Error("地上局データがありません");
-      }
       
       const allSatellites = [...baseSats, ...constSats];
       if (allSatellites.length === 0) {
         throw new Error("衛星データがありません");
       }
 
+      // Create ground stations at specified longitude, latitude from -90 to 90 degrees with 1 degree steps
+      const generatedStations: GroundStation[] = [];
+      for (let lat = -90; lat <= 90; lat++) {
+        generatedStations.push({
+          name: `Lat${lat}°`,
+          latitudeDeg: lat,
+          longitudeDeg: observationLongitude,
+          heightKm: 0,
+          minElevationDeg: minElevationAngle
+        });
+      }
+
       // Calculate visibility data for 24 hours
       const visibilityData = calculateStationAccessData(
         allSatellites,
-        groundStations,
+        generatedStations,
         startTime,
         24, // 24 hours
         10  // 10 second intervals
       );
 
-      // Average the data function but not use it
-      const averagedData = averageVisibilityData(visibilityData, 1);
+      // Average the data for 1 miniuts
+      const averagedData = averageVisibilityData(visibilityData, 6);
       
-      // Calculate statistics from original data (not averaged)
+      // Calculate statistics from original data
       const stationStats = calculateStationStats(visibilityData);
 
       setData(averagedData);
-      setStations(groundStations);
+      setLatitudeStations(generatedStations);
       setStats(stationStats);
       
       console.log(`Generated ${visibilityData.length} data points for 24 hours`);
       console.log(`Averaged to ${averagedData.length} data points (1 minute intervals)`);
-      if (averagedData.length > 1) {
-        const interval = averagedData[1].timestamp - averagedData[0].timestamp;
-        console.log(`Averaged interval: ${interval}ms (expected: ~60000ms)`);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "解析エラーが発生しました");
     } finally {
@@ -84,7 +88,7 @@ export default function StationAccessAnalysis({ satText, constText, gsText, star
       });
       
       const link = document.createElement('a');
-      link.download = `station-access-analysis-${startTime.toISOString().slice(0, 10)}.png`;
+      link.download = `global-coverage-analysis-${startTime.toISOString().slice(0, 10)}.png`;
       link.href = url;
       link.click();
     }
@@ -100,7 +104,7 @@ export default function StationAccessAnalysis({ satText, constText, gsText, star
 <html>
 <head>
     <meta charset="utf-8">
-    <title>地上局アクセス解析 - ${startTime.toISOString().slice(0, 10)}</title>
+    <title>全球アクセス解析 - ${startTime.toISOString().slice(0, 10)}</title>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
     <style>
         body { margin: 0; padding: 30px; background: #141518; }
@@ -109,7 +113,7 @@ export default function StationAccessAnalysis({ satText, constText, gsText, star
     </style>
 </head>
 <body>
-    <h1>地上局アクセス解析</h1>
+    <h1>全球アクセス解析</h1>
     <div id="chart"></div>
     <script>
         var chart = echarts.init(document.getElementById('chart'), 'dark');
@@ -125,7 +129,7 @@ export default function StationAccessAnalysis({ satText, constText, gsText, star
       const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.download = `station-access-analysis-${startTime.toISOString().slice(0, 10)}.html`;
+      link.download = `global-coverage-analysis-${startTime.toISOString().slice(0, 10)}.html`;
       link.href = url;
       link.click();
       URL.revokeObjectURL(url);
@@ -135,7 +139,7 @@ export default function StationAccessAnalysis({ satText, constText, gsText, star
   const downloadRawData = () => {
     if (data.length > 0) {
       // Create CSV format
-      const headers = ['Time', 'Timestamp', ...stations.map(s => s.name)];
+      const headers = ['Time', 'Timestamp', ...latitudeStations.map(s => s.name)];
       const csvRows = [headers.join(',')];
       
       data.forEach(timeData => {
@@ -151,43 +155,33 @@ export default function StationAccessAnalysis({ satText, constText, gsText, star
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.download = `station-access-data-${startTime.toISOString().slice(0, 10)}.csv`;
+      link.download = `global-coverage-data-${startTime.toISOString().slice(0, 10)}.csv`;
       link.href = url;
       link.click();
       URL.revokeObjectURL(url);
     }
   };
 
-  // Generate color palette for different satellite counts
-  const getColorForCount = (count: number, maxCount: number) => {
-    if (count === 0) return '#2d3748'; // Dark gray for no satellites
-    const intensity = count / maxCount;
-    if (intensity < 0.33) return '#38a169'; // Green for low count
-    if (intensity < 0.66) return '#d69e2e'; // Yellow for medium count
-    return '#e53e3e'; // Red for high count
-  };
-
   const option = data.length > 0 ? {
     title: {
-      text: "地上局アクセス解析",
+      text: "全球アクセス解析",
       textStyle: { color: "#ed6d00", fontSize: 16 },
       left: 'center'
     },
     backgroundColor: "rgba(30, 32, 36, 0.95)",
     textStyle: { color: "#f1f1f1" },
     grid: {
-      left: 160, // Increased to make room for longer y-axis labels
+      left: 160,
       right: 10,
       top: 30,
-      bottom: 100  // Increased to make room for both visualMap and dataZoom
+      bottom: 100
     },
     xAxis: {
       type: 'category',
-      data: data.map(d => d.time.substr(0, 5)), // All data points (now 1-minute intervals)
+      data: data.map(d => d.time.substr(0, 5)),
       axisLabel: { 
         color: "#999faa",
-        rotate: 45,
-        // interval: 9  // Show label every 10 data points (10 minutes)
+        rotate: 45
       },
       name: '時刻 (UTC)',
       nameLocation: 'middle',
@@ -196,29 +190,26 @@ export default function StationAccessAnalysis({ satText, constText, gsText, star
     },
     yAxis: {
       type: 'category',
-      data: stations.map((s, index) => {
+      data: latitudeStations.map((s, index) => {
         const stat = stats[index];
-        return `${s.name}\nAvg.: ${stat.averageVisible.toFixed(2)}\n≠0: ${(stat.nonZeroRate * 100).toFixed(1)}%`;
+        return stat ? `${s.name} (Avg:${stat.averageVisible.toFixed(1)})` : s.name;
       }),
       axisLabel: { 
         color: "#999faa",
-        fontSize: 13,
-        lineHeight: 14
+        fontSize: 11
       },
-      name: '地上局',
+      name: '緯度',
       nameLocation: 'middle',
       nameGap: 120,
       nameTextStyle: { color: "#999faa" }
     },
     visualMap: {
       min: 0,
-      // max: Math.max(...data.flatMap(d => d.stations.map(s => s.visibleCount))),
       max: 10,
       calculable: true,
       orient: 'horizontal',
-      // left: 'center',
       left: 'left',
-      bottom: 0,  // Increased to avoid overlap with dataZoom
+      bottom: 0,
       textStyle: { color: "#f1f1f1" },
       inRange: {
         color: ['#2d3748', '#38a169', '#d69e2e', '#e53e3e']
@@ -234,7 +225,7 @@ export default function StationAccessAnalysis({ satText, constText, gsText, star
         ])
       ),
       label: {
-        show: false // Remove numbers from heatmap
+        show: false
       },
       emphasis: {
         itemStyle: {
@@ -244,14 +235,14 @@ export default function StationAccessAnalysis({ satText, constText, gsText, star
       }
     }],
     tooltip: {
-      show: false // Disable tooltip
+      show: false
     },
     dataZoom: [{
       type: 'slider',
       xAxisIndex: 0,
-      start: 0,    // Start at 0%
-      end: 16.67,   // End at 16.67% (4 hours out of 24 hours)
-      bottom: 10,  // Moved down to avoid overlap with visualMap
+      start: 0,
+      end: 16.67,
+      bottom: 10,
       textStyle: { color: "#f1f1f1" },
       borderColor: "#ed6d00",
       fillerColor: "rgba(237, 109, 0, 0.3)",
@@ -261,7 +252,7 @@ export default function StationAccessAnalysis({ satText, constText, gsText, star
     }]
   } : {
     title: {
-      text: "地上局アクセス解析",
+      text: "全球アクセス解析",
       textStyle: { color: "#ed6d00" },
       left: 'center'
     },
@@ -270,9 +261,9 @@ export default function StationAccessAnalysis({ satText, constText, gsText, star
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      <div style={{ padding: "6px", borderBottom: "1px solid #444", display: "flex", gap: "6px", alignItems: "center" }}>
+      <div style={{ padding: "6px", borderBottom: "1px solid #444", display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
         <button
-          onClick={analyzeAccess}
+          onClick={analyzeGlobalCoverage}
           disabled={isAnalyzing}
           style={{
             backgroundColor: "#ed6d00",
@@ -299,6 +290,48 @@ export default function StationAccessAnalysis({ satText, constText, gsText, star
         >
           {isAnalyzing ? "解析中..." : "解析開始"}
         </button>
+        
+        <label style={{ display: "flex", alignItems: "center", gap: "4px", color: "#999faa", fontSize: "0.9em" }}>
+          最低仰角:
+          <input
+            type="number"
+            min="0"
+            max="80"
+            value={minElevationAngle}
+            onChange={(e) => setMinElevationAngle(Number(e.target.value))}
+            style={{
+              width: "50px",
+              padding: "2px 4px",
+              backgroundColor: "#333",
+              color: "#f1f1f1",
+              border: "1px solid #555",
+              borderRadius: "3px"
+            }}
+            disabled={isAnalyzing}
+          />
+          °
+        </label>
+        
+        <label style={{ display: "flex", alignItems: "center", gap: "4px", color: "#999faa", fontSize: "0.9em" }}>
+          観測経度:
+          <input
+            type="number"
+            min="-180"
+            max="180"
+            value={observationLongitude}
+            onChange={(e) => setObservationLongitude(Number(e.target.value))}
+            style={{
+              width: "60px",
+              padding: "2px 4px",
+              backgroundColor: "#333",
+              color: "#f1f1f1",
+              border: "1px solid #555",
+              borderRadius: "3px"
+            }}
+            disabled={isAnalyzing}
+          />
+          °
+        </label>
         
         {data.length > 0 && (
           <>

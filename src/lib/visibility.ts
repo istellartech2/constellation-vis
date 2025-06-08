@@ -198,7 +198,7 @@ export function averageVisibilityData(
       const sum = chunk.reduce((acc, d) => acc + d.stations[stationIndex].visibleCount, 0);
       return {
         name: station.name,
-        visibleCount: Math.round(sum / chunk.length) // Round to nearest integer
+        visibleCount: sum / chunk.length // Keep decimal values for more accurate representation
       };
     });
 
