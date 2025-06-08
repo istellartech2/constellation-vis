@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import type { SatelliteSpec } from "../lib/satellites";
-import { generateVisibilityReport } from "../lib/visibility";
 import type { GroundStation } from "../lib/groundStations";
 import {
   parseSatellitesToml,
@@ -175,7 +174,6 @@ export default function SatelliteEditor({
   });
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"editor" | "analysis" | "option">("editor");
-  const [reportText, setReportText] = useState("");
   const [importOpen, setImportOpen] = useState(false);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
@@ -308,24 +306,6 @@ export default function SatelliteEditor({
     }
   };
 
-  const handleGenerateReport = () => {
-    try {
-      const base = parseSatellitesToml(satText);
-      const con = constText ? parseConstellationToml(constText) : [];
-      const gs = parseGroundStationsToml(gsText);
-      validateSatellites([...base, ...con]);
-      validateGroundStations(gs);
-      const text = generateVisibilityReport(
-        [...base, ...con],
-        gs,
-        new Date(startText),
-      );
-      setReportText(text);
-      downloadFile("report.csv", text);
-    } catch (e) {
-      alert("Failed to generate report: " + (e as Error).message);
-    }
-  };
 
   const handleSaveBundle = () => {
     const bundle = buildConfigBundle(
@@ -435,8 +415,6 @@ export default function SatelliteEditor({
               onEcefChange={onEcefChange}
               showPerturbation={showPerturbation}
               onShowPerturbationChange={onShowPerturbationChange}
-              reportText={reportText}
-              onGenerateReport={handleGenerateReport}
             />
           )}
           </div>

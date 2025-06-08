@@ -17,8 +17,6 @@ interface Props {
   onEcefChange: (v: boolean) => void;
   showPerturbation: boolean;
   onShowPerturbationChange: (v: boolean) => void;
-  reportText: string;
-  onGenerateReport: () => void;
 }
 
 export default function OptionTab({
@@ -36,8 +34,6 @@ export default function OptionTab({
   onEcefChange,
   showPerturbation,
   onShowPerturbationChange,
-  reportText,
-  onGenerateReport,
 }: Props) {
   return (
     <div>
