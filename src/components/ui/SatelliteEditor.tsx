@@ -14,7 +14,7 @@ import EditorTab from "./EditorTab";
 import AnalysisTab from "./AnalysisTab";
 import OptionTab from "./OptionTab";
 import ImportDialog from "./ImportDialog";
-import { celestrakEntryToSat, satellitesToToml } from "../../utils/celestrakUtils";
+import { celestrakEntryToSat, satellitesToToml, getCelestrakUrl } from "../../utils/celestrakUtils";
 import { downloadFile } from "../../utils/fileUtils";
 import { validateSatellites, validateGroundStations } from "../../utils/validators";
 
@@ -114,20 +114,59 @@ export default function SatelliteEditor({
   // with whatever the user already has in the satellites text area.
   async function handleImport() {
     setImporting(true);
+    const errors: string[] = [];
+    
     try {
       const base = parseSatellitesToml(satText);
+      
       for (const g of selectedGroups) {
-        const url =
-          "https://celestrak.org/NORAD/elements/gp.php?GROUP=" +
-          g +
-          "&FORMAT=json";
-        const resp = await fetch(url);
-        const data = await resp.json();
-        for (const e of data) {
-          base.push(celestrakEntryToSat(e));
+        try {
+          const url = getCelestrakUrl(g);
+          const resp = await fetch(url);
+          
+          if (!resp.ok) {
+            errors.push(`HTTP ${resp.status} for group "${g}"`);
+            continue;
+          }
+          
+          const text = await resp.text();
+          
+          // Check if response is valid JSON
+          if (text.startsWith('Invalid query:') || text.startsWith('Error:')) {
+            errors.push(`Invalid group "${g}": ${text}`);
+            continue;
+          }
+          
+          let data;
+          try {
+            data = JSON.parse(text);
+          } catch (jsonError) {
+            errors.push(`Invalid JSON response for group "${g}"`);
+            continue;
+          }
+          
+          if (!Array.isArray(data)) {
+            errors.push(`Expected array for group "${g}", got ${typeof data}`);
+            continue;
+          }
+          
+          for (const e of data) {
+            try {
+              base.push(celestrakEntryToSat(e));
+            } catch (conversionError) {
+              console.warn(`Failed to convert entry for group "${g}":`, conversionError);
+            }
+          }
+        } catch (groupError) {
+          errors.push(`Error processing group "${g}": ${(groupError as Error).message}`);
         }
       }
+      
       setSatText(satellitesToToml(base));
+      
+      if (errors.length > 0) {
+        alert(`Import completed with errors:\n${errors.join('\n')}`);
+      }
     } catch (e) {
       alert("Failed to import satellites: " + (e as Error).message);
     } finally {

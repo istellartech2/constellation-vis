@@ -2,6 +2,43 @@ import type { SatelliteSpec } from "../lib/satellites";
 
 const MU = 398600.4418; // km^3/s^2
 
+export const CELESTRAK_GROUP_URLS = {
+  // Special Interest
+  "last-30-days": "last-30-days",
+  "stations": "stations",
+  "active": "active",
+  "geo": "geo",
+  "cubesat": "cubesat",
+  
+  // Weather & Earth Observation
+  "weather": "weather",
+  "planet": "planet",
+  "spire": "spire",
+  
+  // Communications
+  "starlink": "starlink",
+  "oneweb": "oneweb",
+  "intelsat": "intelsat",
+  "ses": "ses",
+  "iridium": "iridium",
+  "globalstar": "globalstar",
+  "amateur": "amateur",
+  
+  // Navigation
+  "gnss": "gnss",
+  "gps-ops": "gps-ops",
+  "glo-ops": "glo-ops",
+  "galileo": "galileo",
+  "beidou": "beidou",
+  "sbas": "sbas",
+  
+  // Debris
+  "cosmos-1408-debris": "cosmos-1408-debris",
+  "fengyun-1c-debris": "fengyun-1c-debris",
+  "iridium-33-debris": "iridium-33-debris", 
+  "cosmos-2251-debris": "cosmos-2251-debris",
+} as const;
+
 export interface CelestrakEntry {
   MEAN_MOTION: number;
   ECCENTRICITY: number;
@@ -37,6 +74,11 @@ export function celestrakEntryToSat(entry: CelestrakEntry): SatelliteSpec {
       noradCatId: Number(entry.NORAD_CAT_ID),
     },
   };
+}
+
+export function getCelestrakUrl(group: string): string {
+  const urlGroup = CELESTRAK_GROUP_URLS[group as keyof typeof CELESTRAK_GROUP_URLS] || group;
+  return `https://celestrak.org/NORAD/elements/gp.php?GROUP=${urlGroup}&FORMAT=json`;
 }
 
 export function satellitesToToml(list: SatelliteSpec[]): string {
