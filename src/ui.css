@@ -155,32 +155,33 @@ body {
 }
 
 .tab-button {
-  background: var(--dark-gray);
-  border: 1px solid var(--gray);
-  border-bottom: none;
-  padding: 8px 16px;
-  color: var(--text-color);
-  cursor: pointer;
-  border-radius: 4px 4px 0 0;
-  position: relative;
-  top: 1px;
-  transition: all 0.2s ease;
-  font-weight: 500;
+  background: transparent !important;
+  border: 1px solid #555 !important;
+  border-bottom: none !important;
+  padding: 6px 10px !important;
+  color: #666 !important;
+  cursor: pointer !important;
+  border-radius: 4px 4px 0 0 !important;
+  position: relative !important;
+  top: 8px !important;
+  transition: all 0.2s ease !important;
+  font-weight: 400 !important;
+  font-size: 1.0em !important;
 }
 
 .tab-button:hover {
-  background: var(--orange);
-  border-color: var(--orange);
-  color: #ffffff;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: #777 !important;
+  color: #999 !important;
 }
 
 .tab-button.active {
-  background: linear-gradient(135deg, var(--gradation-start), var(--gradation-end));
-  color: #ffffff;
-  border-color: var(--orange);
-  border-bottom: 1px solid var(--panel-bg);
-  z-index: 1;
-  font-weight: 600;
+  background: rgba(30, 32, 36, 0.9) !important;
+  color: #ed6d00 !important;
+  border-color: #ed6d00 !important;
+  border-bottom: 1px solid rgba(30, 32, 36, 0.9) !important;
+  z-index: 1 !important;
+  font-weight: 500 !important;
 }
 
 .tab-content {

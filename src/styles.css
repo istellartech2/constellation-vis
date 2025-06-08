@@ -64,9 +64,12 @@ button {
 button.primary {
   background-color: #646cff;
   color: white;
+  transition: all 0.2s ease;
 }
 button.primary:hover {
   background-color: #4e52d1;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(100, 108, 255, 0.3);
 }
 
 /* 控えめ（Secondary） */
@@ -85,30 +88,6 @@ button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
 }
 
-/* タブボタン（中間強調） */
-button.tab-button {
-  background-color: #e6e6fa;
-  color: #333;
-  border: 1px solid #ccc;
-  border-radius: 6px 6px 0 0;
-  margin-right: 4px;
-  padding: 0.5em 1em;
-  font-size: 0.95em;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 0.2s ease;
-}
-
-button.tab-button:hover {
-  background-color: #dcdcff;
-}
-
-button.tab-button.active {
-  background-color: #646cff;
-  color: white;
-  border-color: #646cff;
-  font-weight: 600;
-}
 
 @media (prefers-color-scheme: light) {
   :root {
@@ -129,4 +108,260 @@ html, body, #root, .container {
   margin: 0;
   overflow: hidden;
   font-family: system-ui, sans-serif;
+}
+
+/* ============================================
+ * ANALYSIS COMPONENTS
+ * ============================================ */
+
+/* Analysis Buttons */
+.analysis-secondary-button {
+  background-color: transparent !important;
+  color: #999faa !important;
+  border: 1px solid #555 !important;
+  padding: 4px 12px !important;
+  border-radius: 3px !important;
+  cursor: pointer !important;
+  font-size: 0.85em !important;
+  transition: all 0.2s ease !important;
+  font-weight: normal !important;
+}
+
+.analysis-secondary-button:hover {
+  background-color: rgba(237, 109, 0, 0.1) !important;
+  border-color: #da5800 !important;
+  color: #f1f1f1 !important;
+}
+
+.analysis-secondary-button:disabled {
+  opacity: 0.6 !important;
+  cursor: not-allowed !important;
+}
+
+.analysis-primary-button {
+  background-color: #ed6d00;
+  color: white;
+  border: none;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.analysis-primary-button:hover {
+  background-color: #da5800;
+}
+
+.analysis-primary-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.analysis-close-button {
+  background-color: transparent;
+  border: none;
+  color: #999faa;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0 5px;
+}
+
+/* Analysis Popup Overlay */
+.analysis-popup-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+/* Analysis Popup Container */
+.analysis-popup-container {
+  background-color: #1e2024;
+  border: 1px solid #444;
+  border-radius: 8px;
+  padding: 16px;
+  color: #f1f1f1;
+}
+
+.analysis-popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  border-bottom: 1px solid #444;
+  padding-bottom: 8px;
+}
+
+.analysis-popup-title {
+  margin: 0;
+  color: #ed6d00;
+  font-size: 1.3em;
+}
+
+/* Analysis Loading Overlay */
+.analysis-loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(20, 21, 24, 0.8);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+
+.analysis-loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #333;
+  border-top: 3px solid #ed6d00;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 16px;
+}
+
+.analysis-loading-text {
+  color: #ed6d00;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.analysis-loading-subtext {
+  color: #999faa;
+  font-size: 14px;
+  margin-top: 8px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Analysis Input Fields */
+.analysis-input-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #999faa;
+  font-size: 0.9em;
+}
+
+.analysis-input {
+  padding: 2px 4px;
+  background-color: #333;
+  color: #f1f1f1;
+  border: 1px solid #555;
+  border-radius: 3px;
+}
+
+.analysis-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Analysis Error Message */
+.analysis-error {
+  color: #e53e3e;
+  font-size: 0.9em;
+}
+
+/* Analysis Toolbar */
+.analysis-toolbar {
+  padding: 6px;
+  border-bottom: 1px solid #444;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Availability Card */
+.availability-card {
+  background-color: #2a2d35;
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.availability-card-title {
+  margin: 0 0 8px 0;
+  color: #ed6d00;
+  font-size: 1.1em;
+}
+
+.availability-metrics {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  font-size: 0.9em;
+}
+
+.availability-metric-label {
+  color: #999faa;
+}
+
+.availability-metric-value {
+  margin-left: 8px;
+  font-weight: bold;
+}
+
+/* Availability Info */
+.availability-info {
+  margin-bottom: 10px;
+  color: #999faa;
+  font-size: 0.85em;
+  display: flex;
+  gap: 20px;
+}
+
+/* Option Tab Styles */
+.option-section {
+  margin-bottom: 16px;
+}
+
+.option-section-title {
+  color: #ed6d00;
+  font-size: 0.9em;
+  font-weight: 500;
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #444;
+}
+
+.option-checkbox-group {
+  background: rgba(68, 71, 83, 0.1);
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.option-checkbox-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 0;
+  transition: background-color 0.2s ease;
+}
+
+.option-checkbox-item:hover {
+  background-color: rgba(255, 255, 255, 0.02);
+  border-radius: 4px;
+}
+
+.option-checkbox-item input[type="checkbox"] {
+  margin-right: 8px;
+  accent-color: #ed6d00;
+}
+
+.option-checkbox-item span {
+  color: #f1f1f1;
+  font-size: 0.9em;
 }

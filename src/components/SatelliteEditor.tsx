@@ -371,8 +371,8 @@ export default function SatelliteEditor({
         <button className="side-panel-close" onClick={() => setOpen(false)}>
           ✕
         </button>
-        <div style={{ paddingTop: 36 }}>
-          <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+        <div style={{ paddingTop: 12 }}>
+          <div style={{ display: "flex", gap: 2, marginBottom: 8, marginRight: 50 }}>
             <button
               className={`tab-button ${tab === "editor" ? "active" : ""}`}
               onClick={() => setTab("editor")}

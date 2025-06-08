@@ -1,5 +1,6 @@
 import SatelliteSizeControl from "../SatelliteSizeControl";
 import EarthTextureSelector from "../EarthTextureSelector";
+import "../../styles.css";
 
 interface Props {
   satRadius: number;
@@ -40,62 +41,60 @@ export default function OptionTab({
 }: Props) {
   return (
     <div>
-      <SatelliteSizeControl
-        value={satRadius}
-        onChange={onSatRadiusChange}
-      />
-      <EarthTextureSelector
-        value={earthTexture}
-        onChange={onEarthTextureChange}
-        style={{ marginTop: 8 }}
-      />
-      <div style={{ marginTop: 8 }}>
-        <label>
-          <input
-            type="checkbox"
-            checked={showGraticule}
-            onChange={(e) => onShowGraticuleChange(e.target.checked)}
+      <div className="option-section">
+        <div className="option-section-title">Visualization Controls</div>
+        <SatelliteSizeControl
+          value={satRadius}
+          onChange={onSatRadiusChange}
+        />
+        <div style={{ marginTop: 8 }}>
+          <EarthTextureSelector
+            value={earthTexture}
+            onChange={onEarthTextureChange}
           />
-          <span style={{ marginLeft: 4 }}>Show latitude/longitude lines</span>
-        </label>
+        </div>
       </div>
-      <div style={{ marginTop: 4 }}>
-        <label>
-          <input
-            type="checkbox"
-            checked={showEcliptic && showSunDirection}
-            onChange={(e) => {
-              onShowEclipticChange(e.target.checked);
-              onShowSunDirectionChange(e.target.checked);
-            }}
-          />
-          <span style={{ marginLeft: 4 }}>Show ecliptic plane</span>
-        </label>
+
+      <div className="option-section">
+        <div className="option-section-title">Display Options</div>
+        <div className="option-checkbox-group">
+          <label className="option-checkbox-item">
+            <input
+              type="checkbox"
+              checked={showGraticule}
+              onChange={(e) => onShowGraticuleChange(e.target.checked)}
+            />
+            <span>Show latitude/longitude lines</span>
+          </label>
+          <label className="option-checkbox-item">
+            <input
+              type="checkbox"
+              checked={showEcliptic && showSunDirection}
+              onChange={(e) => {
+                onShowEclipticChange(e.target.checked);
+                onShowSunDirectionChange(e.target.checked);
+              }}
+            />
+            <span>Show ecliptic plane</span>
+          </label>
+          <label className="option-checkbox-item">
+            <input
+              type="checkbox"
+              checked={ecef}
+              onChange={(e) => onEcefChange(e.target.checked)}
+            />
+            <span>ECEF mode</span>
+          </label>
+          <label className="option-checkbox-item">
+            <input
+              type="checkbox"
+              checked={showPerturbation}
+              onChange={(e) => onShowPerturbationChange(e.target.checked)}
+            />
+            <span>Show perturbation</span>
+          </label>
+        </div>
       </div>
-      <div style={{ marginTop: 4 }}>
-        <label>
-          <input
-            type="checkbox"
-            checked={ecef}
-            onChange={(e) => onEcefChange(e.target.checked)}
-          />
-          <span style={{ marginLeft: 4 }}>ECEF mode</span>
-        </label>
-      </div>
-      <div style={{ marginTop: 4 }}>
-        <label>
-          <input
-            type="checkbox"
-            checked={showPerturbation}
-            onChange={(e) => onShowPerturbationChange(e.target.checked)}
-          />
-          <span style={{ marginLeft: 4 }}>Show perturbation</span>
-        </label>
-      </div>
-      <hr style={{ marginTop: 12, marginBottom: 12 }} />
-      <span>Ground Station Visibility Report</span>
-      <button onClick={onGenerateReport}>Generate</button>
-      <pre style={{ whiteSpace: "pre-wrap", marginTop: 8 }}>{reportText}</pre>
     </div>
   );
 }
