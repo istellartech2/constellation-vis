@@ -2,7 +2,6 @@ import { useState, useRef } from "react";
 import ReactECharts from "echarts-for-react";
 import { calculateStationAccessData, calculateStationStats, averageVisibilityData, calculateAvailabilityMetrics } from "../../lib/visibility";
 import { parseSatellitesToml, parseConstellationToml, parseGroundStationsToml } from "../../lib/tomlParse";
-import type { SatelliteSpec } from "../../lib/satellites";
 import type { GroundStation } from "../../lib/groundStations";
 
 interface AvailabilityMetrics {
@@ -155,14 +154,14 @@ export default function StationAccessAnalysis({ satText, constText, gsText, star
   const downloadRawData = () => {
     if (data.length > 0) {
       // Create CSV format
-      const headers = ['Time', 'Timestamp', ...stations.map(s => s.name)];
+      const headers = ['Time', 'Timestamp', ...stations.map((s: GroundStation) => s.name)];
       const csvRows = [headers.join(',')];
       
       data.forEach(timeData => {
         const row = [
           timeData.time,
           timeData.timestamp,
-          ...timeData.stations.map(s => s.visibleCount)
+          ...timeData.stations.map((s: any) => s.visibleCount)
         ];
         csvRows.push(row.join(','));
       });
@@ -178,14 +177,6 @@ export default function StationAccessAnalysis({ satText, constText, gsText, star
     }
   };
 
-  // Generate color palette for different satellite counts
-  const getColorForCount = (count: number, maxCount: number) => {
-    if (count === 0) return '#2d3748'; // Dark gray for no satellites
-    const intensity = count / maxCount;
-    if (intensity < 0.33) return '#38a169'; // Green for low count
-    if (intensity < 0.66) return '#d69e2e'; // Yellow for medium count
-    return '#e53e3e'; // Red for high count
-  };
 
   const option = data.length > 0 ? {
     title: {
@@ -247,7 +238,7 @@ export default function StationAccessAnalysis({ satText, constText, gsText, star
     series: [{
       type: 'heatmap',
       data: data.flatMap((timeData, timeIndex) => 
-        timeData.stations.map((station, stationIndex) => [
+        timeData.stations.map((station: any, stationIndex: number) => [
           timeIndex,
           stationIndex, 
           station.visibleCount
