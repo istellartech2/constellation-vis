@@ -19,7 +19,7 @@ const EARTH_RADIUS_EQUATOR_KM = 6378.137;
 const EARTH_RADIUS_POLAR_KM = 6356.7523142;
 
 /** Maximum number of shadow trail points to keep in memory */
-const MAX_SHADOW_COORDS = 1440; // 24 hours at 1 minute intervals
+const MAX_SHADOW_COORDS = 144000; // 100 days at 1 minute intervals
 
 export interface SatelliteSceneParams {
   mountRef: React.RefObject<HTMLDivElement | null>;

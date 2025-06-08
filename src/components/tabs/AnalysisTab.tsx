@@ -7,20 +7,24 @@ import OrbitMaintenanceAnalysis from "../analysis/OrbitMaintenanceAnalysis";
 import SolarImpactAnalysis from "../analysis/SolarImpactAnalysis";
 
 interface Props {
+  satText: string;
+  constText: string;
+  gsText: string;
+  startTime: Date;
   onAnalysisStart?: () => void;
   onAnalysisEnd?: () => void;
 }
 
 type AnalysisType = 
-  | "特定局アクセス解析"
+  | "地上局アクセス解析"
   | "全球カバレッジ解析"
-  | "特定局可用性解析"
+  | "地上局可用性解析"
   | "全球可用性解析"
   | "軌道維持燃料解析"
   | "太陽光影響解析"
   | "";
 
-export default function AnalysisTab({ onAnalysisStart, onAnalysisEnd }: Props) {
+export default function AnalysisTab({ satText, constText, gsText, startTime, onAnalysisStart, onAnalysisEnd }: Props) {
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [analysisType, setAnalysisType] = useState<AnalysisType>("");
 
@@ -38,11 +42,16 @@ export default function AnalysisTab({ onAnalysisStart, onAnalysisEnd }: Props) {
 
   const renderAnalysisComponent = () => {
     switch (analysisType) {
-      case "特定局アクセス解析":
-        return <StationAccessAnalysis />;
+      case "地上局アクセス解析":
+        return <StationAccessAnalysis 
+          satText={satText}
+          constText={constText}
+          gsText={gsText}
+          startTime={startTime}
+        />;
       case "全球カバレッジ解析":
         return <GlobalCoverageAnalysis />;
-      case "特定局可用性解析":
+      case "地上局可用性解析":
         return <StationAvailabilityAnalysis />;
       case "全球可用性解析":
         return <GlobalAvailabilityAnalysis />;
@@ -63,9 +72,9 @@ export default function AnalysisTab({ onAnalysisStart, onAnalysisEnd }: Props) {
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <button 
               className="analysis-button"
-              onClick={() => handleAnalysisClick("特定局アクセス解析")}
+              onClick={() => handleAnalysisClick("地上局アクセス解析")}
             >
-              特定局アクセス解析
+              地上局アクセス解析
             </button>
             <button 
               className="analysis-button"
@@ -75,9 +84,9 @@ export default function AnalysisTab({ onAnalysisStart, onAnalysisEnd }: Props) {
             </button>
             <button 
               className="analysis-button"
-              onClick={() => handleAnalysisClick("特定局可用性解析")}
+              onClick={() => handleAnalysisClick("地上局可用性解析")}
             >
-              特定局可用性解析
+              地上局可用性解析
             </button>
             <button 
               className="analysis-button"
@@ -122,9 +131,9 @@ export default function AnalysisTab({ onAnalysisStart, onAnalysisEnd }: Props) {
 
       {analysisOpen && (
         <div className="overlay" style={{ zIndex: 50 }}>
-          <div className="overlay-box" style={{ width: "80%", maxWidth: "800px", height: "60%", maxHeight: "600px", display: "flex", flexDirection: "column" }}>
+          <div className="overlay-box" style={{ width: "90%", maxWidth: "1200px", height: "80%", maxHeight: "900px", display: "flex", flexDirection: "column" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <h3 style={{ margin: 0 }}>{analysisType}</h3>
+              <h3 style={{ margin: 0, fontSize: "1rem" }}>{analysisType}</h3>
               <button
                 onClick={handleAnalysisClose}
                 style={{ background: "transparent", border: "none", color: "#999faa", fontSize: "1.5rem", cursor: "pointer" }}

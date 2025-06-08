@@ -3,7 +3,7 @@ import ReactECharts from "echarts-for-react";
 export default function StationAvailabilityAnalysis() {
   const option = {
     title: {
-      text: "特定局可用性解析",
+      text: "地上局可用性解析",
       textStyle: {
         color: "#ed6d00"
       }

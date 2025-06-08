@@ -86,6 +86,166 @@ export function averageVisibility(
  * Generate a CSV visibility report for multiple ground stations.
  * Each row corresponds to a time step.
  */
+/**
+ * Calculate visibility data for station access analysis visualization.
+ * Returns time series data for each ground station.
+ */
+export function calculateStationAccessData(
+  sats: SatelliteSpec[],
+  stations: GroundStation[],
+  start: Date,
+  durationHours = 24,
+  stepSeconds = 10,
+): Array<{
+  time: string;
+  timestamp: number;
+  stations: Array<{
+    name: string;
+    visibleCount: number;
+  }>;
+}> {
+  const satRecs = toSatrecs(sats);
+  const observers = stations.map((gs) => ({
+    name: gs.name,
+    longitude: satellite.degreesToRadians(gs.longitudeDeg),
+    latitude: satellite.degreesToRadians(gs.latitudeDeg),
+    height: gs.heightKm,
+    minEl: THREE.MathUtils.degToRad(gs.minElevationDeg),
+  }));
+
+  const result: Array<{
+    time: string;
+    timestamp: number;
+    stations: Array<{
+      name: string;
+      visibleCount: number;
+    }>;
+  }> = [];
+
+  const startMs = start.getTime();
+  const endMs = startMs + durationHours * 3600 * 1000;
+  const stepMs = stepSeconds * 1000;
+
+  for (let ms = startMs; ms <= endMs; ms += stepMs) {
+    const current = new Date(ms);
+    const gmst = satellite.gstime(current);
+    const counts = observers.map(() => 0);
+    
+    satRecs.forEach((rec) => {
+      const pv = satellite.propagate(rec, current);
+      if (!pv?.position) return;
+      const ecf = satellite.eciToEcf(pv.position, gmst);
+      observers.forEach((obs, gi) => {
+        const look = satellite.ecfToLookAngles(obs, ecf);
+        if (look.elevation > obs.minEl) counts[gi]++;
+      });
+    });
+
+    const timeStr = current.toISOString().substr(11, 8); // HH:MM:SS format
+    result.push({
+      time: timeStr,
+      timestamp: ms,
+      stations: observers.map((obs, i) => ({
+        name: obs.name,
+        visibleCount: counts[i],
+      })),
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Average visibility data over specified interval (e.g., 6 points = 1 minute for 10-second data).
+ */
+export function averageVisibilityData(
+  data: Array<{
+    time: string;
+    timestamp: number;
+    stations: Array<{
+      name: string;
+      visibleCount: number;
+    }>;
+  }>,
+  averagePoints: number = 6
+): Array<{
+  time: string;
+  timestamp: number;
+  stations: Array<{
+    name: string;
+    visibleCount: number;
+  }>;
+}> {
+  const averaged: Array<{
+    time: string;
+    timestamp: number;
+    stations: Array<{
+      name: string;
+      visibleCount: number;
+    }>;
+  }> = [];
+
+  for (let i = 0; i < data.length; i += averagePoints) {
+    const chunk = data.slice(i, Math.min(i + averagePoints, data.length));
+    if (chunk.length === 0) continue;
+
+    // Use the middle timestamp and time
+    const middleIndex = Math.floor(chunk.length / 2);
+    const middleData = chunk[middleIndex];
+
+    // Calculate average for each station
+    const stationAverages = middleData.stations.map((station, stationIndex) => {
+      const sum = chunk.reduce((acc, d) => acc + d.stations[stationIndex].visibleCount, 0);
+      return {
+        name: station.name,
+        visibleCount: Math.round(sum / chunk.length) // Round to nearest integer
+      };
+    });
+
+    averaged.push({
+      time: middleData.time,
+      timestamp: middleData.timestamp,
+      stations: stationAverages
+    });
+  }
+
+  return averaged;
+}
+
+/**
+ * Calculate statistics for station access analysis.
+ */
+export function calculateStationStats(
+  data: Array<{
+    time: string;
+    timestamp: number;
+    stations: Array<{
+      name: string;
+      visibleCount: number;
+    }>;
+  }>
+): Array<{
+  name: string;
+  averageVisible: number;
+  nonZeroRate: number;
+}> {
+  if (data.length === 0) return [];
+
+  const stationNames = data[0].stations.map(s => s.name);
+  
+  return stationNames.map(name => {
+    const counts = data.map(d => d.stations.find(s => s.name === name)?.visibleCount || 0);
+    const totalCount = counts.reduce((sum, count) => sum + count, 0);
+    const nonZeroCount = counts.filter(count => count > 0).length;
+    
+    return {
+      name,
+      averageVisible: totalCount / counts.length,
+      nonZeroRate: nonZeroCount / counts.length
+    };
+  });
+}
+
 export function generateVisibilityReport(
   sats: SatelliteSpec[],
   stations: GroundStation[],

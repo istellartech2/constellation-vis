@@ -411,6 +411,10 @@ export default function SatelliteEditor({
           )}
           {tab === "analysis" && (
             <AnalysisTab
+              satText={satText}
+              constText={constText}
+              gsText={gsText}
+              startTime={new Date(startText)}
               onAnalysisStart={onAnalysisStart}
               onAnalysisEnd={onAnalysisEnd}
             />
