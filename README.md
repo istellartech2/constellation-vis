@@ -1,5 +1,7 @@
 # Constellation Visualizer
 
+[![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-Live%20Demo-blue)](https://istellartech2.github.io/constellation-vis/)
+
 A web application that visualizes satellite constellations in Earth orbit.
 
 [constellation-viewer-demo.webm](https://github.com/user-attachments/assets/5389ebab-c38b-4a5f-9e25-4042f1ca3824)
