@@ -118,7 +118,7 @@ function TreeNode({
   }
 
   return (
-    <div className={`ml-${level * 4} mb-2`}>
+    <div className={`${level > 0 ? 'ml-4' : ''} mb-2`}>
       <div className="flex items-center mb-1">
         {hasChildren && !forceExpanded && (
           <Button
@@ -185,7 +185,7 @@ export default function ImportDialog({
 }: ImportDialogProps) {
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="max-w-md max-h-[80vh] overflow-hidden">
+      <DialogContent className="max-w-lg max-h-[80vh] overflow-hidden">
         <DialogHeader>
           <DialogTitle>Import from CelesTrak</DialogTitle>
           <DialogDescription>
@@ -193,7 +193,7 @@ export default function ImportDialog({
           </DialogDescription>
         </DialogHeader>
         
-        <div className="max-h-96 overflow-y-auto pr-2">
+        <div className="max-h-96 overflow-y-auto px-2">
           {CELESTRACK_GROUPS.map((group, index) => (
             <TreeNode
               key={group.group}
