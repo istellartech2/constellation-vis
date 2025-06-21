@@ -6,6 +6,9 @@ import {
 } from "../../utils/tomlParse";
 import { downloadFile, handleFileLoad } from "../../utils/fileUtils";
 import { validateSatellites, validateGroundStations } from "../../utils/validators";
+import { Button } from "./button";
+import { Textarea } from "./textarea";
+import { Download, Upload, Trash2, Globe, Save, FolderOpen } from "lucide-react";
 
 interface Props {
   satText: string;
@@ -44,44 +47,52 @@ export default function EditorTab({
 
   return (
     <>
-      <div style={{ marginBottom: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-          <span style={{ fontSize: "0.9em", fontWeight: 500 }}>satellites.toml</span>
-          <div style={{ display: "flex", gap: 2 }}>
-            <button
-              className="editor-icon-button"
+      <div className="mb-2">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-sm font-medium text-gray-300">satellites.toml</span>
+          <div className="flex gap-1">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 border-2 shadow-md bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-500 hover:border-gray-400"
               onClick={() => downloadFile("satellites.toml", satText)}
               title="Download"
             >
-              💾
-            </button>
-            <button
-              className="editor-icon-button"
+              <Download className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 border-2 shadow-md bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-500 hover:border-gray-400"
               onClick={() => satInputRef.current?.click()}
-              title="Open file"
+              title="Load"
             >
-              📂
-            </button>
-            <button
-              className="editor-icon-button"
+              <Upload className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 border-2 shadow-md bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-500 hover:border-gray-400"
               onClick={() => onSatTextChange("")}
               title="Clear"
             >
-              🗑️
-            </button>
-            <button
-              className="editor-icon-button"
+              <Trash2 className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 border-2 shadow-md bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-500 hover:border-gray-400"
               onClick={onImportClick}
-              title="Import from CelesTrak"
+              title="Import"
             >
-              🌐
-            </button>
+              <Globe className="h-4 w-4" />
+            </Button>
           </div>
         </div>
-        <textarea
+        <Textarea
           value={satText}
           onChange={(e) => onSatTextChange(e.target.value)}
-          style={{ width: "100%", height: 80, fontSize: "0.85em", boxSizing: "border-box" }}
+          className="h-16 w-full !text-xs font-mono leading-tight resize-y"
         />
         <input
           ref={satInputRef}
@@ -96,38 +107,44 @@ export default function EditorTab({
         />
       </div>
 
-      <hr className="hr-dashed" style={{ margin: "8px 0" }} />
-      <div style={{ marginBottom: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-          <span style={{ fontSize: "0.9em", fontWeight: 500 }}>constellation.toml</span>
-          <div style={{ display: "flex", gap: 2 }}>
-            <button
-              className="editor-icon-button"
+      <hr className="border-gray-600 my-2" />
+      <div className="mb-2">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-sm font-medium text-gray-300">constellation.toml</span>
+          <div className="flex gap-1">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 border-2 shadow-md bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-500 hover:border-gray-400"
               onClick={() => downloadFile("constellation.toml", constText)}
               title="Download"
             >
-              💾
-            </button>
-            <button
-              className="editor-icon-button"
+              <Download className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 border-2 shadow-md bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-500 hover:border-gray-400"
               onClick={() => constInputRef.current?.click()}
-              title="Open file"
+              title="Load"
             >
-              📂
-            </button>
-            <button
-              className="editor-icon-button"
+              <Upload className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 border-2 shadow-md bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-500 hover:border-gray-400"
               onClick={() => onConstTextChange("")}
               title="Clear"
             >
-              🗑️
-            </button>
+              <Trash2 className="h-4 w-4" />
+            </Button>
           </div>
         </div>
-        <textarea
+        <Textarea
           value={constText}
           onChange={(e) => onConstTextChange(e.target.value)}
-          style={{ width: "100%", height: 80, fontSize: "0.85em", boxSizing: "border-box" }}
+          className="h-16 w-full !text-xs font-mono leading-tight resize-y"
         />
         <input
           ref={constInputRef}
@@ -142,38 +159,44 @@ export default function EditorTab({
         />
       </div>
       
-      <hr className="hr-dashed" style={{ margin: "8px 0" }} />
-      <div style={{ marginBottom: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-          <span style={{ fontSize: "0.9em", fontWeight: 500 }}>groundstations.toml</span>
-          <div style={{ display: "flex", gap: 2 }}>
-            <button
-              className="editor-icon-button"
+      <hr className="border-gray-600 my-2" />
+      <div className="mb-2">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-sm font-medium text-gray-300">groundstations.toml</span>
+          <div className="flex gap-1">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 border-2 shadow-md bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-500 hover:border-gray-400"
               onClick={() => downloadFile("groundstations.toml", gsText)}
               title="Download"
             >
-              💾
-            </button>
-            <button
-              className="editor-icon-button"
+              <Download className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 border-2 shadow-md bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-500 hover:border-gray-400"
               onClick={() => gsInputRef.current?.click()}
-              title="Open file"
+              title="Load"
             >
-              📂
-            </button>
-            <button
-              className="editor-icon-button"
+              <Upload className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 border-2 shadow-md bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-500 hover:border-gray-400"
               onClick={() => onGsTextChange("")}
               title="Clear"
             >
-              🗑️
-            </button>
+              <Trash2 className="h-4 w-4" />
+            </Button>
           </div>
         </div>
-        <textarea
+        <Textarea
           value={gsText}
           onChange={(e) => onGsTextChange(e.target.value)}
-          style={{ width: "100%", height: 80, fontSize: "0.85em", boxSizing: "border-box" }}
+          className="h-16 w-full !text-xs font-mono leading-tight resize-y"
         />
         <input
           ref={gsInputRef}
@@ -188,20 +211,26 @@ export default function EditorTab({
         />
       </div>
       
-      <hr className="hr-dashed" style={{ margin: "8px 0" }} />
-      <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
-        <button
-          className="editor-action-button"
+      <hr className="border-gray-600 my-2" />
+      <div className="flex gap-2 mb-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex-1 gap-1 text-xs bg-gray-700 border-2 border-gray-500 text-white hover:bg-gray-600 hover:border-gray-400 font-medium h-7"
           onClick={onSaveBundle}
         >
+          <Save className="h-3 w-3" />
           Save All
-        </button>
-        <button 
-          className="editor-action-button" 
+        </Button>
+        <Button 
+          variant="outline" 
+          size="sm"
+          className="flex-1 gap-1 text-xs bg-gray-700 border-2 border-gray-500 text-white hover:bg-gray-600 hover:border-gray-400 font-medium h-7"
           onClick={() => bundleInputRef.current?.click()}
         >
+          <FolderOpen className="h-3 w-3" />
           Load All
-        </button>
+        </Button>
         <input
           ref={bundleInputRef}
           type="file"
@@ -215,32 +244,27 @@ export default function EditorTab({
         />
       </div>
       
-      <hr style={{ margin: "8px 0" }} />
-      <div style={{ marginBottom: 8 }}>
-        <label style={{ fontSize: "0.9em", fontWeight: 500, display: "block", marginBottom: 4 }}>
+      <hr className="border-gray-600 my-2" />
+      <div className="mb-2">
+        <label className="block text-xs font-medium text-gray-300 mb-1">
           Simulation start (UTC)
         </label>
         <input
           type="datetime-local"
           value={startText}
           onChange={(e) => onStartTextChange(e.target.value)}
-          style={{ width: "100%", fontSize: "0.85em", boxSizing: "border-box" }}
+          className="w-full text-xs bg-gray-800 border-2 border-gray-500 text-gray-100 rounded px-2 py-1.5 focus:border-orange-500 focus:ring-1 focus:ring-orange-500/20 outline-none"
         />
       </div>
       
-      <hr style={{ margin: "8px 0" }} />
-      <button
-        className="primary"
+      <hr className="border-gray-600 my-2" />
+      <Button
         onClick={onUpdate}
-        style={{
-          padding: "6px 16px",
-          fontWeight: "bold",
-          fontSize: "0.9em",
-          width: "100%"
-        }}
+        className="w-full font-medium bg-amber-600 border border-amber-500 hover:bg-amber-700 hover:border-amber-600 text-amber-50 shadow-sm transition-all duration-200 text-sm py-2 h-9 rounded-md"
+        size="sm"
       >
-        Update
-      </button>
+        UPDATE
+      </Button>
     </>
   );
 }

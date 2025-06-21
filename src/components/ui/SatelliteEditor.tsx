@@ -17,6 +17,9 @@ import ImportDialog from "./ImportDialog";
 import { celestrakEntryToSat, satellitesToToml, getCelestrakUrl } from "../../utils/celestrakUtils";
 import { downloadFile } from "../../utils/fileUtils";
 import { validateSatellites, validateGroundStations } from "../../utils/validators";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "./tabs";
+import { Button } from "./button";
+import { X } from "lucide-react";
 
 /**
  * Editor side panel allowing the user to load, edit and save TOML files
@@ -140,7 +143,7 @@ export default function SatelliteEditor({
           let data;
           try {
             data = JSON.parse(text);
-          } catch (jsonError) {
+          } catch {
             errors.push(`Invalid JSON response for group "${g}"`);
             continue;
           }
@@ -272,76 +275,87 @@ export default function SatelliteEditor({
         </button>
       )}
       <div className={`side-panel ${open ? "" : "closed"}`}>
-        <button className="side-panel-close" onClick={() => setOpen(false)}>
-          ✕
-        </button>
-        <div style={{ paddingTop: 12 }}>
-          <div style={{ display: "flex", gap: 2, marginBottom: 8, marginRight: 50 }}>
-            <button
-              className={`tab-button ${tab === "editor" ? "active" : ""}`}
-              onClick={() => setTab("editor")}
-            >
-              Editor
-            </button>
-            <button
-              className={`tab-button ${tab === "analysis" ? "active" : ""}`}
-              onClick={() => setTab("analysis")}
-            >
-              Analysis
-            </button>
-            <button
-              className={`tab-button ${tab === "option" ? "active" : ""}`}
-              onClick={() => setTab("option")}
-            >
-              Option
-            </button>
-          </div>
-          <div className="tab-content">
-          {tab === "editor" && (
-            <EditorTab
-              satText={satText}
-              constText={constText}
-              gsText={gsText}
-              startText={startText}
-              onSatTextChange={setSatText}
-              onConstTextChange={setConstText}
-              onGsTextChange={setGsText}
-              onStartTextChange={setStartText}
-              onImportClick={() => setImportOpen(true)}
-              onUpdate={handleUpdate}
-              onSaveBundle={handleSaveBundle}
-              onLoadBundle={handleBundleFile}
-            />
-          )}
-          {tab === "analysis" && (
-            <AnalysisTab
-              satText={satText}
-              constText={constText}
-              gsText={gsText}
-              startTime={new Date(startText)}
-              onAnalysisStart={onAnalysisStart}
-              onAnalysisEnd={onAnalysisEnd}
-            />
-          )}
-          {tab === "option" && (
-            <OptionTab
-              satRadius={satRadius}
-              onSatRadiusChange={onSatRadiusChange}
-              earthTexture={earthTexture}
-              onEarthTextureChange={onEarthTextureChange}
-              showGraticule={showGraticule}
-              onShowGraticuleChange={onShowGraticuleChange}
-              showEcliptic={showEcliptic}
-              onShowEclipticChange={onShowEclipticChange}
-              showSunDirection={showSunDirection}
-              onShowSunDirectionChange={onShowSunDirectionChange}
-              ecef={ecef}
-              onEcefChange={onEcefChange}
-              showPerturbation={showPerturbation}
-              onShowPerturbationChange={onShowPerturbationChange}
-            />
-          )}
-          </div>
+        <div className="side-panel-header flex">
+          <Tabs value={tab} onValueChange={(value) => setTab(value as "editor" | "analysis" | "option")} className="flex-1 mr-12">
+            <TabsList className="grid w-full grid-cols-3 h-10 bg-gray-700 border-2 border-gray-600 rounded-lg p-1 shadow-lg">
+              <TabsTrigger 
+                value="editor" 
+                className="data-[state=active]:!bg-orange-600 data-[state=active]:!text-orange-50 data-[state=active]:!shadow-sm data-[state=active]:!border-orange-200 data-[state=active]:!font-medium hover:bg-gray-600 text-gray-200 transition-all duration-200 rounded-md border border-transparent font-medium"
+              >
+                Editor
+              </TabsTrigger>
+              <TabsTrigger 
+                value="analysis" 
+                className="data-[state=active]:!bg-orange-600 data-[state=active]:!text-orange-50 data-[state=active]:!shadow-sm data-[state=active]:!border-orange-200 data-[state=active]:!font-medium hover:bg-gray-600 text-gray-200 transition-all duration-200 rounded-md border border-transparent font-medium"
+              >
+                Analysis
+              </TabsTrigger>
+              <TabsTrigger 
+                value="option" 
+                className="data-[state=active]:!bg-orange-600 data-[state=active]:!text-orange-50 data-[state=active]:!shadow-sm data-[state=active]:!border-orange-200 data-[state=active]:!font-medium hover:bg-gray-600 text-gray-200 transition-all duration-200 rounded-md border border-transparent font-medium"
+              >
+                Options
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="side-panel-close"
+            onClick={() => setOpen(false)}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="side-panel-content">
+          <Tabs value={tab} onValueChange={(value) => setTab(value as "editor" | "analysis" | "option")} className="w-full">
+            <TabsContent value="editor" className="mt-0 bg-gray-800/40 border-2 border-gray-600 rounded-lg p-6 shadow-inner">
+              <EditorTab
+                satText={satText}
+                constText={constText}
+                gsText={gsText}
+                startText={startText}
+                onSatTextChange={setSatText}
+                onConstTextChange={setConstText}
+                onGsTextChange={setGsText}
+                onStartTextChange={setStartText}
+                onImportClick={() => setImportOpen(true)}
+                onUpdate={handleUpdate}
+                onSaveBundle={handleSaveBundle}
+                onLoadBundle={handleBundleFile}
+              />
+            </TabsContent>
+            
+            <TabsContent value="analysis" className="mt-0 bg-gray-800/40 border-2 border-gray-600 rounded-lg p-6 shadow-inner">
+              <AnalysisTab
+                satText={satText}
+                constText={constText}
+                gsText={gsText}
+                startTime={new Date(startText)}
+                onAnalysisStart={onAnalysisStart}
+                onAnalysisEnd={onAnalysisEnd}
+              />
+            </TabsContent>
+            
+            <TabsContent value="option" className="mt-0 bg-gray-800/40 border-2 border-gray-600 rounded-lg p-6 shadow-inner">
+              <OptionTab
+                satRadius={satRadius}
+                onSatRadiusChange={onSatRadiusChange}
+                earthTexture={earthTexture}
+                onEarthTextureChange={onEarthTextureChange}
+                showGraticule={showGraticule}
+                onShowGraticuleChange={onShowGraticuleChange}
+                showEcliptic={showEcliptic}
+                onShowEclipticChange={onShowEclipticChange}
+                showSunDirection={showSunDirection}
+                onShowSunDirectionChange={onShowSunDirectionChange}
+                ecef={ecef}
+                onEcefChange={onEcefChange}
+                showPerturbation={showPerturbation}
+                onShowPerturbationChange={onShowPerturbationChange}
+              />
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
     </>

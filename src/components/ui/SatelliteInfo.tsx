@@ -33,7 +33,7 @@ export default function SatelliteInfo({ satellites, selectedIdx, showPerturbatio
   if (!spec) return null;
 
   const meta = spec.meta;
-  let metaElements: React.ReactNode[] = [];
+  const metaElements: React.ReactNode[] = [];
   if (meta) {
     if (meta.objectName) metaElements.push(<div key="objectName">OBJECT_NAME: {meta.objectName}</div>);
     if (meta.objectId) metaElements.push(<div key="objectId">OBJECT_ID: {meta.objectId}</div>);
