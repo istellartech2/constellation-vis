@@ -16,6 +16,7 @@ const TEXTURE_OPTIONS: Option[] = [
   { label: "Simple", value: "./assets/earth02.webp" },
   { label: "Pale", value: "./assets/earth03.webp" },
   { label: "Blue Marbel", value: "./assets/earth04.webp" },
+  { label: "High Resolution", value: "./assets/earth05_highres.webp" },
 ];
 
 const EarthTextureSelector: FC<Props> = ({ value, onChange, style }) => (
