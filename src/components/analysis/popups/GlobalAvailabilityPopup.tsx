@@ -1,7 +1,6 @@
 import { useRef } from "react";
 import ReactECharts from "echarts-for-react";
 import { downloadPNG, downloadDualChartHTML } from "../utils/downloadUtils";
-import "../../../styles/styles.css";
 
 interface AvailabilityMetrics {
   latitude: number;

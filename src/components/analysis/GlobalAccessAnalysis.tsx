@@ -6,7 +6,6 @@ import type { GroundStation } from "../../lib/groundStations";
 import { downloadPNG, downloadHTML, downloadCSV } from "./utils/downloadUtils";
 import { createGlobalAccessChartOption } from "./utils/chartOptions";
 import GlobalAvailabilityPopup from "./popups/GlobalAvailabilityPopup";
-import "../../styles/styles.css";
 
 interface AvailabilityMetrics {
   latitude: number;

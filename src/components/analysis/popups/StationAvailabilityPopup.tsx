@@ -1,5 +1,4 @@
 import { downloadCSV } from "../utils/downloadUtils";
-import "../../../styles/styles.css";
 
 interface AvailabilityMetrics {
   stationName: string;

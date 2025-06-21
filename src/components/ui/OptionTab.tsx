@@ -1,6 +1,7 @@
 import SatelliteSizeControl from "./SatelliteSizeControl";
 import EarthTextureSelector from "./EarthTextureSelector";
-import "../../styles/styles.css";
+import { Checkbox } from "./checkbox";
+import { Label } from "./label";
 
 interface Props {
   satRadius: number;
@@ -53,42 +54,62 @@ export default function OptionTab({
 
       <div className="option-section">
         <div className="option-section-title">Display Options</div>
-        <div className="option-checkbox-group">
-          <label className="option-checkbox-item">
-            <input
-              type="checkbox"
+        <div className="space-y-3">
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="graticule"
               checked={showGraticule}
-              onChange={(e) => onShowGraticuleChange(e.target.checked)}
+              onCheckedChange={(checked) => onShowGraticuleChange(!!checked)}
             />
-            <span>Show latitude/longitude lines</span>
-          </label>
-          <label className="option-checkbox-item">
-            <input
-              type="checkbox"
+            <Label
+              htmlFor="graticule"
+              className="text-sm font-normal cursor-pointer"
+            >
+              Show latitude/longitude lines
+            </Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="ecliptic"
               checked={showEcliptic && showSunDirection}
-              onChange={(e) => {
-                onShowEclipticChange(e.target.checked);
-                onShowSunDirectionChange(e.target.checked);
+              onCheckedChange={(checked) => {
+                onShowEclipticChange(!!checked);
+                onShowSunDirectionChange(!!checked);
               }}
             />
-            <span>Show ecliptic plane</span>
-          </label>
-          <label className="option-checkbox-item">
-            <input
-              type="checkbox"
+            <Label
+              htmlFor="ecliptic"
+              className="text-sm font-normal cursor-pointer"
+            >
+              Show ecliptic plane
+            </Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="ecef"
               checked={ecef}
-              onChange={(e) => onEcefChange(e.target.checked)}
+              onCheckedChange={(checked) => onEcefChange(!!checked)}
             />
-            <span>ECEF mode</span>
-          </label>
-          <label className="option-checkbox-item">
-            <input
-              type="checkbox"
+            <Label
+              htmlFor="ecef"
+              className="text-sm font-normal cursor-pointer"
+            >
+              ECEF mode
+            </Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="perturbation"
               checked={showPerturbation}
-              onChange={(e) => onShowPerturbationChange(e.target.checked)}
+              onCheckedChange={(checked) => onShowPerturbationChange(!!checked)}
             />
-            <span>Show perturbation</span>
-          </label>
+            <Label
+              htmlFor="perturbation"
+              className="text-sm font-normal cursor-pointer"
+            >
+              Show perturbation
+            </Label>
+          </div>
         </div>
       </div>
     </div>

@@ -6,7 +6,6 @@ import type { GroundStation } from "../../lib/groundStations";
 import { downloadPNG, downloadHTML, downloadCSV } from "./utils/downloadUtils";
 import { createStationAccessChartOption } from "./utils/chartOptions";
 import StationAvailabilityPopup from "./popups/StationAvailabilityPopup";
-import "../../styles/styles.css";
 
 interface AvailabilityMetrics {
   stationName: string;

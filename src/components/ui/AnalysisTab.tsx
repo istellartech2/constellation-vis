@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import StationAccessAnalysis from "../analysis/StationAccessAnalysis";
 import GlobalAccessAnalysis from "../analysis/GlobalAccessAnalysis";
 import OrbitMaintenanceAnalysis from "../analysis/OrbitMaintenanceAnalysis";
@@ -115,8 +116,8 @@ export default function AnalysisTab({ satText, constText, gsText, startTime, onA
         </div>
       </div>
 
-      {analysisOpen && (
-        <div className="overlay" style={{ zIndex: 50 }}>
+      {analysisOpen && createPortal(
+        <div className="overlay" style={{ zIndex: 1000 }}>
           <div className="overlay-box" style={{ width: "90%", maxWidth: "1200px", height: "80%", maxHeight: "900px", display: "flex", flexDirection: "column" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <h3 style={{ margin: 0, fontSize: "1rem" }}>{analysisType}</h3>
@@ -131,7 +132,8 @@ export default function AnalysisTab({ satText, constText, gsText, startTime, onA
               {renderAnalysisComponent()}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
