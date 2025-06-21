@@ -1,4 +1,12 @@
-import { parseGroundStationsToml, type GroundStation } from '../utils/tomlParse';
+import { parseGroundStationsToml } from './config';
+
+export interface GroundStation {
+  name: string;
+  latitudeDeg: number;
+  longitudeDeg: number;
+  heightKm: number;
+  minElevationDeg: number;
+}
 
 // Helper used by the demo to fetch and parse the bundled ground station list.
 
@@ -18,5 +26,3 @@ export async function loadGroundStations(): Promise<GroundStation[]> {
     return [];
   }
 }
-
-export type { GroundStation };

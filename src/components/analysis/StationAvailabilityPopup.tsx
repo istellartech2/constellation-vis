@@ -1,4 +1,4 @@
-import { downloadCSV } from "../utils/downloadUtils";
+import { downloadCSV } from "./utils/downloadUtils";
 
 interface AvailabilityMetrics {
   stationName: string;

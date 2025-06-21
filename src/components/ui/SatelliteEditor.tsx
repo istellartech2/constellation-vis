@@ -5,17 +5,15 @@ import {
   parseSatellitesToml,
   parseConstellationToml,
   parseGroundStationsToml,
-} from "../../utils/tomlParse";
-import {
   parseConfigBundle,
   buildConfigBundle,
-} from "../../utils/configBundle";
+  downloadFile,
+} from "../../lib/config";
 import EditorTab from "./EditorTab";
 import AnalysisTab from "./AnalysisTab";
 import OptionTab from "./OptionTab";
 import ImportDialog from "./ImportDialog";
 import { celestrakEntryToSat, satellitesToToml, getCelestrakUrl } from "../../utils/celestrakUtils";
-import { downloadFile } from "../../utils/fileUtils";
 import { validateSatellites, validateGroundStations } from "../../utils/validators";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./tabs";
 import { Button } from "./button";

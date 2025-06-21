@@ -3,8 +3,9 @@ import {
   parseSatellitesToml,
   parseConstellationToml,
   parseGroundStationsToml,
-} from "../../utils/tomlParse";
-import { downloadFile, handleFileLoad } from "../../utils/fileUtils";
+  downloadFile,
+  handleFileLoad,
+} from "../../lib/config";
 import { validateSatellites, validateGroundStations } from "../../utils/validators";
 import { Button } from "./button";
 import { Textarea } from "./textarea";

@@ -5,7 +5,7 @@ import { useSatelliteScene } from "./components/useSatelliteScene";
 import { SATELLITES as INITIAL_SATS } from "./lib/satellites";
 import { loadGroundStations, type GroundStation } from "./lib/groundStations";
 import SatelliteInfo from "./components/ui/SatelliteInfo";
-import { formatGroundStationInfo } from "./utils/formatters/formatGroundStationInfo";
+import { formatGroundStationInfo } from "./lib/formatGroundStationInfo";
 
 /**
  * Top level React component hosting the visualization. It sets up
