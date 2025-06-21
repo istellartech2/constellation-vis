@@ -620,6 +620,26 @@ button:focus-visible {
   outline: 4px solid rgb(59 130 246);
 }
 
+/* Checkbox styles for better visibility */
+[data-slot="checkbox"] {
+  background-color: rgb(31 41 55) !important;
+  border-color: rgb(107 114 128) !important;
+}
+
+[data-slot="checkbox"]:hover {
+  background-color: rgb(55 65 81) !important;
+  border-color: rgb(251 146 60) !important;
+}
+
+[data-slot="checkbox"][data-state="checked"] {
+  background-color: rgb(251 146 60) !important;
+  border-color: rgb(251 146 60) !important;
+}
+
+[data-slot="checkbox"][data-state="checked"] svg {
+  color: white !important;
+}
+
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
