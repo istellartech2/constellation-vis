@@ -378,13 +378,13 @@ h1 {
 .speed-control {
   position: absolute;
   right: 12px;
-  top: 12px;
+  top: calc(12px + env(safe-area-inset-top, 0px));
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   color: #f1f1f1;
   font-family: Inter, system-ui, sans-serif;
-  z-index: 100;
+  z-index: 15;
 }
 
 .speed-control select {
@@ -395,7 +395,7 @@ h1 {
 .side-panel-button {
   position: absolute;
   left: 12px;
-  top: 12px;
+  top: calc(12px + env(safe-area-inset-top, 0px));
   background: #444753;
   color: #f0f2f5;
   border: 1px solid #555;
@@ -426,7 +426,7 @@ h1 {
   padding: 0;
   box-sizing: border-box;
   transition: transform 0.3s ease-out;
-  z-index: 20;
+  z-index: 200;
   display: flex;
   flex-direction: column;
   border-right: 2px solid #374151;
