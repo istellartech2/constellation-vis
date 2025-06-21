@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type RefObject } from "react";
 import type { SatelliteSpec } from "../../lib/satellites";
 import type { GroundStation } from "../../lib/groundStations";
+import type SatelliteScene from "../../lib/visualization";
 import {
   parseSatellitesToml,
   parseConstellationToml,
@@ -69,6 +70,8 @@ interface Props {
   onAnalysisStart?: () => void;
   /** Called when analysis is closed (to resume animation) */
   onAnalysisEnd?: () => void;
+  /** Reference to the satellite scene for KML loading */
+  sceneRef?: RefObject<SatelliteScene | null>;
 }
 
 export default function SatelliteEditor({
@@ -89,6 +92,7 @@ export default function SatelliteEditor({
   onShowPerturbationChange,
   onAnalysisStart,
   onAnalysisEnd,
+  sceneRef,
 }: Props) {
   const [satText, setSatText] = useState("");
   const [constText, setConstText] = useState("");
@@ -351,6 +355,7 @@ export default function SatelliteEditor({
                 onEcefChange={onEcefChange}
                 showPerturbation={showPerturbation}
                 onShowPerturbationChange={onShowPerturbationChange}
+                sceneRef={sceneRef}
               />
             </TabsContent>
           </Tabs>

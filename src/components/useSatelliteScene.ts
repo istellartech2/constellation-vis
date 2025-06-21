@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import SatelliteScene, { type SatelliteSceneParams } from "../lib/visualization";
 
 // Re-export the parameter type for convenience
@@ -10,6 +10,8 @@ export type { SatelliteSceneParams } from "../lib/visualization";
  * scene and disposes it when parameters change or the component unmounts.
  */
 export function useSatelliteScene(params: SatelliteSceneParams) {
+  const sceneRef = useRef<SatelliteScene | null>(null);
+  
   useEffect(() => {
     if (!params.mountRef.current) return;
     
@@ -17,12 +19,14 @@ export function useSatelliteScene(params: SatelliteSceneParams) {
     let scene: SatelliteScene | null = null;
     const timeout = setTimeout(() => {
       scene = new SatelliteScene(params);
+      sceneRef.current = scene;
     }, 10);
     
     return () => {
       clearTimeout(timeout);
       if (scene) {
         scene.dispose();
+        sceneRef.current = null;
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -43,4 +47,6 @@ export function useSatelliteScene(params: SatelliteSceneParams) {
     params.onSelectStation,
     params.stationInfoRef,
   ]);
+  
+  return sceneRef;
 }

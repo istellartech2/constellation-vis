@@ -13,6 +13,8 @@ import {
   createEclipticLine,
   EARTH_FLATTENING,
 } from "./astronomy";
+import { KMLRenderer } from "./kmlRenderer";
+import { loadKMLFromURL } from "./kml";
 
 /** Equatorial and polar radii of Earth in kilometres. */
 const EARTH_RADIUS_EQUATOR_KM = 6378.137;
@@ -60,6 +62,7 @@ export default class SatelliteScene {
   private readonly ecliptic: THREE.Line;
   private readonly sunDot: THREE.Mesh;
   private readonly sunlight: THREE.DirectionalLight;
+  private readonly kmlRenderer: KMLRenderer;
 
   private selectedIndex: number | null = null;
   private selectedStationIndex: number | null = null;
@@ -192,6 +195,9 @@ export default class SatelliteScene {
         this.scene.add(l);
       });
     });
+
+    // Initialize KML renderer
+    this.kmlRenderer = new KMLRenderer(this.scene);
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
@@ -335,6 +341,7 @@ export default class SatelliteScene {
     const rotAngle = satellite.gstime(simDate);
     this.earthMesh.rotation.y = rotAngle;
     this.graticule.rotation.y = rotAngle;
+    this.kmlRenderer.updateRotation(rotAngle);
     this.cameraHolder.rotation.y = this.params.ecef ? rotAngle : 0;
 
     const { x: sx, y: sy, z: sz } = sunVectorECI(simDate);
@@ -451,6 +458,26 @@ export default class SatelliteScene {
     return `${utc} UTC\n${jst} JST`;
   }
 
+  /**
+   * Load and render a KML file
+   */
+  async loadKML(url: string): Promise<void> {
+    try {
+      const kmlDoc = await loadKMLFromURL(url);
+      this.kmlRenderer.renderKMLDocument(kmlDoc);
+    } catch (error) {
+      console.error('Failed to load KML:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Clear KML geometries from the scene
+   */
+  clearKML(): void {
+    this.kmlRenderer.clear();
+  }
+
   dispose() {
     // Cancel animation frame first
     if (this.animationFrameId !== null) {
@@ -508,6 +535,9 @@ export default class SatelliteScene {
     
     this.shadowMinutes = 0;
     this.shadowCoords = [];
+    
+    // Dispose KML renderer
+    this.kmlRenderer.dispose();
     
     this.controls.dispose();
     this.renderer.dispose();

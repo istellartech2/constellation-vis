@@ -66,7 +66,7 @@ function App() {
     setIsPaused(false);
   };
 
-  useSatelliteScene({
+  const sceneRef = useSatelliteScene({
     mountRef,
     timeRef,
     speedRef,
@@ -141,6 +141,7 @@ function App() {
         onEcefChange={setEcef}
         showPerturbation={showPerturbation}
         onShowPerturbationChange={setShowPerturbation}
+        sceneRef={sceneRef}
         onUpdate={(s, gs, start) => {
           setSatellites(s);
           setGroundStations(gs);
