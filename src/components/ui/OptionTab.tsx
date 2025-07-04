@@ -22,6 +22,8 @@ interface Props {
   onEcefChange: (v: boolean) => void;
   showPerturbation: boolean;
   onShowPerturbationChange: (v: boolean) => void;
+  brightEarth: boolean;
+  onBrightEarthChange: (v: boolean) => void;
   sceneRef?: RefObject<SatelliteScene | null>;
 }
 
@@ -40,6 +42,8 @@ export default function OptionTab({
   onEcefChange,
   showPerturbation,
   onShowPerturbationChange,
+  brightEarth,
+  onBrightEarthChange,
   sceneRef,
 }: Props) {
   const [loadedKMLs, setLoadedKMLs] = useState<string[]>([]);
@@ -169,6 +173,19 @@ export default function OptionTab({
               className="text-sm font-normal cursor-pointer"
             >
               Show perturbation
+            </Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="brightEarth"
+              checked={brightEarth}
+              onCheckedChange={(checked) => onBrightEarthChange(!!checked)}
+            />
+            <Label
+              htmlFor="brightEarth"
+              className="text-sm font-normal cursor-pointer"
+            >
+              Bright earth
             </Label>
           </div>
         </div>

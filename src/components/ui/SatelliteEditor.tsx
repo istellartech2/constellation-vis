@@ -66,6 +66,10 @@ interface Props {
   showPerturbation: boolean;
   /** Called when perturbation visibility changes */
   onShowPerturbationChange: (v: boolean) => void;
+  /** Show bright earth (uniform lighting) */
+  brightEarth: boolean;
+  /** Called when bright earth mode changes */
+  onBrightEarthChange: (v: boolean) => void;
   /** Called when analysis is started (to pause animation) */
   onAnalysisStart?: () => void;
   /** Called when analysis is closed (to resume animation) */
@@ -90,6 +94,8 @@ export default function SatelliteEditor({
   onEcefChange,
   showPerturbation,
   onShowPerturbationChange,
+  brightEarth,
+  onBrightEarthChange,
   onAnalysisStart,
   onAnalysisEnd,
   sceneRef,
@@ -355,6 +361,8 @@ export default function SatelliteEditor({
                 onEcefChange={onEcefChange}
                 showPerturbation={showPerturbation}
                 onShowPerturbationChange={onShowPerturbationChange}
+                brightEarth={brightEarth}
+                onBrightEarthChange={onBrightEarthChange}
                 sceneRef={sceneRef}
               />
             </TabsContent>

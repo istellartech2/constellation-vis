@@ -36,6 +36,7 @@ function App() {
   const [showSunDirection, setShowSunDirection] = useState(true);
   const [ecef, setEcef] = useState(false);
   const [showPerturbation, setShowPerturbation] = useState(false);
+  const [brightEarth, setBrightEarth] = useState(false);
 
   const [startTime, setStartTime] = useState(() => {
     const d = new Date();
@@ -79,6 +80,7 @@ function App() {
     showEcliptic,
     showSunDirection,
     ecef,
+    brightEarth,
     onSelect: setSelectedIdx,
     onSelectStation: setSelectedGsIdx,
     stationInfoRef: gsInfoRef,
@@ -141,6 +143,8 @@ function App() {
         onEcefChange={setEcef}
         showPerturbation={showPerturbation}
         onShowPerturbationChange={setShowPerturbation}
+        brightEarth={brightEarth}
+        onBrightEarthChange={setBrightEarth}
         sceneRef={sceneRef}
         onUpdate={(s, gs, start) => {
           setSatellites(s);

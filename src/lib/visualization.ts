@@ -37,6 +37,8 @@ export interface SatelliteSceneParams {
   showSunDirection: boolean;
   /** Rotate the camera with the Earth to approximate an ECEF view */
   ecef: boolean;
+  /** Show bright earth (uniform lighting) */
+  brightEarth: boolean;
   onSelect?: (idx: number | null) => void;
   onSelectStation?: (idx: number | null) => void;
   stationInfoRef?: React.RefObject<HTMLPreElement | null>;
@@ -62,6 +64,7 @@ export default class SatelliteScene {
   private readonly ecliptic: THREE.Line;
   private readonly sunDot: THREE.Mesh;
   private readonly sunlight: THREE.DirectionalLight;
+  private readonly ambientLight: THREE.AmbientLight;
   private readonly kmlRenderer: KMLRenderer;
 
   private selectedIndex: number | null = null;
@@ -115,9 +118,9 @@ export default class SatelliteScene {
     this.controls.enablePan = false;
     this.controls.enableDamping = true;
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.2);
-    this.scene.add(ambient);
-    this.sunlight = new THREE.DirectionalLight(0xffffff, 1.5);
+    this.ambientLight = new THREE.AmbientLight(0xffffff, params.brightEarth ? 1.5 : 0.2);
+    this.scene.add(this.ambientLight);
+    this.sunlight = new THREE.DirectionalLight(0xffffff, params.brightEarth ? 0 : 1.5);
     this.scene.add(this.sunlight);
 
     const earthGeometry = new THREE.SphereGeometry(1, 128, 128);

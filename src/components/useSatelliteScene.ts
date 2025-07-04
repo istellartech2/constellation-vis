@@ -43,6 +43,7 @@ export function useSatelliteScene(params: SatelliteSceneParams) {
     params.showEcliptic,
     params.showSunDirection,
     params.ecef,
+    params.brightEarth,
     params.onSelect,
     params.onSelectStation,
     params.stationInfoRef,
