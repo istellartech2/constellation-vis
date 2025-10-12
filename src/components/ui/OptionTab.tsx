@@ -4,8 +4,10 @@ import EarthTextureSelector from "./EarthTextureSelector";
 import { Checkbox } from "./checkbox";
 import { Label } from "./label";
 import { Button } from "./button";
-import { FileInput, Trash2 } from "lucide-react";
+import { FileInput, Trash2, ChevronDown } from "lucide-react";
 import type SatelliteScene from "../../lib/visualization";
+
+const EARTH_RADIUS_KM = 6378.137;
 
 interface Props {
   satRadius: number;
@@ -18,6 +20,28 @@ interface Props {
   onShowEclipticChange: (v: boolean) => void;
   showSunDirection: boolean;
   onShowSunDirectionChange: (v: boolean) => void;
+  showGroundStationCones: boolean;
+  onShowGroundStationConesChange: (v: boolean) => void;
+  showSatelliteNadirCones: boolean;
+  onShowSatelliteNadirConesChange: (v: boolean) => void;
+  groundConeMinElevationDeg: number;
+  onGroundConeMinElevationDegChange: (v: number) => void;
+  groundConeDistanceKm: number;
+  onGroundConeDistanceKmChange: (v: number) => void;
+  groundConeColor: string;
+  onGroundConeColorChange: (color: string) => void;
+  satelliteConeHalfAngleDeg: number;
+  onSatelliteConeHalfAngleDegChange: (v: number) => void;
+  satelliteConeMinHeight: number;
+  satelliteConeMaxHeight: number;
+  satelliteConeColor: string;
+  onSatelliteConeColorChange: (color: string) => void;
+  satelliteVisibleColor: string;
+  onSatelliteVisibleColorChange: (color: string) => void;
+  satelliteHiddenColor: string;
+  onSatelliteHiddenColorChange: (color: string) => void;
+  satelliteSelectedColor: string;
+  onSatelliteSelectedColorChange: (color: string) => void;
   ecef: boolean;
   onEcefChange: (v: boolean) => void;
   showPerturbation: boolean;
@@ -38,6 +62,28 @@ export default function OptionTab({
   onShowEclipticChange,
   showSunDirection,
   onShowSunDirectionChange,
+  showGroundStationCones,
+  onShowGroundStationConesChange,
+  showSatelliteNadirCones,
+  onShowSatelliteNadirConesChange,
+  groundConeMinElevationDeg,
+  onGroundConeMinElevationDegChange,
+  groundConeDistanceKm,
+  onGroundConeDistanceKmChange,
+  groundConeColor,
+  onGroundConeColorChange,
+  satelliteConeHalfAngleDeg,
+  onSatelliteConeHalfAngleDegChange,
+  satelliteConeMinHeight,
+  satelliteConeMaxHeight,
+  satelliteConeColor,
+  onSatelliteConeColorChange,
+  satelliteVisibleColor,
+  onSatelliteVisibleColorChange,
+  satelliteHiddenColor,
+  onSatelliteHiddenColorChange,
+  satelliteSelectedColor,
+  onSatelliteSelectedColorChange,
   ecef,
   onEcefChange,
   showPerturbation,
@@ -49,6 +95,18 @@ export default function OptionTab({
   const [loadedKMLs, setLoadedKMLs] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const clamp = (value: number, min: number, max: number) =>
+    Math.min(Math.max(value, min), max);
+  const handleGroundConeMinElChange = (value: number) => {
+    onGroundConeMinElevationDegChange(clamp(value, 0, 85));
+  };
+  const handleGroundConeDistanceChange = (value: number) => {
+    onGroundConeDistanceKmChange(clamp(value, 100, 20000));
+  };
+  const handleSatelliteAngleChange = (value: number) => {
+    onSatelliteConeHalfAngleDegChange(clamp(value, 1, 80));
+  };
 
   const handleKMLLoad = async () => {
     if (!sceneRef?.current) {
@@ -151,6 +209,32 @@ export default function OptionTab({
           </div>
           <div className="flex items-center space-x-2">
             <Checkbox
+              id="groundStationCones"
+              checked={showGroundStationCones}
+              onCheckedChange={(checked) => onShowGroundStationConesChange(!!checked)}
+            />
+            <Label
+              htmlFor="groundStationCones"
+              className="text-sm font-normal cursor-pointer"
+            >
+              地上局の可視円錐を表示
+            </Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="satelliteNadirCones"
+              checked={showSatelliteNadirCones}
+              onCheckedChange={(checked) => onShowSatelliteNadirConesChange(!!checked)}
+            />
+            <Label
+              htmlFor="satelliteNadirCones"
+              className="text-sm font-normal cursor-pointer"
+            >
+              衛星のナディア円錐を表示
+            </Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Checkbox
               id="ecef"
               checked={ecef}
               onCheckedChange={(checked) => onEcefChange(!!checked)}
@@ -189,6 +273,188 @@ export default function OptionTab({
             </Label>
           </div>
         </div>
+      </div>
+
+      <div className="option-section option-advanced">
+        <button
+          type="button"
+          className="option-advanced-toggle"
+          onClick={() => setAdvancedOpen((prev) => !prev)}
+          aria-expanded={advancedOpen}
+        >
+          <span>可視コーン・カラー調整</span>
+          <ChevronDown
+            className={`option-advanced-icon${advancedOpen ? " rotate" : ""}`}
+            size={16}
+          />
+        </button>
+        {advancedOpen && (
+          <div className="option-advanced-panel">
+            <div className="option-subsection">
+              <div className="option-section-title">地上局可視円錐</div>
+              <div className="option-control">
+                <div className="option-control-label">
+                  <span>最小仰角しきい値</span>
+                  <span>{groundConeMinElevationDeg.toFixed(0)}°</span>
+                </div>
+                <div className="option-control-inputs">
+                  <input
+                    className="option-slider"
+                    type="range"
+                    min={0}
+                    max={85}
+                    step={1}
+                    value={groundConeMinElevationDeg}
+                    onChange={(e) => handleGroundConeMinElChange(Number((e.target as HTMLInputElement).value))}
+                  />
+                  <input
+                    className="option-number-input"
+                    type="number"
+                    min={0}
+                    max={85}
+                    step={1}
+                    value={groundConeMinElevationDeg}
+                    onChange={(e) => handleGroundConeMinElChange(Number((e.target as HTMLInputElement).value))}
+                  />
+                  <span className="option-control-unit">°</span>
+                </div>
+              </div>
+              <div className="option-control">
+                <div className="option-control-label">
+                  <span>可視距離上限</span>
+                  <span>{Math.round(groundConeDistanceKm).toLocaleString()} km</span>
+                </div>
+                <div className="option-control-inputs">
+                  <input
+                    className="option-slider"
+                    type="range"
+                    min={100}
+                    max={20000}
+                    step={50}
+                    value={groundConeDistanceKm}
+                    onChange={(e) => handleGroundConeDistanceChange(Number((e.target as HTMLInputElement).value))}
+                  />
+                  <input
+                    className="option-number-input"
+                    type="number"
+                    min={100}
+                    max={20000}
+                    step={50}
+                    value={groundConeDistanceKm}
+                    onChange={(e) => handleGroundConeDistanceChange(Number((e.target as HTMLInputElement).value))}
+                  />
+                </div>
+                <div className="option-control-hint">※地上局からの直線距離（km）で指定します</div>
+              </div>
+              <div className="option-control">
+                <div className="option-control-label">
+                  <span>表示カラー</span>
+                </div>
+                <div className="option-control-inputs">
+                  <input
+                    className="option-color-input"
+                    type="color"
+                    value={groundConeColor}
+                    onChange={(e) => onGroundConeColorChange((e.target as HTMLInputElement).value)}
+                  />
+                  <span className="option-color-value">{groundConeColor.toUpperCase()}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="option-subsection">
+              <div className="option-section-title">衛星ナディア円錐</div>
+              <div className="option-control">
+                <div className="option-control-label">
+                  <span>ナディア角</span>
+                  <span>{satelliteConeHalfAngleDeg.toFixed(0)}°</span>
+                </div>
+                <div className="option-control-inputs">
+                  <input
+                    className="option-slider"
+                    type="range"
+                    min={1}
+                    max={80}
+                    step={1}
+                    value={satelliteConeHalfAngleDeg}
+                    onChange={(e) => handleSatelliteAngleChange(Number((e.target as HTMLInputElement).value))}
+                  />
+                  <input
+                    className="option-number-input"
+                    type="number"
+                    min={1}
+                    max={80}
+                    step={1}
+                    value={satelliteConeHalfAngleDeg}
+                    onChange={(e) => handleSatelliteAngleChange(Number((e.target as HTMLInputElement).value))}
+                  />
+                  <span className="option-control-unit">°</span>
+                </div>
+              </div>
+              <div className="option-control">
+                <div className="option-control-label">
+                  <span>円錐高さ</span>
+                  <span>
+                    {satelliteConeMinHeight.toFixed(2)}〜{satelliteConeMaxHeight.toFixed(2)}R<sub>⊕</sub>
+                    （約 {Math.round(satelliteConeMinHeight * EARTH_RADIUS_KM).toLocaleString()}〜
+                    {Math.round(satelliteConeMaxHeight * EARTH_RADIUS_KM).toLocaleString()} km）
+                  </span>
+                </div>
+                <div className="option-control-hint">※衛星高度に応じた固定スケールです</div>
+              </div>
+              <div className="option-control">
+                <div className="option-control-label">
+                  <span>表示カラー</span>
+                </div>
+                <div className="option-control-inputs">
+                  <input
+                    className="option-color-input"
+                    type="color"
+                    value={satelliteConeColor}
+                    onChange={(e) => onSatelliteConeColorChange((e.target as HTMLInputElement).value)}
+                  />
+                  <span className="option-color-value">{satelliteConeColor.toUpperCase()}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="option-subsection">
+              <div className="option-section-title">衛星ポイントカラー</div>
+              <div className="option-color-grid">
+                <div className="option-color-row">
+                  <span className="option-color-label">リンク可視</span>
+                  <input
+                    className="option-color-input"
+                    type="color"
+                    value={satelliteVisibleColor}
+                    onChange={(e) => onSatelliteVisibleColorChange((e.target as HTMLInputElement).value)}
+                  />
+                  <span className="option-color-value">{satelliteVisibleColor.toUpperCase()}</span>
+                </div>
+                <div className="option-color-row">
+                  <span className="option-color-label">リンク不可</span>
+                  <input
+                    className="option-color-input"
+                    type="color"
+                    value={satelliteHiddenColor}
+                    onChange={(e) => onSatelliteHiddenColorChange((e.target as HTMLInputElement).value)}
+                  />
+                  <span className="option-color-value">{satelliteHiddenColor.toUpperCase()}</span>
+                </div>
+                <div className="option-color-row">
+                  <span className="option-color-label">選択中</span>
+                  <input
+                    className="option-color-input"
+                    type="color"
+                    value={satelliteSelectedColor}
+                    onChange={(e) => onSatelliteSelectedColorChange((e.target as HTMLInputElement).value)}
+                  />
+                  <span className="option-color-value">{satelliteSelectedColor.toUpperCase()}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="option-section">

@@ -14,6 +14,7 @@ import { formatGroundStationInfo } from "./lib/formatGroundStationInfo";
  */
 
 const INITIAL_SPEED = 60; // initial 60× real time
+const EARTH_RADIUS_KM = 6378.137;
 
 // Main UI component that wires together scene and UI controls
 function App() {
@@ -37,6 +38,18 @@ function App() {
   const [ecef, setEcef] = useState(false);
   const [showPerturbation, setShowPerturbation] = useState(false);
   const [brightEarth, setBrightEarth] = useState(false);
+  const [showGroundStationCones, setShowGroundStationCones] = useState(false);
+  const [showSatelliteNadirCones, setShowSatelliteNadirCones] = useState(false);
+  const [groundConeMinElevationDeg, setGroundConeMinElevationDeg] = useState(30);
+  const [groundConeDistanceKm, setGroundConeDistanceKm] = useState(1000);
+  const [groundConeColor, setGroundConeColor] = useState("#3ec7a1");
+  const [satelliteConeHalfAngleDeg, setSatelliteConeHalfAngleDeg] = useState(30);
+  const [satelliteConeColor, setSatelliteConeColor] = useState("#3388ff");
+  const satelliteConeMinHeight = 0.02;
+  const satelliteConeMaxHeight = 8;
+  const [satelliteVisibleColor, setSatelliteVisibleColor] = useState("#00ff00");
+  const [satelliteHiddenColor, setSatelliteHiddenColor] = useState("#ff0000");
+  const [satelliteSelectedColor, setSatelliteSelectedColor] = useState("#00ffff");
 
   const [startTime, setStartTime] = useState(() => {
     const d = new Date();
@@ -67,6 +80,8 @@ function App() {
     setIsPaused(false);
   };
 
+  const groundConeLength = Math.max(groundConeDistanceKm, 100) / EARTH_RADIUS_KM;
+
   const sceneRef = useSatelliteScene({
     mountRef,
     timeRef,
@@ -79,6 +94,18 @@ function App() {
     showGraticule,
     showEcliptic,
     showSunDirection,
+    showGroundStationCones,
+    showSatelliteNadirCones,
+    groundConeMinElevationDeg,
+    groundConeLength,
+    groundConeColor,
+    satelliteConeHalfAngleDeg,
+    satelliteConeColor,
+    satelliteConeMinHeight,
+    satelliteConeMaxHeight,
+    satelliteVisibleColor,
+    satelliteHiddenColor,
+    satelliteSelectedColor,
     ecef,
     brightEarth,
     onSelect: setSelectedIdx,
@@ -139,6 +166,28 @@ function App() {
         onShowEclipticChange={setShowEcliptic}
         showSunDirection={showSunDirection}
         onShowSunDirectionChange={setShowSunDirection}
+        showGroundStationCones={showGroundStationCones}
+        onShowGroundStationConesChange={setShowGroundStationCones}
+        showSatelliteNadirCones={showSatelliteNadirCones}
+        onShowSatelliteNadirConesChange={setShowSatelliteNadirCones}
+        groundConeMinElevationDeg={groundConeMinElevationDeg}
+        onGroundConeMinElevationDegChange={setGroundConeMinElevationDeg}
+        groundConeDistanceKm={groundConeDistanceKm}
+        onGroundConeDistanceKmChange={setGroundConeDistanceKm}
+        groundConeColor={groundConeColor}
+        onGroundConeColorChange={setGroundConeColor}
+        satelliteConeHalfAngleDeg={satelliteConeHalfAngleDeg}
+        onSatelliteConeHalfAngleDegChange={setSatelliteConeHalfAngleDeg}
+        satelliteConeColor={satelliteConeColor}
+        onSatelliteConeColorChange={setSatelliteConeColor}
+        satelliteConeMinHeight={satelliteConeMinHeight}
+        satelliteConeMaxHeight={satelliteConeMaxHeight}
+        satelliteVisibleColor={satelliteVisibleColor}
+        onSatelliteVisibleColorChange={setSatelliteVisibleColor}
+        satelliteHiddenColor={satelliteHiddenColor}
+        onSatelliteHiddenColorChange={setSatelliteHiddenColor}
+        satelliteSelectedColor={satelliteSelectedColor}
+        onSatelliteSelectedColorChange={setSatelliteSelectedColor}
         ecef={ecef}
         onEcefChange={setEcef}
         showPerturbation={showPerturbation}

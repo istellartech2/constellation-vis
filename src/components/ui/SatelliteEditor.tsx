@@ -58,6 +58,50 @@ interface Props {
   showSunDirection: boolean;
   /** Called when sun direction visibility changes */
   onShowSunDirectionChange: (v: boolean) => void;
+  /** Show or hide ground station visibility cones */
+  showGroundStationCones: boolean;
+  /** Called when ground station cone visibility changes */
+  onShowGroundStationConesChange: (v: boolean) => void;
+  /** Show or hide satellite nadir cones */
+  showSatelliteNadirCones: boolean;
+  /** Called when satellite nadir cone visibility changes */
+  onShowSatelliteNadirConesChange: (v: boolean) => void;
+  /** Minimum elevation for ground station visibility cones (degrees) */
+  groundConeMinElevationDeg: number;
+  /** Called when ground station cone min elevation changes */
+  onGroundConeMinElevationDegChange: (v: number) => void;
+  /** Ground station visibility cone cutoff distance in kilometres */
+  groundConeDistanceKm: number;
+  /** Called when ground cone distance changes */
+  onGroundConeDistanceKmChange: (v: number) => void;
+  /** Color for ground station visibility cones */
+  groundConeColor: string;
+  /** Called when ground cone color changes */
+  onGroundConeColorChange: (color: string) => void;
+  /** Half-angle for satellite nadir cones (degrees) */
+  satelliteConeHalfAngleDeg: number;
+  /** Called when satellite nadir cone angle changes */
+  onSatelliteConeHalfAngleDegChange: (v: number) => void;
+  /** Color for satellite nadir cones */
+  satelliteConeColor: string;
+  /** Called when satellite cone color changes */
+  onSatelliteConeColorChange: (color: string) => void;
+  /** Minimum satellite nadir cone height (Earth radii) */
+  satelliteConeMinHeight: number;
+  /** Maximum satellite nadir cone height (Earth radii) */
+  satelliteConeMaxHeight: number;
+  /** Satellite color when visible from a ground station */
+  satelliteVisibleColor: string;
+  /** Called when satellite visible color changes */
+  onSatelliteVisibleColorChange: (color: string) => void;
+  /** Satellite color when not visible */
+  satelliteHiddenColor: string;
+  /** Called when satellite hidden color changes */
+  onSatelliteHiddenColorChange: (color: string) => void;
+  /** Satellite color when selected */
+  satelliteSelectedColor: string;
+  /** Called when satellite selected color changes */
+  onSatelliteSelectedColorChange: (color: string) => void;
   /** Display scene in Earth-fixed (ECEF) mode */
   ecef: boolean;
   /** Called when ECEF mode changes */
@@ -90,6 +134,28 @@ export default function SatelliteEditor({
   onShowEclipticChange,
   showSunDirection,
   onShowSunDirectionChange,
+  showGroundStationCones,
+  onShowGroundStationConesChange,
+  showSatelliteNadirCones,
+  onShowSatelliteNadirConesChange,
+  groundConeMinElevationDeg,
+  onGroundConeMinElevationDegChange,
+  groundConeDistanceKm,
+  onGroundConeDistanceKmChange,
+  groundConeColor,
+  onGroundConeColorChange,
+  satelliteConeHalfAngleDeg,
+  onSatelliteConeHalfAngleDegChange,
+  satelliteConeColor,
+  onSatelliteConeColorChange,
+  satelliteConeMinHeight,
+  satelliteConeMaxHeight,
+  satelliteVisibleColor,
+  onSatelliteVisibleColorChange,
+  satelliteHiddenColor,
+  onSatelliteHiddenColorChange,
+  satelliteSelectedColor,
+  onSatelliteSelectedColorChange,
   ecef,
   onEcefChange,
   showPerturbation,
@@ -357,6 +423,28 @@ export default function SatelliteEditor({
                 onShowEclipticChange={onShowEclipticChange}
                 showSunDirection={showSunDirection}
                 onShowSunDirectionChange={onShowSunDirectionChange}
+                showGroundStationCones={showGroundStationCones}
+                onShowGroundStationConesChange={onShowGroundStationConesChange}
+                showSatelliteNadirCones={showSatelliteNadirCones}
+                onShowSatelliteNadirConesChange={onShowSatelliteNadirConesChange}
+                groundConeMinElevationDeg={groundConeMinElevationDeg}
+                onGroundConeMinElevationDegChange={onGroundConeMinElevationDegChange}
+                groundConeDistanceKm={groundConeDistanceKm}
+                onGroundConeDistanceKmChange={onGroundConeDistanceKmChange}
+                groundConeColor={groundConeColor}
+                onGroundConeColorChange={onGroundConeColorChange}
+                satelliteConeHalfAngleDeg={satelliteConeHalfAngleDeg}
+                onSatelliteConeHalfAngleDegChange={onSatelliteConeHalfAngleDegChange}
+                satelliteConeColor={satelliteConeColor}
+                onSatelliteConeColorChange={onSatelliteConeColorChange}
+                satelliteConeMinHeight={satelliteConeMinHeight}
+                satelliteConeMaxHeight={satelliteConeMaxHeight}
+                satelliteVisibleColor={satelliteVisibleColor}
+                onSatelliteVisibleColorChange={onSatelliteVisibleColorChange}
+                satelliteHiddenColor={satelliteHiddenColor}
+                onSatelliteHiddenColorChange={onSatelliteHiddenColorChange}
+                satelliteSelectedColor={satelliteSelectedColor}
+                onSatelliteSelectedColorChange={onSatelliteSelectedColorChange}
                 ecef={ecef}
                 onEcefChange={onEcefChange}
                 showPerturbation={showPerturbation}

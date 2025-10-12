@@ -23,6 +23,11 @@ const EARTH_RADIUS_POLAR_KM = 6356.7523142;
 /** Maximum number of shadow trail points to keep in memory */
 const MAX_SHADOW_COORDS = 144000; // 100 days at 1 minute intervals
 
+const STATION_CONE_SEGMENTS = 32;
+const NADIR_CONE_SEGMENTS = 32;
+const DOWN_AXIS = new THREE.Vector3(0, -1, 0);
+const UP_AXIS = new THREE.Vector3(0, 1, 0);
+
 export interface SatelliteSceneParams {
   mountRef: React.RefObject<HTMLDivElement | null>;
   timeRef: React.RefObject<HTMLDivElement | null>;
@@ -35,6 +40,19 @@ export interface SatelliteSceneParams {
   showGraticule: boolean;
   showEcliptic: boolean;
   showSunDirection: boolean;
+  showGroundStationCones: boolean;
+  showSatelliteNadirCones: boolean;
+  groundConeMinElevationDeg: number;
+  /** Ground cone range expressed in Earth radii */
+  groundConeLength: number;
+  groundConeColor: string;
+  satelliteConeHalfAngleDeg: number;
+  satelliteConeColor: string;
+  satelliteConeMinHeight: number;
+  satelliteConeMaxHeight: number;
+  satelliteVisibleColor: string;
+  satelliteHiddenColor: string;
+  satelliteSelectedColor: string;
   /** Rotate the camera with the Earth to approximate an ECEF view */
   ecef: boolean;
   /** Show bright earth (uniform lighting) */
@@ -57,6 +75,10 @@ export default class SatelliteScene {
   private readonly satColorAttr: THREE.BufferAttribute;
   private readonly groundPosAttr: THREE.BufferAttribute;
   private readonly stationMeshes: THREE.Mesh[];
+  private readonly stationConeGeometries: THREE.ConeGeometry[];
+  private readonly stationConeMaterials: THREE.MeshBasicMaterial[];
+  private readonly stationConeMeshes: THREE.Mesh[];
+  private readonly groundConeColor: THREE.Color;
   private readonly linkGeometries: THREE.BufferGeometry[][];
   private readonly linkLines: THREE.Line[][];
   private readonly earthMesh: THREE.Mesh;
@@ -84,6 +106,15 @@ export default class SatelliteScene {
   private groundMaterial: THREE.PointsMaterial;
   private stationGeo: THREE.SphereGeometry;
   private stationMat: THREE.MeshBasicMaterial;
+  private satConeGeometry: THREE.ConeGeometry;
+  private satConeMaterial: THREE.MeshBasicMaterial;
+  private satConeMeshes: THREE.Mesh[];
+  private readonly satelliteConeColor: THREE.Color;
+  private readonly satelliteVisibleColor: THREE.Color;
+  private readonly satelliteHiddenColor: THREE.Color;
+  private readonly satelliteSelectedColor: THREE.Color;
+  private readonly satelliteConeMinHeight: number;
+  private readonly satelliteConeMaxHeight: number;
   private linkMaterial: THREE.LineBasicMaterial;
 
   private readonly startReal: number;
@@ -122,6 +153,16 @@ export default class SatelliteScene {
     this.scene.add(this.ambientLight);
     this.sunlight = new THREE.DirectionalLight(0xffffff, params.brightEarth ? 0 : 1.5);
     this.scene.add(this.sunlight);
+
+    this.groundConeColor = new THREE.Color(this.params.groundConeColor);
+    this.satelliteConeColor = new THREE.Color(this.params.satelliteConeColor);
+    this.satelliteVisibleColor = new THREE.Color(this.params.satelliteVisibleColor);
+    this.satelliteHiddenColor = new THREE.Color(this.params.satelliteHiddenColor);
+    this.satelliteSelectedColor = new THREE.Color(this.params.satelliteSelectedColor);
+    const minHeight = Math.max(this.params.satelliteConeMinHeight, 0.001);
+    const maxHeight = Math.max(this.params.satelliteConeMaxHeight, minHeight + 0.001);
+    this.satelliteConeMinHeight = minHeight;
+    this.satelliteConeMaxHeight = maxHeight;
 
     const earthGeometry = new THREE.SphereGeometry(1, 128, 128);
     const texture = new THREE.TextureLoader().load(this.params.earthTexture);
@@ -180,7 +221,39 @@ export default class SatelliteScene {
     });
     const groundPoints = new THREE.Points(this.groundGeometry, this.groundMaterial);
 
-    this.stationMeshes = this.params.groundStations.map(() => new THREE.Mesh(this.stationGeo, this.stationMat));
+    this.stationConeGeometries = [];
+    this.stationConeMaterials = [];
+    this.stationConeMeshes = [];
+    const heightNorm = Math.max(this.params.groundConeLength, 0.01);
+    this.stationMeshes = this.params.groundStations.map(() => {
+      const mesh = new THREE.Mesh(this.stationGeo, this.stationMat);
+      const minEl = THREE.MathUtils.clamp(this.params.groundConeMinElevationDeg, 0, 89.9);
+      const halfAngle = THREE.MathUtils.degToRad(90 - minEl);
+      const baseRadius = heightNorm * Math.tan(halfAngle);
+      const coneGeo = new THREE.ConeGeometry(
+        baseRadius,
+        1,
+        STATION_CONE_SEGMENTS,
+        1,
+        true,
+      );
+      coneGeo.translate(0, -0.5, 0);
+      const coneMat = new THREE.MeshBasicMaterial({
+        color: this.groundConeColor.clone(),
+        transparent: true,
+        opacity: 0.2,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+      const coneMesh = new THREE.Mesh(coneGeo, coneMat);
+      coneMesh.scale.set(1, heightNorm, 1);
+      coneMesh.visible = this.params.showGroundStationCones;
+      this.stationConeGeometries.push(coneGeo);
+      this.stationConeMaterials.push(coneMat);
+      this.stationConeMeshes.push(coneMesh);
+      this.scene.add(coneMesh);
+      return mesh;
+    });
     this.linkMaterial = new THREE.LineBasicMaterial({ color: 0xffffff });
     this.linkGeometries = this.params.groundStations.map(() =>
       this.satRecs.map(() => new THREE.BufferGeometry()),
@@ -188,6 +261,31 @@ export default class SatelliteScene {
     this.linkLines = this.linkGeometries.map((arr) =>
       arr.map((g) => new THREE.Line(g, this.linkMaterial)),
     );
+
+    const satHalfAngleRad = THREE.MathUtils.degToRad(
+      THREE.MathUtils.clamp(this.params.satelliteConeHalfAngleDeg, 1, 89.9),
+    );
+    this.satConeGeometry = new THREE.ConeGeometry(
+      Math.tan(satHalfAngleRad),
+      1,
+      NADIR_CONE_SEGMENTS,
+      1,
+      true,
+    );
+    this.satConeGeometry.translate(0, -0.5, 0);
+    this.satConeMaterial = new THREE.MeshBasicMaterial({
+      color: this.satelliteConeColor,
+      transparent: true,
+      opacity: 0.16,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    this.satConeMeshes = this.satRecs.map(() => {
+      const mesh = new THREE.Mesh(this.satConeGeometry, this.satConeMaterial);
+      mesh.visible = this.params.showSatelliteNadirCones;
+      this.scene.add(mesh);
+      return mesh;
+    });
 
     this.scene.add(satPoints);
     this.scene.add(groundPoints);
@@ -364,14 +462,38 @@ export default class SatelliteScene {
       const ecf = satellite.geodeticToEcf(gd);
       return satellite.ecfToEci(ecf, gmst);
     });
+    const tmpQuat = new THREE.Quaternion();
+    const tmpDir = new THREE.Vector3();
+    const slantRangeNorm = Math.max(this.params.groundConeLength, 0.01);
+    const maxRangeKm = slantRangeNorm * EARTH_RADIUS_EQUATOR_KM;
+    const halfAngleRad = THREE.MathUtils.degToRad(
+      THREE.MathUtils.clamp(this.params.satelliteConeHalfAngleDeg, 0.1, 89.5),
+    );
+    const sinHalfAngle = Math.sin(halfAngleRad);
+    const cosHalfAngle = Math.cos(halfAngleRad);
 
     this.stationMeshes.forEach((m, idx) => {
       const p = gsEcis[idx];
-      m.position.set(
+      const stationPosition = new THREE.Vector3(
         p.x / EARTH_RADIUS_EQUATOR_KM,
         p.z / EARTH_RADIUS_POLAR_KM,
         -p.y / EARTH_RADIUS_EQUATOR_KM,
       );
+      m.position.copy(stationPosition);
+      const coneMesh = this.stationConeMeshes[idx];
+      if (coneMesh) {
+        if (this.params.showGroundStationCones) {
+          coneMesh.visible = true;
+          coneMesh.position.copy(stationPosition);
+          tmpDir.copy(stationPosition).normalize().negate();
+          if (tmpDir.lengthSq() > 0) {
+            tmpQuat.setFromUnitVectors(UP_AXIS, tmpDir);
+            coneMesh.setRotationFromQuaternion(tmpQuat);
+          }
+        } else {
+          coneMesh.visible = false;
+        }
+      }
     });
 
     if (this.params.stationInfoRef && this.params.stationInfoRef.current && this.selectedStationIndex !== null) {
@@ -388,12 +510,12 @@ export default class SatelliteScene {
       const pv = satellite.propagate(rec, simDate);
       if (pv?.position) {
         const { x, y, z } = pv.position;
-        this.satPosAttr.setXYZ(
-          i,
+        const satPosition = new THREE.Vector3(
           x / EARTH_RADIUS_EQUATOR_KM,
           z / EARTH_RADIUS_POLAR_KM,
           -y / EARTH_RADIUS_EQUATOR_KM,
         );
+        this.satPosAttr.setXYZ(i, satPosition.x, satPosition.y, satPosition.z);
         const geo = satellite.eciToGeodetic(pv.position, gmst);
         const groundEcf = satellite.geodeticToEcf({
           longitude: geo.longitude,
@@ -412,7 +534,13 @@ export default class SatelliteScene {
         let anyVisible = false;
         this.params.groundStations.forEach((_, gi) => {
           const look = satellite.ecfToLookAngles(observerGds[gi], satEcf);
-          const visible = look.elevation > minElevationRads[gi];
+          const stationEci = gsEcis[gi];
+          const dx = pv.position.x - stationEci.x;
+          const dy = pv.position.y - stationEci.y;
+          const dz = pv.position.z - stationEci.z;
+          const slantRangeKm = Math.sqrt(dx * dx + dy * dy + dz * dz);
+          const withinDistance = slantRangeKm <= maxRangeKm;
+          const visible = look.elevation > minElevationRads[gi] && withinDistance;
           if (visible) {
             anyVisible = true;
             const p1 = new THREE.Vector3(
@@ -420,22 +548,51 @@ export default class SatelliteScene {
               gsEcis[gi].z / EARTH_RADIUS_POLAR_KM,
               -gsEcis[gi].y / EARTH_RADIUS_EQUATOR_KM,
             );
-            const p2 = new THREE.Vector3(
-              x / EARTH_RADIUS_EQUATOR_KM,
-              z / EARTH_RADIUS_POLAR_KM,
-              -y / EARTH_RADIUS_EQUATOR_KM,
-            );
-            this.linkGeometries[gi][i].setFromPoints([p1, p2]);
+            this.linkGeometries[gi][i].setFromPoints([p1, satPosition.clone()]);
             this.linkLines[gi][i].visible = true;
           } else {
             this.linkLines[gi][i].visible = false;
           }
         });
-        const isSelected = this.selectedIndex === i;
-        const c = new THREE.Color(
-          isSelected ? 0x00ffff : (anyVisible ? 0x00ff00 : 0xff0000)
-        );
-        this.satColorAttr.setXYZ(i, c.r, c.g, c.b);
+        if (this.selectedIndex === i) {
+          this.satColorAttr.setXYZ(i, this.satelliteSelectedColor.r, this.satelliteSelectedColor.g, this.satelliteSelectedColor.b);
+        } else if (anyVisible) {
+          this.satColorAttr.setXYZ(i, this.satelliteVisibleColor.r, this.satelliteVisibleColor.g, this.satelliteVisibleColor.b);
+        } else {
+          this.satColorAttr.setXYZ(i, this.satelliteHiddenColor.r, this.satelliteHiddenColor.g, this.satelliteHiddenColor.b);
+        }
+
+        const cone = this.satConeMeshes[i];
+        if (cone) {
+          if (this.params.showSatelliteNadirCones) {
+            const rSat = Math.sqrt(x * x + y * y + z * z);
+            const sinTerm = rSat * sinHalfAngle;
+            const underRoot = (EARTH_RADIUS_EQUATOR_KM * EARTH_RADIUS_EQUATOR_KM) - (sinTerm * sinTerm);
+            if (underRoot > 0 && sinHalfAngle > 0) {
+              const sqrtTerm = Math.sqrt(underRoot);
+              const slantLengthKm = rSat * cosHalfAngle - sqrtTerm;
+              if (slantLengthKm > 0) {
+                const axisLengthKm = slantLengthKm * cosHalfAngle;
+                const normalizedHeight = axisLengthKm / EARTH_RADIUS_EQUATOR_KM;
+                const clampedHeight = Math.max(normalizedHeight, this.satelliteConeMinHeight);
+                cone.visible = true;
+                cone.position.copy(satPosition);
+                cone.scale.setScalar(clampedHeight);
+                tmpDir.copy(satPosition).normalize().negate();
+                if (tmpDir.lengthSq() > 0) {
+                  tmpQuat.setFromUnitVectors(DOWN_AXIS, tmpDir);
+                  cone.quaternion.copy(tmpQuat);
+                }
+              } else {
+                cone.visible = false;
+              }
+            } else {
+              cone.visible = false;
+            }
+          } else {
+            cone.visible = false;
+          }
+        }
       }
     }
 
@@ -499,6 +656,8 @@ export default class SatelliteScene {
     this.satGeometry.dispose();
     this.groundGeometry.dispose();
     this.stationGeo.dispose();
+    this.stationConeGeometries.forEach((g) => g.dispose());
+    this.satConeGeometry.dispose();
     this.linkGeometries.forEach(arr => arr.forEach(g => g.dispose()));
     
     // Dispose all materials
@@ -507,6 +666,8 @@ export default class SatelliteScene {
     this.groundMaterial.dispose();
     if (this.groundMaterial.map) this.groundMaterial.map.dispose();
     this.stationMat.dispose();
+    this.stationConeMaterials.forEach((m) => m.dispose());
+    this.satConeMaterial.dispose();
     this.linkMaterial.dispose();
     
     // Dispose earth mesh
@@ -550,4 +711,3 @@ export default class SatelliteScene {
     }
   }
 }
-
