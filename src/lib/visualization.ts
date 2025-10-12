@@ -49,7 +49,6 @@ export interface SatelliteSceneParams {
   satelliteConeHalfAngleDeg: number;
   satelliteConeColor: string;
   satelliteConeMinHeight: number;
-  satelliteConeMaxHeight: number;
   satelliteVisibleColor: string;
   satelliteHiddenColor: string;
   satelliteSelectedColor: string;
@@ -114,7 +113,6 @@ export default class SatelliteScene {
   private readonly satelliteHiddenColor: THREE.Color;
   private readonly satelliteSelectedColor: THREE.Color;
   private readonly satelliteConeMinHeight: number;
-  private readonly satelliteConeMaxHeight: number;
   private linkMaterial: THREE.LineBasicMaterial;
 
   private readonly startReal: number;
@@ -160,9 +158,7 @@ export default class SatelliteScene {
     this.satelliteHiddenColor = new THREE.Color(this.params.satelliteHiddenColor);
     this.satelliteSelectedColor = new THREE.Color(this.params.satelliteSelectedColor);
     const minHeight = Math.max(this.params.satelliteConeMinHeight, 0.001);
-    const maxHeight = Math.max(this.params.satelliteConeMaxHeight, minHeight + 0.001);
     this.satelliteConeMinHeight = minHeight;
-    this.satelliteConeMaxHeight = maxHeight;
 
     const earthGeometry = new THREE.SphereGeometry(1, 128, 128);
     const texture = new THREE.TextureLoader().load(this.params.earthTexture);

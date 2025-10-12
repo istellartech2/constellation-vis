@@ -50,7 +50,6 @@ export function useSatelliteScene(params: SatelliteSceneParams) {
     params.satelliteConeHalfAngleDeg,
     params.satelliteConeColor,
     params.satelliteConeMinHeight,
-    params.satelliteConeMaxHeight,
     params.satelliteVisibleColor,
     params.satelliteHiddenColor,
     params.satelliteSelectedColor,

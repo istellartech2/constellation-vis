@@ -33,7 +33,6 @@ interface Props {
   satelliteConeHalfAngleDeg: number;
   onSatelliteConeHalfAngleDegChange: (v: number) => void;
   satelliteConeMinHeight: number;
-  satelliteConeMaxHeight: number;
   satelliteConeColor: string;
   onSatelliteConeColorChange: (color: string) => void;
   satelliteVisibleColor: string;
@@ -75,7 +74,6 @@ export default function OptionTab({
   satelliteConeHalfAngleDeg,
   onSatelliteConeHalfAngleDegChange,
   satelliteConeMinHeight,
-  satelliteConeMaxHeight,
   satelliteConeColor,
   onSatelliteConeColorChange,
   satelliteVisibleColor,
@@ -393,14 +391,13 @@ export default function OptionTab({
               </div>
               <div className="option-control">
                 <div className="option-control-label">
-                  <span>円錐高さ</span>
+                  <span>円錐最小高さ</span>
                   <span>
-                    {satelliteConeMinHeight.toFixed(2)}〜{satelliteConeMaxHeight.toFixed(2)}R<sub>⊕</sub>
-                    （約 {Math.round(satelliteConeMinHeight * EARTH_RADIUS_KM).toLocaleString()}〜
-                    {Math.round(satelliteConeMaxHeight * EARTH_RADIUS_KM).toLocaleString()} km）
+                    {satelliteConeMinHeight.toFixed(2)}R<sub>⊕</sub>
+                    （約 {Math.round(satelliteConeMinHeight * EARTH_RADIUS_KM).toLocaleString()} km）
                   </span>
                 </div>
-                <div className="option-control-hint">※衛星高度に応じた固定スケールです</div>
+                <div className="option-control-hint">※衛星高度に応じて自動的に変化する固定スケールです</div>
               </div>
               <div className="option-control">
                 <div className="option-control-label">

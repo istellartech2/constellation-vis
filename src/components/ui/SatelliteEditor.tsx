@@ -88,8 +88,6 @@ interface Props {
   onSatelliteConeColorChange: (color: string) => void;
   /** Minimum satellite nadir cone height (Earth radii) */
   satelliteConeMinHeight: number;
-  /** Maximum satellite nadir cone height (Earth radii) */
-  satelliteConeMaxHeight: number;
   /** Satellite color when visible from a ground station */
   satelliteVisibleColor: string;
   /** Called when satellite visible color changes */
@@ -149,7 +147,6 @@ export default function SatelliteEditor({
   satelliteConeColor,
   onSatelliteConeColorChange,
   satelliteConeMinHeight,
-  satelliteConeMaxHeight,
   satelliteVisibleColor,
   onSatelliteVisibleColorChange,
   satelliteHiddenColor,
@@ -438,7 +435,6 @@ export default function SatelliteEditor({
                 satelliteConeColor={satelliteConeColor}
                 onSatelliteConeColorChange={onSatelliteConeColorChange}
                 satelliteConeMinHeight={satelliteConeMinHeight}
-                satelliteConeMaxHeight={satelliteConeMaxHeight}
                 satelliteVisibleColor={satelliteVisibleColor}
                 onSatelliteVisibleColorChange={onSatelliteVisibleColorChange}
                 satelliteHiddenColor={satelliteHiddenColor}

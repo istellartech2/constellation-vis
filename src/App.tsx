@@ -46,7 +46,6 @@ function App() {
   const [satelliteConeHalfAngleDeg, setSatelliteConeHalfAngleDeg] = useState(30);
   const [satelliteConeColor, setSatelliteConeColor] = useState("#3388ff");
   const satelliteConeMinHeight = 0.02;
-  const satelliteConeMaxHeight = 8;
   const [satelliteVisibleColor, setSatelliteVisibleColor] = useState("#00ff00");
   const [satelliteHiddenColor, setSatelliteHiddenColor] = useState("#ff0000");
   const [satelliteSelectedColor, setSatelliteSelectedColor] = useState("#00ffff");
@@ -102,7 +101,6 @@ function App() {
     satelliteConeHalfAngleDeg,
     satelliteConeColor,
     satelliteConeMinHeight,
-    satelliteConeMaxHeight,
     satelliteVisibleColor,
     satelliteHiddenColor,
     satelliteSelectedColor,
@@ -181,7 +179,6 @@ function App() {
         satelliteConeColor={satelliteConeColor}
         onSatelliteConeColorChange={setSatelliteConeColor}
         satelliteConeMinHeight={satelliteConeMinHeight}
-        satelliteConeMaxHeight={satelliteConeMaxHeight}
         satelliteVisibleColor={satelliteVisibleColor}
         onSatelliteVisibleColorChange={setSatelliteVisibleColor}
         satelliteHiddenColor={satelliteHiddenColor}
