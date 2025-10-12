@@ -57,7 +57,7 @@ export default function EditorTab({
               size="icon"
               className="h-8 w-8 border-2 shadow-md bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-500 hover:border-gray-400"
               onClick={() => downloadFile("satellites.toml", satText)}
-              title="Download"
+              title="ダウンロード"
             >
               <Download className="h-4 w-4" />
             </Button>
@@ -66,7 +66,7 @@ export default function EditorTab({
               size="icon"
               className="h-8 w-8 border-2 shadow-md bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-500 hover:border-gray-400"
               onClick={() => satInputRef.current?.click()}
-              title="Load"
+              title="読み込み"
             >
               <Upload className="h-4 w-4" />
             </Button>
@@ -75,7 +75,7 @@ export default function EditorTab({
               size="icon"
               className="h-8 w-8 border-2 shadow-md bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-500 hover:border-gray-400"
               onClick={() => onSatTextChange("")}
-              title="Clear"
+              title="クリア"
             >
               <Trash2 className="h-4 w-4" />
             </Button>
@@ -84,7 +84,7 @@ export default function EditorTab({
               size="icon"
               className="h-8 w-8 border-2 shadow-md bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-500 hover:border-gray-400"
               onClick={onImportClick}
-              title="Import"
+              title="インポート"
             >
               <Globe className="h-4 w-4" />
             </Button>
@@ -118,7 +118,7 @@ export default function EditorTab({
               size="icon"
               className="h-8 w-8 border-2 shadow-md bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-500 hover:border-gray-400"
               onClick={() => downloadFile("constellation.toml", constText)}
-              title="Download"
+              title="ダウンロード"
             >
               <Download className="h-4 w-4" />
             </Button>
@@ -127,7 +127,7 @@ export default function EditorTab({
               size="icon"
               className="h-8 w-8 border-2 shadow-md bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-500 hover:border-gray-400"
               onClick={() => constInputRef.current?.click()}
-              title="Load"
+              title="読み込み"
             >
               <Upload className="h-4 w-4" />
             </Button>
@@ -136,7 +136,7 @@ export default function EditorTab({
               size="icon"
               className="h-8 w-8 border-2 shadow-md bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-500 hover:border-gray-400"
               onClick={() => onConstTextChange("")}
-              title="Clear"
+              title="クリア"
             >
               <Trash2 className="h-4 w-4" />
             </Button>
@@ -170,7 +170,7 @@ export default function EditorTab({
               size="icon"
               className="h-8 w-8 border-2 shadow-md bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-500 hover:border-gray-400"
               onClick={() => downloadFile("groundstations.toml", gsText)}
-              title="Download"
+              title="ダウンロード"
             >
               <Download className="h-4 w-4" />
             </Button>
@@ -179,7 +179,7 @@ export default function EditorTab({
               size="icon"
               className="h-8 w-8 border-2 shadow-md bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-500 hover:border-gray-400"
               onClick={() => gsInputRef.current?.click()}
-              title="Load"
+              title="読み込み"
             >
               <Upload className="h-4 w-4" />
             </Button>
@@ -188,7 +188,7 @@ export default function EditorTab({
               size="icon"
               className="h-8 w-8 border-2 shadow-md bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-500 hover:border-gray-400"
               onClick={() => onGsTextChange("")}
-              title="Clear"
+              title="クリア"
             >
               <Trash2 className="h-4 w-4" />
             </Button>
@@ -221,7 +221,7 @@ export default function EditorTab({
           onClick={onSaveBundle}
         >
           <Save className="h-3 w-3" />
-          Save All
+          すべて保存
         </Button>
         <Button 
           variant="outline" 
@@ -230,7 +230,7 @@ export default function EditorTab({
           onClick={() => bundleInputRef.current?.click()}
         >
           <FolderOpen className="h-3 w-3" />
-          Load All
+          すべて読み込み
         </Button>
         <input
           ref={bundleInputRef}
@@ -248,7 +248,7 @@ export default function EditorTab({
       <hr className="border-gray-600 my-2" />
       <div className="mb-2">
         <label className="block text-xs font-medium text-gray-300 mb-1">
-          Simulation start (UTC)
+          シミュレーション開始時刻 (UTC)
         </label>
         <input
           type="datetime-local"
@@ -264,7 +264,7 @@ export default function EditorTab({
         className="w-full font-medium bg-amber-600 border border-amber-500 hover:bg-amber-700 hover:border-amber-600 text-amber-50 shadow-sm transition-all duration-200 text-sm py-2 h-9 rounded-md"
         size="sm"
       >
-        UPDATE
+        更新
       </Button>
     </>
   );

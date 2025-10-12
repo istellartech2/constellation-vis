@@ -136,15 +136,15 @@ export default function SatelliteEditor({
           const resp = await fetch(url);
           
           if (!resp.ok) {
-            errors.push(`HTTP ${resp.status} for group "${g}"`);
+            errors.push(`グループ「${g}」でHTTP ${resp.status}エラー`);
             continue;
           }
           
           const text = await resp.text();
           
           // Check if response is valid JSON
-          if (text.startsWith('Invalid query:') || text.startsWith('Error:')) {
-            errors.push(`Invalid group "${g}": ${text}`);
+          if (text.startsWith("Invalid query:") || text.startsWith("Error:")) {
+            errors.push(`グループ「${g}」の応答が不正です: ${text}`);
             continue;
           }
           
@@ -152,12 +152,12 @@ export default function SatelliteEditor({
           try {
             data = JSON.parse(text);
           } catch {
-            errors.push(`Invalid JSON response for group "${g}"`);
+            errors.push(`グループ「${g}」のJSON応答が不正です`);
             continue;
           }
           
           if (!Array.isArray(data)) {
-            errors.push(`Expected array for group "${g}", got ${typeof data}`);
+            errors.push(`グループ「${g}」の形式が配列ではありません (${typeof data})`);
             continue;
           }
           
@@ -165,21 +165,21 @@ export default function SatelliteEditor({
             try {
               base.push(celestrakEntryToSat(e));
             } catch (conversionError) {
-              console.warn(`Failed to convert entry for group "${g}":`, conversionError);
+              console.warn(`グループ「${g}」のデータ変換に失敗しました:`, conversionError);
             }
           }
         } catch (groupError) {
-          errors.push(`Error processing group "${g}": ${(groupError as Error).message}`);
+          errors.push(`グループ「${g}」の処理中にエラー: ${(groupError as Error).message}`);
         }
       }
       
       setSatText(satellitesToToml(base));
       
       if (errors.length > 0) {
-        alert(`Import completed with errors:\n${errors.join('\n')}`);
+        alert(`一部のグループでエラーが発生しました:\n${errors.join("\n")}`);
       }
     } catch (e) {
-      alert("Failed to import satellites: " + (e as Error).message);
+      alert("衛星のインポートに失敗しました: " + (e as Error).message);
     } finally {
       setImporting(false);
       setImportOpen(false);
@@ -194,37 +194,37 @@ export default function SatelliteEditor({
     // Load satellites.toml
     fetch(import.meta.env.BASE_URL + 'satellites.toml')
       .then((r) => {
-        if (!r.ok) throw new Error(`Failed to load satellites.toml: ${r.status}`);
+        if (!r.ok) throw new Error(`satellites.toml の読み込みに失敗しました: ${r.status}`);
         return r.text();
       })
       .then(setSatText)
       .catch((error) => {
-        console.error('Error loading satellites.toml:', error);
-        setSatText("# Failed to load default satellites.toml\n# Please manually enter satellite data");
+        console.error("satellites.toml の読み込みでエラー:", error);
+        setSatText("# デフォルトの satellites.toml を読み込めませんでした\n# 衛星データを手動で入力してください");
       });
 
     // Load constellation.toml
     fetch(import.meta.env.BASE_URL + 'constellation.toml')
       .then((r) => {
-        if (!r.ok) throw new Error(`Failed to load constellation.toml: ${r.status}`);
+        if (!r.ok) throw new Error(`constellation.toml の読み込みに失敗しました: ${r.status}`);
         return r.text();
       })
       .then(setConstText)
       .catch((error) => {
-        console.error('Error loading constellation.toml:', error);
-        setConstText("# Failed to load default constellation.toml\n# This file is optional");
+        console.error("constellation.toml の読み込みでエラー:", error);
+        setConstText("# デフォルトの constellation.toml を読み込めませんでした\n# このファイルは任意です");
       });
 
     // Load groundstations.toml
     fetch(import.meta.env.BASE_URL + 'groundstations.toml')
       .then((r) => {
-        if (!r.ok) throw new Error(`Failed to load groundstations.toml: ${r.status}`);
+        if (!r.ok) throw new Error(`groundstations.toml の読み込みに失敗しました: ${r.status}`);
         return r.text();
       })
       .then(setGsText)
       .catch((error) => {
-        console.error('Error loading groundstations.toml:', error);
-        setGsText("# Failed to load default groundstations.toml\n# Please manually enter ground station data");
+        console.error("groundstations.toml の読み込みでエラー:", error);
+        setGsText("# デフォルトの groundstations.toml を読み込めませんでした\n# 地上局データを手動で入力してください");
       });
   }, []);
 
@@ -237,7 +237,7 @@ export default function SatelliteEditor({
       validateGroundStations(gs);
       onUpdate([...base, ...con], gs, new Date(startText));
     } catch (e) {
-      alert("Failed to parse files: " + (e as Error).message);
+      alert("ファイルの解析に失敗しました: " + (e as Error).message);
     }
   };
 
@@ -263,7 +263,7 @@ export default function SatelliteEditor({
       setGsText(parsed.gsText);
       setStartText(parsed.startTime.toISOString().slice(0, 16));
     } catch (e) {
-      alert("Invalid file: " + (e as Error).message);
+      alert("ファイルが不正です: " + (e as Error).message);
     }
   }
 
@@ -290,19 +290,19 @@ export default function SatelliteEditor({
                 value="editor" 
                 className="data-[state=active]:!bg-orange-600 data-[state=active]:!text-orange-50 data-[state=active]:!shadow-sm data-[state=active]:!border-orange-200 data-[state=active]:!font-medium hover:bg-gray-600 text-gray-200 transition-all duration-200 rounded-md border border-transparent font-medium"
               >
-                Editor
+                編集
               </TabsTrigger>
               <TabsTrigger 
                 value="analysis" 
                 className="data-[state=active]:!bg-orange-600 data-[state=active]:!text-orange-50 data-[state=active]:!shadow-sm data-[state=active]:!border-orange-200 data-[state=active]:!font-medium hover:bg-gray-600 text-gray-200 transition-all duration-200 rounded-md border border-transparent font-medium"
               >
-                Analysis
+                解析
               </TabsTrigger>
               <TabsTrigger 
                 value="option" 
                 className="data-[state=active]:!bg-orange-600 data-[state=active]:!text-orange-50 data-[state=active]:!shadow-sm data-[state=active]:!border-orange-200 data-[state=active]:!font-medium hover:bg-gray-600 text-gray-200 transition-all duration-200 rounded-md border border-transparent font-medium"
               >
-                Options
+                設定
               </TabsTrigger>
             </TabsList>
           </Tabs>

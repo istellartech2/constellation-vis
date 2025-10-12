@@ -21,7 +21,7 @@ const TEXTURE_OPTIONS: Option[] = [
 
 const EarthTextureSelector: FC<Props> = ({ value, onChange, style }) => (
   <div className="sat-size-control" style={style}>
-    <label htmlFor="earth-texture-select">Earth texture</label>
+    <label htmlFor="earth-texture-select">地球テクスチャ</label>
     <select
       id="earth-texture-select"
       value={value}

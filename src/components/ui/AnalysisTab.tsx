@@ -110,7 +110,7 @@ export default function AnalysisTab({ satText, constText, gsText, startTime, onA
               disabled
               style={{ opacity: 0.5 }}
             >
-              Coming Soon
+              近日公開
             </button>
           </div>
         </div>

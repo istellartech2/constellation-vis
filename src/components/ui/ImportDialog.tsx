@@ -22,27 +22,27 @@ interface DataSource {
 
 const CELESTRACK_GROUPS: DataSource[] = [
   {
-    label: "Special Interest",
+    label: "注目カテゴリ",
     group: "special",
     children: [
-      { label: "Last 30 Days' Launches", group: "last-30-days" },
-      { label: "Space Stations", group: "stations" },
-      { label: "Active Satellites", group: "active" },
-      { label: "Active GEO", group: "geo" },
-      { label: "CubeSats", group: "cubesat" },
+      { label: "過去30日間の打ち上げ", group: "last-30-days" },
+      { label: "宇宙ステーション", group: "stations" },
+      { label: "運用中衛星", group: "active" },
+      { label: "運用中GEO", group: "geo" },
+      { label: "キューブサット", group: "cubesat" },
     ]
   },
   {
-    label: "Weather & Earth Observation",
+    label: "気象・地球観測",
     group: "weather-earth",
     children: [
-      { label: "Weather", group: "weather" },
+      { label: "気象衛星", group: "weather" },
       { label: "Planet", group: "planet" },
       { label: "Spire", group: "spire" },
     ]
   },
   {
-    label: "Communications",
+    label: "通信",
     group: "communications",
     children: [
       { label: "Starlink", group: "starlink" },
@@ -55,19 +55,19 @@ const CELESTRACK_GROUPS: DataSource[] = [
     ]
   },
   {
-    label: "Navigation",
+    label: "GNSS",
     group: "navigation",
     children: [
-      { label: "GNSS All", group: "gnss" },
-      { label: "GPS Operational", group: "gps-ops" },
+      { label: "GNSS全体", group: "gnss" },
+      { label: "GPS運用中", group: "gps-ops" },
       { label: "GLONASS", group: "glo-ops" },
       { label: "Galileo", group: "galileo" },
-      { label: "Beidou", group: "beidou" },
-      { label: "SBAS(QZSS/WAAS/EGNOS)", group: "sbas" },
+      { label: "BeiDou", group: "beidou" },
+      { label: "SBAS（QZSS/WAAS/EGNOS）", group: "sbas" },
     ]
   },
   {
-    label: "Debris",
+    label: "デブリ",
     group: "debris",
     children: [
       { label: "COSMOS 1408 Debris", group: "cosmos-1408-debris" },
@@ -187,9 +187,9 @@ export default function ImportDialog({
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent className="max-w-lg max-h-[80vh] overflow-hidden">
         <DialogHeader>
-          <DialogTitle>Import from CelesTrak</DialogTitle>
+          <DialogTitle>CelesTrakからインポート</DialogTitle>
           <DialogDescription>
-            Select satellite groups to import from CelesTrak database.
+            CelesTrakデータベースから取り込む衛星グループを選択してください。
           </DialogDescription>
         </DialogHeader>
         
@@ -210,18 +210,18 @@ export default function ImportDialog({
           {importing ? (
             <div className="flex items-center justify-center w-full">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              <span className="text-sm">Loading...</span>
+              <span className="text-sm">読み込み中...</span>
             </div>
           ) : (
             <>
               <Button variant="outline" onClick={onClose}>
-                Cancel
+                キャンセル
               </Button>
               <Button 
                 onClick={onImport} 
                 disabled={selectedGroups.length === 0}
               >
-                Import ({selectedGroups.length} selected)
+                インポート（{selectedGroups.length}件選択）
               </Button>
             </>
           )}

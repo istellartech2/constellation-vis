@@ -52,7 +52,7 @@ export default function OptionTab({
 
   const handleKMLLoad = async () => {
     if (!sceneRef?.current) {
-      setError("Scene not initialized");
+      setError("シーンが初期化されていません");
       return;
     }
 
@@ -79,14 +79,14 @@ export default function OptionTab({
             
             setLoadedKMLs(prev => [...prev, file.name]);
           } catch (err) {
-            setError(err instanceof Error ? err.message : "Failed to load KML");
+            setError(err instanceof Error ? err.message : "KMLの読み込みに失敗しました");
           } finally {
             setLoading(false);
           }
         };
         reader.readAsText(file);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to read file");
+        setError(err instanceof Error ? err.message : "ファイルの読み取りに失敗しました");
         setLoading(false);
       }
     };
@@ -104,7 +104,7 @@ export default function OptionTab({
   return (
     <div>
       <div className="option-section">
-        <div className="option-section-title">Visualization Controls</div>
+        <div className="option-section-title">表示コントロール</div>
         <SatelliteSizeControl
           value={satRadius}
           onChange={onSatRadiusChange}
@@ -118,7 +118,7 @@ export default function OptionTab({
       </div>
 
       <div className="option-section">
-        <div className="option-section-title">Display Options</div>
+        <div className="option-section-title">表示オプション</div>
         <div className="space-y-3">
           <div className="flex items-center space-x-2">
             <Checkbox
@@ -130,7 +130,7 @@ export default function OptionTab({
               htmlFor="graticule"
               className="text-sm font-normal cursor-pointer"
             >
-              Show latitude/longitude lines
+              経緯線を表示
             </Label>
           </div>
           <div className="flex items-center space-x-2">
@@ -146,7 +146,7 @@ export default function OptionTab({
               htmlFor="ecliptic"
               className="text-sm font-normal cursor-pointer"
             >
-              Show ecliptic plane
+              黄道面を表示
             </Label>
           </div>
           <div className="flex items-center space-x-2">
@@ -159,7 +159,7 @@ export default function OptionTab({
               htmlFor="ecef"
               className="text-sm font-normal cursor-pointer"
             >
-              ECEF mode
+              ECEFモード
             </Label>
           </div>
           <div className="flex items-center space-x-2">
@@ -172,7 +172,7 @@ export default function OptionTab({
               htmlFor="perturbation"
               className="text-sm font-normal cursor-pointer"
             >
-              Show perturbation
+              摂動を表示
             </Label>
           </div>
           <div className="flex items-center space-x-2">
@@ -192,7 +192,7 @@ export default function OptionTab({
       </div>
 
       <div className="option-section">
-        <div className="option-section-title">KML Import</div>
+        <div className="option-section-title">KMLインポート</div>
         <div className="space-y-3">
           <div className="flex gap-2">
             <Button
@@ -202,7 +202,7 @@ export default function OptionTab({
               variant="secondary"
             >
               <FileInput className="w-4 h-4" />
-              {loading ? "Loading..." : "Load KML File"}
+              {loading ? "読み込み中..." : "KMLファイルを読み込む"}
             </Button>
             {loadedKMLs.length > 0 && (
               <Button
@@ -211,7 +211,7 @@ export default function OptionTab({
                 className="flex items-center gap-2"
               >
                 <Trash2 className="w-4 h-4" />
-                Clear All
+                すべてクリア
               </Button>
             )}
           </div>
@@ -224,7 +224,7 @@ export default function OptionTab({
           
           {loadedKMLs.length > 0 && (
             <div className="text-sm text-gray-300">
-              <div className="font-semibold mb-1">Loaded KML files:</div>
+              <div className="font-semibold mb-1">読み込んだKMLファイル:</div>
               <ul className="list-disc list-inside">
                 {loadedKMLs.map((file, index) => (
                   <li key={index}>{file}</li>
@@ -234,7 +234,7 @@ export default function OptionTab({
           )}
           
           <div className="text-xs text-gray-400">
-            Load KML files to display Points, LineStrings, and Polygons on the 3D Earth.
+            KMLファイルを読み込むと3D地球上にポイント、ライン、ポリゴンを表示できます。
           </div>
         </div>
       </div>
