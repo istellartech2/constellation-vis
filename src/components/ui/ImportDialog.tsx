@@ -4,6 +4,7 @@ import { Button } from "./button";
 import { Checkbox } from "./checkbox";
 import { Label } from "./label";
 import { ChevronRight, ChevronDown, Loader2 } from "lucide-react";
+import { CELESTRAK_GROUP_TREE, type CelestrakGroupNode } from "../../utils/celestrakUtils";
 
 interface ImportDialogProps {
   open: boolean;
@@ -14,70 +15,6 @@ interface ImportDialogProps {
   onClose: () => void;
 }
 
-interface DataSource {
-  label: string;
-  group: string;
-  children?: DataSource[];
-}
-
-const CELESTRACK_GROUPS: DataSource[] = [
-  {
-    label: "注目カテゴリ",
-    group: "special",
-    children: [
-      { label: "過去30日間の打ち上げ", group: "last-30-days" },
-      { label: "宇宙ステーション", group: "stations" },
-      { label: "運用中衛星", group: "active" },
-      { label: "運用中GEO", group: "geo" },
-      { label: "キューブサット", group: "cubesat" },
-    ]
-  },
-  {
-    label: "気象・地球観測",
-    group: "weather-earth",
-    children: [
-      { label: "気象衛星", group: "weather" },
-      { label: "Planet", group: "planet" },
-      { label: "Spire", group: "spire" },
-    ]
-  },
-  {
-    label: "通信",
-    group: "communications",
-    children: [
-      { label: "Starlink", group: "starlink" },
-      { label: "OneWeb", group: "oneweb" },
-      { label: "Intelsat", group: "intelsat" },
-      { label: "SES", group: "ses" },
-      { label: "Iridium", group: "iridium" },
-      { label: "Globalstar", group: "globalstar" },
-      { label: "Amateur Radio", group: "amateur" },
-    ]
-  },
-  {
-    label: "GNSS",
-    group: "navigation",
-    children: [
-      { label: "GNSS全体", group: "gnss" },
-      { label: "GPS運用中", group: "gps-ops" },
-      { label: "GLONASS", group: "glo-ops" },
-      { label: "Galileo", group: "galileo" },
-      { label: "BeiDou", group: "beidou" },
-      { label: "SBAS（QZSS/WAAS/EGNOS）", group: "sbas" },
-    ]
-  },
-  {
-    label: "デブリ",
-    group: "debris",
-    children: [
-      { label: "COSMOS 1408 Debris", group: "cosmos-1408-debris" },
-      { label: "Fengyun 1C Debris", group: "fengyun-1c-debris" },
-      { label: "Iridium 33 Debris", group: "iridium-33-debris" },
-      { label: "COSMOS 2251 Debris", group: "cosmos-2251-debris" },
-    ]
-  },
-];
-
 function TreeNode({ 
   node, 
   selectedGroups, 
@@ -86,7 +23,7 @@ function TreeNode({
   level = 0,
   forceExpanded = false
 }: {
-  node: DataSource;
+  node: CelestrakGroupNode;
   selectedGroups: string[];
   onToggleGroup: (group: string) => void;
   importing: boolean;
@@ -95,8 +32,8 @@ function TreeNode({
 }) {
   const [expanded, setExpanded] = useState(forceExpanded);
   const hasChildren = node.children && node.children.length > 0;
-  const isSelected = selectedGroups.includes(node.group);
-  const childrenSelected = hasChildren ? node.children!.some(child => selectedGroups.includes(child.group)) : false;
+  const isSelected = selectedGroups.includes(node.id);
+  const childrenSelected = hasChildren ? node.children!.some(child => selectedGroups.includes(child.id)) : false;
   const shouldExpand = forceExpanded || expanded;
 
   // Special Interest should not show category header when force expanded
@@ -105,7 +42,7 @@ function TreeNode({
       <div style={{ marginBottom: 4 }}>
         {node.children!.map((child) => (
           <TreeNode
-            key={child.group}
+            key={child.id}
             node={child}
             selectedGroups={selectedGroups}
             onToggleGroup={onToggleGroup}
@@ -143,13 +80,13 @@ function TreeNode({
         ) : (
           <div className="flex items-center space-x-2">
             <Checkbox
-              id={node.group}
+              id={node.id}
               disabled={importing}
               checked={isSelected}
-              onCheckedChange={() => onToggleGroup(node.group)}
+              onCheckedChange={() => onToggleGroup(node.id)}
             />
             <Label
-              htmlFor={node.group}
+              htmlFor={node.id}
               className="text-sm font-normal cursor-pointer"
             >
               {node.label}
@@ -161,7 +98,7 @@ function TreeNode({
         <div className="mb-2">
           {node.children!.map((child) => (
             <TreeNode
-              key={child.group}
+              key={child.id}
               node={child}
               selectedGroups={selectedGroups}
               onToggleGroup={onToggleGroup}
@@ -194,9 +131,9 @@ export default function ImportDialog({
         </DialogHeader>
         
         <div className="max-h-96 overflow-y-auto px-2">
-          {CELESTRACK_GROUPS.map((group, index) => (
+          {CELESTRAK_GROUP_TREE.map((group, index) => (
             <TreeNode
-              key={group.group}
+              key={group.id}
               node={group}
               selectedGroups={selectedGroups}
               onToggleGroup={onToggleGroup}

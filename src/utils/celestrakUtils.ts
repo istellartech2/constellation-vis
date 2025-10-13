@@ -2,42 +2,92 @@ import type { SatelliteSpec } from "../lib/satellites";
 
 const MU = 398600.4418; // km^3/s^2
 
-export const CELESTRAK_GROUP_URLS = {
-  // Special Interest
-  "last-30-days": "last-30-days",
-  "stations": "stations",
-  "active": "active",
-  "geo": "geo",
-  "cubesat": "cubesat",
-  
-  // Weather & Earth Observation
-  "weather": "weather",
-  "planet": "planet",
-  "spire": "spire",
-  
-  // Communications
-  "starlink": "starlink",
-  "oneweb": "oneweb",
-  "intelsat": "intelsat",
-  "ses": "ses",
-  "iridium": "iridium",
-  "globalstar": "globalstar",
-  "amateur": "amateur",
-  
-  // Navigation
-  "gnss": "gnss",
-  "gps-ops": "gps-ops",
-  "glo-ops": "glo-ops",
-  "galileo": "galileo",
-  "beidou": "beidou",
-  "sbas": "sbas",
-  
-  // Debris
-  "cosmos-1408-debris": "cosmos-1408-debris",
-  "fengyun-1c-debris": "fengyun-1c-debris",
-  "iridium-33-debris": "iridium-33-debris", 
-  "cosmos-2251-debris": "cosmos-2251-debris",
-} as const;
+export interface CelestrakGroupNode {
+  id: string;
+  label: string;
+  urlGroup?: string;
+  children?: CelestrakGroupNode[];
+}
+
+export const CELESTRAK_GROUP_TREE: CelestrakGroupNode[] = [
+  {
+    id: "special",
+    label: "注目カテゴリ",
+    children: [
+      { id: "last-30-days", label: "過去30日間の打ち上げ" },
+      { id: "stations", label: "宇宙ステーション" },
+      { id: "active", label: "運用中衛星" },
+      { id: "geo", label: "運用中GEO" },
+      { id: "cubesat", label: "キューブサット" },
+    ],
+  },
+  {
+    id: "weather-earth",
+    label: "気象・地球観測",
+    children: [
+      { id: "weather", label: "気象衛星" },
+      { id: "planet", label: "Planet" },
+      { id: "spire", label: "Spire" },
+    ],
+  },
+  {
+    id: "communications",
+    label: "通信",
+    children: [
+      { id: "starlink", label: "Starlink" },
+      { id: "oneweb", label: "OneWeb" },
+      { id: "intelsat", label: "Intelsat" },
+      { id: "ses", label: "SES" },
+      { id: "iridium", label: "Iridium" },
+      { id: "globalstar", label: "Globalstar" },
+      { id: "amateur", label: "Amateur Radio" },
+    ],
+  },
+  {
+    id: "navigation",
+    label: "GNSS",
+    children: [
+      { id: "gnss", label: "GNSS全体" },
+      { id: "gps-ops", label: "GPS運用中" },
+      { id: "glo-ops", label: "GLONASS" },
+      { id: "galileo", label: "Galileo" },
+      { id: "beidou", label: "BeiDou" },
+      { id: "sbas", label: "SBAS（QZSS/WAAS/EGNOS）" },
+    ],
+  },
+  {
+    id: "debris",
+    label: "デブリ",
+    children: [
+      { id: "cosmos-1408-debris", label: "COSMOS 1408 Debris" },
+      { id: "fengyun-1c-debris", label: "Fengyun 1C Debris" },
+      { id: "iridium-33-debris", label: "Iridium 33 Debris" },
+      { id: "cosmos-2251-debris", label: "COSMOS 2251 Debris" },
+    ],
+  },
+] as const;
+
+type CelestrakGroupEntry = {
+  label: string;
+  urlGroup: string;
+};
+
+const CELESTRAK_GROUP_INDEX = new Map<string, CelestrakGroupEntry>();
+
+function indexGroups(nodes: readonly CelestrakGroupNode[]) {
+  for (const node of nodes) {
+    if (node.children && node.children.length > 0) {
+      indexGroups(node.children);
+    } else {
+      CELESTRAK_GROUP_INDEX.set(node.id, {
+        label: node.label,
+        urlGroup: node.urlGroup ?? node.id,
+      });
+    }
+  }
+}
+
+indexGroups(CELESTRAK_GROUP_TREE);
 
 export interface CelestrakEntry {
   MEAN_MOTION: number;
@@ -77,7 +127,8 @@ export function celestrakEntryToSat(entry: CelestrakEntry): SatelliteSpec {
 }
 
 export function getCelestrakUrl(group: string): string {
-  const urlGroup = CELESTRAK_GROUP_URLS[group as keyof typeof CELESTRAK_GROUP_URLS] || group;
+  const entry = CELESTRAK_GROUP_INDEX.get(group);
+  const urlGroup = entry?.urlGroup ?? group;
   return `https://celestrak.org/NORAD/elements/gp.php?GROUP=${urlGroup}&FORMAT=json`;
 }
 

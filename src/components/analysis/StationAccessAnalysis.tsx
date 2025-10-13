@@ -1,20 +1,15 @@
-import { useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactECharts from "echarts-for-react";
-import { calculateStationAccessData, calculateStationStats, averageVisibilityData, calculateAvailabilityMetrics } from "../../lib/visibility";
-import { parseSatellitesToml, parseConstellationToml, parseGroundStationsToml } from "../../lib/config";
 import type { GroundStation } from "../../lib/groundStations";
 import { downloadPNG, downloadHTML, downloadCSV } from "./utils/downloadUtils";
 import { createStationAccessChartOption } from "./utils/chartOptions";
 import StationAvailabilityPopup from "./StationAvailabilityPopup";
 import type { StationVisibilitySample } from "../../lib/visibility";
-
-interface AvailabilityMetrics {
-  stationName: string;
-  timeAvailability: number; // 時間的可用性（%）
-  interruptionFrequency: number; // 中断頻度（回/日）
-  maxInterruptionTime: number; // 最大中断時間（分）
-  avgInterruptionTime: number; // 平均中断時間（分）
-}
+import type {
+  StationAccessWorkerRequest,
+  StationAccessWorkerResponse,
+  StationAvailabilityMetrics,
+} from "../../workers/stationAccessWorker.types";
 
 interface Props {
   satText: string;
@@ -26,76 +21,102 @@ interface Props {
 export default function StationAccessAnalysis({ satText, constText, gsText, startTime }: Props) {
   const [data, setData] = useState<StationVisibilitySample[]>([]);
   const [stations, setStations] = useState<GroundStation[]>([]);
-  const [stats, setStats] = useState<Array<{name: string; averageVisible: number; nonZeroRate: number}>>([]);
-  const [availabilityMetrics, setAvailabilityMetrics] = useState<AvailabilityMetrics[]>([]);
+  const [stats, setStats] = useState<Array<{ name: string; averageVisible: number; nonZeroRate: number }>>([]);
+  const [availabilityMetrics, setAvailabilityMetrics] = useState<StationAvailabilityMetrics[]>([]);
   const [showAvailabilityPopup, setShowAvailabilityPopup] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string>("");
   const chartRef = useRef<InstanceType<typeof ReactECharts> | null>(null);
+  const workerRef = useRef<Worker | null>(null);
+  const latestJobId = useRef(0);
+  const analyzingRef = useRef(false);
 
-  const analyzeAccess = async () => {
+  useEffect(() => {
+    const worker = new Worker(
+      new URL("../../workers/stationAccessWorker.ts", import.meta.url),
+      { type: "module" },
+    );
+
+    const handleMessage = (event: MessageEvent<StationAccessWorkerResponse>) => {
+      const message = event.data;
+      if (message.id !== latestJobId.current) {
+        return;
+      }
+
+      if (message.type === "success") {
+        const { averagedData, stations: workerStations, stats: workerStats, availabilityMetrics: workerAvailability, rawPointCount, averagePoints, durationHours } =
+          message.payload;
+
+        setData(averagedData);
+        setStations(workerStations);
+        setStats(workerStats);
+        setAvailabilityMetrics(workerAvailability);
+        setError("");
+        setIsAnalyzing(false);
+        analyzingRef.current = false;
+
+        console.log(`Generated ${rawPointCount} data points for ${durationHours} hours`);
+        console.log(`Averaged to ${averagedData.length} data points (averaging ${averagePoints} samples)`);
+        if (averagedData.length > 1) {
+          const interval = averagedData[1].timestamp - averagedData[0].timestamp;
+          console.log(`Averaged interval: ${interval}ms`);
+        }
+      } else {
+        setError(message.message);
+        setIsAnalyzing(false);
+        analyzingRef.current = false;
+      }
+    };
+
+    const handleError = (event: ErrorEvent) => {
+      if (!analyzingRef.current) return;
+      setError(event.message || "解析ワーカーでエラーが発生しました");
+      setIsAnalyzing(false);
+      analyzingRef.current = false;
+    };
+
+    worker.addEventListener("message", handleMessage);
+    worker.addEventListener("error", handleError);
+    workerRef.current = worker;
+
+    return () => {
+      worker.removeEventListener("message", handleMessage);
+      worker.removeEventListener("error", handleError);
+      worker.terminate();
+      workerRef.current = null;
+      analyzingRef.current = false;
+    };
+  }, []);
+
+  const analyzeAccess = () => {
+    const worker = workerRef.current;
+    if (!worker) {
+      setError("解析ワーカーが初期化されていません");
+      return;
+    }
+    analyzingRef.current = true;
     setIsAnalyzing(true);
     setError("");
-    
-    // Allow UI to update before starting heavy computation
-    await new Promise(resolve => setTimeout(resolve, 10));
-    
-    try {
-      // Parse TOML data
-      const baseSats = satText ? parseSatellitesToml(satText) : [];
-      const constSats = constText ? parseConstellationToml(constText) : [];
-      const groundStations = gsText ? parseGroundStationsToml(gsText) : [];
-      
-      if (groundStations.length === 0) {
-        throw new Error("地上局データがありません");
-      }
-      
-      const allSatellites = [...baseSats, ...constSats];
-      if (allSatellites.length === 0) {
-        throw new Error("衛星データがありません");
-      }
 
-      // Calculate visibility data for 24 hours
-      const visibilityData = calculateStationAccessData(
-        allSatellites,
-        groundStations,
-        startTime,
-        24, // 24 hours
-        10  // 10 second intervals
-      );
+    const id = latestJobId.current + 1;
+    latestJobId.current = id;
 
-      // Average the data function but not use it
-      const averagedData = averageVisibilityData(visibilityData, 1);
-      
-      // Calculate statistics from original data (not averaged)
-      const stationStats = calculateStationStats(visibilityData);
+    const request: StationAccessWorkerRequest = {
+      id,
+      type: "analyze",
+      payload: {
+        satText,
+        constText,
+        gsText,
+        startTimeIso: startTime.toISOString(),
+        durationHours: 24,
+        stepSeconds: 10,
+        averagePoints: 1,
+      },
+    };
 
-      // Calculate availability metrics
-      const stationIndices = groundStations.map((_, index) => index);
-      const availabilityData = calculateAvailabilityMetrics(visibilityData, stationIndices, 10);
-      const availability = groundStations.map((station, index) => ({
-        stationName: station.name,
-        ...availabilityData[index]
-      }));
-
-      setData(averagedData);
-      setStations(groundStations);
-      setStats(stationStats);
-      setAvailabilityMetrics(availability);
-      
-      console.log(`Generated ${visibilityData.length} data points for 24 hours`);
-      console.log(`Averaged to ${averagedData.length} data points (1 minute intervals)`);
-      if (averagedData.length > 1) {
-        const interval = averagedData[1].timestamp - averagedData[0].timestamp;
-        console.log(`Averaged interval: ${interval}ms (expected: ~60000ms)`);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "解析エラーが発生しました");
-    } finally {
-      setIsAnalyzing(false);
-    }
+    worker.postMessage(request);
   };
-
 
   const downloadChartAsPNG = () => {
     downloadPNG(chartRef, `station-access-analysis-${startTime.toISOString().slice(0, 10)}.png`);
