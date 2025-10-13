@@ -90,20 +90,24 @@ export function averageVisibility(
  * Calculate visibility data for station access analysis visualization.
  * Returns time series data for each ground station.
  */
+export interface StationVisibilityEntry {
+  name: string;
+  visibleCount: number;
+}
+
+export interface StationVisibilitySample {
+  time: string;
+  timestamp: number;
+  stations: StationVisibilityEntry[];
+}
+
 export function calculateStationAccessData(
   sats: SatelliteSpec[],
   stations: GroundStation[],
   start: Date,
   durationHours = 24,
   stepSeconds = 10,
-): Array<{
-  time: string;
-  timestamp: number;
-  stations: Array<{
-    name: string;
-    visibleCount: number;
-  }>;
-}> {
+): StationVisibilitySample[] {
   const satRecs = toSatrecs(sats);
   const observers = stations.map((gs) => ({
     name: gs.name,
@@ -113,14 +117,7 @@ export function calculateStationAccessData(
     minEl: THREE.MathUtils.degToRad(gs.minElevationDeg),
   }));
 
-  const result: Array<{
-    time: string;
-    timestamp: number;
-    stations: Array<{
-      name: string;
-      visibleCount: number;
-    }>;
-  }> = [];
+  const result: StationVisibilitySample[] = [];
 
   const startMs = start.getTime();
   const endMs = startMs + durationHours * 3600 * 1000;
@@ -159,31 +156,10 @@ export function calculateStationAccessData(
  * Average visibility data over specified interval (e.g., 6 points = 1 minute for 10-second data).
  */
 export function averageVisibilityData(
-  data: Array<{
-    time: string;
-    timestamp: number;
-    stations: Array<{
-      name: string;
-      visibleCount: number;
-    }>;
-  }>,
+  data: StationVisibilitySample[],
   averagePoints: number = 6
-): Array<{
-  time: string;
-  timestamp: number;
-  stations: Array<{
-    name: string;
-    visibleCount: number;
-  }>;
-}> {
-  const averaged: Array<{
-    time: string;
-    timestamp: number;
-    stations: Array<{
-      name: string;
-      visibleCount: number;
-    }>;
-  }> = [];
+): StationVisibilitySample[] {
+  const averaged: StationVisibilitySample[] = [];
 
   for (let i = 0; i < data.length; i += averagePoints) {
     const chunk = data.slice(i, Math.min(i + averagePoints, data.length));
@@ -216,14 +192,7 @@ export function averageVisibilityData(
  * Calculate statistics for station access analysis.
  */
 export function calculateStationStats(
-  data: Array<{
-    time: string;
-    timestamp: number;
-    stations: Array<{
-      name: string;
-      visibleCount: number;
-    }>;
-  }>
+  data: StationVisibilitySample[]
 ): Array<{
   name: string;
   averageVisible: number;
@@ -288,7 +257,7 @@ export function generateVisibilityReport(
 
 // Calculate availability metrics for stations
 export function calculateAvailabilityMetrics(
-  visibilityData: any[], 
+  visibilityData: StationVisibilitySample[], 
   stationIndices: number[],
   intervalSeconds: number = 10
 ): Array<{

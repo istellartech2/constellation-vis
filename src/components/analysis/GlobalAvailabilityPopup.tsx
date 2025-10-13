@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import ReactECharts from "echarts-for-react";
 import { downloadPNG, downloadDualChartHTML } from "./utils/downloadUtils";
+import type { CallbackDataParams } from "echarts/types/dist/shared";
 
 interface AvailabilityMetrics {
   latitude: number;
@@ -18,10 +19,32 @@ interface Props {
 }
 
 export default function GlobalAvailabilityPopup({ show, onClose, availabilityMetrics, startTime }: Props) {
-  const chartRef1 = useRef<any>(null);
-  const chartRef2 = useRef<any>(null);
+  const chartRef1 = useRef<InstanceType<typeof ReactECharts> | null>(null);
+  const chartRef2 = useRef<InstanceType<typeof ReactECharts> | null>(null);
 
   if (!show || availabilityMetrics.length === 0) return null;
+
+  const getNumericValue = (value: CallbackDataParams["value"]): number | null => {
+    if (typeof value === "number") {
+      return value;
+    }
+    if (Array.isArray(value)) {
+      const candidate = value.at(-1);
+      if (typeof candidate === "number") {
+        return candidate;
+      }
+      if (candidate == null) {
+        return null;
+      }
+      const numericCandidate = Number(candidate);
+      return Number.isFinite(numericCandidate) ? numericCandidate : null;
+    }
+    if (value == null) {
+      return null;
+    }
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : null;
+  };
 
   const handleDownloadPNG = () => {
     downloadPNG(chartRef1, `global-availability-time-${startTime.toISOString().slice(0, 10)}.png`);
@@ -102,9 +125,16 @@ export default function GlobalAvailabilityPopup({ show, onClose, availabilityMet
     }],
     tooltip: {
       trigger: 'axis',
-      formatter: (params: any) => {
-        const data = params[0];
-        return `緯度 ${data.name}°<br/>可用性: ${data.value.toFixed(1)}%`;
+      formatter: (params: CallbackDataParams[] | CallbackDataParams) => {
+        const [dataPoint] = Array.isArray(params) ? params : [params];
+        if (!dataPoint) {
+          return "";
+        }
+        const numericValue = getNumericValue(dataPoint.value);
+        if (numericValue === null) {
+          return `緯度 ${dataPoint.name}°`;
+        }
+        return `緯度 ${dataPoint.name}°<br/>可用性: ${numericValue.toFixed(1)}%`;
       }
     }
   };
@@ -189,13 +219,19 @@ export default function GlobalAvailabilityPopup({ show, onClose, availabilityMet
     ],
     tooltip: {
       trigger: 'axis',
-      formatter: (params: any) => {
-        let result = `緯度 ${params[0].name}°<br/>`;
-        params.forEach((param: any) => {
-          if (param.value !== null && param.value !== undefined) {
-            result += `${param.seriesName}: ${param.value.toFixed(1)}<br/>`;
+      formatter: (params: CallbackDataParams[] | CallbackDataParams) => {
+        const dataPoints = Array.isArray(params) ? params : [params];
+        if (dataPoints.length === 0) {
+          return "";
+        }
+        let result = `緯度 ${dataPoints[0].name}°<br/>`;
+        dataPoints.forEach((param) => {
+          const seriesLabel = param.seriesName ?? "系列";
+          const numericValue = getNumericValue(param.value);
+          if (numericValue !== null) {
+            result += `${seriesLabel}: ${numericValue.toFixed(1)}<br/>`;
           } else {
-            result += `${param.seriesName}: 可用性なし<br/>`;
+            result += `${seriesLabel}: 可用性なし<br/>`;
           }
         });
         return result;

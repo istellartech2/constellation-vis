@@ -1,6 +1,11 @@
 // Download utility functions for analysis components
+import type { MutableRefObject } from "react";
+import type ReactECharts from "echarts-for-react";
+import type { EChartsOption } from "echarts";
 
-export function downloadPNG(chartRef: any, filename: string) {
+type ChartComponentRef = MutableRefObject<InstanceType<typeof ReactECharts> | null>;
+
+export function downloadPNG(chartRef: ChartComponentRef, filename: string) {
   if (!chartRef.current) return;
   
   const chartInstance = chartRef.current.getEchartsInstance();
@@ -16,7 +21,7 @@ export function downloadPNG(chartRef: any, filename: string) {
   link.click();
 }
 
-export function downloadHTML(chartOption: any, title: string, filename: string) {
+export function downloadHTML(chartOption: EChartsOption, title: string, filename: string) {
   const htmlContent = `
 <!DOCTYPE html>
 <html>
@@ -53,7 +58,7 @@ export function downloadHTML(chartOption: any, title: string, filename: string) 
   URL.revokeObjectURL(url);
 }
 
-export function downloadCSV(headers: string[], rows: any[][], filename: string) {
+export function downloadCSV(headers: string[], rows: Array<Array<string | number>>, filename: string) {
   const csvRows = [headers.join(',')];
   
   rows.forEach(row => {
@@ -71,8 +76,8 @@ export function downloadCSV(headers: string[], rows: any[][], filename: string) 
 }
 
 export function downloadDualChartHTML(
-  chart1Option: any,
-  chart2Option: any,
+  chart1Option: EChartsOption,
+  chart2Option: EChartsOption,
   title: string,
   filename: string
 ) {

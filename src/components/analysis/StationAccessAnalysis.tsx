@@ -6,6 +6,7 @@ import type { GroundStation } from "../../lib/groundStations";
 import { downloadPNG, downloadHTML, downloadCSV } from "./utils/downloadUtils";
 import { createStationAccessChartOption } from "./utils/chartOptions";
 import StationAvailabilityPopup from "./StationAvailabilityPopup";
+import type { StationVisibilitySample } from "../../lib/visibility";
 
 interface AvailabilityMetrics {
   stationName: string;
@@ -23,14 +24,14 @@ interface Props {
 }
 
 export default function StationAccessAnalysis({ satText, constText, gsText, startTime }: Props) {
-  const [data, setData] = useState<any[]>([]);
+  const [data, setData] = useState<StationVisibilitySample[]>([]);
   const [stations, setStations] = useState<GroundStation[]>([]);
   const [stats, setStats] = useState<Array<{name: string; averageVisible: number; nonZeroRate: number}>>([]);
   const [availabilityMetrics, setAvailabilityMetrics] = useState<AvailabilityMetrics[]>([]);
   const [showAvailabilityPopup, setShowAvailabilityPopup] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string>("");
-  const chartRef = useRef<any>(null);
+  const chartRef = useRef<InstanceType<typeof ReactECharts> | null>(null);
 
   const analyzeAccess = async () => {
     setIsAnalyzing(true);
@@ -118,7 +119,7 @@ export default function StationAccessAnalysis({ satText, constText, gsText, star
       const rows = data.map(timeData => [
         timeData.time,
         timeData.timestamp,
-        ...timeData.stations.map((s: any) => s.visibleCount)
+        ...timeData.stations.map((station) => station.visibleCount)
       ]);
       downloadCSV(headers, rows, `station-access-data-${startTime.toISOString().slice(0, 10)}.csv`);
     }

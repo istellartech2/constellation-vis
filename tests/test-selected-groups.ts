@@ -46,7 +46,7 @@ async function testSelectedGroups() {
         const data = JSON.parse(text);
         console.log(`✅ ${group}: ${data.length} satellites`);
         results.success++;
-      } catch (jsonError) {
+      } catch {
         results.failed++;
         results.errors.push(`${group}: JSON parse error`);
       }

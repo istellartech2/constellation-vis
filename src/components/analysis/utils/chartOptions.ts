@@ -1,17 +1,12 @@
 // Chart option generators for analysis components
+import type { GroundStation } from "../../../lib/groundStations";
+import type { StationVisibilityEntry, StationVisibilitySample } from "../../../lib/visibility";
 
-export interface ChartData {
-  time: string;
-  timestamp: number;
-  stations: Array<{
-    name: string;
-    visibleCount: number;
-  }>;
-}
+export type ChartData = StationVisibilitySample;
 
 export function createStationAccessChartOption(
   data: ChartData[],
-  stations: any[],
+  stations: GroundStation[],
   stats: Array<{name: string; averageVisible: number; nonZeroRate: number}>
 ) {
   if (data.length === 0) {
@@ -82,7 +77,7 @@ export function createStationAccessChartOption(
     series: [{
       type: 'heatmap',
       data: data.flatMap((timeData, timeIndex) => 
-        timeData.stations.map((station: any, stationIndex: number) => [
+        timeData.stations.map((station: StationVisibilityEntry, stationIndex: number) => [
           timeIndex,
           stationIndex, 
           station.visibleCount
@@ -119,7 +114,7 @@ export function createStationAccessChartOption(
 
 export function createGlobalAccessChartOption(
   data: ChartData[],
-  latitudeStations: any[],
+  latitudeStations: GroundStation[],
   stats: Array<{name: string; averageVisible: number; nonZeroRate: number}>
 ) {
   if (data.length === 0) {
@@ -189,7 +184,7 @@ export function createGlobalAccessChartOption(
     series: [{
       type: 'heatmap',
       data: data.flatMap((timeData, timeIndex) => 
-        timeData.stations.map((station: any, stationIndex: number) => [
+        timeData.stations.map((station: StationVisibilityEntry, stationIndex: number) => [
           timeIndex,
           stationIndex, 
           station.visibleCount

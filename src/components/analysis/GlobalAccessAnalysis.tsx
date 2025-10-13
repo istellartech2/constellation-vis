@@ -6,6 +6,7 @@ import type { GroundStation } from "../../lib/groundStations";
 import { downloadPNG, downloadHTML, downloadCSV } from "./utils/downloadUtils";
 import { createGlobalAccessChartOption } from "./utils/chartOptions";
 import GlobalAvailabilityPopup from "./GlobalAvailabilityPopup";
+import type { StationVisibilitySample } from "../../lib/visibility";
 
 interface AvailabilityMetrics {
   latitude: number;
@@ -22,7 +23,7 @@ interface Props {
 }
 
 export default function GlobalAccessAnalysis({ satText, constText, startTime }: Props) {
-  const [data, setData] = useState<any[]>([]);
+  const [data, setData] = useState<StationVisibilitySample[]>([]);
   const [latitudeStations, setLatitudeStations] = useState<GroundStation[]>([]);
   const [stats, setStats] = useState<Array<{name: string; averageVisible: number; nonZeroRate: number}>>([]);
   const [availabilityMetrics, setAvailabilityMetrics] = useState<AvailabilityMetrics[]>([]);
@@ -31,7 +32,7 @@ export default function GlobalAccessAnalysis({ satText, constText, startTime }: 
   const [error, setError] = useState<string>("");
   const [minElevationAngle, setMinElevationAngle] = useState(30);
   const [observationLongitude, setObservationLongitude] = useState(0);
-  const chartRef = useRef<any>(null);
+  const chartRef = useRef<InstanceType<typeof ReactECharts> | null>(null);
 
   const analyzeGlobalCoverage = async () => {
     setIsAnalyzing(true);
@@ -122,7 +123,7 @@ export default function GlobalAccessAnalysis({ satText, constText, startTime }: 
       const rows = data.map(timeData => [
         timeData.time,
         timeData.timestamp,
-        ...timeData.stations.map((s: any) => s.visibleCount)
+        ...timeData.stations.map((station) => station.visibleCount)
       ]);
       downloadCSV(headers, rows, `global-coverage-data-${startTime.toISOString().slice(0, 10)}.csv`);
     }
