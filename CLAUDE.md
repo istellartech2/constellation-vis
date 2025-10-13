@@ -1,84 +1,31 @@
-# CLAUDE.md
+# Claude Code Guide
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+These instructions tailor the general `AGENTS.md` playbook for claude.ai/code. Keep them handy whenever you spin up a new Claude task inside this repository.
 
-## Development Commands
+## 1. Prep Checklist
+- Skim `AGENTS.md` first—treat it as the source of truth for project structure, tooling, and conventions.
+- Confirm dependencies with `bun install` if the workspace is fresh; Bun scripts expect Bun ≥1.0.
+- If the task touches satellite/constellation data, open the TOML files under `public/` and check whether schema updates will require changes to `scripts/generate-satellites.ts`.
 
-```bash
-# Install dependencies
-bun install
+## 2. Editing Workflow
+- Let prehooks regenerate data: `bun run dev`/`bun run build` will call `scripts/generate-satellites.ts`. Run the script manually only when you need to inspect the generated file.
+- Keep diffs scoped and typed—extend the domain models in `src/lib/*.ts` rather than sprinkling loose objects inside components.
+- Reuse the existing UI primitives in `src/components/ui` and chart helpers in `src/components/analysis/utils` before introducing new third-party components.
+- Avoid manual edits to `src/lib/satellites.generated.ts`; instead, tweak the TOML inputs or the generator.
 
-# Build for production (runs generate-satellites.ts pre-hook)
-bun run build
+## 3. Validation Routine
+- For logic changes run `bun run test`; for UI or config adjustments at least run `bun run lint`. Mention every command you executed in your final message.
+- When orbit/visibility math is impacted, add or update Vitest specs in `tests/`, mirroring the deterministic fixtures already present.
+- Execute `bun run build` for major refactors to ensure both the TypeScript project references and Vite build succeed.
 
-# Lint code
-bun run lint
+## 4. Communication Tips
+- Summaries should lead with the change impact, call out generated artifacts, and list validations. Flag any steps you could not run.
+- If you modify TOML or generator logic, remind the reviewer that `predev/prebuild` regenerate `src/lib/satellites.generated.ts`.
+- Point to relevant files using repo-relative paths in backticks (e.g., `src/lib/visibility.ts:42`), matching the house style.
 
-# Run tests
-bun run test
+## 5. Common Pitfalls
+- Missing UTC quoting in TOML epochs causes the generator to throw—mirror the `preprocessToml` logic if new date fields are added.
+- New Three.js resources must be disposed inside the cleanup returned from `useSatelliteScene` to prevent GPU leaks.
+- Tailwind v4 configuration lives inside `src/index.css`; do not add a separate `tailwind.config.js`.
 
-# Run tests with UI
-bun run test:ui
-
-# Generate satellite data from TOML configs
-bun scripts/generate-satellites.ts
-```
-
-## Architecture Overview
-
-This is a React/TypeScript application for 3D satellite constellation visualization and orbital analysis. The application combines real-time 3D graphics with sophisticated orbital mechanics calculations.
-
-### Data Flow
-1. **Configuration**: TOML files in `/public/` define satellites, constellations, and ground stations
-2. **Build-time Generation**: `scripts/generate-satellites.ts` processes TOML → `src/lib/satellites.generated.ts`
-3. **Runtime Propagation**: satellite.js library performs SGP4/SDP4 orbital calculations
-4. **Visualization**: Three.js renders real-time 3D satellite positions and orbits
-
-### Core Libraries
-- **src/lib/satellites.ts**: Satellite data models, TLE conversion, constellation generation
-- **src/lib/astronomy.ts**: Solar position, coordinate transformations, Earth geometry
-- **src/lib/visibility.ts**: Ground station visibility calculations and access statistics
-- **src/lib/perturbation.ts**: J2/J3 gravitational harmonics and atmospheric drag models
-- **src/lib/visualization.ts**: Three.js scene management and 3D rendering
-
-### Component Structure
-- **App.tsx**: Root component with useSatelliteScene hook for Three.js integration
-- **components/ui/**: Tabbed interface (Editor/Analysis/Options), controls, and dialogs
-- **components/analysis/**: Analysis modules for station access, global coverage, orbit maintenance, solar impact
-- **useSatelliteScene.ts**: Custom hook managing Three.js scene state and satellite propagation
-
-### Key Features
-- **Real-time Visualization**: 3D Earth with satellites, orbits, ground station links
-- **Orbital Mechanics**: SGP4 propagation with perturbation analysis (J2, J3, drag)
-- **Analysis Tools**: Visibility analysis, coverage maps, maintenance requirements
-- **Data Import**: CelesTrak API integration for real-world satellite data
-- **Configuration**: TOML-based satellite/constellation/ground station definitions
-
-### File Formats
-- **satellites.toml**: Individual satellites (TLE or orbital elements format)
-- **constellation.toml**: Programmatic constellation generation (shells, planes, phasing)
-- **groundstations.toml**: Ground station locations and elevation masks
-
-### Testing
-- **Vitest** for unit tests with Python-generated reference data for orbital calculations
-- **Test files** in `/tests/` for CelesTrak API, visibility calculations, perturbation models
-- **Reference data** in JSON format for validation against Python orbital mechanics libraries
-
-### Build Process
-The application requires running `scripts/generate-satellites.ts` before dev/build to process TOML configurations. This script:
-- Parses TOML files for satellites, constellations, and ground stations
-- Generates constellation satellites from shell parameters
-- Converts orbital elements to TLE format for satellite.js compatibility
-- Outputs TypeScript definitions to `src/lib/satellites.generated.ts`
-
-Always run the generate-satellites script when TOML configuration files are modified.
-
-## Styling Framework
-
-The application uses **Tailwind CSS v4.1** for styling:
-- All styles are defined in `src/index.css` using the new v4 `@import "tailwindcss"` directive
-- Configuration is embedded directly in CSS using the `@config` directive (no separate config file needed)
-- Custom colors and design tokens are defined in the CSS file itself using the new v4 syntax
-- PostCSS configuration is no longer required - Tailwind v4 works directly with Vite
-- The existing design has been preserved while migrating to the modern v4 architecture
-- Component classes like `.analysis-button`, `.side-panel`, `.tab-button` are available as custom CSS components
+Follow this flow and Claude Code will stay aligned with the rest of the tooling used on this project.
