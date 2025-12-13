@@ -1,6 +1,46 @@
 import type { SatelliteSpec } from "../src/lib/satellites";
 import { parseSatellitesToml, parseConstellationToml } from "../src/lib/tomlParsers";
 
+function extractSatnum(sat: SatelliteSpec): number | null {
+  if (sat.type === "elements") {
+    return sat.elements.satnum;
+  }
+  if (sat.type === "tle" && sat.lines[0]) {
+    // TLE line 1: columns 3-7 contain the satellite number
+    const match = sat.lines[0].match(/^1\s+(\d+)/);
+    return match ? Number(match[1]) : null;
+  }
+  return null;
+}
+
+function validateUniqueSatnums(satellites: SatelliteSpec[]): void {
+  const seen = new Map<number, number>(); // satnum -> first index
+  const duplicates: { satnum: number; indices: number[] }[] = [];
+
+  satellites.forEach((sat, index) => {
+    const satnum = extractSatnum(sat);
+    if (satnum === null) return;
+
+    if (seen.has(satnum)) {
+      const existing = duplicates.find((d) => d.satnum === satnum);
+      if (existing) {
+        existing.indices.push(index);
+      } else {
+        duplicates.push({ satnum, indices: [seen.get(satnum)!, index] });
+      }
+    } else {
+      seen.set(satnum, index);
+    }
+  });
+
+  if (duplicates.length > 0) {
+    const messages = duplicates.map(
+      (d) => `  satnum ${d.satnum}: found at indices ${d.indices.join(", ")}`
+    );
+    console.warn(`⚠️  Duplicate satellite IDs detected:\n${messages.join("\n")}`);
+  }
+}
+
 const satText = await Bun.file("public/satellites.toml").text();
 const baseSatellites = parseSatellitesToml(satText);
 
@@ -30,6 +70,9 @@ function serialize(value: unknown): string {
 }
 
 const normalized: SatelliteSpec[] = [...baseSatellites, ...constellationSatellites];
+
+// Validate that there are no duplicate satellite IDs
+validateUniqueSatnums(normalized);
 
 const content = `import type { SatelliteSpec } from "./satellites";
 

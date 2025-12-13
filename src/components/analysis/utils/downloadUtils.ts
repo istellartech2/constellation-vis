@@ -1,7 +1,7 @@
 // Download utility functions for analysis components
 import type { MutableRefObject } from "react";
 import type ReactECharts from "echarts-for-react";
-import type { EChartsOption } from "echarts";
+import type { ECBasicOption } from "echarts/types/dist/shared";
 
 type ChartComponentRef = MutableRefObject<InstanceType<typeof ReactECharts> | null>;
 
@@ -21,7 +21,7 @@ export function downloadPNG(chartRef: ChartComponentRef, filename: string) {
   link.click();
 }
 
-export function downloadHTML(chartOption: EChartsOption, title: string, filename: string) {
+export function downloadHTML(chartOption: ECBasicOption, title: string, filename: string) {
   const htmlContent = `
 <!DOCTYPE html>
 <html>
@@ -76,8 +76,8 @@ export function downloadCSV(headers: string[], rows: Array<Array<string | number
 }
 
 export function downloadDualChartHTML(
-  chart1Option: EChartsOption,
-  chart2Option: EChartsOption,
+  chart1Option: ECBasicOption,
+  chart2Option: ECBasicOption,
   title: string,
   filename: string
 ) {

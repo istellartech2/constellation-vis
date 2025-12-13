@@ -98,7 +98,11 @@ export function parseSatellitesToml(text: string): SatelliteSpec[] {
 
 function generateFromShells(con: any): SatelliteSpec[] {
   const epoch = new Date(String(con.epoch));
-  let nextSatnum = 10000;
+  // ID ranges:
+  //   10000-89999: NORAD catalog IDs (CelesTrak imports)
+  //   90000-99999: Manual definitions (satellites.toml)
+  //   100000+: Constellation generated satellites
+  let nextSatnum = 100000;
   const sats: SatelliteSpec[] = [];
 
   for (const shell of con.shells ?? []) {
