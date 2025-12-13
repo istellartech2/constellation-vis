@@ -15,6 +15,7 @@ import {
 } from "./astronomy";
 import { KMLRenderer } from "./kmlRenderer";
 import { loadKMLFromURL } from "./kml";
+import { computeFovConeQuaternion, computeTiltedConeHeight } from "./orbitalCoordinates";
 
 /** Equatorial and polar radii of Earth in kilometres. */
 const EARTH_RADIUS_EQUATOR_KM = 6378.137;
@@ -24,7 +25,7 @@ const EARTH_RADIUS_POLAR_KM = 6356.7523142;
 const MAX_SHADOW_COORDS = 144000; // 100 days at 1 minute intervals
 
 const STATION_CONE_SEGMENTS = 32;
-const NADIR_CONE_SEGMENTS = 32;
+const FOV_CONE_SEGMENTS = 32;
 const DOWN_AXIS = new THREE.Vector3(0, -1, 0);
 const UP_AXIS = new THREE.Vector3(0, 1, 0);
 
@@ -41,14 +42,18 @@ export interface SatelliteSceneParams {
   showEcliptic: boolean;
   showSunDirection: boolean;
   showGroundStationCones: boolean;
-  showSatelliteNadirCones: boolean;
+  showSatelliteFovCones: boolean;
   groundConeMinElevationDeg: number;
   /** Ground cone range expressed in Earth radii */
   groundConeLength: number;
   groundConeColor: string;
-  satelliteConeHalfAngleDeg: number;
-  satelliteConeColor: string;
-  satelliteConeMinHeight: number;
+  fovConeHalfAngleDeg: number;
+  fovConeColor: string;
+  fovConeMinHeight: number;
+  /** FOV cone along-track angle offset in degrees (-60 to +60) */
+  fovConeAlongTrackDeg: number;
+  /** FOV cone cross-track angle offset in degrees (-60 to +60) */
+  fovConeCrossTrackDeg: number;
   satelliteVisibleColor: string;
   satelliteHiddenColor: string;
   satelliteSelectedColor: string;
@@ -105,14 +110,14 @@ export default class SatelliteScene {
   private groundMaterial: THREE.PointsMaterial;
   private stationGeo: THREE.SphereGeometry;
   private stationMat: THREE.MeshBasicMaterial;
-  private satConeGeometry: THREE.ConeGeometry;
-  private satConeMaterial: THREE.MeshBasicMaterial;
-  private satConeMeshes: THREE.Mesh[];
-  private readonly satelliteConeColor: THREE.Color;
+  private fovConeGeometry: THREE.ConeGeometry;
+  private fovConeMaterial: THREE.MeshBasicMaterial;
+  private fovConeMeshes: THREE.Mesh[];
+  private readonly fovConeColor: THREE.Color;
   private readonly satelliteVisibleColor: THREE.Color;
   private readonly satelliteHiddenColor: THREE.Color;
   private readonly satelliteSelectedColor: THREE.Color;
-  private readonly satelliteConeMinHeight: number;
+  private readonly fovConeMinHeight: number;
   private linkMaterial: THREE.LineBasicMaterial;
 
   private readonly startReal: number;
@@ -153,12 +158,12 @@ export default class SatelliteScene {
     this.scene.add(this.sunlight);
 
     this.groundConeColor = new THREE.Color(this.params.groundConeColor);
-    this.satelliteConeColor = new THREE.Color(this.params.satelliteConeColor);
+    this.fovConeColor = new THREE.Color(this.params.fovConeColor);
     this.satelliteVisibleColor = new THREE.Color(this.params.satelliteVisibleColor);
     this.satelliteHiddenColor = new THREE.Color(this.params.satelliteHiddenColor);
     this.satelliteSelectedColor = new THREE.Color(this.params.satelliteSelectedColor);
-    const minHeight = Math.max(this.params.satelliteConeMinHeight, 0.001);
-    this.satelliteConeMinHeight = minHeight;
+    const minHeight = Math.max(this.params.fovConeMinHeight, 0.001);
+    this.fovConeMinHeight = minHeight;
 
     const earthGeometry = new THREE.SphereGeometry(1, 128, 128);
     const texture = new THREE.TextureLoader().load(this.params.earthTexture);
@@ -258,27 +263,27 @@ export default class SatelliteScene {
       arr.map((g) => new THREE.Line(g, this.linkMaterial)),
     );
 
-    const satHalfAngleRad = THREE.MathUtils.degToRad(
-      THREE.MathUtils.clamp(this.params.satelliteConeHalfAngleDeg, 1, 89.9),
+    const fovHalfAngleRad = THREE.MathUtils.degToRad(
+      THREE.MathUtils.clamp(this.params.fovConeHalfAngleDeg, 1, 89.9),
     );
-    this.satConeGeometry = new THREE.ConeGeometry(
-      Math.tan(satHalfAngleRad),
+    this.fovConeGeometry = new THREE.ConeGeometry(
+      Math.tan(fovHalfAngleRad),
       1,
-      NADIR_CONE_SEGMENTS,
+      FOV_CONE_SEGMENTS,
       1,
       true,
     );
-    this.satConeGeometry.translate(0, -0.5, 0);
-    this.satConeMaterial = new THREE.MeshBasicMaterial({
-      color: this.satelliteConeColor,
+    this.fovConeGeometry.translate(0, -0.5, 0);
+    this.fovConeMaterial = new THREE.MeshBasicMaterial({
+      color: this.fovConeColor,
       transparent: true,
       opacity: 0.16,
       depthWrite: false,
       side: THREE.DoubleSide,
     });
-    this.satConeMeshes = this.satRecs.map(() => {
-      const mesh = new THREE.Mesh(this.satConeGeometry, this.satConeMaterial);
-      mesh.visible = this.params.showSatelliteNadirCones;
+    this.fovConeMeshes = this.satRecs.map(() => {
+      const mesh = new THREE.Mesh(this.fovConeGeometry, this.fovConeMaterial);
+      mesh.visible = this.params.showSatelliteFovCones;
       this.scene.add(mesh);
       return mesh;
     });
@@ -463,7 +468,7 @@ export default class SatelliteScene {
     const slantRangeNorm = Math.max(this.params.groundConeLength, 0.01);
     const maxRangeKm = slantRangeNorm * EARTH_RADIUS_EQUATOR_KM;
     const halfAngleRad = THREE.MathUtils.degToRad(
-      THREE.MathUtils.clamp(this.params.satelliteConeHalfAngleDeg, 0.1, 89.5),
+      THREE.MathUtils.clamp(this.params.fovConeHalfAngleDeg, 0.1, 89.5),
     );
     const sinHalfAngle = Math.sin(halfAngleRad);
     const cosHalfAngle = Math.cos(halfAngleRad);
@@ -558,29 +563,67 @@ export default class SatelliteScene {
           this.satColorAttr.setXYZ(i, this.satelliteHiddenColor.r, this.satelliteHiddenColor.g, this.satelliteHiddenColor.b);
         }
 
-        const cone = this.satConeMeshes[i];
+        const cone = this.fovConeMeshes[i];
         if (cone) {
-          if (this.params.showSatelliteNadirCones) {
-            const rSat = Math.sqrt(x * x + y * y + z * z);
-            const sinTerm = rSat * sinHalfAngle;
-            const underRoot = (EARTH_RADIUS_EQUATOR_KM * EARTH_RADIUS_EQUATOR_KM) - (sinTerm * sinTerm);
-            if (underRoot > 0 && sinHalfAngle > 0) {
-              const sqrtTerm = Math.sqrt(underRoot);
-              const slantLengthKm = rSat * cosHalfAngle - sqrtTerm;
-              if (slantLengthKm > 0) {
-                const axisLengthKm = slantLengthKm * cosHalfAngle;
-                const normalizedHeight = axisLengthKm / EARTH_RADIUS_EQUATOR_KM;
-                const clampedHeight = Math.max(normalizedHeight, this.satelliteConeMinHeight);
-                cone.visible = true;
-                cone.position.copy(satPosition);
-                cone.scale.setScalar(clampedHeight);
+          if (this.params.showSatelliteFovCones) {
+            const hasTilt = this.params.fovConeAlongTrackDeg !== 0 || this.params.fovConeCrossTrackDeg !== 0;
+            let coneHeightKm: number | null = null;
+
+            if (hasTilt && pv.velocity) {
+              // Use ray-sphere intersection for tilted cones
+              coneHeightKm = computeTiltedConeHeight(
+                pv.position,
+                pv.velocity,
+                this.params.fovConeAlongTrackDeg,
+                this.params.fovConeCrossTrackDeg,
+                this.params.fovConeHalfAngleDeg,
+                EARTH_RADIUS_EQUATOR_KM,
+              );
+            } else {
+              // Use nadir-based calculation for non-tilted cones
+              const rSat = Math.sqrt(x * x + y * y + z * z);
+              const sinTerm = rSat * sinHalfAngle;
+              const underRoot = (EARTH_RADIUS_EQUATOR_KM * EARTH_RADIUS_EQUATOR_KM) - (sinTerm * sinTerm);
+              if (underRoot > 0 && sinHalfAngle > 0) {
+                const sqrtTerm = Math.sqrt(underRoot);
+                const slantLengthKm = rSat * cosHalfAngle - sqrtTerm;
+                if (slantLengthKm > 0) {
+                  coneHeightKm = slantLengthKm * cosHalfAngle;
+                }
+              }
+            }
+
+            if (coneHeightKm !== null && coneHeightKm > 0) {
+              const normalizedHeight = coneHeightKm / EARTH_RADIUS_EQUATOR_KM;
+              const clampedHeight = Math.max(normalizedHeight, this.fovConeMinHeight);
+              cone.visible = true;
+              cone.position.copy(satPosition);
+              cone.scale.setScalar(clampedHeight);
+              // Use LVLH coordinate system if velocity is available
+              if (pv.velocity) {
+                const fovQuat = computeFovConeQuaternion(
+                  pv.position,
+                  pv.velocity,
+                  this.params.fovConeAlongTrackDeg,
+                  this.params.fovConeCrossTrackDeg,
+                );
+                if (fovQuat) {
+                  cone.quaternion.copy(fovQuat);
+                } else {
+                  // Fallback to pure nadir if LVLH computation fails
+                  tmpDir.copy(satPosition).normalize().negate();
+                  if (tmpDir.lengthSq() > 0) {
+                    tmpQuat.setFromUnitVectors(DOWN_AXIS, tmpDir);
+                    cone.quaternion.copy(tmpQuat);
+                  }
+                }
+              } else {
+                // Fallback when velocity is not available
                 tmpDir.copy(satPosition).normalize().negate();
                 if (tmpDir.lengthSq() > 0) {
                   tmpQuat.setFromUnitVectors(DOWN_AXIS, tmpDir);
                   cone.quaternion.copy(tmpQuat);
                 }
-              } else {
-                cone.visible = false;
               }
             } else {
               cone.visible = false;
@@ -653,7 +696,7 @@ export default class SatelliteScene {
     this.groundGeometry.dispose();
     this.stationGeo.dispose();
     this.stationConeGeometries.forEach((g) => g.dispose());
-    this.satConeGeometry.dispose();
+    this.fovConeGeometry.dispose();
     this.linkGeometries.forEach(arr => arr.forEach(g => g.dispose()));
     
     // Dispose all materials
@@ -663,7 +706,7 @@ export default class SatelliteScene {
     if (this.groundMaterial.map) this.groundMaterial.map.dispose();
     this.stationMat.dispose();
     this.stationConeMaterials.forEach((m) => m.dispose());
-    this.satConeMaterial.dispose();
+    this.fovConeMaterial.dispose();
     this.linkMaterial.dispose();
     
     // Dispose earth mesh

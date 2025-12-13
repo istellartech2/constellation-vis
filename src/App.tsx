@@ -39,13 +39,15 @@ function App() {
   const [showPerturbation, setShowPerturbation] = useState(false);
   const [brightEarth, setBrightEarth] = useState(false);
   const [showGroundStationCones, setShowGroundStationCones] = useState(false);
-  const [showSatelliteNadirCones, setShowSatelliteNadirCones] = useState(false);
+  const [showSatelliteFovCones, setShowSatelliteFovCones] = useState(false);
   const [groundConeMinElevationDeg, setGroundConeMinElevationDeg] = useState(30);
   const [groundConeDistanceKm, setGroundConeDistanceKm] = useState(1000);
   const [groundConeColor, setGroundConeColor] = useState("#3ec7a1");
-  const [satelliteConeHalfAngleDeg, setSatelliteConeHalfAngleDeg] = useState(30);
-  const [satelliteConeColor, setSatelliteConeColor] = useState("#3388ff");
-  const satelliteConeMinHeight = 0.02;
+  const [fovConeHalfAngleDeg, setFovConeHalfAngleDeg] = useState(30);
+  const [fovConeColor, setFovConeColor] = useState("#3388ff");
+  const fovConeMinHeight = 0.02;
+  const [fovConeAlongTrackDeg, setFovConeAlongTrackDeg] = useState(0);
+  const [fovConeCrossTrackDeg, setFovConeCrossTrackDeg] = useState(0);
   const [satelliteVisibleColor, setSatelliteVisibleColor] = useState("#00ff00");
   const [satelliteHiddenColor, setSatelliteHiddenColor] = useState("#ff0000");
   const [satelliteSelectedColor, setSatelliteSelectedColor] = useState("#00ffff");
@@ -94,13 +96,15 @@ function App() {
     showEcliptic,
     showSunDirection,
     showGroundStationCones,
-    showSatelliteNadirCones,
+    showSatelliteFovCones,
     groundConeMinElevationDeg,
     groundConeLength,
     groundConeColor,
-    satelliteConeHalfAngleDeg,
-    satelliteConeColor,
-    satelliteConeMinHeight,
+    fovConeHalfAngleDeg,
+    fovConeColor,
+    fovConeMinHeight,
+    fovConeAlongTrackDeg,
+    fovConeCrossTrackDeg,
     satelliteVisibleColor,
     satelliteHiddenColor,
     satelliteSelectedColor,
@@ -166,19 +170,23 @@ function App() {
         onShowSunDirectionChange={setShowSunDirection}
         showGroundStationCones={showGroundStationCones}
         onShowGroundStationConesChange={setShowGroundStationCones}
-        showSatelliteNadirCones={showSatelliteNadirCones}
-        onShowSatelliteNadirConesChange={setShowSatelliteNadirCones}
+        showSatelliteFovCones={showSatelliteFovCones}
+        onShowSatelliteFovConesChange={setShowSatelliteFovCones}
         groundConeMinElevationDeg={groundConeMinElevationDeg}
         onGroundConeMinElevationDegChange={setGroundConeMinElevationDeg}
         groundConeDistanceKm={groundConeDistanceKm}
         onGroundConeDistanceKmChange={setGroundConeDistanceKm}
         groundConeColor={groundConeColor}
         onGroundConeColorChange={setGroundConeColor}
-        satelliteConeHalfAngleDeg={satelliteConeHalfAngleDeg}
-        onSatelliteConeHalfAngleDegChange={setSatelliteConeHalfAngleDeg}
-        satelliteConeColor={satelliteConeColor}
-        onSatelliteConeColorChange={setSatelliteConeColor}
-        satelliteConeMinHeight={satelliteConeMinHeight}
+        fovConeHalfAngleDeg={fovConeHalfAngleDeg}
+        onFovConeHalfAngleDegChange={setFovConeHalfAngleDeg}
+        fovConeColor={fovConeColor}
+        onFovConeColorChange={setFovConeColor}
+        fovConeMinHeight={fovConeMinHeight}
+        fovConeAlongTrackDeg={fovConeAlongTrackDeg}
+        onFovConeAlongTrackDegChange={setFovConeAlongTrackDeg}
+        fovConeCrossTrackDeg={fovConeCrossTrackDeg}
+        onFovConeCrossTrackDegChange={setFovConeCrossTrackDeg}
         satelliteVisibleColor={satelliteVisibleColor}
         onSatelliteVisibleColorChange={setSatelliteVisibleColor}
         satelliteHiddenColor={satelliteHiddenColor}

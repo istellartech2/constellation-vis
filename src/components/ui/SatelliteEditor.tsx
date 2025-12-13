@@ -62,10 +62,10 @@ interface Props {
   showGroundStationCones: boolean;
   /** Called when ground station cone visibility changes */
   onShowGroundStationConesChange: (v: boolean) => void;
-  /** Show or hide satellite nadir cones */
-  showSatelliteNadirCones: boolean;
-  /** Called when satellite nadir cone visibility changes */
-  onShowSatelliteNadirConesChange: (v: boolean) => void;
+  /** Show or hide satellite FOV cones */
+  showSatelliteFovCones: boolean;
+  /** Called when satellite FOV cone visibility changes */
+  onShowSatelliteFovConesChange: (v: boolean) => void;
   /** Minimum elevation for ground station visibility cones (degrees) */
   groundConeMinElevationDeg: number;
   /** Called when ground station cone min elevation changes */
@@ -78,16 +78,24 @@ interface Props {
   groundConeColor: string;
   /** Called when ground cone color changes */
   onGroundConeColorChange: (color: string) => void;
-  /** Half-angle for satellite nadir cones (degrees) */
-  satelliteConeHalfAngleDeg: number;
-  /** Called when satellite nadir cone angle changes */
-  onSatelliteConeHalfAngleDegChange: (v: number) => void;
-  /** Color for satellite nadir cones */
-  satelliteConeColor: string;
-  /** Called when satellite cone color changes */
-  onSatelliteConeColorChange: (color: string) => void;
-  /** Minimum satellite nadir cone height (Earth radii) */
-  satelliteConeMinHeight: number;
+  /** Half-angle for satellite FOV cones (degrees) */
+  fovConeHalfAngleDeg: number;
+  /** Called when satellite FOV cone angle changes */
+  onFovConeHalfAngleDegChange: (v: number) => void;
+  /** Color for satellite FOV cones */
+  fovConeColor: string;
+  /** Called when satellite FOV cone color changes */
+  onFovConeColorChange: (color: string) => void;
+  /** Minimum satellite FOV cone height (Earth radii) */
+  fovConeMinHeight: number;
+  /** FOV cone along-track angle offset (degrees) */
+  fovConeAlongTrackDeg: number;
+  /** Called when FOV cone along-track angle changes */
+  onFovConeAlongTrackDegChange: (v: number) => void;
+  /** FOV cone cross-track angle offset (degrees) */
+  fovConeCrossTrackDeg: number;
+  /** Called when FOV cone cross-track angle changes */
+  onFovConeCrossTrackDegChange: (v: number) => void;
   /** Satellite color when visible from a ground station */
   satelliteVisibleColor: string;
   /** Called when satellite visible color changes */
@@ -134,19 +142,23 @@ export default function SatelliteEditor({
   onShowSunDirectionChange,
   showGroundStationCones,
   onShowGroundStationConesChange,
-  showSatelliteNadirCones,
-  onShowSatelliteNadirConesChange,
+  showSatelliteFovCones,
+  onShowSatelliteFovConesChange,
   groundConeMinElevationDeg,
   onGroundConeMinElevationDegChange,
   groundConeDistanceKm,
   onGroundConeDistanceKmChange,
   groundConeColor,
   onGroundConeColorChange,
-  satelliteConeHalfAngleDeg,
-  onSatelliteConeHalfAngleDegChange,
-  satelliteConeColor,
-  onSatelliteConeColorChange,
-  satelliteConeMinHeight,
+  fovConeHalfAngleDeg,
+  onFovConeHalfAngleDegChange,
+  fovConeColor,
+  onFovConeColorChange,
+  fovConeMinHeight,
+  fovConeAlongTrackDeg,
+  onFovConeAlongTrackDegChange,
+  fovConeCrossTrackDeg,
+  onFovConeCrossTrackDegChange,
   satelliteVisibleColor,
   onSatelliteVisibleColorChange,
   satelliteHiddenColor,
@@ -422,19 +434,23 @@ export default function SatelliteEditor({
                 onShowSunDirectionChange={onShowSunDirectionChange}
                 showGroundStationCones={showGroundStationCones}
                 onShowGroundStationConesChange={onShowGroundStationConesChange}
-                showSatelliteNadirCones={showSatelliteNadirCones}
-                onShowSatelliteNadirConesChange={onShowSatelliteNadirConesChange}
+                showSatelliteFovCones={showSatelliteFovCones}
+                onShowSatelliteFovConesChange={onShowSatelliteFovConesChange}
                 groundConeMinElevationDeg={groundConeMinElevationDeg}
                 onGroundConeMinElevationDegChange={onGroundConeMinElevationDegChange}
                 groundConeDistanceKm={groundConeDistanceKm}
                 onGroundConeDistanceKmChange={onGroundConeDistanceKmChange}
                 groundConeColor={groundConeColor}
                 onGroundConeColorChange={onGroundConeColorChange}
-                satelliteConeHalfAngleDeg={satelliteConeHalfAngleDeg}
-                onSatelliteConeHalfAngleDegChange={onSatelliteConeHalfAngleDegChange}
-                satelliteConeColor={satelliteConeColor}
-                onSatelliteConeColorChange={onSatelliteConeColorChange}
-                satelliteConeMinHeight={satelliteConeMinHeight}
+                fovConeHalfAngleDeg={fovConeHalfAngleDeg}
+                onFovConeHalfAngleDegChange={onFovConeHalfAngleDegChange}
+                fovConeColor={fovConeColor}
+                onFovConeColorChange={onFovConeColorChange}
+                fovConeMinHeight={fovConeMinHeight}
+                fovConeAlongTrackDeg={fovConeAlongTrackDeg}
+                onFovConeAlongTrackDegChange={onFovConeAlongTrackDegChange}
+                fovConeCrossTrackDeg={fovConeCrossTrackDeg}
+                onFovConeCrossTrackDegChange={onFovConeCrossTrackDegChange}
                 satelliteVisibleColor={satelliteVisibleColor}
                 onSatelliteVisibleColorChange={onSatelliteVisibleColorChange}
                 satelliteHiddenColor={satelliteHiddenColor}

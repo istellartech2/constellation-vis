@@ -22,19 +22,23 @@ interface Props {
   onShowSunDirectionChange: (v: boolean) => void;
   showGroundStationCones: boolean;
   onShowGroundStationConesChange: (v: boolean) => void;
-  showSatelliteNadirCones: boolean;
-  onShowSatelliteNadirConesChange: (v: boolean) => void;
+  showSatelliteFovCones: boolean;
+  onShowSatelliteFovConesChange: (v: boolean) => void;
   groundConeMinElevationDeg: number;
   onGroundConeMinElevationDegChange: (v: number) => void;
   groundConeDistanceKm: number;
   onGroundConeDistanceKmChange: (v: number) => void;
   groundConeColor: string;
   onGroundConeColorChange: (color: string) => void;
-  satelliteConeHalfAngleDeg: number;
-  onSatelliteConeHalfAngleDegChange: (v: number) => void;
-  satelliteConeMinHeight: number;
-  satelliteConeColor: string;
-  onSatelliteConeColorChange: (color: string) => void;
+  fovConeHalfAngleDeg: number;
+  onFovConeHalfAngleDegChange: (v: number) => void;
+  fovConeMinHeight: number;
+  fovConeColor: string;
+  onFovConeColorChange: (color: string) => void;
+  fovConeAlongTrackDeg: number;
+  onFovConeAlongTrackDegChange: (v: number) => void;
+  fovConeCrossTrackDeg: number;
+  onFovConeCrossTrackDegChange: (v: number) => void;
   satelliteVisibleColor: string;
   onSatelliteVisibleColorChange: (color: string) => void;
   satelliteHiddenColor: string;
@@ -63,19 +67,23 @@ export default function OptionTab({
   onShowSunDirectionChange,
   showGroundStationCones,
   onShowGroundStationConesChange,
-  showSatelliteNadirCones,
-  onShowSatelliteNadirConesChange,
+  showSatelliteFovCones,
+  onShowSatelliteFovConesChange,
   groundConeMinElevationDeg,
   onGroundConeMinElevationDegChange,
   groundConeDistanceKm,
   onGroundConeDistanceKmChange,
   groundConeColor,
   onGroundConeColorChange,
-  satelliteConeHalfAngleDeg,
-  onSatelliteConeHalfAngleDegChange,
-  satelliteConeMinHeight,
-  satelliteConeColor,
-  onSatelliteConeColorChange,
+  fovConeHalfAngleDeg,
+  onFovConeHalfAngleDegChange,
+  fovConeMinHeight,
+  fovConeColor,
+  onFovConeColorChange,
+  fovConeAlongTrackDeg,
+  onFovConeAlongTrackDegChange,
+  fovConeCrossTrackDeg,
+  onFovConeCrossTrackDegChange,
   satelliteVisibleColor,
   onSatelliteVisibleColorChange,
   satelliteHiddenColor,
@@ -103,7 +111,7 @@ export default function OptionTab({
     onGroundConeDistanceKmChange(clamp(value, 100, 20000));
   };
   const handleSatelliteAngleChange = (value: number) => {
-    onSatelliteConeHalfAngleDegChange(clamp(value, 1, 80));
+    onFovConeHalfAngleDegChange(clamp(value, 1, 80));
   };
 
   const handleKMLLoad = async () => {
@@ -220,15 +228,15 @@ export default function OptionTab({
           </div>
           <div className="flex items-center space-x-2">
             <Checkbox
-              id="satelliteNadirCones"
-              checked={showSatelliteNadirCones}
-              onCheckedChange={(checked) => onShowSatelliteNadirConesChange(!!checked)}
+              id="satelliteFovCones"
+              checked={showSatelliteFovCones}
+              onCheckedChange={(checked) => onShowSatelliteFovConesChange(!!checked)}
             />
             <Label
-              htmlFor="satelliteNadirCones"
+              htmlFor="satelliteFovCones"
               className="text-sm font-normal cursor-pointer"
             >
-              衛星のナディア円錐を表示
+              衛星視野円錐を表示
             </Label>
           </div>
           <div className="flex items-center space-x-2">
@@ -361,11 +369,11 @@ export default function OptionTab({
             </div>
 
             <div className="option-subsection">
-              <div className="option-section-title">衛星ナディア円錐</div>
+              <div className="option-section-title">衛星視野円錐</div>
               <div className="option-control">
                 <div className="option-control-label">
-                  <span>ナディア角</span>
-                  <span>{satelliteConeHalfAngleDeg.toFixed(0)}°</span>
+                  <span>視野半角</span>
+                  <span>{fovConeHalfAngleDeg.toFixed(0)}°</span>
                 </div>
                 <div className="option-control-inputs">
                   <input
@@ -374,7 +382,7 @@ export default function OptionTab({
                     min={1}
                     max={80}
                     step={1}
-                    value={satelliteConeHalfAngleDeg}
+                    value={fovConeHalfAngleDeg}
                     onChange={(e) => handleSatelliteAngleChange(Number((e.target as HTMLInputElement).value))}
                   />
                   <input
@@ -383,7 +391,7 @@ export default function OptionTab({
                     min={1}
                     max={80}
                     step={1}
-                    value={satelliteConeHalfAngleDeg}
+                    value={fovConeHalfAngleDeg}
                     onChange={(e) => handleSatelliteAngleChange(Number((e.target as HTMLInputElement).value))}
                   />
                   <span className="option-control-unit">°</span>
@@ -391,10 +399,66 @@ export default function OptionTab({
               </div>
               <div className="option-control">
                 <div className="option-control-label">
+                  <span>Along-track オフセット</span>
+                  <span>{fovConeAlongTrackDeg.toFixed(0)}°</span>
+                </div>
+                <div className="option-control-inputs">
+                  <input
+                    className="option-slider"
+                    type="range"
+                    min={-60}
+                    max={60}
+                    step={1}
+                    value={fovConeAlongTrackDeg}
+                    onChange={(e) => onFovConeAlongTrackDegChange(Number((e.target as HTMLInputElement).value))}
+                  />
+                  <input
+                    className="option-number-input"
+                    type="number"
+                    min={-60}
+                    max={60}
+                    step={1}
+                    value={fovConeAlongTrackDeg}
+                    onChange={(e) => onFovConeAlongTrackDegChange(Number((e.target as HTMLInputElement).value))}
+                  />
+                  <span className="option-control-unit">°</span>
+                </div>
+                <div className="option-control-hint">正: 進行方向へ傾斜</div>
+              </div>
+              <div className="option-control">
+                <div className="option-control-label">
+                  <span>Cross-track オフセット</span>
+                  <span>{fovConeCrossTrackDeg.toFixed(0)}°</span>
+                </div>
+                <div className="option-control-inputs">
+                  <input
+                    className="option-slider"
+                    type="range"
+                    min={-60}
+                    max={60}
+                    step={1}
+                    value={fovConeCrossTrackDeg}
+                    onChange={(e) => onFovConeCrossTrackDegChange(Number((e.target as HTMLInputElement).value))}
+                  />
+                  <input
+                    className="option-number-input"
+                    type="number"
+                    min={-60}
+                    max={60}
+                    step={1}
+                    value={fovConeCrossTrackDeg}
+                    onChange={(e) => onFovConeCrossTrackDegChange(Number((e.target as HTMLInputElement).value))}
+                  />
+                  <span className="option-control-unit">°</span>
+                </div>
+                <div className="option-control-hint">正: 軌道面左方向へ傾斜</div>
+              </div>
+              <div className="option-control">
+                <div className="option-control-label">
                   <span>円錐最小高さ</span>
                   <span>
-                    {satelliteConeMinHeight.toFixed(2)}R<sub>⊕</sub>
-                    （約 {Math.round(satelliteConeMinHeight * EARTH_RADIUS_KM).toLocaleString()} km）
+                    {fovConeMinHeight.toFixed(2)}R<sub>⊕</sub>
+                    （約 {Math.round(fovConeMinHeight * EARTH_RADIUS_KM).toLocaleString()} km）
                   </span>
                 </div>
                 <div className="option-control-hint">※衛星高度に応じて自動的に変化する固定スケールです</div>
@@ -407,10 +471,10 @@ export default function OptionTab({
                   <input
                     className="option-color-input"
                     type="color"
-                    value={satelliteConeColor}
-                    onChange={(e) => onSatelliteConeColorChange((e.target as HTMLInputElement).value)}
+                    value={fovConeColor}
+                    onChange={(e) => onFovConeColorChange((e.target as HTMLInputElement).value)}
                   />
-                  <span className="option-color-value">{satelliteConeColor.toUpperCase()}</span>
+                  <span className="option-color-value">{fovConeColor.toUpperCase()}</span>
                 </div>
               </div>
             </div>

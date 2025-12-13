@@ -5,7 +5,8 @@
       "Bash(bun run:*)",
       "Bash(bunx tsc:*)",
       "WebFetch(domain:tailwindcss.com)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(grep:*)"
     ],
     "deny": []
   }
