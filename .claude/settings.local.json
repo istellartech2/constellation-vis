@@ -8,7 +8,8 @@
       "Bash(ls:*)",
       "Bash(grep:*)",
       "Bash(bun scripts/generate-satellites.ts:*)",
-      "Bash(bun -e:*)"
+      "Bash(bun -e:*)",
+      "Bash(cat:*)"
     ],
     "deny": []
   }

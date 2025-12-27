@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import {
   parseSatellitesToml,
   parseConstellationToml,
@@ -9,7 +9,8 @@ import {
 import { validateSatellites, validateGroundStations } from "../../utils/validators";
 import { Button } from "./button";
 import { Textarea } from "./textarea";
-import { Download, Upload, Trash2, Globe, Save, FolderOpen } from "lucide-react";
+import { Download, Upload, Trash2, Globe, Save, FolderOpen, Settings } from "lucide-react";
+import ConstellationEditorDialog from "./ConstellationEditorDialog";
 
 interface Props {
   satText: string;
@@ -44,6 +45,7 @@ export default function EditorTab({
   const constInputRef = useRef<HTMLInputElement | null>(null);
   const gsInputRef = useRef<HTMLInputElement | null>(null);
   const bundleInputRef = useRef<HTMLInputElement | null>(null);
+  const [constEditorOpen, setConstEditorOpen] = useState(false);
 
 
   return (
@@ -139,6 +141,15 @@ export default function EditorTab({
               title="クリア"
             >
               <Trash2 className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 border-2 shadow-md bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-500 hover:border-gray-400"
+              onClick={() => setConstEditorOpen(true)}
+              title="コンステレーション編集"
+            >
+              <Settings className="h-4 w-4" />
             </Button>
           </div>
         </div>
@@ -266,6 +277,13 @@ export default function EditorTab({
       >
         更新
       </Button>
+
+      <ConstellationEditorDialog
+        open={constEditorOpen}
+        constText={constText}
+        onConstTextChange={onConstTextChange}
+        onClose={() => setConstEditorOpen(false)}
+      />
     </>
   );
 }
