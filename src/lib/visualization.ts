@@ -36,10 +36,8 @@ const UP_AXIS = new THREE.Vector3(0, 1, 0);
 const POINTER_DRAG_THRESHOLD_PX = 5;
 const DEFAULT_CAMERA_POSITION = new THREE.Vector3(0, 0, 3);
 const DEFAULT_CAMERA_TARGET = new THREE.Vector3(0, 0, 0);
-const EARTH_CENTER_MIN_DISTANCE = 0.12;
-const EARTH_CENTER_MAX_DISTANCE = 1.8;
-const THIRDPERSON_MIN_DISTANCE = 0.12;
-const THIRDPERSON_MAX_DISTANCE = 1.8;
+const FOLLOW_MIN_DISTANCE = 0.12;
+const FOLLOW_MAX_DISTANCE = 1.8;
 const THIRDPERSON_DEFAULT_PITCH = THREE.MathUtils.degToRad(22);
 const THIRDPERSON_MIN_PITCH = THREE.MathUtils.degToRad(-70);
 const THIRDPERSON_MAX_PITCH = THREE.MathUtils.degToRad(82);
@@ -167,6 +165,8 @@ export default class SatelliteScene {
   private readonly tempMatrix = new THREE.Matrix4();
   private readonly cachedSelectedPosition = new THREE.Vector3();
   private readonly cachedSelectedVelocity = new THREE.Vector3();
+  private hasCachedSelection = false;
+  private hasCachedVelocity = false;
   private earthCenterDistance = 0.45;
   private thirdPersonDistance = 0.4;
   private thirdPersonPitch = THIRDPERSON_DEFAULT_PITCH;
@@ -435,8 +435,8 @@ export default class SatelliteScene {
       if (mode === "earthCenter" || mode === "thirdPerson") {
         event.preventDefault();
         const [current, min, max] = mode === "earthCenter"
-          ? [this.earthCenterDistance, EARTH_CENTER_MIN_DISTANCE, EARTH_CENTER_MAX_DISTANCE]
-          : [this.thirdPersonDistance, THIRDPERSON_MIN_DISTANCE, THIRDPERSON_MAX_DISTANCE];
+          ? [this.earthCenterDistance, FOLLOW_MIN_DISTANCE, FOLLOW_MAX_DISTANCE]
+          : [this.thirdPersonDistance, FOLLOW_MIN_DISTANCE, FOLLOW_MAX_DISTANCE];
         const next = THREE.MathUtils.clamp(current * Math.exp(event.deltaY * 0.0012), min, max);
         if (mode === "earthCenter") this.earthCenterDistance = next;
         else this.thirdPersonDistance = next;
@@ -480,15 +480,16 @@ export default class SatelliteScene {
       return;
     }
 
-    const snapshot = this.getSelectedSatelliteSnapshot();
-    if (mode === "earthCenter" && snapshot) {
-      this.earthCenterDistance = this.getDefaultEarthCenterDistance(snapshot.position);
+    if (!this.hasCachedSelection) return;
+    const pos = this.cachedSelectedPosition;
+    if (mode === "earthCenter") {
+      this.earthCenterDistance = this.getDefaultEarthCenterDistance(pos);
     }
-    if (mode === "thirdPerson" && snapshot) {
-      this.thirdPersonDistance = this.getDefaultThirdPersonDistance(snapshot.position);
+    if (mode === "thirdPerson") {
+      this.thirdPersonDistance = this.getDefaultThirdPersonDistance(pos);
       this.thirdPersonPitch = THIRDPERSON_DEFAULT_PITCH;
-      if (snapshot.velocity && snapshot.velocity.lengthSq() > 1e-8) {
-        this.followBasis.copy(snapshot.velocity).normalize();
+      if (this.hasCachedVelocity && this.cachedSelectedVelocity.lengthSq() > 1e-8) {
+        this.followBasis.copy(this.cachedSelectedVelocity).normalize();
       }
     }
   }
@@ -508,34 +509,12 @@ export default class SatelliteScene {
     this.controls.update();
   }
 
-  private getSelectedSatelliteSnapshot() {
-    if (this.selectedIndex === null) return null;
-    const rec = this.satRecs[this.selectedIndex];
-    const pv = satellite.propagate(rec, this.currentSimDate);
-    if (!pv?.position) return null;
-
-    const position = new THREE.Vector3(
-      pv.position.x / EARTH_RADIUS_EQUATOR_KM,
-      pv.position.z / EARTH_RADIUS_POLAR_KM,
-      -pv.position.y / EARTH_RADIUS_EQUATOR_KM,
-    );
-    const velocity = pv.velocity
-      ? new THREE.Vector3(
-          pv.velocity.x,
-          pv.velocity.z,
-          -pv.velocity.y,
-        ).multiplyScalar(1 / EARTH_RADIUS_EQUATOR_KM)
-      : null;
-
-    return { position, velocity };
-  }
-
   private getDefaultEarthCenterDistance(selectedSatPosition: THREE.Vector3) {
     const altitude = Math.max(selectedSatPosition.length() - 1, 0);
     return THREE.MathUtils.clamp(
       0.32 + altitude * 0.9,
-      EARTH_CENTER_MIN_DISTANCE,
-      EARTH_CENTER_MAX_DISTANCE,
+      FOLLOW_MIN_DISTANCE,
+      FOLLOW_MAX_DISTANCE,
     );
   }
 
@@ -543,8 +522,8 @@ export default class SatelliteScene {
     const altitude = Math.max(selectedSatPosition.length() - 1, 0);
     return THREE.MathUtils.clamp(
       0.24 + altitude * 1.35,
-      THIRDPERSON_MIN_DISTANCE,
-      THIRDPERSON_MAX_DISTANCE,
+      FOLLOW_MIN_DISTANCE,
+      FOLLOW_MAX_DISTANCE,
     );
   }
 
@@ -587,6 +566,8 @@ export default class SatelliteScene {
 
   private clearSatelliteSelection() {
     this.selectedIndex = null;
+    this.hasCachedSelection = false;
+    this.hasCachedVelocity = false;
     this.params.onSelect?.(null);
     this.updateTrack();
     this.clearShadowTrack();
@@ -703,8 +684,9 @@ export default class SatelliteScene {
       const ecf = satellite.geodeticToEcf(gd);
       return satellite.ecfToEci(ecf, gmst);
     });
-    const tmpQuat = new THREE.Quaternion();
-    const tmpDir = new THREE.Vector3();
+    // Reuse class-level temps; safe since updateCameraFollow runs after this loop
+    const tmpQuat = this.tempQuaternionA;
+    const tmpDir = this.tempVectorA;
     const halfAngleRad = THREE.MathUtils.degToRad(
       THREE.MathUtils.clamp(this.params.fovConeHalfAngleDeg, 0.1, 89.5),
     );
@@ -792,6 +774,7 @@ export default class SatelliteScene {
         });
         if (this.selectedIndex === i) {
           this.cachedSelectedPosition.copy(satPosition);
+          this.hasCachedSelection = true;
           hasSelectedSat = true;
           if (pv.velocity) {
             this.cachedSelectedVelocity.set(
@@ -799,6 +782,7 @@ export default class SatelliteScene {
               pv.velocity.z,
               -pv.velocity.y,
             ).multiplyScalar(1 / EARTH_RADIUS_EQUATOR_KM);
+            this.hasCachedVelocity = true;
             hasSelectedVelocity = true;
             if (this.cachedSelectedVelocity.lengthSq() > 1e-8) {
               this.followBasis.copy(this.cachedSelectedVelocity).normalize();
