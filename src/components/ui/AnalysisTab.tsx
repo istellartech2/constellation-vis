@@ -55,7 +55,11 @@ export default function AnalysisTab({ satText, constText, gsText, startTime, onA
       case "軌道維持燃料解析":
         return <OrbitMaintenanceAnalysis />;
       case "太陽光影響解析":
-        return <SolarImpactAnalysis />;
+        return <SolarImpactAnalysis
+          satText={satText}
+          constText={constText}
+          startTime={startTime}
+        />;
       default:
         return null;
     }
@@ -94,8 +98,7 @@ export default function AnalysisTab({ satText, constText, gsText, startTime, onA
             </button>
             <button 
               className="analysis-button"
-              disabled
-              style={{ opacity: 0.5 }}
+              onClick={() => handleAnalysisClick("太陽光影響解析")}
             >
               太陽光影響解析
             </button>

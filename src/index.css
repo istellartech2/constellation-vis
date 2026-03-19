@@ -286,6 +286,228 @@ h1 {
   flex-wrap: wrap;
 }
 
+.solar-panel {
+  background: rgba(31, 41, 55, 0.55);
+  border: 1px solid rgb(75 85 99);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.solar-panel-header,
+.solar-compare-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.solar-panel-title {
+  margin: 0;
+  color: #ed6d00;
+  font-size: 1rem;
+}
+
+.solar-panel-subtitle {
+  margin-top: 3px;
+  color: #9ca3af;
+  font-size: 0.78rem;
+}
+
+.solar-section-block + .solar-section-block {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgb(75 85 99);
+}
+
+.solar-section-title {
+  color: #f1f5f9;
+  font-size: 0.84rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.solar-section-note {
+  color: #94a3b8;
+  font-size: 0.76rem;
+  margin-bottom: 8px;
+}
+
+.solar-form-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.solar-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 116px;
+  gap: 10px;
+  align-items: center;
+}
+
+.solar-input-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: #cbd5e1;
+  font-size: 0.84rem;
+}
+
+.solar-number-input {
+  width: 100%;
+}
+
+.solar-help {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.solar-help-button {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(15, 23, 42, 0.7);
+  color: #cbd5e1;
+  font-size: 0.72rem;
+  line-height: 1;
+  cursor: help;
+  padding: 0;
+}
+
+.solar-help-button:hover,
+.solar-help-button:focus-visible {
+  border-color: #ed6d00;
+  color: #fff;
+  outline: none;
+}
+
+.solar-help-tooltip {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 250px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(237, 109, 0, 0.4);
+  background: rgba(15, 23, 42, 0.96);
+  color: #e2e8f0;
+  font-size: 0.76rem;
+  line-height: 1.35;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  z-index: 20;
+}
+
+.solar-help:hover .solar-help-tooltip,
+.solar-help:focus-within .solar-help-tooltip {
+  opacity: 1;
+}
+
+.solar-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+}
+
+.solar-kpi-grid-secondary {
+  margin-top: 8px;
+}
+
+.solar-kpi-card {
+  background: rgba(17, 24, 39, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
+  padding: 8px 10px;
+  min-height: 58px;
+}
+
+.solar-kpi-card-secondary {
+  min-height: 52px;
+}
+
+.solar-kpi-label {
+  color: #94a3b8;
+  font-size: 0.7rem;
+  margin-bottom: 3px;
+  letter-spacing: 0.01em;
+}
+
+.solar-kpi-value {
+  color: #fff;
+  font-weight: 700;
+  font-size: 1rem;
+  line-height: 1.15;
+}
+
+.solar-kpi-value-secondary {
+  font-size: 0.92rem;
+}
+
+.solar-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  width: fit-content;
+}
+
+.solar-status-nominal {
+  background: rgba(56, 161, 105, 0.18);
+  color: #68d391;
+  border: 1px solid rgba(104, 211, 145, 0.28);
+}
+
+.solar-status-warning {
+  background: rgba(237, 137, 54, 0.18);
+  color: #f6ad55;
+  border: 1px solid rgba(246, 173, 85, 0.28);
+}
+
+.solar-status-critical {
+  background: rgba(229, 62, 62, 0.18);
+  color: #fc8181;
+  border: 1px solid rgba(252, 129, 129, 0.28);
+}
+
+.solar-segmented-control {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.solar-segment-button {
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.solar-segment-button:hover {
+  color: #fff;
+}
+
+.solar-segment-button.is-active {
+  background: rgba(237, 109, 0, 0.18);
+  color: #fff;
+}
+
 .availability-card {
   background-color: rgb(55 65 81);
   border: 1px solid rgb(75 85 99);
