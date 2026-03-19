@@ -1,5 +1,13 @@
+import { useEffect, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import type { ConstellationShell } from "../../lib/constellationTypes";
 import type { ValidationError } from "../../lib/constellationSerializer";
+import {
+  solveAltitudeFromInclinationAndRatio,
+  solveInclinationFromAltitudeAndRatio,
+  suggestRgtRatioFromAltitudeInclination,
+} from "../../lib/rgt";
+import { Button } from "./button";
 import { Label } from "./label";
 
 interface Props {
@@ -9,6 +17,34 @@ interface Props {
 }
 
 export default function ConstellationShellForm({ shell, errors, onChange }: Props) {
+  const [rgtStatus, setRgtStatus] = useState<string | null>(null);
+  const [rgtMode, setRgtMode] = useState<"inclinationRatio" | "altitudeRatio">("inclinationRatio");
+  const [rgtRepeatOrbits, setRgtRepeatOrbits] = useState<number>(15);
+  const [rgtRepeatDays, setRgtRepeatDays] = useState<number>(1);
+  const [rgtOpen, setRgtOpen] = useState(false);
+
+  useEffect(() => {
+    setRgtStatus(null);
+    const suggestion = suggestRgtRatioFromAltitudeInclination(
+      shell.apogee_altitude ?? 0,
+      shell.inclination ?? 0,
+      shell.eccentricity ?? 0,
+      {
+        minRepeatDays: 1,
+        maxRepeatDays: 30,
+        maxRepeatOrbits: 2000,
+      }
+    );
+    if (suggestion) {
+      setRgtRepeatOrbits(suggestion.repeatOrbits);
+      setRgtRepeatDays(suggestion.repeatDays);
+    }
+  }, [shell.id]);
+
+  useEffect(() => {
+    setRgtOpen(false);
+  }, [shell.id]);
+
   const getError = (field: string): string | undefined => {
     const prefix = `shell.`;
     for (const err of errors) {
@@ -27,6 +63,67 @@ export default function ConstellationShellForm({ shell, errors, onChange }: Prop
     const num = isInteger ? parseInt(value, 10) : parseFloat(value);
     if (!isNaN(num)) {
       onChange({ [field]: num });
+    }
+  };
+
+  const handleApplyRgt = () => {
+    const altitudeKm = shell.apogee_altitude ?? 0;
+    const inclinationDeg = shell.inclination ?? 0;
+    const eccentricity = shell.eccentricity ?? 0;
+
+    const repeatOrbits = Math.max(1, Math.round(rgtRepeatOrbits));
+    const repeatDays = Math.max(1, Math.round(rgtRepeatDays));
+
+    if (!Number.isFinite(repeatOrbits) || !Number.isFinite(repeatDays)) {
+      setRgtStatus("RGT比の入力が正しくありません");
+      return;
+    }
+
+    if (rgtMode === "inclinationRatio") {
+      const result = solveAltitudeFromInclinationAndRatio(
+        altitudeKm,
+        inclinationDeg,
+        repeatOrbits,
+        repeatDays,
+        eccentricity,
+        {
+          minAltitudeKm: 120,
+          maxAltitudeKm: 50000,
+        }
+      );
+
+      if (!result) {
+        setRgtStatus("RGT条件を満たす高度が見つかりませんでした");
+        return;
+      }
+
+      const updatedAltitude = Number(result.altitudeKm.toFixed(2));
+      onChange({ apogee_altitude: updatedAltitude });
+      setRgtStatus(
+        `RGT比 ${repeatOrbits}/${repeatDays} (周期${repeatDays}日) → 高度 ${updatedAltitude.toFixed(1)} km`
+      );
+    } else {
+      const result = solveInclinationFromAltitudeAndRatio(
+        altitudeKm,
+        repeatOrbits,
+        repeatDays,
+        eccentricity,
+        {
+          minInclinationDeg: 0,
+          maxInclinationDeg: 180,
+        }
+      );
+
+      if (!result) {
+        setRgtStatus("RGT条件を満たす傾斜角が見つかりませんでした");
+        return;
+      }
+
+      const updatedInclination = Number(result.inclinationDeg.toFixed(2));
+      onChange({ inclination: updatedInclination });
+      setRgtStatus(
+        `RGT比 ${repeatOrbits}/${repeatDays} (周期${repeatDays}日) → 傾斜角 ${updatedInclination.toFixed(2)}°`
+      );
     }
   };
 
@@ -138,6 +235,79 @@ export default function ConstellationShellForm({ shell, errors, onChange }: Prop
             onChange={(e) => handleNumberChange("inclination", e.target.value)}
             className="w-full px-2 py-1.5 text-sm bg-gray-800 border border-gray-600 rounded focus:border-amber-500 focus:outline-none text-gray-100"
           />
+        </div>
+
+        <div className="space-y-1">
+          <button
+            type="button"
+            onClick={() => setRgtOpen((prev) => !prev)}
+            aria-expanded={rgtOpen}
+            className="w-full flex items-center justify-between text-xs font-medium text-gray-400 border border-gray-700 rounded px-2 py-2 bg-gray-850 hover:bg-gray-800"
+          >
+            <span>RGT 条件（回帰軌道）</span>
+            <ChevronDown className={`h-4 w-4 transition-transform ${rgtOpen ? "rotate-180" : ""}`} />
+          </button>
+
+          {rgtOpen && (
+            <div className="mt-2 rounded border border-gray-800 bg-gray-900/40 p-3 space-y-2">
+              <div className="flex flex-wrap gap-3 text-xs text-gray-300">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name={`rgt-mode-${shell.id}`}
+                    checked={rgtMode === "inclinationRatio"}
+                    onChange={() => setRgtMode("inclinationRatio")}
+                  />
+                  <span>傾斜角 + RGT比 → 高度</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name={`rgt-mode-${shell.id}`}
+                    checked={rgtMode === "altitudeRatio"}
+                    onChange={() => setRgtMode("altitudeRatio")}
+                  />
+                  <span>高度 + RGT比 → 傾斜角</span>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-[1fr_auto_1fr] gap-2 items-center">
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={rgtRepeatOrbits}
+                  onChange={(e) => setRgtRepeatOrbits(Number(e.target.value))}
+                  className="w-full px-2 py-1 text-sm bg-gray-800 border border-gray-600 rounded focus:border-amber-500 focus:outline-none text-gray-100"
+                />
+                <span className="text-xs text-gray-400">/</span>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={rgtRepeatDays}
+                  onChange={(e) => setRgtRepeatDays(Number(e.target.value))}
+                  className="w-full px-2 py-1 text-sm bg-gray-800 border border-gray-600 rounded focus:border-amber-500 focus:outline-none text-gray-100"
+                />
+              </div>
+              <span className="text-xs text-gray-500">
+                RGT比 = N_S / N_D（同じ地上軌跡が戻るまでの「衛星の周回数 / 地球の自転回数」）
+              </span>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleApplyRgt}
+                className="bg-gray-800 hover:bg-gray-700 text-gray-100 border-gray-600 w-fit"
+              >
+                RGT比を適用
+              </Button>
+              {rgtStatus && (
+                <p className="text-xs text-amber-300">{rgtStatus}</p>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

@@ -465,8 +465,6 @@ export default class SatelliteScene {
     });
     const tmpQuat = new THREE.Quaternion();
     const tmpDir = new THREE.Vector3();
-    const slantRangeNorm = Math.max(this.params.groundConeLength, 0.01);
-    const maxRangeKm = slantRangeNorm * EARTH_RADIUS_EQUATOR_KM;
     const halfAngleRad = THREE.MathUtils.degToRad(
       THREE.MathUtils.clamp(this.params.fovConeHalfAngleDeg, 0.1, 89.5),
     );
@@ -535,13 +533,8 @@ export default class SatelliteScene {
         let anyVisible = false;
         this.params.groundStations.forEach((_, gi) => {
           const look = satellite.ecfToLookAngles(observerGds[gi], satEcf);
-          const stationEci = gsEcis[gi];
-          const dx = pv.position.x - stationEci.x;
-          const dy = pv.position.y - stationEci.y;
-          const dz = pv.position.z - stationEci.z;
-          const slantRangeKm = Math.sqrt(dx * dx + dy * dy + dz * dz);
-          const withinDistance = slantRangeKm <= maxRangeKm;
-          const visible = look.elevation > minElevationRads[gi] && withinDistance;
+          // Visibility is determined solely by elevation angle to support satellites at any altitude
+          const visible = look.elevation > minElevationRads[gi];
           if (visible) {
             anyVisible = true;
             const p1 = new THREE.Vector3(
@@ -631,6 +624,16 @@ export default class SatelliteScene {
           } else {
             cone.visible = false;
           }
+        }
+      } else {
+        // Propagation failed: explicitly mark satellite as hidden and hide link lines
+        this.satColorAttr.setXYZ(i, this.satelliteHiddenColor.r, this.satelliteHiddenColor.g, this.satelliteHiddenColor.b);
+        this.params.groundStations.forEach((_, gi) => {
+          this.linkLines[gi][i].visible = false;
+        });
+        const cone = this.fovConeMeshes[i];
+        if (cone) {
+          cone.visible = false;
         }
       }
     }
