@@ -28,6 +28,7 @@ const STATION_CONE_SEGMENTS = 32;
 const FOV_CONE_SEGMENTS = 32;
 const DOWN_AXIS = new THREE.Vector3(0, -1, 0);
 const UP_AXIS = new THREE.Vector3(0, 1, 0);
+const POINTER_DRAG_THRESHOLD_PX = 5;
 
 export interface SatelliteSceneParams {
   mountRef: React.RefObject<HTMLDivElement | null>;
@@ -63,6 +64,7 @@ export interface SatelliteSceneParams {
   brightEarth: boolean;
   onSelect?: (idx: number | null) => void;
   onSelectStation?: (idx: number | null) => void;
+  onSimTimeChange?: (date: Date) => void;
   stationInfoRef?: React.RefObject<HTMLPreElement | null>;
 }
 
@@ -122,6 +124,12 @@ export default class SatelliteScene {
 
   private readonly startReal: number;
   private readonly startSim: number;
+  private lastSimTimeNotificationMs: number | null = null;
+  private pointerDownActive = false;
+  private pointerDownId: number | null = null;
+  private pointerDownX = 0;
+  private pointerDownY = 0;
+  private didDragDuringPointer = false;
 
   private params: SatelliteSceneParams;
 
@@ -303,55 +311,72 @@ export default class SatelliteScene {
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
-    const handlePointer = (event: PointerEvent) => {
+    const getPointerNdc = (event: PointerEvent) => {
       const rect = this.renderer.domElement.getBoundingClientRect();
-      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      pointer.set(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      return pointer;
+    };
+
+    const handlePointerDown = (event: PointerEvent) => {
+      this.pointerDownActive = true;
+      this.pointerDownId = event.pointerId;
+      this.pointerDownX = event.clientX;
+      this.pointerDownY = event.clientY;
+      this.didDragDuringPointer = false;
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!this.pointerDownActive || this.pointerDownId !== event.pointerId) return;
+      const dx = event.clientX - this.pointerDownX;
+      const dy = event.clientY - this.pointerDownY;
+      if (Math.hypot(dx, dy) > POINTER_DRAG_THRESHOLD_PX) {
+        this.didDragDuringPointer = true;
+      }
+    };
+
+    const handlePointerUp = (event: PointerEvent) => {
+      if (!this.pointerDownActive || this.pointerDownId !== event.pointerId) return;
+      const wasDrag = this.didDragDuringPointer;
+      this.resetPointerInteraction();
+      if (wasDrag) return;
+
+      getPointerNdc(event);
       raycaster.params.Points!.threshold = this.params.satRadius * 2;
       raycaster.setFromCamera(pointer, this.camera);
       const stationHits = raycaster.intersectObjects(this.stationMeshes, false);
       if (stationHits.length > 0) {
         const hitObj = stationHits[0].object as THREE.Object3D;
         const idx = this.stationMeshes.findIndex((m) => m === hitObj);
-        this.selectedStationIndex = idx;
-        if (this.params.onSelectStation) this.params.onSelectStation(idx);
+        this.selectStation(idx);
         return;
       }
       const hits = raycaster.intersectObject(satPoints, false);
       if (hits.length > 0 && hits[0].index !== undefined) {
-        this.selectedIndex = hits[0].index;
-        if (this.params.onSelect) this.params.onSelect(this.selectedIndex);
-        this.updateTrack();
-        this.shadowStartDate = this.currentSimDate;
-        this.shadowMinutes = 0;
-        this.shadowCoords = [];
-        if (this.shadowLine) {
-          this.shadowLine.geometry.dispose();
-          this.scene.remove(this.shadowLine);
-        }
-        const mat = new THREE.LineBasicMaterial({ color: 0x00ffff });
-        this.shadowLine = new THREE.Line(new THREE.BufferGeometry(), mat);
-        this.scene.add(this.shadowLine);
-        this.updateShadow();
+        this.selectSatellite(hits[0].index);
       } else {
-        this.selectedIndex = null;
-        if (this.params.onSelect) this.params.onSelect(null);
-        this.selectedStationIndex = null;
-        if (this.params.onSelectStation) this.params.onSelectStation(null);
-        this.updateTrack();
-        this.shadowStartDate = null;
-        this.shadowMinutes = 0;
-        this.shadowCoords = [];
-        if (this.shadowLine) {
-          this.shadowLine.geometry.dispose();
-          this.scene.remove(this.shadowLine);
-          this.shadowLine = null;
-        }
+        this.clearSelections();
       }
     };
-    this.renderer.domElement.addEventListener("pointerdown", handlePointer);
+
+    const handlePointerCancel = (event: PointerEvent) => {
+      if (this.pointerDownId !== event.pointerId) return;
+      this.resetPointerInteraction();
+    };
+
+    this.renderer.domElement.addEventListener("pointerdown", handlePointerDown);
+    this.renderer.domElement.addEventListener("pointermove", handlePointerMove);
+    this.renderer.domElement.addEventListener("pointerup", handlePointerUp);
+    this.renderer.domElement.addEventListener("pointercancel", handlePointerCancel);
+    this.renderer.domElement.addEventListener("pointerleave", handlePointerCancel);
     this.disposeFns.push(() => {
-      this.renderer.domElement.removeEventListener("pointerdown", handlePointer);
+      this.renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
+      this.renderer.domElement.removeEventListener("pointermove", handlePointerMove);
+      this.renderer.domElement.removeEventListener("pointerup", handlePointerUp);
+      this.renderer.domElement.removeEventListener("pointercancel", handlePointerCancel);
+      this.renderer.domElement.removeEventListener("pointerleave", handlePointerCancel);
     });
 
     this.startReal = Date.now();
@@ -366,6 +391,61 @@ export default class SatelliteScene {
     this.disposeFns.push(() => window.removeEventListener("resize", handleResize));
 
     this.animate();
+  }
+
+  private resetPointerInteraction() {
+    this.pointerDownActive = false;
+    this.pointerDownId = null;
+    this.didDragDuringPointer = false;
+  }
+
+  private selectStation(idx: number | null) {
+    this.selectedStationIndex = idx;
+    this.params.onSelectStation?.(idx);
+  }
+
+  private resetShadowTrack() {
+    this.shadowStartDate = this.currentSimDate;
+    this.shadowMinutes = 0;
+    this.shadowCoords = [];
+    if (this.shadowLine) {
+      this.shadowLine.geometry.dispose();
+      this.scene.remove(this.shadowLine);
+    }
+    const mat = new THREE.LineBasicMaterial({ color: 0x00ffff });
+    this.shadowLine = new THREE.Line(new THREE.BufferGeometry(), mat);
+    this.scene.add(this.shadowLine);
+    this.updateShadow();
+  }
+
+  private clearShadowTrack() {
+    this.shadowStartDate = null;
+    this.shadowMinutes = 0;
+    this.shadowCoords = [];
+    if (this.shadowLine) {
+      this.shadowLine.geometry.dispose();
+      this.scene.remove(this.shadowLine);
+      this.shadowLine = null;
+    }
+  }
+
+  private selectSatellite(idx: number) {
+    this.selectedIndex = idx;
+    this.params.onSelect?.(idx);
+    this.updateTrack();
+    this.resetShadowTrack();
+  }
+
+  private clearSatelliteSelection() {
+    this.selectedIndex = null;
+    this.params.onSelect?.(null);
+    this.updateTrack();
+    this.clearShadowTrack();
+  }
+
+  private clearSelections() {
+    this.clearSatelliteSelection();
+    this.selectStation(null);
   }
 
   private updateTrack() {
@@ -439,6 +519,13 @@ export default class SatelliteScene {
     const simDeltaMs = (nowReal - this.startReal) * this.params.speedRef.current;
     const simDate = new Date(this.startSim + simDeltaMs);
     this.currentSimDate = simDate;
+    if (
+      this.lastSimTimeNotificationMs === null ||
+      Math.abs(simDate.getTime() - this.lastSimTimeNotificationMs) >= 1000
+    ) {
+      this.params.onSimTimeChange?.(simDate);
+      this.lastSimTimeNotificationMs = simDate.getTime();
+    }
 
     const rotAngle = satellite.gstime(simDate);
     this.earthMesh.rotation.y = rotAngle;

@@ -49,6 +49,8 @@ interface Props {
   onEcefChange: (v: boolean) => void;
   showPerturbation: boolean;
   onShowPerturbationChange: (v: boolean) => void;
+  showDerivedSatelliteInfo: boolean;
+  onShowDerivedSatelliteInfoChange: (v: boolean) => void;
   brightEarth: boolean;
   onBrightEarthChange: (v: boolean) => void;
   sceneRef?: RefObject<SatelliteScene | null>;
@@ -94,6 +96,8 @@ export default function OptionTab({
   onEcefChange,
   showPerturbation,
   onShowPerturbationChange,
+  showDerivedSatelliteInfo,
+  onShowDerivedSatelliteInfoChange,
   brightEarth,
   onBrightEarthChange,
   sceneRef,
@@ -250,6 +254,19 @@ export default function OptionTab({
               className="text-sm font-normal cursor-pointer"
             >
               ECEFモード
+            </Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="derivedSatelliteInfo"
+              checked={showDerivedSatelliteInfo}
+              onCheckedChange={(checked) => onShowDerivedSatelliteInfoChange(!!checked)}
+            />
+            <Label
+              htmlFor="derivedSatelliteInfo"
+              className="text-sm font-normal cursor-pointer"
+            >
+              詳細な衛星情報を表示
             </Label>
           </div>
           <div className="flex items-center space-x-2">

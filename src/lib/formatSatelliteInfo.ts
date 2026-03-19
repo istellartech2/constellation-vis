@@ -1,5 +1,11 @@
 import * as satellite from "satellite.js";
 import type { SatelliteSpec } from "./satellites";
+import {
+  formatDurationMinutes,
+  formatLatitude,
+  formatLongitude,
+  getSatelliteDerivedInfo,
+} from "./satelliteDerivedInfo";
 
 /**
  * Build a human readable block of text describing the satellite at the
@@ -9,6 +15,8 @@ import type { SatelliteSpec } from "./satellites";
 export function formatSatelliteInfo(
   satellites: SatelliteSpec[],
   idx: number | null,
+  at?: Date,
+  showDerivedInfo = false,
 ): string {
   if (idx === null) return "";
   const spec = satellites[idx];
@@ -41,7 +49,8 @@ export function formatSatelliteInfo(
     };
   })();
 
-  return (
+  const baseText =
+    (
     metaText +
     `satnum: ${e.satnum}\n` +
     `a: ${e.semiMajorAxisKm.toFixed(1)} km\n` +
@@ -50,5 +59,24 @@ export function formatSatelliteInfo(
     `RAAN: ${e.raanDeg.toFixed(1)} deg\n` +
     `argP: ${e.argPerigeeDeg.toFixed(1)} deg\n` +
     `M: ${e.meanAnomalyDeg.toFixed(1)} deg`
+    );
+
+  if (!showDerivedInfo || !at) return baseText;
+
+  const derived = getSatelliteDerivedInfo(spec, at);
+  return (
+    `${baseText}\n` +
+    `period: ${formatDurationMinutes(derived.periodMinutes)}\n` +
+    `orbits/day: ${derived.orbitsPerDay.toFixed(2)} rev/day\n` +
+    `perigee alt: ${derived.perigeeAltitudeKm.toFixed(1)} km\n` +
+    `apogee alt: ${derived.apogeeAltitudeKm.toFixed(1)} km\n` +
+    `current alt: ${derived.currentAltitudeKm?.toFixed(1) ?? "N/A"} km\n` +
+    `ECI speed: ${derived.eciSpeedKmPerSec?.toFixed(3) ?? "N/A"} km/s\n` +
+    `lat: ${formatLatitude(derived.latitudeDeg)}\n` +
+    `lon: ${formatLongitude(derived.longitudeDeg)}\n` +
+    `eclipse: ${formatDurationMinutes(derived.eclipseMinutes)}\n` +
+    `eclipse ratio: ${derived.eclipseRatio === null ? "N/A" : `${(derived.eclipseRatio * 100).toFixed(1)} %`}\n` +
+    `next eclipse: ${formatDurationMinutes(derived.timeToNextEclipseStartMinutes)}\n` +
+    `next sunlight: ${formatDurationMinutes(derived.timeToNextSunlightReturnMinutes)}`
   );
 }

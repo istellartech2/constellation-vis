@@ -59,6 +59,7 @@ export function useSatelliteScene(params: SatelliteSceneParams) {
     params.brightEarth,
     params.onSelect,
     params.onSelectStation,
+    params.onSimTimeChange,
     params.stationInfoRef,
   ]);
   

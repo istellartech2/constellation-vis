@@ -26,6 +26,7 @@ function App() {
   const [groundStations, setGroundStations] = useState<GroundStation[]>([]);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [selectedGsIdx, setSelectedGsIdx] = useState<number | null>(null);
+  const [simTime, setSimTime] = useState(() => new Date());
 
   const [satRadius, setSatRadius] = useState(() =>
     window.innerWidth <= 600 ? 0.02 : 0.015,
@@ -37,6 +38,7 @@ function App() {
   const [showSunDirection, setShowSunDirection] = useState(true);
   const [ecef, setEcef] = useState(false);
   const [showPerturbation, setShowPerturbation] = useState(false);
+  const [showDerivedSatelliteInfo, setShowDerivedSatelliteInfo] = useState(true);
   const [brightEarth, setBrightEarth] = useState(false);
   const [showGroundStationCones, setShowGroundStationCones] = useState(false);
   const [showSatelliteFovCones, setShowSatelliteFovCones] = useState(false);
@@ -112,6 +114,7 @@ function App() {
     brightEarth,
     onSelect: setSelectedIdx,
     onSelectStation: setSelectedGsIdx,
+    onSimTimeChange: setSimTime,
     stationInfoRef: gsInfoRef,
   });
 
@@ -136,7 +139,13 @@ function App() {
           zIndex: 10,
         }}
       />
-      <SatelliteInfo satellites={satellites} selectedIdx={selectedIdx} showPerturbation={showPerturbation} />
+      <SatelliteInfo
+        satellites={satellites}
+        selectedIdx={selectedIdx}
+        simTime={simTime}
+        showDerivedInfo={showDerivedSatelliteInfo}
+        showPerturbation={showPerturbation}
+      />
       {gsInfoText && (
         <pre
           ref={gsInfoRef}
@@ -197,6 +206,8 @@ function App() {
         onEcefChange={setEcef}
         showPerturbation={showPerturbation}
         onShowPerturbationChange={setShowPerturbation}
+        showDerivedSatelliteInfo={showDerivedSatelliteInfo}
+        onShowDerivedSatelliteInfoChange={setShowDerivedSatelliteInfo}
         brightEarth={brightEarth}
         onBrightEarthChange={setBrightEarth}
         sceneRef={sceneRef}

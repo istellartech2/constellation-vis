@@ -186,7 +186,6 @@ function solveSemiMajorAxis(
   let leftA = aLow;
   let rightA = aHigh;
   let leftF = fLow;
-  let rightF = fHigh;
 
   for (let i = 0; i < maxIterations; i += 1) {
     const midA = 0.5 * (leftA + rightA);
@@ -199,7 +198,6 @@ function solveSemiMajorAxis(
 
     if (leftF * midF <= 0) {
       rightA = midA;
-      rightF = midF;
     } else {
       leftA = midA;
       leftF = midF;
@@ -283,14 +281,12 @@ export function solveInclinationFromAltitudeAndRatio(
 
   let bracketFound = false;
   let rightDeg = leftDeg;
-  let rightF = leftF;
 
   for (let deg = minDeg + stepDeg; deg <= maxDeg; deg += stepDeg) {
     const f = evaluateF(aMeters, e, deg * DEG_TO_RAD, tau);
     if (f === null || !Number.isFinite(f)) continue;
     if (leftF * f <= 0) {
       rightDeg = deg;
-      rightF = f;
       bracketFound = true;
       break;
     }
@@ -304,7 +300,6 @@ export function solveInclinationFromAltitudeAndRatio(
   let lo = leftDeg;
   let hi = rightDeg;
   let fLo = leftF;
-  let fHi = rightF;
 
   for (let i = 0; i < maxIterations; i += 1) {
     const mid = 0.5 * (lo + hi);
@@ -317,7 +312,6 @@ export function solveInclinationFromAltitudeAndRatio(
 
     if (fLo * fMid <= 0) {
       hi = mid;
-      fHi = fMid;
     } else {
       lo = mid;
       fLo = fMid;

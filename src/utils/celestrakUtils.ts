@@ -89,6 +89,10 @@ function indexGroups(nodes: readonly CelestrakGroupNode[]) {
 
 indexGroups(CELESTRAK_GROUP_TREE);
 
+export const CELESTRAK_GROUP_URLS = Object.fromEntries(
+  Array.from(CELESTRAK_GROUP_INDEX.entries()).map(([id, entry]) => [id, entry.urlGroup]),
+) as Record<string, string>;
+
 export interface CelestrakEntry {
   MEAN_MOTION: number;
   ECCENTRICITY: number;
