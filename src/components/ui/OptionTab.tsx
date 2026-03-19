@@ -173,7 +173,7 @@ export default function OptionTab({
   return (
     <div>
       <div className="option-section">
-        <div className="option-section-title">表示コントロール</div>
+        <div className="option-section-title">見た目の基本設定</div>
         <SatelliteSizeControl
           value={satRadius}
           onChange={onSatRadiusChange}
@@ -187,7 +187,7 @@ export default function OptionTab({
       </div>
 
       <div className="option-section">
-        <div className="option-section-title">表示オプション</div>
+        <div className="option-section-title">表示する情報</div>
         <div className="space-y-3">
           <div className="flex items-center space-x-2">
             <Checkbox
@@ -199,7 +199,7 @@ export default function OptionTab({
               htmlFor="graticule"
               className="text-sm font-normal cursor-pointer"
             >
-              経緯線を表示
+              地球の経緯線を表示
             </Label>
           </div>
           <div className="flex items-center space-x-2">
@@ -215,7 +215,7 @@ export default function OptionTab({
               htmlFor="ecliptic"
               className="text-sm font-normal cursor-pointer"
             >
-              黄道面を表示
+              太陽方向と黄道面を表示
             </Label>
           </div>
           <div className="flex items-center space-x-2">
@@ -228,7 +228,7 @@ export default function OptionTab({
               htmlFor="groundStationCones"
               className="text-sm font-normal cursor-pointer"
             >
-              地上局の可視円錐を表示
+              地上局の通信可能範囲を表示
             </Label>
           </div>
           <div className="flex items-center space-x-2">
@@ -241,7 +241,7 @@ export default function OptionTab({
               htmlFor="satelliteFovCones"
               className="text-sm font-normal cursor-pointer"
             >
-              衛星視野円錐を表示
+              衛星の視野方向を表示
             </Label>
           </div>
           <div className="flex items-center space-x-2">
@@ -254,7 +254,7 @@ export default function OptionTab({
               htmlFor="ecef"
               className="text-sm font-normal cursor-pointer"
             >
-              ECEFモード
+              地球固定表示にする
             </Label>
           </div>
           <div className="flex items-center space-x-2">
@@ -267,7 +267,7 @@ export default function OptionTab({
               htmlFor="derivedSatelliteInfo"
               className="text-sm font-normal cursor-pointer"
             >
-              詳細な衛星情報を表示
+              選択衛星の詳細情報を表示
             </Label>
           </div>
           <div className="flex items-center space-x-2">
@@ -280,7 +280,7 @@ export default function OptionTab({
               htmlFor="perturbation"
               className="text-sm font-normal cursor-pointer"
             >
-              摂動を表示
+              摂動・軌道変化情報を表示
             </Label>
           </div>
           <div className="flex items-center space-x-2">
@@ -293,7 +293,7 @@ export default function OptionTab({
               htmlFor="brightEarth"
               className="text-sm font-normal cursor-pointer"
             >
-              Bright earth
+              地球を明るく表示
             </Label>
           </div>
         </div>
@@ -306,7 +306,7 @@ export default function OptionTab({
           onClick={() => setAdvancedOpen((prev) => !prev)}
           aria-expanded={advancedOpen}
         >
-          <span>可視コーン・カラー調整</span>
+          <span>見え方の詳細設定</span>
           <ChevronDown
             className={`option-advanced-icon${advancedOpen ? " rotate" : ""}`}
             size={16}
