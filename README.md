@@ -33,6 +33,26 @@ bun run dev
 
 Open your browser and visit `http://localhost:5173`.
 
+### Running Tests
+
+Run the test suite (Bun native test runner):
+
+```bash
+bun run test
+```
+
+Lint the codebase:
+
+```bash
+bun run lint
+```
+
+Build for production:
+
+```bash
+bun run build
+```
+
 ## Deployment
 https://istellartech2.github.io/constellation-vis/
 
@@ -114,6 +134,26 @@ bun run dev
 ```
 
 ブラウザで `http://localhost:5173` を開いてください。
+
+### テスト実行
+
+テストスイートを実行（Bun ネイティブテストランナー）:
+
+```bash
+bun run test
+```
+
+コード検査:
+
+```bash
+bun run lint
+```
+
+本番ビルド:
+
+```bash
+bun run build
+```
 
 ## アプリケーションURL
 https://istellartech2.github.io/constellation-vis/

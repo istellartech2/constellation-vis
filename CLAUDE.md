@@ -14,8 +14,9 @@ These instructions tailor the general `AGENTS.md` playbook for claude.ai/code. K
 - Avoid manual edits to `src/lib/satellites.generated.ts`; instead, tweak the TOML inputs or the generator.
 
 ## 3. Validation Routine
-- For logic changes run `bun run test`; for UI or config adjustments at least run `bun run lint`. Mention every command you executed in your final message.
-- When orbit/visibility math is impacted, add or update Vitest specs in `tests/`, mirroring the deterministic fixtures already present.
+- For logic changes run `bun run test` (Bun native test runner); for UI or config adjustments at least run `bun run lint`. Mention every command you executed in your final message.
+- When orbit/visibility math is impacted, add or update test specs in `tests/`, mirroring the deterministic fixtures already present.
+- Test files use Bun's native test runner: import `{ describe, it, expect, mock, afterEach }` from `bun:test` (not vitest).
 - Execute `bun run build` for major refactors to ensure both the TypeScript project references and Vite build succeed.
 
 ## 4. Communication Tips
