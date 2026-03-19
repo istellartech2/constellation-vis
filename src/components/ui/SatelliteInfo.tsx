@@ -16,6 +16,12 @@ import {
 import { Button } from "./button";
 import type { SatelliteCameraMode } from "../../lib/visualization";
 
+const CAMERA_VIEW_OPTIONS: { mode: SatelliteCameraMode; label: string }[] = [
+  { mode: "free", label: "全体" },
+  { mode: "earthCenter", label: "地球中心" },
+  { mode: "thirdPerson", label: "後方追跡" },
+];
+
 interface Props {
   satellites: SatelliteSpec[];
   selectedIdx: number | null;
@@ -164,12 +170,6 @@ export default function SatelliteInfo({
     { label: "次の日照復帰まで", value: formatDurationMinutes(derived.timeToNextSunlightReturnMinutes) },
   ] : [];
 
-  const cameraViewOptions: { mode: SatelliteCameraMode; label: string }[] = [
-    { mode: "free", label: "全体" },
-    { mode: "earthCenter", label: "地球中心" },
-    { mode: "thirdPerson", label: "後方追跡" },
-  ];
-
   return (
     <div
       style={{
@@ -194,76 +194,74 @@ export default function SatelliteInfo({
         pointerEvents: "none",
       }}
     >
-      <div style={{ pointerEvents: "none" }}>
-        <Section title="基本情報" rows={metaRows} />
-        <Section title="軌道要素" rows={orbitalRows} />
-        {showDerivedInfo && <Section title="運用指標" rows={derivedRows} />}
-        {showPerturbation && (
-          <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid rgba(255, 255, 255, 0.15)" }}>
-            <div
-              style={{
-                fontSize: "0.76rem",
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-                color: "#9ca3af",
-                marginBottom: 4,
-              }}
-            >
-              摂動
-            </div>
-            {(() => {
-              const detailedRates = calculateDetailedPerturbationRates({
-                semiMajorAxisKm: e.semiMajorAxisKm,
-                eccentricity: e.eccentricity,
-                inclinationDeg: e.inclinationDeg,
-                raanDeg: e.raanDeg,
-                argPerigeeDeg: e.argPerigeeDeg,
-                meanAnomalyDeg: e.meanAnomalyDeg,
-              });
-
-              const j2Rates = formatJ2PerturbationRates(detailedRates.j2);
-              const j3Rates = formatJ3PerturbationRates(detailedRates.j3);
-
-              return (
-                <>
-                  {j2Rates.length > 0 && (
-                    <div style={{ marginTop: 6 }}>
-                      <div style={{ fontSize: "0.8em", color: "#999", marginBottom: 2 }}>J₂項</div>
-                      {j2Rates.map((rate, index) => (
-                        <div key={index} style={{ fontSize: "0.85em", paddingLeft: 10, display: "flex", alignItems: "center", gap: 4 }}>
-                          <span dangerouslySetInnerHTML={{ __html: renderMath(rate.latex) }} />
-                          <span>: {rate.value}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {j3Rates.length > 0 && (
-                    <div style={{ marginTop: 6 }}>
-                      <div style={{ fontSize: "0.8em", color: "#999", marginBottom: 2 }}>J₃項</div>
-                      {j3Rates.map((rate, index) => (
-                        <div key={index} style={{ fontSize: "0.85em", paddingLeft: 10, display: "flex", alignItems: "center", gap: 4 }}>
-                          <span dangerouslySetInnerHTML={{ __html: renderMath(rate.latex) }} />
-                          <span>: {rate.value}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              );
-            })()}
+      <Section title="基本情報" rows={metaRows} />
+      <Section title="軌道要素" rows={orbitalRows} />
+      {showDerivedInfo && <Section title="運用指標" rows={derivedRows} />}
+      {showPerturbation && (
+        <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid rgba(255, 255, 255, 0.15)" }}>
+          <div
+            style={{
+              fontSize: "0.76rem",
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              color: "#9ca3af",
+              marginBottom: 4,
+            }}
+          >
+            摂動
           </div>
-        )}
-        <div
-          style={{
-            marginTop: 8,
-            paddingTop: 8,
-            borderTop: "1px solid rgba(255, 255, 255, 0.08)",
-            fontSize: "0.76rem",
-            color: "#9ca3af",
-          }}
-        >
-          現在時刻: {simTime.toISOString().slice(0, 16).replace("T", " ")} UTC
+          {(() => {
+            const detailedRates = calculateDetailedPerturbationRates({
+              semiMajorAxisKm: e.semiMajorAxisKm,
+              eccentricity: e.eccentricity,
+              inclinationDeg: e.inclinationDeg,
+              raanDeg: e.raanDeg,
+              argPerigeeDeg: e.argPerigeeDeg,
+              meanAnomalyDeg: e.meanAnomalyDeg,
+            });
+
+            const j2Rates = formatJ2PerturbationRates(detailedRates.j2);
+            const j3Rates = formatJ3PerturbationRates(detailedRates.j3);
+
+            return (
+              <>
+                {j2Rates.length > 0 && (
+                  <div style={{ marginTop: 6 }}>
+                    <div style={{ fontSize: "0.8em", color: "#999", marginBottom: 2 }}>J₂項</div>
+                    {j2Rates.map((rate, index) => (
+                      <div key={index} style={{ fontSize: "0.85em", paddingLeft: 10, display: "flex", alignItems: "center", gap: 4 }}>
+                        <span dangerouslySetInnerHTML={{ __html: renderMath(rate.latex) }} />
+                        <span>: {rate.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {j3Rates.length > 0 && (
+                  <div style={{ marginTop: 6 }}>
+                    <div style={{ fontSize: "0.8em", color: "#999", marginBottom: 2 }}>J₃項</div>
+                    {j3Rates.map((rate, index) => (
+                      <div key={index} style={{ fontSize: "0.85em", paddingLeft: 10, display: "flex", alignItems: "center", gap: 4 }}>
+                        <span dangerouslySetInnerHTML={{ __html: renderMath(rate.latex) }} />
+                        <span>: {rate.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
+      )}
+      <div
+        style={{
+          marginTop: 8,
+          paddingTop: 8,
+          borderTop: "1px solid rgba(255, 255, 255, 0.08)",
+          fontSize: "0.76rem",
+          color: "#9ca3af",
+        }}
+      >
+        現在時刻: {simTime.toISOString().slice(0, 16).replace("T", " ")} UTC
       </div>
       <div
         style={{
@@ -295,7 +293,7 @@ export default function SatelliteInfo({
             border: "1px solid rgba(255, 255, 255, 0.08)",
           }}
         >
-          {cameraViewOptions.map((option) => {
+          {CAMERA_VIEW_OPTIONS.map((option) => {
             const selected = cameraMode === option.mode;
             return (
               <Button
