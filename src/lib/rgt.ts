@@ -146,7 +146,7 @@ function solveSemiMajorAxis(
   const maxA = (RE_KM + maxAltitudeKm) * 1000;
 
   const aGuess = Math.min(Math.max(guessKm * 1000, minA), maxA);
-  let fGuess = evaluateF(aGuess, e, iRad, tau);
+  const fGuess = evaluateF(aGuess, e, iRad, tau);
   if (fGuess === null || !Number.isFinite(fGuess)) return null;
   if (Math.abs(fGuess) < 1e-12) return aGuess / 1000;
 

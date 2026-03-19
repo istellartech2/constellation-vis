@@ -1,4 +1,3 @@
-import { describe, expect, it } from "vitest";
 import {
   BLUE_MARBLE_EARTH_MODE,
   EARTH_TEXTURE_OPTIONS,

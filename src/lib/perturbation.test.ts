@@ -3,7 +3,6 @@
  * Test data generated using Python calculations with the same formulas
  */
 
-import { describe, it, expect } from 'vitest';
 import { calculateDetailedPerturbationRates, formatJ2PerturbationRates, formatJ3PerturbationRates } from './perturbation';
 
 // Test data generated using Python script

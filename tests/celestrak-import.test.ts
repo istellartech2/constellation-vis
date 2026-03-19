@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, mock, afterEach } from 'bun:test';
 import { getCelestrakUrl, celestrakEntryToSat, CELESTRAK_GROUP_URLS } from '../src/utils/celestrakUtils';
 import type { CelestrakEntry } from '../src/utils/celestrakUtils';
 
@@ -91,9 +91,9 @@ describe('CelesTrak Import Functionality', () => {
   describe('CelesTrak API Integration', () => {
     const originalFetch = global.fetch;
 
-    beforeEach(() => {
-      vi.clearAllMocks();
-    });
+    const mockFetch = (impl: () => Promise<unknown>) => {
+      global.fetch = mock(impl) as unknown as typeof fetch;
+    };
 
     afterEach(() => {
       global.fetch = originalFetch;
@@ -114,10 +114,12 @@ describe('CelesTrak Import Functionality', () => {
         }
       ];
 
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(mockResponse)
-      });
+      mockFetch(() =>
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(mockResponse)
+        })
+      );
 
       const url = getCelestrakUrl('starlink');
       const response = await fetch(url);
@@ -128,11 +130,13 @@ describe('CelesTrak Import Functionality', () => {
     });
 
     it('should handle API errors gracefully', async () => {
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: false,
-        status: 404,
-        statusText: 'Not Found'
-      });
+      mockFetch(() =>
+        Promise.resolve({
+          ok: false,
+          status: 404,
+          statusText: 'Not Found'
+        })
+      );
 
       const url = getCelestrakUrl('invalid-group');
       const response = await fetch(url);
@@ -142,10 +146,10 @@ describe('CelesTrak Import Functionality', () => {
     });
 
     it('should handle network errors', async () => {
-      global.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
+      mockFetch(() => Promise.reject(new Error('Network error')));
 
       const url = getCelestrakUrl('starlink');
-      
+
       await expect(fetch(url)).rejects.toThrow('Network error');
     });
   });

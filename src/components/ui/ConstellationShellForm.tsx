@@ -39,7 +39,7 @@ export default function ConstellationShellForm({ shell, errors, onChange }: Prop
       setRgtRepeatOrbits(suggestion.repeatOrbits);
       setRgtRepeatDays(suggestion.repeatDays);
     }
-  }, [shell.id]);
+  }, [shell.id, shell.apogee_altitude, shell.inclination, shell.eccentricity]);
 
   useEffect(() => {
     setRgtOpen(false);
