@@ -6,6 +6,7 @@ import { SATELLITES as INITIAL_SATS } from "./lib/satellites";
 import { loadGroundStations, type GroundStation } from "./lib/groundStations";
 import SatelliteInfo from "./components/ui/SatelliteInfo";
 import { formatGroundStationInfo } from "./lib/formatGroundStationInfo";
+import { type EarthTextureMode } from "./lib/earthTextures";
 
 /**
  * Top level React component hosting the visualization. It sets up
@@ -32,7 +33,7 @@ function App() {
     window.innerWidth <= 600 ? 0.02 : 0.015,
   );
 
-  const [earthTexture, setEarthTexture] = useState("./assets/earth01.webp");
+  const [earthTexture, setEarthTexture] = useState<EarthTextureMode>("./assets/earth01.webp");
   const [showGraticule, setShowGraticule] = useState(true);
   const [showEcliptic, setShowEcliptic] = useState(true);
   const [showSunDirection, setShowSunDirection] = useState(true);

@@ -16,6 +16,11 @@ import {
 import { KMLRenderer } from "./kmlRenderer";
 import { loadKMLFromURL } from "./kml";
 import { computeFovConeQuaternion, computeTiltedConeHeight } from "./orbitalCoordinates";
+import {
+  isLayeredEarthMode,
+  resolveLayeredEarthAssets,
+  type EarthTextureMode,
+} from "./earthTextures";
 
 /** Equatorial and polar radii of Earth in kilometres. */
 const EARTH_RADIUS_EQUATOR_KM = 6378.137;
@@ -30,6 +35,10 @@ const DOWN_AXIS = new THREE.Vector3(0, -1, 0);
 const UP_AXIS = new THREE.Vector3(0, 1, 0);
 const POINTER_DRAG_THRESHOLD_PX = 5;
 
+type EarthAnimationBinding = {
+  sunDirectionUniform?: THREE.Vector3;
+};
+
 export interface SatelliteSceneParams {
   mountRef: React.RefObject<HTMLDivElement | null>;
   timeRef: React.RefObject<HTMLDivElement | null>;
@@ -38,7 +47,7 @@ export interface SatelliteSceneParams {
   satellites: SatelliteSpec[];
   groundStations: GroundStation[];
   satRadius: number;
-  earthTexture: string;
+  earthTexture: EarthTextureMode;
   showGraticule: boolean;
   showEcliptic: boolean;
   showSunDirection: boolean;
@@ -87,7 +96,9 @@ export default class SatelliteScene {
   private readonly groundConeColor: THREE.Color;
   private readonly linkGeometries: THREE.BufferGeometry[][];
   private readonly linkLines: THREE.Line[][];
-  private readonly earthMesh: THREE.Mesh;
+  private readonly earthGroup: THREE.Group;
+  private readonly earthResourceDisposers: (() => void)[];
+  private readonly earthAnimationBindings: EarthAnimationBinding[];
   private readonly graticule: THREE.LineSegments;
   private readonly ecliptic: THREE.Line;
   private readonly sunDot: THREE.Mesh;
@@ -160,9 +171,16 @@ export default class SatelliteScene {
     this.controls.enablePan = false;
     this.controls.enableDamping = true;
 
-    this.ambientLight = new THREE.AmbientLight(0xffffff, params.brightEarth ? 1.5 : 0.2);
+    const useLayeredEarth = isLayeredEarthMode(params.earthTexture);
+    this.ambientLight = new THREE.AmbientLight(
+      0xffffff,
+      params.brightEarth ? 1.5 : useLayeredEarth ? 0.28 : 0.2,
+    );
     this.scene.add(this.ambientLight);
-    this.sunlight = new THREE.DirectionalLight(0xffffff, params.brightEarth ? 0 : 1.5);
+    this.sunlight = new THREE.DirectionalLight(
+      0xffffff,
+      params.brightEarth ? 0 : useLayeredEarth ? 1.62 : 1.5,
+    );
     this.scene.add(this.sunlight);
 
     this.groundConeColor = new THREE.Color(this.params.groundConeColor);
@@ -173,13 +191,12 @@ export default class SatelliteScene {
     const minHeight = Math.max(this.params.fovConeMinHeight, 0.001);
     this.fovConeMinHeight = minHeight;
 
-    const earthGeometry = new THREE.SphereGeometry(1, 128, 128);
-    const texture = new THREE.TextureLoader().load(this.params.earthTexture);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    const earthMaterial = new THREE.MeshPhongMaterial({ map: texture, shininess: 1 });
-    this.earthMesh = new THREE.Mesh(earthGeometry, earthMaterial);
-    this.earthMesh.scale.set(1, EARTH_FLATTENING, 1);
-    this.scene.add(this.earthMesh);
+    const earth = this.createEarth();
+    this.earthGroup = earth.group;
+    this.earthResourceDisposers = earth.disposeFns;
+    this.earthAnimationBindings = earth.animatedMaterials;
+    this.earthGroup.scale.set(1, EARTH_FLATTENING, 1);
+    this.scene.add(this.earthGroup);
 
     this.graticule = createGraticule(20, 0.001);
     this.graticule.visible = this.params.showGraticule;
@@ -528,7 +545,7 @@ export default class SatelliteScene {
     }
 
     const rotAngle = satellite.gstime(simDate);
-    this.earthMesh.rotation.y = rotAngle;
+    this.earthGroup.rotation.y = rotAngle;
     this.graticule.rotation.y = rotAngle;
     this.kmlRenderer.updateRotation(rotAngle);
     this.cameraHolder.rotation.y = this.params.ecef ? rotAngle : 0;
@@ -536,6 +553,9 @@ export default class SatelliteScene {
     const { x: sx, y: sy, z: sz } = sunVectorECI(simDate);
     this.sunlight.position.set(sx * 10, sz * 10, -sy * 10);
     this.sunDot.position.set(sx, sz, -sy);
+    for (const entry of this.earthAnimationBindings) {
+      entry.sunDirectionUniform?.set(sx, sz, -sy);
+    }
 
     const gmst = rotAngle;
     const observerGds = this.params.groundStations.map((gs) => ({
@@ -800,14 +820,7 @@ export default class SatelliteScene {
     this.linkMaterial.dispose();
     
     // Dispose earth mesh
-    this.earthMesh.geometry.dispose();
-    if (this.earthMesh.material instanceof THREE.Material) {
-      this.earthMesh.material.dispose();
-      const mat = this.earthMesh.material as THREE.MeshPhongMaterial;
-      if (mat.map) {
-        mat.map.dispose();
-      }
-    }
+    this.earthResourceDisposers.forEach((dispose) => dispose());
     
     // Dispose graticule, ecliptic, and sun dot
     this.graticule.geometry.dispose();
@@ -838,5 +851,277 @@ export default class SatelliteScene {
     if (this.params.mountRef.current && this.params.mountRef.current.contains(this.renderer.domElement)) {
       this.params.mountRef.current.removeChild(this.renderer.domElement);
     }
+  }
+
+  private createEarth() {
+    const group = new THREE.Group();
+    const geometry = new THREE.SphereGeometry(1, 128, 128);
+    const textureLoader = new THREE.TextureLoader();
+    const disposeFns: (() => void)[] = [];
+    const animatedMaterials: EarthAnimationBinding[] = [];
+
+    const loadTexture = (
+      path: string,
+      colorSpace: THREE.ColorSpace = THREE.NoColorSpace,
+    ) => {
+      const texture = textureLoader.load(path);
+      texture.colorSpace = colorSpace;
+      texture.anisotropy = Math.min(this.renderer.capabilities.getMaxAnisotropy(), 8);
+      disposeFns.push(() => texture.dispose());
+      return texture;
+    };
+
+    const layeredEarthMode = isLayeredEarthMode(this.params.earthTexture)
+      ? this.params.earthTexture
+      : null;
+    const layeredAssets = layeredEarthMode
+      ? resolveLayeredEarthAssets(layeredEarthMode, this.renderer.capabilities.maxTextureSize)
+      : null;
+
+    const surfaceMesh = layeredAssets
+      ? this.createLayeredEarthSurface(geometry, group, layeredAssets, loadTexture)
+      : this.createBasicEarthSurface(geometry, group, loadTexture);
+
+    if (layeredAssets) {
+      const cloudMesh = this.createEarthClouds(geometry, group, layeredAssets, loadTexture);
+      if (cloudMesh) {
+        disposeFns.push(() => {
+          cloudMesh!.geometry.dispose();
+          (cloudMesh!.material as THREE.Material).dispose();
+        });
+      }
+      const nightLights = this.createNightLights(geometry, group, layeredAssets, loadTexture);
+      disposeFns.push(() => {
+        nightLights.geometry.dispose();
+        (nightLights.material as THREE.Material).dispose();
+      });
+      animatedMaterials.push(nightLights.userData.shaderEntry);
+
+      const atmosphere = this.createAtmosphere(geometry, group);
+      const atmosphereOuter = atmosphere.userData.companion as THREE.Mesh | undefined;
+      disposeFns.push(() => {
+        atmosphere.geometry.dispose();
+        (atmosphere.material as THREE.Material).dispose();
+        if (atmosphereOuter) {
+          atmosphereOuter.geometry.dispose();
+          (atmosphereOuter.material as THREE.Material).dispose();
+        }
+      });
+      animatedMaterials.push(atmosphere.userData.shaderEntry);
+      if (atmosphereOuter) {
+        animatedMaterials.push(atmosphereOuter.userData.shaderEntry);
+      }
+    }
+
+    disposeFns.unshift(() => {
+      surfaceMesh.geometry.dispose();
+      (surfaceMesh.material as THREE.Material).dispose();
+    });
+
+    return {
+      group,
+      disposeFns,
+      animatedMaterials,
+    };
+  }
+
+  private createBasicEarthSurface(
+    geometry: THREE.SphereGeometry,
+    group: THREE.Group,
+    loadTexture: (path: string, colorSpace?: THREE.ColorSpace) => THREE.Texture,
+  ) {
+    const texture = loadTexture(this.params.earthTexture, THREE.SRGBColorSpace);
+    const material = new THREE.MeshPhongMaterial({ map: texture, shininess: 1 });
+    const mesh = new THREE.Mesh(geometry, material);
+    group.add(mesh);
+    return mesh;
+  }
+
+  private createLayeredEarthSurface(
+    geometry: THREE.SphereGeometry,
+    group: THREE.Group,
+    assets: ReturnType<typeof resolveLayeredEarthAssets>,
+    loadTexture: (path: string, colorSpace?: THREE.ColorSpace) => THREE.Texture,
+  ) {
+    const dayMap = loadTexture(assets.dayMap, THREE.SRGBColorSpace);
+    const normalMap = loadTexture(assets.normalMap);
+    const oceanMask = loadTexture(assets.oceanMask);
+    const material = new THREE.MeshPhongMaterial({
+      map: dayMap,
+      emissive: new THREE.Color("#394754"),
+      emissiveMap: dayMap,
+      emissiveIntensity: this.params.brightEarth ? 0.04 : 0.1,
+      normalMap,
+      normalScale: new THREE.Vector2(0.32, 0.32),
+      specularMap: oceanMask,
+      specular: new THREE.Color("#1e2833"),
+      shininess: 85,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    group.add(mesh);
+    return mesh;
+  }
+
+  private createEarthClouds(
+    baseGeometry: THREE.SphereGeometry,
+    group: THREE.Group,
+    assets: ReturnType<typeof resolveLayeredEarthAssets>,
+    loadTexture: (path: string, colorSpace?: THREE.ColorSpace) => THREE.Texture,
+  ) {
+    const geometry = baseGeometry.clone();
+    const cloudMap = loadTexture(assets.cloudsMap, THREE.SRGBColorSpace);
+    const material = new THREE.MeshPhongMaterial({
+      color: 0xfafcff,
+      map: cloudMap,
+      alphaMap: cloudMap,
+      transparent: true,
+      opacity: this.params.brightEarth ? 0.24 : 0.62,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      shininess: 8,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.scale.setScalar(1.008);
+    group.add(mesh);
+    return mesh;
+  }
+
+  private createNightLights(
+    baseGeometry: THREE.SphereGeometry,
+    group: THREE.Group,
+    assets: ReturnType<typeof resolveLayeredEarthAssets>,
+    loadTexture: (path: string, colorSpace?: THREE.ColorSpace) => THREE.Texture,
+  ) {
+    const geometry = baseGeometry.clone();
+    const lightsMap = loadTexture(assets.lightsMap, THREE.SRGBColorSpace);
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        lightsMap: { value: lightsMap },
+        sunDirection: { value: new THREE.Vector3(1, 0, 0) },
+        intensity: { value: this.params.brightEarth ? 0.16 : 0.95 },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        varying vec3 vWorldNormal;
+
+        void main() {
+          vUv = uv;
+          vWorldNormal = normalize(mat3(modelMatrix) * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D lightsMap;
+        uniform vec3 sunDirection;
+        uniform float intensity;
+        varying vec2 vUv;
+        varying vec3 vWorldNormal;
+
+        void main() {
+          vec3 mapColor = texture2D(lightsMap, vUv).rgb;
+          float diffuse = dot(normalize(vWorldNormal), normalize(sunDirection));
+          float nightMask = 1.0 - smoothstep(0.02, 0.42, diffuse);
+          float luminance = dot(mapColor, vec3(0.299, 0.587, 0.114));
+          float boosted = pow(luminance, 0.68);
+          float alpha = boosted * nightMask * intensity;
+          gl_FragColor = vec4(mapColor * nightMask * intensity * 1.08, alpha);
+        }
+      `,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.scale.setScalar(1.001);
+    mesh.userData.shaderEntry = {
+      sunDirectionUniform: material.uniforms.sunDirection.value as THREE.Vector3,
+    };
+    group.add(mesh);
+    return mesh;
+  }
+
+  private createAtmosphere(baseGeometry: THREE.SphereGeometry, group: THREE.Group) {
+    const outer = this.createAtmosphereLayer(baseGeometry, group, {
+      side: THREE.BackSide,
+      scale: 1.055,
+      glowStrength: this.params.brightEarth ? 0.14 : 0.22,
+      sunFloor: 0.22,
+      fresnelPower: 2.6,
+      color: "#4f97ff",
+    });
+    const inner = this.createAtmosphereLayer(baseGeometry, group, {
+      side: THREE.FrontSide,
+      scale: 1.016,
+      glowStrength: this.params.brightEarth ? 0.045 : 0.08,
+      sunFloor: 0.32,
+      fresnelPower: 1.35,
+      color: "#a8d4ff",
+    });
+    inner.userData.companion = outer;
+    return inner;
+  }
+
+  private createAtmosphereLayer(
+    baseGeometry: THREE.SphereGeometry,
+    group: THREE.Group,
+    options: {
+      side: THREE.Side;
+      scale: number;
+      glowStrength: number;
+      sunFloor: number;
+      fresnelPower: number;
+      color: string;
+    },
+  ) {
+    const geometry = baseGeometry.clone();
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        sunDirection: { value: new THREE.Vector3(1, 0, 0) },
+        glowStrength: { value: options.glowStrength },
+        atmosphereColor: { value: new THREE.Color(options.color) },
+        sunFloor: { value: options.sunFloor },
+        fresnelPower: { value: options.fresnelPower },
+      },
+      vertexShader: `
+        varying vec3 vWorldPosition;
+        varying vec3 vWorldNormal;
+
+        void main() {
+          vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+          vWorldPosition = worldPosition.xyz;
+          vWorldNormal = normalize(mat3(modelMatrix) * normal);
+          gl_Position = projectionMatrix * viewMatrix * worldPosition;
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 sunDirection;
+        uniform vec3 atmosphereColor;
+        uniform float glowStrength;
+        uniform float sunFloor;
+        uniform float fresnelPower;
+        varying vec3 vWorldPosition;
+        varying vec3 vWorldNormal;
+
+        void main() {
+          vec3 normalDir = normalize(vWorldNormal);
+          vec3 viewDir = normalize(cameraPosition - vWorldPosition);
+          float fresnel = pow(1.0 - max(dot(viewDir, normalDir), 0.0), fresnelPower);
+          float sunAmount = sunFloor + (1.0 - sunFloor) * max(dot(normalDir, normalize(sunDirection)), 0.0);
+          float alpha = fresnel * sunAmount * glowStrength;
+          gl_FragColor = vec4(atmosphereColor * alpha, alpha);
+        }
+      `,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      side: options.side,
+      depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.scale.setScalar(options.scale);
+    mesh.userData.shaderEntry = {
+      sunDirectionUniform: material.uniforms.sunDirection.value as THREE.Vector3,
+    };
+    group.add(mesh);
+    return mesh;
   }
 }

@@ -1,23 +1,14 @@
 import type { FC, CSSProperties } from "react";
-
-interface Option {
-  label: string;
-  value: string;
-}
+import {
+  EARTH_TEXTURE_OPTIONS,
+  type EarthTextureMode,
+} from "../../lib/earthTextures";
 
 interface Props {
-  value: string;
-  onChange: (v: string) => void;
+  value: EarthTextureMode;
+  onChange: (v: EarthTextureMode) => void;
   style?: CSSProperties;
 }
-
-const TEXTURE_OPTIONS: Option[] = [
-  { label: "Base", value: "./assets/earth01.webp" },
-  { label: "Simple", value: "./assets/earth02.webp" },
-  { label: "Pale", value: "./assets/earth03.webp" },
-  { label: "Blue Marbel", value: "./assets/earth04.webp" },
-  { label: "High Resolution", value: "./assets/earth05_highres.webp" },
-];
 
 const EarthTextureSelector: FC<Props> = ({ value, onChange, style }) => (
   <div className="sat-size-control" style={style}>
@@ -25,9 +16,9 @@ const EarthTextureSelector: FC<Props> = ({ value, onChange, style }) => (
     <select
       id="earth-texture-select"
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(e) => onChange(e.target.value as EarthTextureMode)}
     >
-      {TEXTURE_OPTIONS.map((o) => (
+      {EARTH_TEXTURE_OPTIONS.map((o) => (
         <option key={o.value} value={o.value}>
           {o.label}
         </option>

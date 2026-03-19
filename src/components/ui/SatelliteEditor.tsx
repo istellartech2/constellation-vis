@@ -19,6 +19,7 @@ import { validateSatellites, validateGroundStations } from "../../utils/validato
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./tabs";
 import { Button } from "./button";
 import { X } from "lucide-react";
+import type { EarthTextureMode } from "../../lib/earthTextures";
 
 /**
  * Editor side panel allowing the user to load, edit and save TOML files
@@ -43,9 +44,9 @@ interface Props {
   /** Called when satellite size is changed */
   onSatRadiusChange: (r: number) => void;
   /** Current earth texture URL */
-  earthTexture: string;
+  earthTexture: EarthTextureMode;
   /** Called when earth texture is changed */
-  onEarthTextureChange: (t: string) => void;
+  onEarthTextureChange: (t: EarthTextureMode) => void;
   /** Show or hide graticule */
   showGraticule: boolean;
   /** Called when graticule visibility changes */

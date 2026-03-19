@@ -6,14 +6,15 @@ import { Label } from "./label";
 import { Button } from "./button";
 import { FileInput, Trash2, ChevronDown } from "lucide-react";
 import type SatelliteScene from "../../lib/visualization";
+import type { EarthTextureMode } from "../../lib/earthTextures";
 
 const EARTH_RADIUS_KM = 6378.137;
 
 interface Props {
   satRadius: number;
   onSatRadiusChange: (r: number) => void;
-  earthTexture: string;
-  onEarthTextureChange: (t: string) => void;
+  earthTexture: EarthTextureMode;
+  onEarthTextureChange: (t: EarthTextureMode) => void;
   showGraticule: boolean;
   onShowGraticuleChange: (v: boolean) => void;
   showEcliptic: boolean;
