@@ -45,13 +45,110 @@ export interface DetailedPerturbationRates {
   total: PerturbationRates;
 }
 
+export interface AtmosphereModelInput {
+  model?: "exponential" | "harris-priester";
+  referenceAltitudeKm?: number;
+  scaleHeightKm?: number;
+  referenceDensityKgPerM3?: number;
+  densityMultiplier?: number;
+  lowOrbitLimitKm?: number;
+  f107?: number;
+  ap?: number;
+  diurnalBulgeFactor?: number;
+}
+
+const DEFAULT_ATMOSPHERE_MODEL: Required<AtmosphereModelInput> = {
+  model: "exponential",
+  referenceAltitudeKm: 400,
+  scaleHeightKm: 60,
+  referenceDensityKgPerM3: 1e-12,
+  densityMultiplier: 1,
+  lowOrbitLimitKm: 1000,
+  f107: 150,
+  ap: 15,
+  diurnalBulgeFactor: 0.5,
+};
+
+const HP_DENSITY_TABLE: Array<{ altitudeKm: number; densityKgPerM3: number }> = [
+  { altitudeKm: 150, densityKgPerM3: 2.07e-9 },
+  { altitudeKm: 180, densityKgPerM3: 5.46e-10 },
+  { altitudeKm: 200, densityKgPerM3: 2.79e-10 },
+  { altitudeKm: 250, densityKgPerM3: 7.25e-11 },
+  { altitudeKm: 300, densityKgPerM3: 2.42e-11 },
+  { altitudeKm: 350, densityKgPerM3: 9.52e-12 },
+  { altitudeKm: 400, densityKgPerM3: 4.07e-12 },
+  { altitudeKm: 450, densityKgPerM3: 1.95e-12 },
+  { altitudeKm: 500, densityKgPerM3: 9.91e-13 },
+  { altitudeKm: 600, densityKgPerM3: 3.18e-13 },
+  { altitudeKm: 700, densityKgPerM3: 1.39e-13 },
+  { altitudeKm: 800, densityKgPerM3: 6.87e-14 },
+  { altitudeKm: 900, densityKgPerM3: 3.95e-14 },
+  { altitudeKm: 1000, densityKgPerM3: 2.42e-14 },
+  { altitudeKm: 1200, densityKgPerM3: 8.43e-15 },
+  { altitudeKm: 1500, densityKgPerM3: 2.05e-15 },
+];
+const HP_BASE_SCALE = 0.0003;
+
+function normalizeAtmosphereModel(input?: AtmosphereModelInput): Required<AtmosphereModelInput> {
+  return {
+    model: input?.model ?? DEFAULT_ATMOSPHERE_MODEL.model,
+    referenceAltitudeKm: input?.referenceAltitudeKm ?? DEFAULT_ATMOSPHERE_MODEL.referenceAltitudeKm,
+    scaleHeightKm: Math.max(input?.scaleHeightKm ?? DEFAULT_ATMOSPHERE_MODEL.scaleHeightKm, 1),
+    referenceDensityKgPerM3: Math.max(
+      input?.referenceDensityKgPerM3 ?? DEFAULT_ATMOSPHERE_MODEL.referenceDensityKgPerM3,
+      1e-18,
+    ),
+    densityMultiplier: Math.max(input?.densityMultiplier ?? DEFAULT_ATMOSPHERE_MODEL.densityMultiplier, 0),
+    lowOrbitLimitKm: Math.max(input?.lowOrbitLimitKm ?? DEFAULT_ATMOSPHERE_MODEL.lowOrbitLimitKm, 100),
+    f107: Math.max(input?.f107 ?? DEFAULT_ATMOSPHERE_MODEL.f107, 50),
+    ap: Math.max(input?.ap ?? DEFAULT_ATMOSPHERE_MODEL.ap, 0),
+    diurnalBulgeFactor: Math.max(input?.diurnalBulgeFactor ?? DEFAULT_ATMOSPHERE_MODEL.diurnalBulgeFactor, 0),
+  };
+}
+
+function interpolateLogDensity(altitudeKm: number): number {
+  if (altitudeKm <= HP_DENSITY_TABLE[0].altitudeKm) return HP_DENSITY_TABLE[0].densityKgPerM3;
+  const last = HP_DENSITY_TABLE[HP_DENSITY_TABLE.length - 1];
+  if (altitudeKm >= last.altitudeKm) return last.densityKgPerM3;
+
+  const upperIndex = HP_DENSITY_TABLE.findIndex((entry) => entry.altitudeKm >= altitudeKm);
+  const lower = HP_DENSITY_TABLE[Math.max(upperIndex - 1, 0)];
+  const upper = HP_DENSITY_TABLE[upperIndex];
+  const ratio = (altitudeKm - lower.altitudeKm) / Math.max(upper.altitudeKm - lower.altitudeKm, 1);
+  const logLower = Math.log(lower.densityKgPerM3);
+  const logUpper = Math.log(upper.densityKgPerM3);
+  return Math.exp(logLower + (logUpper - logLower) * ratio);
+}
+
+function calculateHarrisPriesterDensity(altitudeKm: number, input: Required<AtmosphereModelInput>): number {
+  const baseDensity = interpolateLogDensity(altitudeKm) * HP_BASE_SCALE;
+  const solarFactor = Math.max(0.35, 1 + 0.004 * (input.f107 - 150));
+  const geomagneticFactor = 1 + 0.02 * Math.sqrt(input.ap);
+  const diurnalFactor = 0.85 + 0.3 * input.diurnalBulgeFactor;
+  return baseDensity * solarFactor * geomagneticFactor * diurnalFactor * input.densityMultiplier;
+}
+
+export function calculateAtmosphericDensity(
+  altitudeKm: number,
+  atmosphereModel?: AtmosphereModelInput,
+): number {
+  const normalized = normalizeAtmosphereModel(atmosphereModel);
+  if (normalized.model === "harris-priester") {
+    return calculateHarrisPriesterDensity(altitudeKm, normalized);
+  }
+  return normalized.referenceDensityKgPerM3
+    * normalized.densityMultiplier
+    * Math.exp(-(altitudeKm - normalized.referenceAltitudeKm) / normalized.scaleHeightKm);
+}
+
 /**
  * Calculate perturbation rates for a given set of orbital elements.
  * Returns detailed breakdown by perturbation source.
  */
 export function calculateDetailedPerturbationRates(
   elements: OrbitalElements,
-  ballisticCoefficient: number = 0.012 // CdA/m in m²/kg
+  ballisticCoefficient: number = 0.012,
+  atmosphereModel?: AtmosphereModelInput,
 ): DetailedPerturbationRates {
   const a = elements.semiMajorAxisKm * 1000; // Convert to meters
   const e = elements.eccentricity;
@@ -84,17 +181,13 @@ export function calculateDetailedPerturbationRates(
   // Atmospheric drag (simplified model)
   let da_dt_m = 0;
   let de_dt_drag = 0;
+  const normalizedAtmosphere = normalizeAtmosphereModel(atmosphereModel);
   
   // Only apply drag for low orbits
   const perigeeAltitude = a * (1 - e) - RE;
-  if (perigeeAltitude < 1000000) { // Below 1000 km
-    // Simple exponential atmosphere model
-    const h0 = 400000; // Reference altitude (400 km)
-    const H = 60000; // Scale height (60 km)
-    const rho0 = 1e-12; // Reference density (kg/m³)
-    
-    const h = perigeeAltitude;
-    const rho = rho0 * Math.exp(-(h - h0) / H);
+  if (perigeeAltitude < normalizedAtmosphere.lowOrbitLimitKm * 1000) {
+    const hKm = perigeeAltitude / 1000;
+    const rho = calculateAtmosphericDensity(hKm, normalizedAtmosphere);
     
     // Orbital velocity approximation
     const v_rel = Math.sqrt(MU / a);
@@ -232,7 +325,8 @@ export function formatDragPerturbationRates(rates: PerturbationRates): string[] 
  */
 export function calculatePerturbationRates(
   elements: OrbitalElements,
-  ballisticCoefficient: number = 0.012
+  ballisticCoefficient: number = 0.012,
+  atmosphereModel?: AtmosphereModelInput,
 ): PerturbationRates {
-  return calculateDetailedPerturbationRates(elements, ballisticCoefficient).total;
+  return calculateDetailedPerturbationRates(elements, ballisticCoefficient, atmosphereModel).total;
 }

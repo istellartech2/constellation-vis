@@ -9,7 +9,12 @@
       "Bash(grep:*)",
       "Bash(bun scripts/generate-satellites.ts:*)",
       "Bash(bun -e:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(git add:*)",
+      "Bash(bun --version)",
+      "WebSearch",
+      "Bash(bun test:*)",
+      "Bash(bun add:*)"
     ],
     "deny": []
   }
