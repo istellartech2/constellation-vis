@@ -34,10 +34,22 @@ const FOV_CONE_SEGMENTS = 32;
 const DOWN_AXIS = new THREE.Vector3(0, -1, 0);
 const UP_AXIS = new THREE.Vector3(0, 1, 0);
 const POINTER_DRAG_THRESHOLD_PX = 5;
+const DEFAULT_CAMERA_POSITION = new THREE.Vector3(0, 0, 3);
+const DEFAULT_CAMERA_TARGET = new THREE.Vector3(0, 0, 0);
+const EARTH_CENTER_MIN_DISTANCE = 0.12;
+const EARTH_CENTER_MAX_DISTANCE = 1.8;
+const THIRDPERSON_MIN_DISTANCE = 0.12;
+const THIRDPERSON_MAX_DISTANCE = 1.8;
+const THIRDPERSON_DEFAULT_PITCH = THREE.MathUtils.degToRad(22);
+const THIRDPERSON_MIN_PITCH = THREE.MathUtils.degToRad(-70);
+const THIRDPERSON_MAX_PITCH = THREE.MathUtils.degToRad(82);
+const FOLLOW_LERP_ALPHA = 0.14;
 
 type EarthAnimationBinding = {
   sunDirectionUniform?: THREE.Vector3;
 };
+
+export type SatelliteCameraMode = "free" | "earthCenter" | "thirdPerson";
 
 export interface SatelliteSceneParams {
   mountRef: React.RefObject<HTMLDivElement | null>;
@@ -67,6 +79,7 @@ export interface SatelliteSceneParams {
   satelliteVisibleColor: string;
   satelliteHiddenColor: string;
   satelliteSelectedColor: string;
+  cameraMode: SatelliteCameraMode;
   /** Rotate the camera with the Earth to approximate an ECEF view */
   ecef: boolean;
   /** Show bright earth (uniform lighting) */
@@ -141,6 +154,20 @@ export default class SatelliteScene {
   private pointerDownX = 0;
   private pointerDownY = 0;
   private didDragDuringPointer = false;
+  private readonly followPosition = new THREE.Vector3();
+  private readonly followTarget = new THREE.Vector3();
+  private readonly followUp = new THREE.Vector3(0, 1, 0);
+  private readonly followBasis = new THREE.Vector3(0, 0, 1);
+  private readonly tempVectorA = new THREE.Vector3();
+  private readonly tempVectorB = new THREE.Vector3();
+  private readonly tempVectorC = new THREE.Vector3();
+  private readonly tempQuaternionA = new THREE.Quaternion();
+  private readonly tempQuaternionB = new THREE.Quaternion();
+  private readonly tempMatrix = new THREE.Matrix4();
+  private earthCenterDistance = 0.45;
+  private thirdPersonDistance = 0.4;
+  private thirdPersonPitch = THIRDPERSON_DEFAULT_PITCH;
+  private dragPitchActive = false;
 
   private params: SatelliteSceneParams;
 
@@ -170,6 +197,7 @@ export default class SatelliteScene {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enablePan = false;
     this.controls.enableDamping = true;
+    this.resetFreeCamera();
 
     const useLayeredEarth = isLayeredEarthMode(params.earthTexture);
     this.ambientLight = new THREE.AmbientLight(
@@ -352,12 +380,29 @@ export default class SatelliteScene {
       if (Math.hypot(dx, dy) > POINTER_DRAG_THRESHOLD_PX) {
         this.didDragDuringPointer = true;
       }
+      if (
+        this.params.cameraMode === "thirdPerson" &&
+        this.selectedIndex !== null
+      ) {
+        const nextPitch = this.thirdPersonPitch - dy * 0.0065;
+        this.thirdPersonPitch = THREE.MathUtils.clamp(
+          nextPitch,
+          THIRDPERSON_MIN_PITCH,
+          THIRDPERSON_MAX_PITCH,
+        );
+        this.pointerDownX = event.clientX;
+        this.pointerDownY = event.clientY;
+        this.dragPitchActive = true;
+      }
     };
 
     const handlePointerUp = (event: PointerEvent) => {
       if (!this.pointerDownActive || this.pointerDownId !== event.pointerId) return;
       const wasDrag = this.didDragDuringPointer;
       this.resetPointerInteraction();
+      if (this.dragPitchActive) {
+        this.dragPitchActive = false;
+      }
       if (wasDrag) return;
 
       getPointerNdc(event);
@@ -381,6 +426,28 @@ export default class SatelliteScene {
     const handlePointerCancel = (event: PointerEvent) => {
       if (this.pointerDownId !== event.pointerId) return;
       this.resetPointerInteraction();
+      this.dragPitchActive = false;
+    };
+
+    const handleWheel = (event: WheelEvent) => {
+      if (this.selectedIndex === null) return;
+      if (this.params.cameraMode === "earthCenter") {
+        event.preventDefault();
+        const nextDistance = this.earthCenterDistance * Math.exp(event.deltaY * 0.0012);
+        this.earthCenterDistance = THREE.MathUtils.clamp(
+          nextDistance,
+          EARTH_CENTER_MIN_DISTANCE,
+          EARTH_CENTER_MAX_DISTANCE,
+        );
+      } else if (this.params.cameraMode === "thirdPerson") {
+        event.preventDefault();
+        const nextDistance = this.thirdPersonDistance * Math.exp(event.deltaY * 0.0012);
+        this.thirdPersonDistance = THREE.MathUtils.clamp(
+          nextDistance,
+          THIRDPERSON_MIN_DISTANCE,
+          THIRDPERSON_MAX_DISTANCE,
+        );
+      }
     };
 
     this.renderer.domElement.addEventListener("pointerdown", handlePointerDown);
@@ -388,12 +455,14 @@ export default class SatelliteScene {
     this.renderer.domElement.addEventListener("pointerup", handlePointerUp);
     this.renderer.domElement.addEventListener("pointercancel", handlePointerCancel);
     this.renderer.domElement.addEventListener("pointerleave", handlePointerCancel);
+    this.renderer.domElement.addEventListener("wheel", handleWheel, { passive: false });
     this.disposeFns.push(() => {
       this.renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
       this.renderer.domElement.removeEventListener("pointermove", handlePointerMove);
       this.renderer.domElement.removeEventListener("pointerup", handlePointerUp);
       this.renderer.domElement.removeEventListener("pointercancel", handlePointerCancel);
       this.renderer.domElement.removeEventListener("pointerleave", handlePointerCancel);
+      this.renderer.domElement.removeEventListener("wheel", handleWheel);
     });
 
     this.startReal = Date.now();
@@ -410,10 +479,80 @@ export default class SatelliteScene {
     this.animate();
   }
 
+  setCameraMode(mode: SatelliteCameraMode) {
+    if (mode === this.params.cameraMode) return;
+    this.params.cameraMode = mode;
+    if (mode === "free") {
+      this.resetFreeCamera();
+      return;
+    }
+
+    const snapshot = this.getSelectedSatelliteSnapshot();
+    if (mode === "earthCenter" && snapshot) {
+      this.earthCenterDistance = this.getDefaultEarthCenterDistance(snapshot.position);
+    }
+    if (mode === "thirdPerson" && snapshot) {
+      this.thirdPersonDistance = this.getDefaultThirdPersonDistance(snapshot.position);
+      this.thirdPersonPitch = THIRDPERSON_DEFAULT_PITCH;
+      if (snapshot.velocity && snapshot.velocity.lengthSq() > 1e-8) {
+        this.followBasis.copy(snapshot.velocity).normalize();
+      }
+    }
+  }
+
   private resetPointerInteraction() {
     this.pointerDownActive = false;
     this.pointerDownId = null;
     this.didDragDuringPointer = false;
+  }
+
+  private resetFreeCamera() {
+    this.controls.enabled = true;
+    this.controls.target.copy(DEFAULT_CAMERA_TARGET);
+    this.camera.position.copy(DEFAULT_CAMERA_POSITION);
+    this.camera.up.copy(UP_AXIS);
+    this.camera.lookAt(DEFAULT_CAMERA_TARGET);
+    this.controls.update();
+  }
+
+  private getSelectedSatelliteSnapshot() {
+    if (this.selectedIndex === null) return null;
+    const rec = this.satRecs[this.selectedIndex];
+    const pv = satellite.propagate(rec, this.currentSimDate);
+    if (!pv?.position) return null;
+
+    const position = new THREE.Vector3(
+      pv.position.x / EARTH_RADIUS_EQUATOR_KM,
+      pv.position.z / EARTH_RADIUS_POLAR_KM,
+      -pv.position.y / EARTH_RADIUS_EQUATOR_KM,
+    );
+    const velocity = pv.velocity
+      ? new THREE.Vector3(
+          pv.velocity.x,
+          pv.velocity.z,
+          -pv.velocity.y,
+        ).multiplyScalar(1 / EARTH_RADIUS_EQUATOR_KM)
+      : null;
+
+    return { position, velocity };
+  }
+
+  private getDefaultEarthCenterDistance(selectedSatPosition: THREE.Vector3) {
+    const altitude = Math.max(selectedSatPosition.length() - 1, 0);
+    return THREE.MathUtils.clamp(
+      0.32 + altitude * 0.9,
+      EARTH_CENTER_MIN_DISTANCE,
+      EARTH_CENTER_MAX_DISTANCE,
+    );
+  }
+
+  private getDefaultThirdPersonDistance(selectedSatPosition: THREE.Vector3) {
+    const altitude = Math.max(selectedSatPosition.length() - 1, 0);
+    return THREE.MathUtils.clamp(
+      0.24 + altitude * 1.35,
+      THIRDPERSON_MIN_DISTANCE,
+      THIRDPERSON_MAX_DISTANCE,
+    );
   }
 
   private selectStation(idx: number | null) {
@@ -548,7 +687,8 @@ export default class SatelliteScene {
     this.earthGroup.rotation.y = rotAngle;
     this.graticule.rotation.y = rotAngle;
     this.kmlRenderer.updateRotation(rotAngle);
-    this.cameraHolder.rotation.y = this.params.ecef ? rotAngle : 0;
+    this.cameraHolder.rotation.y =
+      this.params.ecef && this.params.cameraMode === "free" ? rotAngle : 0;
 
     const { x: sx, y: sy, z: sz } = sunVectorECI(simDate);
     this.sunlight.position.set(sx * 10, sz * 10, -sy * 10);
@@ -577,6 +717,8 @@ export default class SatelliteScene {
     );
     const sinHalfAngle = Math.sin(halfAngleRad);
     const cosHalfAngle = Math.cos(halfAngleRad);
+    let selectedSatPosition: THREE.Vector3 | null = null;
+    let selectedSatVelocity: THREE.Vector3 | null = null;
 
     this.stationMeshes.forEach((m, idx) => {
       const p = gsEcis[idx];
@@ -656,6 +798,17 @@ export default class SatelliteScene {
           }
         });
         if (this.selectedIndex === i) {
+          selectedSatPosition = satPosition.clone();
+          if (pv.velocity) {
+            selectedSatVelocity = new THREE.Vector3(
+              pv.velocity.x,
+              pv.velocity.z,
+              -pv.velocity.y,
+            ).multiplyScalar(1 / EARTH_RADIUS_EQUATOR_KM);
+            if (selectedSatVelocity.lengthSq() > 1e-8) {
+              this.followBasis.copy(selectedSatVelocity).normalize();
+            }
+          }
           this.satColorAttr.setXYZ(i, this.satelliteSelectedColor.r, this.satelliteSelectedColor.g, this.satelliteSelectedColor.b);
         } else if (anyVisible) {
           this.satColorAttr.setXYZ(i, this.satelliteVisibleColor.r, this.satelliteVisibleColor.g, this.satelliteVisibleColor.b);
@@ -753,9 +906,123 @@ export default class SatelliteScene {
 
     if (this.params.timeRef.current) this.params.timeRef.current.textContent = this.formatTime(simDate);
 
-    this.controls.update();
+    this.updateCameraFollow(selectedSatPosition, selectedSatVelocity);
+    if (this.params.cameraMode === "free") {
+      this.controls.update();
+    }
     this.renderer.render(this.scene, this.camera);
   };
+
+  private updateCameraFollow(
+    selectedSatPosition: THREE.Vector3 | null,
+    selectedSatVelocity: THREE.Vector3 | null,
+  ) {
+    const isFreeCamera = this.params.cameraMode === "free" || !selectedSatPosition;
+    this.controls.enabled = isFreeCamera;
+    if (isFreeCamera) return;
+
+    if (this.params.cameraMode === "earthCenter") {
+      this.configureEarthCenterCamera(selectedSatPosition);
+    } else {
+      this.configureThirdPersonCamera(selectedSatPosition, selectedSatVelocity);
+    }
+
+    const holderQuat = this.cameraHolder.quaternion;
+    this.tempQuaternionA.copy(holderQuat).invert();
+    const localDesiredPosition = this.followPosition
+      .clone()
+      .applyQuaternion(this.tempQuaternionA);
+    this.camera.position.lerp(localDesiredPosition, FOLLOW_LERP_ALPHA);
+
+    this.controls.target.lerp(this.followTarget, FOLLOW_LERP_ALPHA);
+
+    this.tempMatrix.lookAt(this.followPosition, this.followTarget, this.followUp);
+    this.tempQuaternionB.setFromRotationMatrix(this.tempMatrix);
+    this.tempQuaternionA.copy(holderQuat).invert().multiply(this.tempQuaternionB);
+    this.camera.quaternion.slerp(this.tempQuaternionA, FOLLOW_LERP_ALPHA);
+  }
+
+  private configureEarthCenterCamera(selectedSatPosition: THREE.Vector3) {
+    const towardEarth = this.tempVectorA.copy(selectedSatPosition).normalize().negate();
+    this.followTarget.copy(selectedSatPosition);
+    this.followPosition
+      .copy(selectedSatPosition)
+      .addScaledVector(towardEarth, -this.earthCenterDistance);
+
+    const right = this.tempVectorB;
+    if (this.followBasis.lengthSq() > 1e-8) {
+      right.copy(this.followBasis);
+    } else {
+      right.copy(UP_AXIS);
+    }
+    right.addScaledVector(towardEarth, -right.dot(towardEarth));
+    if (right.lengthSq() < 1e-8) {
+      right.copy(UP_AXIS).addScaledVector(towardEarth, -UP_AXIS.dot(towardEarth));
+    }
+    if (right.lengthSq() < 1e-8) {
+      right.set(1, 0, 0);
+    }
+    right.normalize();
+    this.followUp.copy(right).cross(towardEarth).normalize();
+  }
+
+  private configureThirdPersonCamera(
+    selectedSatPosition: THREE.Vector3,
+    selectedSatVelocity: THREE.Vector3 | null,
+  ) {
+    const forward = this.tempVectorA;
+    if (selectedSatVelocity && selectedSatVelocity.lengthSq() > 1e-8) {
+      forward.copy(selectedSatVelocity).normalize();
+      this.followBasis.copy(forward);
+    } else if (this.followBasis.lengthSq() > 1e-8) {
+      forward.copy(this.followBasis).normalize();
+    } else {
+      forward.copy(selectedSatPosition).normalize().cross(new THREE.Vector3(0, 1, 0));
+      if (forward.lengthSq() < 1e-8) {
+        forward.set(1, 0, 0);
+      } else {
+        forward.normalize();
+      }
+      this.followBasis.copy(forward);
+    }
+
+    const radial = this.tempVectorB.copy(selectedSatPosition).normalize();
+    const right = this.tempVectorC.copy(forward).cross(radial);
+    if (right.lengthSq() < 1e-8) {
+      right.copy(UP_AXIS).cross(forward);
+    }
+    right.normalize();
+    const altitude = Math.max(selectedSatPosition.length() - 1, 0);
+    const lookAhead = THREE.MathUtils.clamp(0.08 + altitude * 0.55, 0.08, 0.4);
+    const pitchCos = Math.cos(this.thirdPersonPitch);
+    const pitchSin = Math.sin(this.thirdPersonPitch);
+    const offsetDirection = this.followUp
+      .copy(forward)
+      .multiplyScalar(-pitchCos)
+      .addScaledVector(radial, pitchSin)
+      .normalize();
+
+    // Keep Earth toward the bottom of the frame by defining screen-down as the
+    // projection of the Earth-center direction onto the camera plane.
+    const earthDown = this.tempVectorC
+      .copy(radial)
+      .negate()
+      .addScaledVector(offsetDirection, radial.dot(offsetDirection));
+    if (earthDown.lengthSq() < 1e-8) {
+      earthDown.copy(radial).negate();
+    }
+    earthDown.normalize();
+    const derivedUp = this.followUp.copy(earthDown).negate();
+    if (derivedUp.lengthSq() < 1e-8) {
+      derivedUp.copy(radial);
+    }
+    derivedUp.normalize();
+
+    this.followTarget.copy(selectedSatPosition).addScaledVector(forward, lookAhead);
+    this.followPosition
+      .copy(selectedSatPosition)
+      .addScaledVector(offsetDirection, this.thirdPersonDistance);
+  }
 
   private formatTime(d: Date): string {
     const pad = (n: number) => n.toString().padStart(2, "0");

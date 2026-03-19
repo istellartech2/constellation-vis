@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useCallback } from "react";
 import SpeedControl from "./components/ui/SpeedControl";
 import SatelliteEditor from "./components/ui/SatelliteEditor";
 import { useSatelliteScene } from "./components/useSatelliteScene";
@@ -7,6 +7,7 @@ import { loadGroundStations, type GroundStation } from "./lib/groundStations";
 import SatelliteInfo from "./components/ui/SatelliteInfo";
 import { formatGroundStationInfo } from "./lib/formatGroundStationInfo";
 import { type EarthTextureMode } from "./lib/earthTextures";
+import { type SatelliteCameraMode } from "./lib/visualization";
 
 /**
  * Top level React component hosting the visualization. It sets up
@@ -27,6 +28,7 @@ function App() {
   const [groundStations, setGroundStations] = useState<GroundStation[]>([]);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [selectedGsIdx, setSelectedGsIdx] = useState<number | null>(null);
+  const [cameraMode, setCameraMode] = useState<SatelliteCameraMode>("free");
   const [simTime, setSimTime] = useState(() => new Date());
 
   const [satRadius, setSatRadius] = useState(() =>
@@ -75,6 +77,11 @@ function App() {
     loadGroundStations().then(setGroundStations);
   }, []);
 
+  const handleSelectSatellite = useCallback((idx: number | null) => {
+    setSelectedIdx(idx);
+    setCameraMode("free");
+  }, []);
+
   const handleAnalysisStart = () => {
     savedSpeedRef.current = speedRef.current;
     setIsPaused(true);
@@ -111,9 +118,10 @@ function App() {
     satelliteVisibleColor,
     satelliteHiddenColor,
     satelliteSelectedColor,
+    cameraMode,
     ecef,
     brightEarth,
-    onSelect: setSelectedIdx,
+    onSelect: handleSelectSatellite,
     onSelectStation: setSelectedGsIdx,
     onSimTimeChange: setSimTime,
     stationInfoRef: gsInfoRef,
@@ -146,6 +154,8 @@ function App() {
         simTime={simTime}
         showDerivedInfo={showDerivedSatelliteInfo}
         showPerturbation={showPerturbation}
+        cameraMode={cameraMode}
+        onCameraModeChange={setCameraMode}
       />
       {gsInfoText && (
         <pre

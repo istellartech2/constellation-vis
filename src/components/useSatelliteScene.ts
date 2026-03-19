@@ -11,6 +11,10 @@ export type { SatelliteSceneParams } from "../lib/visualization";
  */
 export function useSatelliteScene(params: SatelliteSceneParams) {
   const sceneRef = useRef<SatelliteScene | null>(null);
+
+  useEffect(() => {
+    sceneRef.current?.setCameraMode(params.cameraMode);
+  }, [params.cameraMode]);
   
   useEffect(() => {
     if (!params.mountRef.current) return;

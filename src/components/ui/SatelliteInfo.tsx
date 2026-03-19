@@ -13,6 +13,8 @@ import {
   formatLongitude,
   getSatelliteDerivedInfo,
 } from "../../lib/satelliteDerivedInfo";
+import { Button } from "./button";
+import type { SatelliteCameraMode } from "../../lib/visualization";
 
 interface Props {
   satellites: SatelliteSpec[];
@@ -20,6 +22,8 @@ interface Props {
   simTime: Date;
   showDerivedInfo: boolean;
   showPerturbation: boolean;
+  cameraMode: SatelliteCameraMode;
+  onCameraModeChange: (mode: SatelliteCameraMode) => void;
 }
 
 interface InfoRow {
@@ -99,6 +103,8 @@ export default function SatelliteInfo({
   simTime,
   showDerivedInfo,
   showPerturbation,
+  cameraMode,
+  onCameraModeChange,
 }: Props) {
   if (selectedIdx === null) return null;
 
@@ -158,6 +164,12 @@ export default function SatelliteInfo({
     { label: "次の日照復帰まで", value: formatDurationMinutes(derived.timeToNextSunlightReturnMinutes) },
   ] : [];
 
+  const cameraViewOptions: { mode: SatelliteCameraMode; label: string }[] = [
+    { mode: "free", label: "全体" },
+    { mode: "earthCenter", label: "地球中心" },
+    { mode: "thirdPerson", label: "後方追跡" },
+  ];
+
   return (
     <div
       style={{
@@ -167,7 +179,6 @@ export default function SatelliteInfo({
         color: "#fff",
         fontFamily: "'Noto Sans Mono', monospace",
         fontSize: "0.88rem",
-        pointerEvents: "none",
         zIndex: 10,
         lineHeight: "1.45",
         background: "rgba(17, 24, 39, 0.84)",
@@ -177,76 +188,143 @@ export default function SatelliteInfo({
         backdropFilter: "blur(8px)",
         maxWidth: "min(420px, calc(100vw - 16px))",
         boxShadow: "0 10px 24px rgba(0, 0, 0, 0.28)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+        pointerEvents: "none",
       }}
     >
-      <Section title="基本情報" rows={metaRows} />
-      <Section title="軌道要素" rows={orbitalRows} />
-      {showDerivedInfo && <Section title="運用指標" rows={derivedRows} />}
-      {showPerturbation && (
-        <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid rgba(255, 255, 255, 0.15)" }}>
-          <div
-            style={{
-              fontSize: "0.76rem",
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-              color: "#9ca3af",
-              marginBottom: 4,
-            }}
-          >
-            摂動
+      <div style={{ pointerEvents: "none" }}>
+        <Section title="基本情報" rows={metaRows} />
+        <Section title="軌道要素" rows={orbitalRows} />
+        {showDerivedInfo && <Section title="運用指標" rows={derivedRows} />}
+        {showPerturbation && (
+          <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid rgba(255, 255, 255, 0.15)" }}>
+            <div
+              style={{
+                fontSize: "0.76rem",
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+                color: "#9ca3af",
+                marginBottom: 4,
+              }}
+            >
+              摂動
+            </div>
+            {(() => {
+              const detailedRates = calculateDetailedPerturbationRates({
+                semiMajorAxisKm: e.semiMajorAxisKm,
+                eccentricity: e.eccentricity,
+                inclinationDeg: e.inclinationDeg,
+                raanDeg: e.raanDeg,
+                argPerigeeDeg: e.argPerigeeDeg,
+                meanAnomalyDeg: e.meanAnomalyDeg,
+              });
+
+              const j2Rates = formatJ2PerturbationRates(detailedRates.j2);
+              const j3Rates = formatJ3PerturbationRates(detailedRates.j3);
+
+              return (
+                <>
+                  {j2Rates.length > 0 && (
+                    <div style={{ marginTop: 6 }}>
+                      <div style={{ fontSize: "0.8em", color: "#999", marginBottom: 2 }}>J₂項</div>
+                      {j2Rates.map((rate, index) => (
+                        <div key={index} style={{ fontSize: "0.85em", paddingLeft: 10, display: "flex", alignItems: "center", gap: 4 }}>
+                          <span dangerouslySetInnerHTML={{ __html: renderMath(rate.latex) }} />
+                          <span>: {rate.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {j3Rates.length > 0 && (
+                    <div style={{ marginTop: 6 }}>
+                      <div style={{ fontSize: "0.8em", color: "#999", marginBottom: 2 }}>J₃項</div>
+                      {j3Rates.map((rate, index) => (
+                        <div key={index} style={{ fontSize: "0.85em", paddingLeft: 10, display: "flex", alignItems: "center", gap: 4 }}>
+                          <span dangerouslySetInnerHTML={{ __html: renderMath(rate.latex) }} />
+                          <span>: {rate.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
-          {(() => {
-            const detailedRates = calculateDetailedPerturbationRates({
-              semiMajorAxisKm: e.semiMajorAxisKm,
-              eccentricity: e.eccentricity,
-              inclinationDeg: e.inclinationDeg,
-              raanDeg: e.raanDeg,
-              argPerigeeDeg: e.argPerigeeDeg,
-              meanAnomalyDeg: e.meanAnomalyDeg,
-            });
-
-            const j2Rates = formatJ2PerturbationRates(detailedRates.j2);
-            const j3Rates = formatJ3PerturbationRates(detailedRates.j3);
-
-            return (
-              <>
-                {j2Rates.length > 0 && (
-                  <div style={{ marginTop: 6 }}>
-                    <div style={{ fontSize: "0.8em", color: "#999", marginBottom: 2 }}>J₂項</div>
-                    {j2Rates.map((rate, index) => (
-                      <div key={index} style={{ fontSize: "0.85em", paddingLeft: 10, display: "flex", alignItems: "center", gap: 4 }}>
-                        <span dangerouslySetInnerHTML={{ __html: renderMath(rate.latex) }} />
-                        <span>: {rate.value}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {j3Rates.length > 0 && (
-                  <div style={{ marginTop: 6 }}>
-                    <div style={{ fontSize: "0.8em", color: "#999", marginBottom: 2 }}>J₃項</div>
-                    {j3Rates.map((rate, index) => (
-                      <div key={index} style={{ fontSize: "0.85em", paddingLeft: 10, display: "flex", alignItems: "center", gap: 4 }}>
-                        <span dangerouslySetInnerHTML={{ __html: renderMath(rate.latex) }} />
-                        <span>: {rate.value}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            );
-          })()}
+        )}
+        <div
+          style={{
+            marginTop: 8,
+            paddingTop: 8,
+            borderTop: "1px solid rgba(255, 255, 255, 0.08)",
+            fontSize: "0.76rem",
+            color: "#9ca3af",
+          }}
+        >
+          現在時刻: {simTime.toISOString().slice(0, 16).replace("T", " ")} UTC
         </div>
-      )}
+      </div>
       <div
         style={{
-          marginTop: 8,
-          paddingTop: 8,
-          borderTop: "1px solid rgba(255, 255, 255, 0.08)",
-          fontSize: "0.76rem",
-          color: "#9ca3af",
+          pointerEvents: "auto",
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+          paddingTop: 2,
         }}
       >
-        現在時刻: {simTime.toISOString().slice(0, 16).replace("T", " ")} UTC
+        <div
+          style={{
+            fontSize: "0.74rem",
+            textTransform: "uppercase",
+            letterSpacing: "0.08em",
+            color: "#9ca3af",
+          }}
+        >
+          ビュー
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+            gap: 6,
+            padding: 4,
+            borderRadius: 10,
+            background: "rgba(255, 255, 255, 0.06)",
+            border: "1px solid rgba(255, 255, 255, 0.08)",
+          }}
+        >
+          {cameraViewOptions.map((option) => {
+            const selected = cameraMode === option.mode;
+            return (
+              <Button
+                key={option.mode}
+                type="button"
+                variant={selected ? "default" : "ghost"}
+                size="sm"
+                disabled={selected}
+                className={
+                  selected
+                    ? "bg-cyan-400/90 text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.4),0_0_0_1px_rgba(34,211,238,0.4)] hover:bg-cyan-400/90"
+                    : "bg-transparent text-slate-100 hover:bg-white/14 hover:text-white"
+                }
+                onClick={() => onCameraModeChange(option.mode)}
+              >
+                {option.label}
+              </Button>
+            );
+          })}
+        </div>
+        <div
+          style={{
+            fontSize: "0.74rem",
+            color: "#9ca3af",
+            lineHeight: 1.4,
+          }}
+        >
+          ホイールで拡大、後方追跡では上下ドラッグ可
+        </div>
       </div>
     </div>
   );
