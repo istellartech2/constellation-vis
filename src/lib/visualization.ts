@@ -43,6 +43,17 @@ const THIRDPERSON_MIN_PITCH = THREE.MathUtils.degToRad(-70);
 const THIRDPERSON_MAX_PITCH = THREE.MathUtils.degToRad(82);
 const FOLLOW_LERP_ALPHA = 0.14;
 
+export function pickSatelliteHitIndex(
+  hitIndexes: number[],
+  selectedIndex: number | null,
+): number | null {
+  if (hitIndexes.length === 0) return null;
+  if (selectedIndex === null) return hitIndexes[0] ?? null;
+  const selectedHitPos = hitIndexes.indexOf(selectedIndex);
+  if (selectedHitPos === -1) return hitIndexes[0] ?? null;
+  return hitIndexes[(selectedHitPos + 1) % hitIndexes.length] ?? null;
+}
+
 type EarthAnimationBinding = {
   sunDirectionUniform?: THREE.Vector3;
 };
@@ -417,8 +428,12 @@ export default class SatelliteScene {
         return;
       }
       const hits = raycaster.intersectObject(satPoints, false);
-      if (hits.length > 0 && hits[0].index !== undefined) {
-        this.selectSatellite(hits[0].index);
+      const hitIndexes = hits
+        .map((hit) => hit.index)
+        .filter((index): index is number => index !== undefined);
+      const nextIndex = pickSatelliteHitIndex(hitIndexes, this.selectedIndex);
+      if (nextIndex !== null) {
+        this.selectSatellite(nextIndex);
       } else {
         this.clearSelections();
       }
@@ -880,6 +895,8 @@ export default class SatelliteScene {
     this.satPosAttr.needsUpdate = true;
     this.satColorAttr.needsUpdate = true;
     this.groundPosAttr.needsUpdate = true;
+    this.satGeometry.computeBoundingSphere();
+    this.groundGeometry.computeBoundingSphere();
 
     this.updateShadow();
 

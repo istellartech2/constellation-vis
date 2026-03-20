@@ -1,6 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { SatelliteSpec } from "./satellites";
 import type { GroundStation } from "./groundStations";
+import {
+  expandSatelliteEditorConfig,
+  parseSatelliteEditorConfig,
+} from "./satelliteEditorSerializer";
 
 const EARTH_RADIUS_KM = 6378.137;
 
@@ -48,52 +52,8 @@ function parseArrayTable(text: string, marker: string): Record<string, any>[] {
   return result;
 }
 
-function buildSatelliteMeta(entry: Record<string, any>) {
-  const meta = {
-    objectName: entry.name ?? entry.OBJECT_NAME,
-    objectId: entry.objectId ?? entry.OBJECT_ID,
-    noradCatId:
-      entry.noradCatId !== undefined && entry.noradCatId !== null
-        ? Number(entry.noradCatId)
-        : entry.NORAD_CAT_ID !== undefined
-          ? Number(entry.NORAD_CAT_ID)
-          : undefined,
-  };
-  const hasMeta =
-    meta.objectName !== undefined || meta.objectId !== undefined || meta.noradCatId !== undefined;
-  return hasMeta ? meta : undefined;
-}
-
 export function parseSatellitesToml(text: string): SatelliteSpec[] {
-  const entries = parseArrayTable(text, "satellites");
-
-  return entries.map((entry) => {
-    const meta = buildSatelliteMeta(entry);
-    if (entry.type === "tle") {
-      return {
-        type: "tle",
-        lines: [String(entry.line1 ?? ""), String(entry.line2 ?? "")],
-        ...(meta ? { meta } : {}),
-      } as SatelliteSpec;
-    }
-    if (entry.type === "elements") {
-      return {
-        type: "elements",
-        elements: {
-          satnum: Number(entry.satnum),
-          epoch: new Date(String(entry.epoch)),
-          semiMajorAxisKm: Number(entry.semiMajorAxisKm),
-          eccentricity: Number(entry.eccentricity),
-          inclinationDeg: Number(entry.inclinationDeg),
-          raanDeg: Number(entry.raanDeg),
-          argPerigeeDeg: Number(entry.argPerigeeDeg),
-          meanAnomalyDeg: Number(entry.meanAnomalyDeg),
-        },
-        ...(meta ? { meta } : {}),
-      } as SatelliteSpec;
-    }
-    throw new Error("Unknown satellite type");
-  });
+  return expandSatelliteEditorConfig(parseSatelliteEditorConfig(text));
 }
 
 function generateFromShells(con: any): SatelliteSpec[] {
