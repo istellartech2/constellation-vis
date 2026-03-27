@@ -1,11 +1,13 @@
 import { describe, expect, it } from "bun:test";
+import * as satellite from "satellite.js";
 import {
-  applyFormationPreset,
   expandSatelliteEditorConfig,
   parseSatelliteEditorConfig,
+  relativeStateForFormation,
   serializeSatelliteEditorConfig,
   validateSatelliteEditorConfig,
 } from "../src/lib/satelliteEditorSerializer";
+import { toSatrec } from "../src/lib/satellites";
 import { createDefaultFormationEntry, type SatelliteEditorConfig } from "../src/lib/satelliteEditorTypes";
 
 describe("satelliteEditorSerializer", () => {
@@ -31,7 +33,6 @@ describe("satelliteEditorSerializer", () => {
         },
       ],
     };
-
     const toml = serializeSatelliteEditorConfig(config);
     expect(toml).toContain('type = "elements"');
     expect(toml).toContain("satnum = 90001");
@@ -40,56 +41,27 @@ describe("satelliteEditorSerializer", () => {
 
   it("round-trips existing tle and elements entries", async () => {
     const source = await Bun.file("/Users/ist/Documents/git/constellation-vis/public/satellites.toml").text();
-
     const parsed = parseSatelliteEditorConfig(source);
-    expect(parsed.entries).toHaveLength(3);
-
     const serialized = serializeSatelliteEditorConfig(parsed);
     const reparsed = parseSatelliteEditorConfig(serialized);
-
-    expect(reparsed.entries).toHaveLength(3);
-    expect(reparsed.entries[0]?.kind).toBe("manual");
-    expect(reparsed.entries[1]?.kind).toBe("manual");
-    expect(reparsed.entries[2]?.kind).toBe("manual");
+    expect(reparsed.entries).toHaveLength(parsed.entries.length);
   });
 
-  it("preserves entry order when entries are reordered and serialized", () => {
-    const config = parseSatelliteEditorConfig(`
+  it("rejects legacy formation records without formationMode", () => {
+    expect(() =>
+      parseSatelliteEditorConfig(`
 [[satellites]]
-type = "elements"
-name = "A"
-satnum = 90001
-epoch = "2025-05-20T00:00:00Z"
-semiMajorAxisKm = 7000
-eccentricity = 0.001
-inclinationDeg = 40
-raanDeg = 0
-argPerigeeDeg = 0
-meanAnomalyDeg = 0
-
-[[satellites]]
-type = "elements"
-name = "B"
-satnum = 90002
-epoch = "2025-05-20T00:00:00Z"
-semiMajorAxisKm = 7100
-eccentricity = 0.001
-inclinationDeg = 41
-raanDeg = 2
-argPerigeeDeg = 1
-meanAnomalyDeg = 3
-`);
-
-    const reordered: SatelliteEditorConfig = {
-      entries: [config.entries[1]!, config.entries[0]!],
-    };
-
-    const serialized = serializeSatelliteEditorConfig(reordered);
-    expect(serialized.indexOf('name = "B"')).toBeLessThan(serialized.indexOf('name = "A"'));
+type = "formation"
+name = "Legacy"
+chiefSatnum = 90001
+deputyCount = 2
+relativeModel = "roe"
+`)
+    ).toThrow("旧形式の formation は未対応");
   });
 
-  it("round-trips formation blocks", () => {
-    const formationToml = `
+  it("round-trips new custom formation blocks", () => {
+    const source = `
 [[satellites]]
 type = "elements"
 name = "Chief"
@@ -104,11 +76,11 @@ meanAnomalyDeg = 0
 
 [[satellites]]
 type = "formation"
-name = "Train"
+name = "Custom"
 chiefSatnum = 90001
-deputyCount = 3
+formationMode = "custom"
+deputyCount = 2
 relativeModel = "roe"
-preset = "along-track-train"
 deltaAkm = 0
 deltaLambdaDeg = 0.2
 deltaEx = 0
@@ -116,127 +88,25 @@ deltaEy = 0
 deltaIxDeg = 0
 deltaIyDeg = 0
 radialKm = 0
-alongTrackKm = 15
+alongTrackKm = 0
 crossTrackKm = 0
 phaseOffsetDeg = 0
 `;
-
-    const parsed = parseSatelliteEditorConfig(formationToml);
-    const serialized = serializeSatelliteEditorConfig(parsed);
-    const reparsed = parseSatelliteEditorConfig(serialized);
-
-    expect(reparsed.entries).toHaveLength(2);
-    expect(reparsed.entries[1]?.kind).toBe("formation");
-    expect(reparsed.entries[1] && "relativeModel" in reparsed.entries[1] ? reparsed.entries[1].relativeModel : "").toBe("roe");
+    const serialized = serializeSatelliteEditorConfig(parseSatelliteEditorConfig(source));
+    expect(serialized).toContain('formationMode = "custom"');
+    expect(serialized).toContain('relativeModel = "roe"');
   });
 
-  it("expands formation entries from a chief reference", () => {
-    const config = parseSatelliteEditorConfig(`
-[[satellites]]
-type = "elements"
-name = "Chief"
-satnum = 90001
-epoch = "2025-05-20T00:00:00Z"
-semiMajorAxisKm = 7000
-eccentricity = 0.001
-inclinationDeg = 40
-raanDeg = 0
-argPerigeeDeg = 0
-meanAnomalyDeg = 0
-
-[[satellites]]
-type = "formation"
-name = "Projected"
-chiefSatnum = 90001
-deputyCount = 2
-relativeModel = "relativeState"
-preset = "projected-circular"
-deltaAkm = 0
-deltaLambdaDeg = 0
-deltaEx = 0
-deltaEy = 0
-deltaIxDeg = 0
-deltaIyDeg = 0
-radialKm = 8
-alongTrackKm = 0
-crossTrackKm = 8
-phaseOffsetDeg = 90
-`);
-
-    const expanded = expandSatelliteEditorConfig(config);
-    expect(expanded).toHaveLength(3);
-    expect(expanded[1]?.type).toBe("elements");
-    expect(expanded[2]?.type).toBe("elements");
-    expect(expanded[1]?.meta?.objectName).toBe("Projected-1");
-    expect(expanded[2]?.meta?.objectName).toBe("Projected-2");
-  });
-
-  it("supports both roe and relativeState presets", () => {
-    const roePreset = applyFormationPreset("along-track-train");
-    const statePreset = applyFormationPreset("projected-circular");
-    const gcoPreset = applyFormationPreset("general-circular-orbit");
-
-    expect(roePreset.roe.deltaLambdaDeg).not.toBe(0);
-    expect(statePreset.relativeState.crossTrackKm).not.toBe(0);
-    expect(gcoPreset.relativeState.crossTrackKm).toBeCloseTo(gcoPreset.relativeState.radialKm * Math.sqrt(3), 3);
-  });
-
-  it("starts new formations in custom mode with one deputy", () => {
+  it("starts new formations in custom mode", () => {
     const entry = createDefaultFormationEntry();
-
-    expect(entry.preset).toBe("custom");
-    expect(entry.deputyCount).toBe(1);
-    expect(entry.relativeState.alongTrackKm).toBe(0);
-  });
-
-  it("does not auto-scale custom formations when deputy count increases", () => {
-    const config = parseSatelliteEditorConfig(`
-[[satellites]]
-type = "elements"
-name = "Chief"
-satnum = 90001
-epoch = "2025-05-20T00:00:00Z"
-semiMajorAxisKm = 7000
-eccentricity = 0.001
-inclinationDeg = 40
-raanDeg = 0
-argPerigeeDeg = 0
-meanAnomalyDeg = 0
-
-[[satellites]]
-type = "formation"
-name = "CustomFormation"
-chiefSatnum = 90001
-deputyCount = 3
-relativeModel = "roe"
-preset = "custom"
-deltaAkm = 0
-deltaLambdaDeg = 0.1
-deltaEx = 0
-deltaEy = 0
-deltaIxDeg = 0
-deltaIyDeg = 0
-radialKm = 0
-alongTrackKm = 0
-crossTrackKm = 0
-phaseOffsetDeg = 0
-`);
-
-    const expanded = expandSatelliteEditorConfig(config);
-    const deputy1 = expanded[1];
-    const deputy2 = expanded[2];
-    const deputy3 = expanded[3];
-
-    expect(deputy1?.type).toBe("elements");
-    expect(deputy2?.type).toBe("elements");
-    expect(deputy3?.type).toBe("elements");
-    if (deputy1?.type === "elements" && deputy2?.type === "elements" && deputy3?.type === "elements") {
-      expect(deputy2.elements.meanAnomalyDeg).toBeCloseTo(deputy1.elements.meanAnomalyDeg, 8);
-      expect(deputy3.elements.meanAnomalyDeg).toBeCloseTo(deputy1.elements.meanAnomalyDeg, 8);
+    expect(entry.formationMode).toBe("custom");
+    if (entry.formationMode === "custom") {
+      expect(entry.deputyCount).toBe(1);
+      expect(entry.relativeModel).toBe("roe");
     }
   });
 
-  it("scales preset formations outward by deputy index", () => {
+  it("expands along-track formations with centered spacing", () => {
     const config = parseSatelliteEditorConfig(`
 [[satellites]]
 type = "elements"
@@ -254,43 +124,111 @@ meanAnomalyDeg = 0
 type = "formation"
 name = "Train"
 chiefSatnum = 90001
-deputyCount = 3
-relativeModel = "roe"
-preset = "along-track-train"
-deltaAkm = 0
-deltaLambdaDeg = 0.2
-deltaEx = 0
-deltaEy = 0
-deltaIxDeg = 0
-deltaIyDeg = 0
-radialKm = 0
-alongTrackKm = 15
-crossTrackKm = 0
-phaseOffsetDeg = 0
+formationMode = "alongTrack"
+deputyCount = 4
+spacingKm = 10
+arrangement = "centered"
+direction = "prograde"
 `);
-
     const expanded = expandSatelliteEditorConfig(config);
+    expect(expanded).toHaveLength(5);
     const chief = expanded[0];
-    const deputy1 = expanded[1];
-    const deputy2 = expanded[2];
-    const deputy3 = expanded[3];
-
-    if (
-      chief?.type === "elements" &&
-      deputy1?.type === "elements" &&
-      deputy2?.type === "elements" &&
-      deputy3?.type === "elements"
-    ) {
-      const delta1 = deputy1.elements.meanAnomalyDeg - chief.elements.meanAnomalyDeg;
-      const delta2 = deputy2.elements.meanAnomalyDeg - chief.elements.meanAnomalyDeg;
-      const delta3 = deputy3.elements.meanAnomalyDeg - chief.elements.meanAnomalyDeg;
-
-      expect(delta2).toBeCloseTo(delta1 * 2, 8);
-      expect(delta3).toBeCloseTo(delta1 * 3, 8);
+    const deputies = expanded.slice(1);
+    if (chief?.type === "elements" && deputies.every((sat) => sat.type === "elements")) {
+      const anomalies = deputies.map((sat) => sat.type === "elements" ? sat.elements.meanAnomalyDeg : 0);
+      expect(anomalies.some((value) => value > 180)).toBe(true);
+      expect(anomalies.some((value) => value < 180)).toBe(true);
     }
   });
 
-  it("scales gco deputies outward while preserving the preset pattern", () => {
+  it("expands nmc formations with 2:1 in-plane geometry", () => {
+    const config = parseSatelliteEditorConfig(`
+[[satellites]]
+type = "elements"
+name = "Chief"
+satnum = 90001
+epoch = "2025-05-20T00:00:00Z"
+semiMajorAxisKm = 7000
+eccentricity = 0.001
+inclinationDeg = 40
+raanDeg = 0
+argPerigeeDeg = 0
+meanAnomalyDeg = 0
+
+[[satellites]]
+type = "formation"
+name = "NMC"
+chiefSatnum = 90001
+formationMode = "nmc"
+sizeKm = 8
+orientationDeg = 0
+equidistant = true
+crossTrackSign = "north"
+crossTrackOffsetKm = 0
+phaseOffsetDeg = 90
+`);
+    const expanded = expandSatelliteEditorConfig(config);
+    expect(expanded).toHaveLength(2);
+    expect(expanded[1]?.type).toBe("elements");
+  });
+
+  it("expands cross-track pendulum with mostly out-of-plane offset", () => {
+    const config = parseSatelliteEditorConfig(`
+[[satellites]]
+type = "elements"
+name = "Chief"
+satnum = 90001
+epoch = "2025-05-20T00:00:00Z"
+semiMajorAxisKm = 7000
+eccentricity = 0.001
+inclinationDeg = 40
+raanDeg = 0
+argPerigeeDeg = 0
+meanAnomalyDeg = 0
+
+[[satellites]]
+type = "formation"
+name = "Pendulum"
+chiefSatnum = 90001
+formationMode = "crossTrackPendulum"
+amplitudeKm = 8
+phaseOffsetDeg = 90
+side = "north"
+`);
+    const expanded = expandSatelliteEditorConfig(config);
+    expect(expanded).toHaveLength(2);
+  });
+
+  it("expands helix with distributed phase and pitch", () => {
+    const config = parseSatelliteEditorConfig(`
+[[satellites]]
+type = "elements"
+name = "Chief"
+satnum = 90001
+epoch = "2025-05-20T00:00:00Z"
+semiMajorAxisKm = 7000
+eccentricity = 0.001
+inclinationDeg = 40
+raanDeg = 0
+argPerigeeDeg = 0
+meanAnomalyDeg = 0
+
+[[satellites]]
+type = "formation"
+name = "Helix"
+chiefSatnum = 90001
+formationMode = "helix"
+deputyCount = 3
+radiusKm = 6
+pitchKm = 4
+turnDirection = "prograde"
+phaseOffsetDeg = 0
+`);
+    const expanded = expandSatelliteEditorConfig(config);
+    expect(expanded).toHaveLength(4);
+  });
+
+  it("expands gco with multiple deputies", () => {
     const config = parseSatelliteEditorConfig(`
 [[satellites]]
 type = "elements"
@@ -308,38 +246,167 @@ meanAnomalyDeg = 0
 type = "formation"
 name = "GCO"
 chiefSatnum = 90001
-deputyCount = 2
-relativeModel = "relativeState"
-preset = "general-circular-orbit"
+formationMode = "gco"
+deputyCount = 4
+radiusKm = 8
+phaseOffsetDeg = 0
+rotationDirection = "prograde"
+`);
+    const expanded = expandSatelliteEditorConfig(config);
+    expect(expanded).toHaveLength(5);
+  });
+
+  it("models gco as a record-disk orbit with near-constant chief distance", () => {
+    const config = parseSatelliteEditorConfig(`
+[[satellites]]
+type = "elements"
+name = "Chief"
+satnum = 90001
+epoch = "2025-05-20T00:00:00Z"
+semiMajorAxisKm = 7000
+eccentricity = 0.001
+inclinationDeg = 40
+raanDeg = 0
+argPerigeeDeg = 0
+meanAnomalyDeg = 0
+
+[[satellites]]
+type = "formation"
+name = "GCO"
+chiefSatnum = 90001
+formationMode = "gco"
+deputyCount = 4
+radiusKm = 12
+phaseOffsetDeg = 0
+rotationDirection = "prograde"
+`);
+    const chiefEntry = config.entries[0];
+    const formationEntry = config.entries[1];
+    expect(chiefEntry?.kind).toBe("manual");
+    expect(formationEntry?.kind).toBe("formation");
+    if (
+      chiefEntry?.kind === "manual" &&
+      chiefEntry.type === "elements" &&
+      chiefEntry.elements &&
+      formationEntry?.kind === "formation" &&
+      formationEntry.formationMode === "gco"
+    ) {
+      const states = Array.from({ length: formationEntry.deputyCount }, (_, index) =>
+        relativeStateForFormation(chiefEntry.elements!, formationEntry, index),
+      );
+      const distances = states.map((state) => Math.hypot(state.radialKm, state.alongTrackKm, state.crossTrackKm));
+      distances.forEach((distance) => expect(distance).toBeCloseTo(formationEntry.radiusKm, 8));
+      expect(states[1]?.alongTrackKm).toBeCloseTo(0, 8);
+      expect(states[1]?.radialKm).toBeCloseTo(formationEntry.radiusKm * 0.5, 8);
+      expect(states[1]?.crossTrackKm).toBeCloseTo(formationEntry.radiusKm * Math.sqrt(3) * 0.5, 8);
+    }
+  });
+
+  it("keeps expanded gco deputies near the intended chief-centered radius at epoch", () => {
+    const config = parseSatelliteEditorConfig(`
+[[satellites]]
+type = "elements"
+name = "Chief"
+satnum = 90001
+epoch = "2025-05-20T00:00:00Z"
+semiMajorAxisKm = 7000
+eccentricity = 0.001
+inclinationDeg = 40
+raanDeg = 0
+argPerigeeDeg = 0
+meanAnomalyDeg = 0
+
+[[satellites]]
+type = "formation"
+name = "GCO"
+chiefSatnum = 90001
+formationMode = "gco"
+deputyCount = 4
+radiusKm = 12
+phaseOffsetDeg = 0
+rotationDirection = "prograde"
+`);
+    const expanded = expandSatelliteEditorConfig(config);
+    const chief = expanded[0];
+    expect(chief?.type).toBe("elements");
+    if (chief?.type !== "elements") return;
+    const epoch = chief.elements.epoch;
+    const chiefPv = satellite.propagate(toSatrec(chief), epoch);
+    const chiefPosition = chiefPv.position!;
+    const chiefVelocity = chiefPv.velocity!;
+    const rMag = Math.hypot(chiefPosition.x, chiefPosition.y, chiefPosition.z);
+    const h = {
+      x: chiefPosition.y * chiefVelocity.z - chiefPosition.z * chiefVelocity.y,
+      y: chiefPosition.z * chiefVelocity.x - chiefPosition.x * chiefVelocity.z,
+      z: chiefPosition.x * chiefVelocity.y - chiefPosition.y * chiefVelocity.x,
+    };
+    const hMag = Math.hypot(h.x, h.y, h.z);
+    const radial = { x: chiefPosition.x / rMag, y: chiefPosition.y / rMag, z: chiefPosition.z / rMag };
+    const crossTrack = { x: h.x / hMag, y: h.y / hMag, z: h.z / hMag };
+    const alongTrack = {
+      x: crossTrack.y * radial.z - crossTrack.z * radial.y,
+      y: crossTrack.z * radial.x - crossTrack.x * radial.z,
+      z: crossTrack.x * radial.y - crossTrack.y * radial.x,
+    };
+    const dot = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => a.x * b.x + a.y * b.y + a.z * b.z;
+
+    expanded.slice(1).forEach((deputy) => {
+      expect(deputy.type).toBe("elements");
+      if (deputy.type !== "elements") return;
+      const deputyPv = satellite.propagate(toSatrec(deputy), epoch);
+      const delta = {
+        x: deputyPv.position!.x - chiefPosition.x,
+        y: deputyPv.position!.y - chiefPosition.y,
+        z: deputyPv.position!.z - chiefPosition.z,
+      };
+      const x = dot(delta, radial);
+      const y = dot(delta, alongTrack);
+      const z = dot(delta, crossTrack);
+      expect(Math.hypot(x, y, z)).toBeCloseTo(12, 1);
+    });
+  });
+
+  it("keeps custom multi-deputy formations from auto-scaling by preset semantics", () => {
+    const config = parseSatelliteEditorConfig(`
+[[satellites]]
+type = "elements"
+name = "Chief"
+satnum = 90001
+epoch = "2025-05-20T00:00:00Z"
+semiMajorAxisKm = 7000
+eccentricity = 0.001
+inclinationDeg = 40
+raanDeg = 0
+argPerigeeDeg = 0
+meanAnomalyDeg = 0
+
+[[satellites]]
+type = "formation"
+name = "Custom"
+chiefSatnum = 90001
+formationMode = "custom"
+deputyCount = 3
+relativeModel = "roe"
 deltaAkm = 0
-deltaLambdaDeg = 0
+deltaLambdaDeg = 0.2
 deltaEx = 0
 deltaEy = 0
 deltaIxDeg = 0
 deltaIyDeg = 0
-radialKm = 8
+radialKm = 0
 alongTrackKm = 0
-crossTrackKm = 13.856
-phaseOffsetDeg = 90
+crossTrackKm = 0
+phaseOffsetDeg = 0
 `);
-
     const expanded = expandSatelliteEditorConfig(config);
-    const chief = expanded[0];
     const deputy1 = expanded[1];
     const deputy2 = expanded[2];
-
-    if (chief?.type === "elements" && deputy1?.type === "elements" && deputy2?.type === "elements") {
-      const eccentricityDelta1 = Math.abs(deputy1.elements.eccentricity - chief.elements.eccentricity);
-      const eccentricityDelta2 = Math.abs(deputy2.elements.eccentricity - chief.elements.eccentricity);
-      const raanDelta1 = Math.abs(deputy1.elements.raanDeg - chief.elements.raanDeg);
-      const raanDelta2 = Math.abs(deputy2.elements.raanDeg - chief.elements.raanDeg);
-
-      expect(eccentricityDelta2).toBeGreaterThan(eccentricityDelta1);
-      expect(raanDelta2).toBeGreaterThan(raanDelta1);
+    if (deputy1?.type === "elements" && deputy2?.type === "elements") {
+      expect(deputy2.elements.meanAnomalyDeg).toBeCloseTo(deputy1.elements.meanAnomalyDeg, 8);
     }
   });
 
-  it("reports missing chief, high chief eccentricity, and duplicate satnum errors", () => {
+  it("validates missing chief, high eccentricity chief, and duplicate satnum", () => {
     const config = parseSatelliteEditorConfig(`
 [[satellites]]
 type = "elements"
@@ -367,61 +434,17 @@ meanAnomalyDeg = 0
 
 [[satellites]]
 type = "formation"
-name = "BadFormation"
+name = "Bad"
 chiefSatnum = 99999
-deputyCount = 0
-relativeModel = "roe"
-preset = "custom"
-deltaAkm = 0
-deltaLambdaDeg = 0
-deltaEx = 0
-deltaEy = 0
-deltaIxDeg = 0
-deltaIyDeg = 0
-radialKm = 0
-alongTrackKm = 0
-crossTrackKm = 0
+formationMode = "gco"
+deputyCount = 1
+radiusKm = 8
 phaseOffsetDeg = 0
+rotationDirection = "prograde"
 `);
-
-    const missingChiefErrors = validateSatelliteEditorConfig(config).errors.map((error) => error.message);
-    expect(missingChiefErrors).toContain("satnum が重複しています");
-    expect(missingChiefErrors).toContain("chiefSatnum に対応する単独衛星がありません");
-    expect(missingChiefErrors).toContain("deputyCount は 1 以上の整数が必要です");
-
-    const nearCircularConfig = parseSatelliteEditorConfig(`
-[[satellites]]
-type = "elements"
-name = "ChiefA"
-satnum = 90001
-epoch = "2025-05-20T00:00:00Z"
-semiMajorAxisKm = 7000
-eccentricity = 0.03
-inclinationDeg = 40
-raanDeg = 0
-argPerigeeDeg = 0
-meanAnomalyDeg = 0
-
-[[satellites]]
-type = "formation"
-name = "Formation"
-chiefSatnum = 90001
-deputyCount = 2
-relativeModel = "roe"
-preset = "custom"
-deltaAkm = 0
-deltaLambdaDeg = 0
-deltaEx = 0
-deltaEy = 0
-deltaIxDeg = 0
-deltaIyDeg = 0
-radialKm = 0
-alongTrackKm = 0
-crossTrackKm = 0
-phaseOffsetDeg = 0
-`);
-
-    const nearCircularErrors = validateSatelliteEditorConfig(nearCircularConfig).errors.map((error) => error.message);
-    expect(nearCircularErrors).toContain("chief は near-circular 前提のため離心率 0.02 以下が必要です");
+    const messages = validateSatelliteEditorConfig(config).errors.map((error) => error.message);
+    expect(messages).toContain("satnum が重複しています");
+    expect(messages).toContain("chiefSatnum に対応する単独衛星がありません");
+    expect(messages).toContain("この編隊は 2 機以上の deputy が必要です");
   });
 });

@@ -2,13 +2,16 @@ import type { OrbitalElements } from "./satellites";
 
 export type ManualSatelliteType = "tle" | "elements";
 export type FormationRelativeModel = "roe" | "relativeState";
-export type FormationPreset =
+export type FormationMode =
   | "custom"
-  | "along-track-train"
-  | "projected-circular"
-  | "general-circular-orbit"
-  | "in-plane-ellipse"
-  | "cross-track-only";
+  | "alongTrack"
+  | "nmc"
+  | "crossTrackPendulum"
+  | "helix"
+  | "gco";
+export type AlongTrackArrangement = "centered";
+export type ProgradeDirection = "prograde" | "retrograde";
+export type CrossTrackSide = "north" | "south";
 
 export interface SatelliteEditorMetadata {
   objectName?: string;
@@ -47,18 +50,72 @@ export interface ManualSatelliteEntry {
   elements?: OrbitalElements;
 }
 
-export interface FormationSatelliteEntry {
+export interface FormationBaseEntry {
   id: string;
   kind: "formation";
   name: string;
   chiefSatnum: number;
-  deputyCount: number;
   epoch?: Date;
+  formationMode: FormationMode;
+}
+
+export interface CustomFormationEntry extends FormationBaseEntry {
+  formationMode: "custom";
+  deputyCount: number;
   relativeModel: FormationRelativeModel;
-  preset: FormationPreset;
   roe: SatelliteEditorRoe;
   relativeState: SatelliteEditorRelativeState;
 }
+
+export interface AlongTrackFormationEntry extends FormationBaseEntry {
+  formationMode: "alongTrack";
+  deputyCount: number;
+  spacingKm: number;
+  arrangement: AlongTrackArrangement;
+  direction: ProgradeDirection;
+}
+
+export interface NmcFormationEntry extends FormationBaseEntry {
+  formationMode: "nmc";
+  sizeKm: number;
+  orientationDeg: number;
+  equidistant: boolean;
+  crossTrackSign: CrossTrackSide;
+  crossTrackOffsetKm: number;
+  phaseOffsetDeg: number;
+}
+
+export interface CrossTrackPendulumFormationEntry extends FormationBaseEntry {
+  formationMode: "crossTrackPendulum";
+  amplitudeKm: number;
+  phaseOffsetDeg: number;
+  side: CrossTrackSide;
+}
+
+export interface HelixFormationEntry extends FormationBaseEntry {
+  formationMode: "helix";
+  deputyCount: number;
+  radiusKm: number;
+  pitchKm: number;
+  turnDirection: ProgradeDirection;
+  phaseOffsetDeg: number;
+}
+
+export interface GcoFormationEntry extends FormationBaseEntry {
+  formationMode: "gco";
+  deputyCount: number;
+  radiusKm: number;
+  phaseOffsetDeg: number;
+  rotationDirection: ProgradeDirection;
+}
+
+export type FormationSatelliteEntry =
+  | CustomFormationEntry
+  | AlongTrackFormationEntry
+  | NmcFormationEntry
+  | CrossTrackPendulumFormationEntry
+  | HelixFormationEntry
+  | GcoFormationEntry;
 
 export type SatelliteEditorEntry = ManualSatelliteEntry | FormationSatelliteEntry;
 
@@ -77,10 +134,19 @@ export const DEFAULT_ROE: SatelliteEditorRoe = {
 
 export const DEFAULT_RELATIVE_STATE: SatelliteEditorRelativeState = {
   radialKm: 0,
-  alongTrackKm: 10,
+  alongTrackKm: 0,
   crossTrackKm: 0,
   phaseOffsetDeg: 0,
 };
+
+export const FORMATION_MODES: Array<{ mode: FormationMode; label: string; blurb: string }> = [
+  { mode: "custom", label: "Custom", blurb: "ROE / 距離ベースで自由入力" },
+  { mode: "alongTrack", label: "Along-track", blurb: "chief を中心に列をなす編隊" },
+  { mode: "nmc", label: "NMC", blurb: "自然相対運動の 2:1 楕円 circumnavigation" },
+  { mode: "crossTrackPendulum", label: "Cross-track pendulum", blurb: "面外方向の振り子型相対運動" },
+  { mode: "helix", label: "Helix", blurb: "位相分散 + 進行方向ピッチの螺旋編隊" },
+  { mode: "gco", label: "GCO", blurb: "record-disk 軌道として等距離を保つ 3D 円運動" },
+];
 
 export function createDefaultManualEntry(): ManualSatelliteEntry {
   return {
@@ -102,17 +168,80 @@ export function createDefaultManualEntry(): ManualSatelliteEntry {
   };
 }
 
-export function createDefaultFormationEntry(): FormationSatelliteEntry {
-  return {
-    id: crypto.randomUUID(),
+export function createDefaultFormationEntry(mode: FormationMode = "custom"): FormationSatelliteEntry {
+  const id = crypto.randomUUID();
+  const base: FormationBaseEntry = {
+    id,
     kind: "formation",
     name: "Formation",
     chiefSatnum: 0,
-    deputyCount: 1,
     epoch: undefined,
-    relativeModel: "roe",
-    preset: "custom",
-    roe: { ...DEFAULT_ROE },
-    relativeState: { ...DEFAULT_RELATIVE_STATE, alongTrackKm: 0 },
+    formationMode: mode,
   };
+
+  switch (mode) {
+    case "alongTrack":
+      return {
+        ...base,
+        formationMode: "alongTrack",
+        name: "Along-track Formation",
+        deputyCount: 4,
+        spacingKm: 10,
+        arrangement: "centered",
+        direction: "prograde",
+      };
+    case "nmc":
+      return {
+        ...base,
+        formationMode: "nmc",
+        name: "Natural Motion Circumnavigation",
+        sizeKm: 8,
+        orientationDeg: 0,
+        equidistant: true,
+        crossTrackSign: "north",
+        crossTrackOffsetKm: 13.856,
+        phaseOffsetDeg: 0,
+      };
+    case "crossTrackPendulum":
+      return {
+        ...base,
+        formationMode: "crossTrackPendulum",
+        name: "Cross-track Pendulum",
+        amplitudeKm: 8,
+        phaseOffsetDeg: 90,
+        side: "north",
+      };
+    case "helix":
+      return {
+        ...base,
+        formationMode: "helix",
+        name: "Helix Formation",
+        deputyCount: 4,
+        radiusKm: 6,
+        pitchKm: 4,
+        turnDirection: "prograde",
+        phaseOffsetDeg: 0,
+      };
+    case "gco":
+      return {
+        ...base,
+        formationMode: "gco",
+        name: "General Circular Orbit",
+        deputyCount: 4,
+        radiusKm: 8,
+        phaseOffsetDeg: 0,
+        rotationDirection: "prograde",
+      };
+    case "custom":
+    default:
+      return {
+        ...base,
+        formationMode: "custom",
+        name: "Custom Formation",
+        deputyCount: 1,
+        relativeModel: "roe",
+        roe: { ...DEFAULT_ROE },
+        relativeState: { ...DEFAULT_RELATIVE_STATE },
+      };
+  }
 }
