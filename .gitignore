@@ -30,3 +30,5 @@ src/data/satellites.generated.ts
 # input files
 public/assets/satellites.toml
 public/assets/constellation.toml
+
+local

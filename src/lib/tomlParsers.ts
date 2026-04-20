@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { SatelliteSpec } from "./satellites";
-import type { GroundStation } from "./groundStations";
+import type { GroundStation, VisibilityMode } from "./groundStations";
 import {
   expandSatelliteEditorConfig,
   parseSatelliteEditorConfig,
@@ -52,11 +52,31 @@ function parseArrayTable(text: string, marker: string): Record<string, any>[] {
   return result;
 }
 
+export interface ConstellationShellConfig {
+  name?: string;
+  count: number;
+  planes: number;
+  phasing?: number;
+  apogee_altitude: number;
+  eccentricity?: number;
+  inclination: number;
+  raan_range?: number;
+  raan_start?: number;
+  argp?: number;
+  mean_anomaly_0?: number;
+}
+
+export interface ConstellationConfig {
+  name?: string;
+  epoch: Date;
+  shells: ConstellationShellConfig[];
+}
+
 export function parseSatellitesToml(text: string): SatelliteSpec[] {
   return expandSatelliteEditorConfig(parseSatelliteEditorConfig(text));
 }
 
-function generateFromShells(con: any): SatelliteSpec[] {
+function generateFromShells(con: ConstellationConfig): SatelliteSpec[] {
   const epoch = con.epoch instanceof Date ? con.epoch : new Date(String(con.epoch));
   // ID ranges:
   //   1-9999: Constellation generated satellites
@@ -105,9 +125,9 @@ function generateFromShells(con: any): SatelliteSpec[] {
   return sats;
 }
 
-export function parseConstellationToml(text: string): SatelliteSpec[] {
+export function parseConstellationConfig(text: string): ConstellationConfig {
   const lines = text.split(/\r?\n/);
-  const con: any = { shells: [] };
+  const con: Record<string, any> = { shells: [] };
   let current: Record<string, any> | null = null;
 
   for (const raw of lines) {
@@ -135,11 +155,44 @@ export function parseConstellationToml(text: string): SatelliteSpec[] {
   }
 
   if (current) con.shells.push(current);
-  return generateFromShells(con);
+  return {
+    name: typeof con.name === "string" ? con.name : undefined,
+    epoch: con.epoch instanceof Date ? con.epoch : new Date(String(con.epoch)),
+    shells: (con.shells as Record<string, any>[]).map((shell) => ({
+      name: typeof shell.name === "string" ? shell.name : undefined,
+      count: Number(shell.count),
+      planes: Number(shell.planes),
+      phasing: shell.phasing !== undefined ? Number(shell.phasing) : undefined,
+      apogee_altitude: Number(shell.apogee_altitude),
+      eccentricity:
+        shell.eccentricity !== undefined ? Number(shell.eccentricity) : undefined,
+      inclination: Number(shell.inclination),
+      raan_range: shell.raan_range !== undefined ? Number(shell.raan_range) : undefined,
+      raan_start: shell.raan_start !== undefined ? Number(shell.raan_start) : undefined,
+      argp: shell.argp !== undefined ? Number(shell.argp) : undefined,
+      mean_anomaly_0:
+        shell.mean_anomaly_0 !== undefined ? Number(shell.mean_anomaly_0) : undefined,
+    })),
+  };
+}
+
+export function parseConstellationToml(text: string): SatelliteSpec[] {
+  return generateFromShells(parseConstellationConfig(text));
 }
 
 export function parseGroundStationsToml(text: string): GroundStation[] {
   const entries = parseArrayTable(text, "groundstations");
+
+  function parseVisibilityMode(value: unknown): VisibilityMode | undefined {
+    if (
+      value === "elevation_only" ||
+      value === "off_nadir_only" ||
+      value === "and"
+    ) {
+      return value;
+    }
+    return undefined;
+  }
 
   return entries.map((entry) => ({
     name: String(entry.name ?? ""),
@@ -147,6 +200,9 @@ export function parseGroundStationsToml(text: string): GroundStation[] {
     longitudeDeg: Number(entry.longitudeDeg),
     heightKm: Number(entry.heightKm ?? 0),
     minElevationDeg: Number(entry.minElevationDeg ?? 0),
+    visibilityMode: parseVisibilityMode(entry.visibilityMode),
+    maxOffNadirDeg:
+      entry.maxOffNadirDeg !== undefined ? Number(entry.maxOffNadirDeg) : undefined,
   }));
 }
 

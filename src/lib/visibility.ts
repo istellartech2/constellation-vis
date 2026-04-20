@@ -2,11 +2,138 @@ import * as satellite from "satellite.js";
 import * as THREE from "three";
 import type { SatelliteSpec } from "./satellites";
 import { toSatrec } from "./satellites";
-import type { GroundStation } from "./groundStations";
+import type { GroundStation, VisibilityMode } from "./groundStations";
 
 /** Convert a list of satellite specs to satrec objects. */
 function toSatrecs(sats: SatelliteSpec[]): satellite.SatRec[] {
   return sats.map((s) => toSatrec(s));
+}
+
+export interface VisibilityCriteria {
+  minElevationDeg?: number;
+  visibilityMode?: VisibilityMode;
+  maxOffNadirDeg?: number;
+}
+
+interface PreparedObserver {
+  name?: string;
+  observer: {
+    longitude: number;
+    latitude: number;
+    height: number;
+  };
+  stationEcf: {
+    x: number;
+    y: number;
+    z: number;
+  };
+  criteria: Required<VisibilityCriteria>;
+}
+
+function prepareObserver(station: GroundStation | (VisibilityCriteria & {
+  name?: string;
+  latitudeDeg: number;
+  longitudeDeg: number;
+  heightKm: number;
+})): PreparedObserver {
+  const observer = {
+    longitude: satellite.degreesToRadians(station.longitudeDeg),
+    latitude: satellite.degreesToRadians(station.latitudeDeg),
+    height: station.heightKm,
+  };
+
+  return {
+    name: station.name,
+    observer,
+    stationEcf: satellite.geodeticToEcf(observer),
+    criteria: normalizeVisibilityCriteria(station),
+  };
+}
+
+export function normalizeVisibilityCriteria(
+  criteria: VisibilityCriteria,
+): Required<VisibilityCriteria> {
+  return {
+    minElevationDeg: criteria.minElevationDeg ?? 0,
+    visibilityMode: criteria.visibilityMode ?? "elevation_only",
+    maxOffNadirDeg: criteria.maxOffNadirDeg ?? Number.POSITIVE_INFINITY,
+  };
+}
+
+function computeOffNadirAngleRad(
+  satelliteEcf: satellite.EcfVec3<number>,
+  stationEcf: { x: number; y: number; z: number },
+): number | null {
+  const nadir = new THREE.Vector3(-satelliteEcf.x, -satelliteEcf.y, -satelliteEcf.z);
+  const toStation = new THREE.Vector3(
+    stationEcf.x - satelliteEcf.x,
+    stationEcf.y - satelliteEcf.y,
+    stationEcf.z - satelliteEcf.z,
+  );
+
+  if (nadir.lengthSq() === 0 || toStation.lengthSq() === 0) {
+    return null;
+  }
+
+  const dot = THREE.MathUtils.clamp(
+    nadir.normalize().dot(toStation.normalize()),
+    -1,
+    1,
+  );
+  return Math.acos(dot);
+}
+
+export function passesVisibilityCriteria(
+  elevationRad: number,
+  offNadirRad: number | null,
+  criteria: VisibilityCriteria,
+): boolean {
+  const normalized = normalizeVisibilityCriteria(criteria);
+  const minElevationRad = THREE.MathUtils.degToRad(normalized.minElevationDeg);
+  const maxOffNadirRad = THREE.MathUtils.degToRad(normalized.maxOffNadirDeg);
+  const elevationPass = elevationRad >= minElevationRad;
+  const offNadirPass = offNadirRad !== null && offNadirRad <= maxOffNadirRad;
+
+  switch (normalized.visibilityMode) {
+    case "elevation_only":
+      return elevationPass;
+    case "off_nadir_only":
+      return offNadirPass;
+    case "and":
+      return elevationPass && offNadirPass;
+    default:
+      return elevationPass;
+  }
+}
+
+function countVisibleSatellitesForObserver(
+  satRecs: satellite.SatRec[],
+  prepared: PreparedObserver,
+  date: Date,
+): number {
+  const gmst = satellite.gstime(date);
+  let count = 0;
+
+  for (const rec of satRecs) {
+    const pv = satellite.propagate(rec, date);
+    if (!pv?.position) continue;
+
+    const ecf = satellite.eciToEcf(pv.position, gmst);
+    if (isVisibleFromPreparedObserver(ecf, prepared)) {
+      count++;
+    }
+  }
+
+  return count;
+}
+
+function isVisibleFromPreparedObserver(
+  satelliteEcf: satellite.EcfVec3<number>,
+  prepared: PreparedObserver,
+): boolean {
+  const look = satellite.ecfToLookAngles(prepared.observer, satelliteEcf);
+  const offNadirRad = computeOffNadirAngleRad(satelliteEcf, prepared.stationEcf);
+  return passesVisibilityCriteria(look.elevation, offNadirRad, prepared.criteria);
 }
 
 /** Count visible satellites for a single ground station at a given time. */
@@ -15,22 +142,7 @@ export function countVisibleSatellites(
   station: GroundStation,
   date: Date,
 ): number {
-  const gmst = satellite.gstime(date);
-  const observer = {
-    longitude: satellite.degreesToRadians(station.longitudeDeg),
-    latitude: satellite.degreesToRadians(station.latitudeDeg),
-    height: station.heightKm,
-  };
-  const minEl = THREE.MathUtils.degToRad(station.minElevationDeg);
-  let count = 0;
-  for (const rec of satRecs) {
-    const pv = satellite.propagate(rec, date);
-    if (!pv?.position) continue;
-    const ecf = satellite.eciToEcf(pv.position, gmst);
-    const look = satellite.ecfToLookAngles(observer, ecf);
-    if (look.elevation > minEl) count++;
-  }
-  return count;
+  return countVisibleSatellitesForObserver(satRecs, prepareObserver(station), date);
 }
 
 /**
@@ -41,6 +153,9 @@ export interface VisibilityStats {
   avg: number;
   median: number;
   nonZeroRate: number;
+  visibleStepCount: number;
+  visibleSeconds: number;
+  visibleHours: number;
 }
 
 /**
@@ -54,11 +169,12 @@ export function visibilityStats(
   stepSec = 10,
 ): VisibilityStats {
   const satRecs = toSatrecs(sats);
+  const prepared = prepareObserver(station);
   const startMs = start.getTime();
   const endMs = startMs + durationHours * 3600 * 1000;
   const counts: number[] = [];
   for (let ms = startMs; ms <= endMs; ms += stepSec * 1000) {
-    counts.push(countVisibleSatellites(satRecs, station, new Date(ms)));
+    counts.push(countVisibleSatellitesForObserver(satRecs, prepared, new Date(ms)));
   }
   const steps = counts.length;
   const total = counts.reduce((a, b) => a + b, 0);
@@ -68,8 +184,17 @@ export function visibilityStats(
     sorted.length % 2 === 0
       ? (sorted[mid - 1] + sorted[mid]) / 2
       : sorted[mid];
-  const nonZeroRate = counts.filter((c) => c > 0).length / steps;
-  return { avg: total / steps, median, nonZeroRate };
+  const visibleStepCount = counts.filter((c) => c > 0).length;
+  const nonZeroRate = visibleStepCount / steps;
+  const visibleSeconds = visibleStepCount * stepSec;
+  return {
+    avg: total / steps,
+    median,
+    nonZeroRate,
+    visibleStepCount,
+    visibleSeconds,
+    visibleHours: visibleSeconds / 3600,
+  };
 }
 
 export function averageVisibility(
@@ -109,13 +234,7 @@ export function calculateStationAccessData(
   stepSeconds = 10,
 ): StationVisibilitySample[] {
   const satRecs = toSatrecs(sats);
-  const observers = stations.map((gs) => ({
-    name: gs.name,
-    longitude: satellite.degreesToRadians(gs.longitudeDeg),
-    latitude: satellite.degreesToRadians(gs.latitudeDeg),
-    height: gs.heightKm,
-    minEl: THREE.MathUtils.degToRad(gs.minElevationDeg),
-  }));
+  const observers = stations.map((gs) => prepareObserver(gs));
 
   const result: StationVisibilitySample[] = [];
 
@@ -127,14 +246,14 @@ export function calculateStationAccessData(
     const current = new Date(ms);
     const gmst = satellite.gstime(current);
     const counts = observers.map(() => 0);
-    
+
     satRecs.forEach((rec) => {
       const pv = satellite.propagate(rec, current);
       if (!pv?.position) return;
+
       const ecf = satellite.eciToEcf(pv.position, gmst);
       observers.forEach((obs, gi) => {
-        const look = satellite.ecfToLookAngles(obs, ecf);
-        if (look.elevation > obs.minEl) counts[gi]++;
+        if (isVisibleFromPreparedObserver(ecf, obs)) counts[gi]++;
       });
     });
 
@@ -143,7 +262,7 @@ export function calculateStationAccessData(
       time: timeStr,
       timestamp: ms,
       stations: observers.map((obs, i) => ({
-        name: obs.name,
+        name: obs.name ?? `Station ${i + 1}`,
         visibleCount: counts[i],
       })),
     });
@@ -223,12 +342,7 @@ export function generateVisibilityReport(
   stepSec = 10,
 ): string {
   const satRecs = toSatrecs(sats);
-  const observers = stations.map((gs) => ({
-    longitude: satellite.degreesToRadians(gs.longitudeDeg),
-    latitude: satellite.degreesToRadians(gs.latitudeDeg),
-    height: gs.heightKm,
-    minEl: THREE.MathUtils.degToRad(gs.minElevationDeg),
-  }));
+  const observers = stations.map((gs) => prepareObserver(gs));
 
   const header = ["Time(sec)", ...stations.map((s) => s.name)].join(",");
   const lines: string[] = [header];
@@ -238,16 +352,9 @@ export function generateVisibilityReport(
 
   for (let ms = startMs, t = 0; ms <= endMs; ms += stepSec * 1000, t += stepSec) {
     const current = new Date(ms);
-    const gmst = satellite.gstime(current);
     const counts = observers.map(() => 0);
-    satRecs.forEach((rec) => {
-      const pv = satellite.propagate(rec, current);
-      if (!pv?.position) return;
-      const ecf = satellite.eciToEcf(pv.position, gmst);
-      observers.forEach((obs, gi) => {
-        const look = satellite.ecfToLookAngles(obs, ecf);
-        if (look.elevation > obs.minEl) counts[gi]++;
-      });
+    observers.forEach((obs, gi) => {
+      counts[gi] = countVisibleSatellitesForObserver(satRecs, obs, current);
     });
     lines.push([String(t), ...counts.map(String)].join(","));
   }

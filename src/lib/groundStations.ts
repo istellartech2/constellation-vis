@@ -1,11 +1,15 @@
 import { parseGroundStationsToml } from './config';
 
+export type VisibilityMode = "elevation_only" | "off_nadir_only" | "and";
+
 export interface GroundStation {
   name: string;
   latitudeDeg: number;
   longitudeDeg: number;
   heightKm: number;
   minElevationDeg: number;
+  visibilityMode?: VisibilityMode;
+  maxOffNadirDeg?: number;
 }
 
 // Helper used by the demo to fetch and parse the bundled ground station list.
