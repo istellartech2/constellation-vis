@@ -43,7 +43,6 @@ apogee_altitude = 600
 inclination = 43
 `);
 
-    expect(config.name).toBe("Demo");
     expect(config.epoch.toISOString()).toBe("2026-04-20T00:00:00.000Z");
     expect(config.shells).toHaveLength(1);
     expect(config.shells[0]).toEqual({

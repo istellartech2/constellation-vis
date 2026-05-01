@@ -18,7 +18,6 @@ export interface ConstellationShell {
 }
 
 export interface ConstellationConfig {
-  name: string;
   epoch: Date;
   shells: ConstellationShell[];
 }
@@ -46,7 +45,6 @@ export function createNewShell(): ConstellationShell {
 
 export function createDefaultConfig(): ConstellationConfig {
   return {
-    name: "NewConstellation",
     epoch: new Date(),
     shells: [],
   };

@@ -136,6 +136,80 @@ export function getCelestrakUrl(group: string): string {
   return `https://celestrak.org/NORAD/elements/gp.php?GROUP=${urlGroup}&FORMAT=json`;
 }
 
+import { readCachedGroup, writeCachedGroup } from "./celestrakCache";
+
+export interface CelestrakFetchResult {
+  /** Parsed entries; undefined when neither network nor cache yielded data. */
+  data?: CelestrakEntry[];
+  /** Human-readable note to surface to the user (errors, cache fallback). */
+  note?: string;
+}
+
+/**
+ * Fetch orbital data for a single CelesTrak group. On HTTP / network failure
+ * we transparently fall back to the IndexedDB cache populated by previous
+ * successful fetches; the user is notified via the `note` field instead of an
+ * exception.
+ */
+export async function fetchCelestrakGroup(group: string): Promise<CelestrakFetchResult> {
+  const url = getCelestrakUrl(group);
+  try {
+    const resp = await fetch(url);
+    const text = await resp.text();
+
+    if (resp.ok && !text.startsWith("Invalid query:") && !text.startsWith("Error:")) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        return { note: `「${group}」: JSON 応答が不正です` };
+      }
+      if (!Array.isArray(parsed)) {
+        return { note: `「${group}」: 応答が配列ではありません (${typeof parsed})` };
+      }
+      const data = parsed as CelestrakEntry[];
+      await writeCachedGroup(group, data);
+      return { data };
+    }
+
+    // Either non-OK status or an error body. Try cache as fallback.
+    const reason = describeFailure(resp.status, text);
+    const cached = await readCachedGroup(group);
+    if (cached) {
+      return {
+        data: cached.data,
+        note: `「${group}」: ${reason}。前回保存（${new Date(cached.fetchedAt).toLocaleString()}）のキャッシュを使用しました。`,
+      };
+    }
+    return { note: `「${group}」: ${reason}` };
+  } catch (e) {
+    const cached = await readCachedGroup(group);
+    if (cached) {
+      return {
+        data: cached.data,
+        note: `「${group}」: 通信に失敗しました（${(e as Error).message}）。前回保存（${new Date(cached.fetchedAt).toLocaleString()}）のキャッシュを使用しました。`,
+      };
+    }
+    return { note: `「${group}」: 通信に失敗しました（${(e as Error).message}）` };
+  }
+}
+
+function describeFailure(status: number, body: string): string {
+  if (status === 403 && /has not updated/i.test(body)) {
+    return "CelesTrak 側のデータが前回取得以降更新されていないためダウンロードを拒否されました（同一グループは 2 時間に 1 回まで）";
+  }
+  if (status === 403) {
+    return `CelesTrak から 403 が返されました（短時間に同じグループへ繰り返しアクセスしている可能性があります）`;
+  }
+  if (status === 429) {
+    return "CelesTrak のレート制限に達しました（HTTP 429）";
+  }
+  if (status === 200) {
+    return body.trim().slice(0, 200);
+  }
+  return `HTTP ${status}\n${body.trim().slice(0, 200)}`;
+}
+
 export function satellitesToToml(list: SatelliteSpec[]): string {
   return list
     .map((s) => {

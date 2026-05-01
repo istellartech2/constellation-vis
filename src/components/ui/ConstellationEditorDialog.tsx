@@ -52,10 +52,6 @@ export default function ConstellationEditorDialog({
     setErrors(result.errors);
   }, [config]);
 
-  const handleNameChange = useCallback((name: string) => {
-    setConfig((prev) => ({ ...prev, name }));
-  }, []);
-
   const handleEpochChange = useCallback((epochStr: string) => {
     const date = new Date(epochStr);
     if (!isNaN(date.getTime())) {
@@ -142,20 +138,6 @@ export default function ConstellationEditorDialog({
 
         {/* Constellation Meta Section - Compact */}
         <div className="flex items-center gap-4 px-1">
-          <div className="flex items-center gap-2">
-            <Label className="text-xs text-gray-400 whitespace-nowrap">名前:</Label>
-            <input
-              type="text"
-              value={config.name}
-              onChange={(e) => handleNameChange(e.target.value)}
-              placeholder="コンステレーション名"
-              className={`w-48 px-2 py-1 text-sm bg-gray-800 border rounded focus:outline-none text-gray-100 ${
-                errors.some((e) => e.field === "name")
-                  ? "border-red-500"
-                  : "border-gray-600 focus:border-amber-500"
-              }`}
-            />
-          </div>
           <div className="flex items-center gap-2">
             <Label className="text-xs text-gray-400 whitespace-nowrap">エポック:</Label>
             <input

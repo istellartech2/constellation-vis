@@ -26,7 +26,6 @@ export function parseConstellationConfig(tomlText: string): ConstellationConfig 
 
   const lines = tomlText.split(/\r?\n/);
   const config: ConstellationConfig = {
-    name: "",
     epoch: new Date(),
     shells: [],
   };
@@ -90,10 +89,9 @@ export function parseConstellationConfig(tomlText: string): ConstellationConfig 
             break;
         }
       } else {
-        // We're in the constellation section
-        if (key === "name") {
-          config.name = String(value);
-        } else if (key === "epoch") {
+        // We're in the constellation section. Older TOMLs may include a `name`
+        // field; we silently ignore it for backward compatibility.
+        if (key === "epoch") {
           config.epoch = value instanceof Date ? value : new Date(String(value));
         }
       }
@@ -140,7 +138,6 @@ export function serializeConstellationConfig(config: ConstellationConfig): strin
   const lines: string[] = [];
 
   lines.push("[constellation]");
-  lines.push(`name  = "${config.name}"`);
   lines.push(`epoch = ${formatTomlDate(config.epoch)}`);
 
   for (const shell of config.shells) {
@@ -196,10 +193,6 @@ export interface ValidationResult {
 
 export function validateConfig(config: ConstellationConfig): ValidationResult {
   const errors: ValidationError[] = [];
-
-  if (!config.name.trim()) {
-    errors.push({ field: "name", message: "コンステレーション名は必須です" });
-  }
 
   config.shells.forEach((shell, index) => {
     if (shell.count < 1 || !Number.isInteger(shell.count)) {

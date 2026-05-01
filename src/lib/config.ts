@@ -1,19 +1,14 @@
 import type { SatelliteSpec } from "./satellites";
 import type { GroundStation } from "./groundStations";
 import {
-  parseSatellitesToml as baseParseSatellitesToml,
-  parseConstellationToml as baseParseConstellationToml,
-  parseGroundStationsToml as baseParseGroundStationsToml,
+  parseSatellitesToml,
+  parseConstellationToml,
+  parseGroundStationsToml,
   parseTomlValue,
 } from "./tomlParsers";
 
-export {
-  baseParseSatellitesToml as parseSatellitesToml,
-  baseParseConstellationToml as parseConstellationToml,
-  baseParseGroundStationsToml as parseGroundStationsToml,
-};
+export { parseSatellitesToml, parseConstellationToml, parseGroundStationsToml };
 
-// Configuration bundle utilities
 export interface ConfigBundle {
   satText: string;
   constText: string;
@@ -62,9 +57,9 @@ export function parseConfigBundle(text: string): ConfigBundle {
     start = parsed instanceof Date ? parsed : new Date(String(parsed));
   }
 
-  const base = satText ? baseParseSatellitesToml(satText) : [];
-  const con = constText ? baseParseConstellationToml(constText) : [];
-  const ground = gsText ? baseParseGroundStationsToml(gsText) : [];
+  const base = satText ? parseSatellitesToml(satText) : [];
+  const con = constText ? parseConstellationToml(constText) : [];
+  const ground = gsText ? parseGroundStationsToml(gsText) : [];
   return {
     satText,
     constText,
@@ -82,22 +77,20 @@ export function buildConfigBundle(
   gsText: string,
   start: Date,
 ): string {
-  const parts: string[] = [
-    '# === satellites ===',
+  return [
+    "# === satellites ===",
     satText.trim(),
-    '',
-    '# === constellation ===',
+    "",
+    "# === constellation ===",
     constText.trim(),
-    '',
-    '# === groundstations ===',
+    "",
+    "# === groundstations ===",
     gsText.trim(),
-    '',
+    "",
     `startTime = "${start.toISOString()}"`,
-  ];
-  return parts.join('\n');
+  ].join("\n");
 }
 
-// File utilities
 export function downloadFile(name: string, text: string) {
   const blob = new Blob([text], { type: "text/plain" });
   const url = URL.createObjectURL(blob);
@@ -106,20 +99,4 @@ export function downloadFile(name: string, text: string) {
   a.download = name;
   a.click();
   URL.revokeObjectURL(url);
-}
-
-export async function handleFileLoad<T>(
-  file: File,
-  setter: (t: string) => void,
-  parser: (t: string) => T,
-  validator?: (v: T) => void,
-) {
-  const text = await file.text();
-  try {
-    const parsed = parser(text);
-    if (validator) validator(parsed);
-    setter(text);
-  } catch (e) {
-    alert("Invalid file: " + (e as Error).message);
-  }
 }

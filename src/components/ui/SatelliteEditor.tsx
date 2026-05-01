@@ -14,11 +14,15 @@ import EditorTab from "./EditorTab";
 import AnalysisTab from "./AnalysisTab";
 import OptionTab from "./OptionTab";
 import ImportDialog from "./ImportDialog";
-import { celestrakEntryToSat, satellitesToToml, getCelestrakUrl } from "../../utils/celestrakUtils";
+import {
+  celestrakEntryToSat,
+  satellitesToToml,
+  fetchCelestrakGroup,
+} from "../../utils/celestrakUtils";
 import { validateSatellites, validateGroundStations } from "../../utils/validators";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./tabs";
 import { Button } from "./button";
-import { X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import type { EarthTextureMode } from "../../lib/earthTextures";
 
 /**
@@ -213,59 +217,23 @@ export default function SatelliteEditor({
   // with whatever the user already has in the satellites text area.
   async function handleImport() {
     setImporting(true);
-    const errors: string[] = [];
-    
+    const notes: string[] = [];
     try {
       const base = parseSatellitesToml(satText);
-      
       for (const g of selectedGroups) {
-        try {
-          const url = getCelestrakUrl(g);
-          const resp = await fetch(url);
-          
-          if (!resp.ok) {
-            errors.push(`グループ「${g}」でHTTP ${resp.status}エラー`);
-            continue;
-          }
-          
-          const text = await resp.text();
-          
-          // Check if response is valid JSON
-          if (text.startsWith("Invalid query:") || text.startsWith("Error:")) {
-            errors.push(`グループ「${g}」の応答が不正です: ${text}`);
-            continue;
-          }
-          
-          let data;
+        const result = await fetchCelestrakGroup(g);
+        if (result.note) notes.push(result.note);
+        if (!result.data) continue;
+        for (const entry of result.data) {
           try {
-            data = JSON.parse(text);
-          } catch {
-            errors.push(`グループ「${g}」のJSON応答が不正です`);
-            continue;
+            base.push(celestrakEntryToSat(entry));
+          } catch (e) {
+            console.warn(`「${g}」のデータ変換に失敗しました:`, e);
           }
-          
-          if (!Array.isArray(data)) {
-            errors.push(`グループ「${g}」の形式が配列ではありません (${typeof data})`);
-            continue;
-          }
-          
-          for (const e of data) {
-            try {
-              base.push(celestrakEntryToSat(e));
-            } catch (conversionError) {
-              console.warn(`グループ「${g}」のデータ変換に失敗しました:`, conversionError);
-            }
-          }
-        } catch (groupError) {
-          errors.push(`グループ「${g}」の処理中にエラー: ${(groupError as Error).message}`);
         }
       }
-      
       setSatText(satellitesToToml(base));
-      
-      if (errors.length > 0) {
-        alert(`一部のグループでエラーが発生しました:\n${errors.join("\n")}`);
-      }
+      if (notes.length > 0) alert(notes.join("\n\n"));
     } catch (e) {
       alert("衛星のインポートに失敗しました: " + (e as Error).message);
     } finally {
@@ -366,29 +334,37 @@ export default function SatelliteEditor({
         onClose={() => setImportOpen(false)}
       />
       {!open && (
-        <button className="side-panel-button" onClick={() => setOpen(true)}>
-          ☰
+        <button
+          className="side-panel-button"
+          onClick={() => setOpen(true)}
+          aria-label="メニューを開く"
+        >
+          <Menu className="h-5 w-5" />
         </button>
       )}
       <div className={`side-panel ${open ? "" : "closed"}`}>
-        <div className="side-panel-header flex">
-          <Tabs value={tab} onValueChange={(value) => setTab(value as "editor" | "analysis" | "option")} className="flex-1 mr-12">
-            <TabsList className="grid w-full grid-cols-3 h-10 bg-gray-700 border-2 border-gray-600 rounded-lg p-1 shadow-lg">
-              <TabsTrigger 
-                value="editor" 
-                className="data-[state=active]:!bg-orange-600 data-[state=active]:!text-orange-50 data-[state=active]:!shadow-sm data-[state=active]:!border-orange-200 data-[state=active]:!font-medium hover:bg-gray-600 text-gray-200 transition-all duration-200 rounded-md border border-transparent font-medium"
+        <div className="side-panel-header">
+          <Tabs
+            value={tab}
+            onValueChange={(value) => setTab(value as "editor" | "analysis" | "option")}
+            className="flex-1 min-w-0"
+          >
+            <TabsList className="grid w-full grid-cols-3 h-10 bg-gray-700/80 rounded-lg p-1 shadow-inner border border-gray-600">
+              <TabsTrigger
+                value="editor"
+                className="data-[state=active]:!bg-orange-600 data-[state=active]:!text-orange-50 data-[state=active]:!shadow-sm data-[state=active]:!border-transparent hover:bg-gray-600/60 text-gray-200 transition-colors rounded-md font-medium"
               >
                 編集
               </TabsTrigger>
-              <TabsTrigger 
-                value="analysis" 
-                className="data-[state=active]:!bg-orange-600 data-[state=active]:!text-orange-50 data-[state=active]:!shadow-sm data-[state=active]:!border-orange-200 data-[state=active]:!font-medium hover:bg-gray-600 text-gray-200 transition-all duration-200 rounded-md border border-transparent font-medium"
+              <TabsTrigger
+                value="analysis"
+                className="data-[state=active]:!bg-orange-600 data-[state=active]:!text-orange-50 data-[state=active]:!shadow-sm data-[state=active]:!border-transparent hover:bg-gray-600/60 text-gray-200 transition-colors rounded-md font-medium"
               >
                 解析
               </TabsTrigger>
-              <TabsTrigger 
-                value="option" 
-                className="data-[state=active]:!bg-orange-600 data-[state=active]:!text-orange-50 data-[state=active]:!shadow-sm data-[state=active]:!border-orange-200 data-[state=active]:!font-medium hover:bg-gray-600 text-gray-200 transition-all duration-200 rounded-md border border-transparent font-medium"
+              <TabsTrigger
+                value="option"
+                className="data-[state=active]:!bg-orange-600 data-[state=active]:!text-orange-50 data-[state=active]:!shadow-sm data-[state=active]:!border-transparent hover:bg-gray-600/60 text-gray-200 transition-colors rounded-md font-medium"
               >
                 設定
               </TabsTrigger>
@@ -399,6 +375,7 @@ export default function SatelliteEditor({
             size="icon"
             className="side-panel-close"
             onClick={() => setOpen(false)}
+            aria-label="閉じる"
           >
             <X className="h-4 w-4" />
           </Button>

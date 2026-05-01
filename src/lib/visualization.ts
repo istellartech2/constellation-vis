@@ -217,6 +217,11 @@ export default class SatelliteScene {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enablePan = false;
     this.controls.enableDamping = true;
+    // Limit zoom range: ~1.05 = just above Earth surface (avoid clipping into the
+    // globe), 30 = far enough to see GEO satellites (~6.6 R) without the Earth
+    // shrinking to a dot.
+    this.controls.minDistance = 1.05;
+    this.controls.maxDistance = 30;
     this.resetFreeCamera();
 
     const useLayeredEarth = isLayeredEarthMode(params.earthTexture);

@@ -781,13 +781,17 @@ h1 {
   position: absolute;
   left: 12px;
   top: calc(12px + env(safe-area-inset-top, 0px));
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: #444753;
   color: #f0f2f5;
   border: 1px solid #555;
-  padding: 6px 10px;
-  font-size: 1.4rem;
+  padding: 0;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: 6px;
   z-index: 30;
   transition: all 0.2s ease;
 }
@@ -823,10 +827,10 @@ h1 {
   padding: 8px 10px;
   border-bottom: 1px solid #374151;
   flex-shrink: 0;
-  position: relative;
   background: rgba(55, 65, 81, 0.3);
   display: flex;
   align-items: center;
+  gap: 8px;
 }
 
 .side-panel-content {
@@ -868,7 +872,7 @@ h1 {
 }
 
 /* Legacy button styles (now using shadcn/ui buttons) - keeping for fallback */
-.side-panel button:not([data-slot="button"]) {
+.side-panel button:not([data-slot]) {
   background: rgba(68, 71, 83, 0.8);
   color: #c4c9d1;
   border: 1px solid rgba(68, 71, 83, 0.6);
@@ -880,21 +884,21 @@ h1 {
   font-size: 0.8em;
 }
 
-.side-panel button:not([data-slot="button"]):hover {
+.side-panel button:not([data-slot]):hover {
   background: rgba(68, 71, 83, 1);
   color: #f1f1f1;
   border-color: rgba(68, 71, 83, 0.8);
 }
 
 .side-panel-close {
-  position: absolute !important;
-  right: 12px !important;
-  top: 12px !important;
+  flex-shrink: 0 !important;
+  width: 40px !important;
+  height: 40px !important;
   background: transparent !important;
   border: none !important;
   color: #999faa !important;
-  padding: 4px !important;
-  transition: color 0.2s ease !important;
+  padding: 0 !important;
+  transition: color 0.2s ease, background 0.2s ease !important;
 }
 
 .side-panel-close:hover {

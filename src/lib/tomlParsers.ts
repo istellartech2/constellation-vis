@@ -67,7 +67,6 @@ export interface ConstellationShellConfig {
 }
 
 export interface ConstellationConfig {
-  name?: string;
   epoch: Date;
   shells: ConstellationShellConfig[];
 }
@@ -156,7 +155,6 @@ export function parseConstellationConfig(text: string): ConstellationConfig {
 
   if (current) con.shells.push(current);
   return {
-    name: typeof con.name === "string" ? con.name : undefined,
     epoch: con.epoch instanceof Date ? con.epoch : new Date(String(con.epoch)),
     shells: (con.shells as Record<string, any>[]).map((shell) => ({
       name: typeof shell.name === "string" ? shell.name : undefined,
