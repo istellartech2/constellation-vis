@@ -43,6 +43,7 @@ function App() {
   const [showPerturbation, setShowPerturbation] = useState(false);
   const [showDerivedSatelliteInfo, setShowDerivedSatelliteInfo] = useState(true);
   const [brightEarth, setBrightEarth] = useState(false);
+  const [whiteBackground, setWhiteBackground] = useState(false);
   const [showGroundStationCones, setShowGroundStationCones] = useState(false);
   const [showSatelliteFovCones, setShowSatelliteFovCones] = useState(false);
   const [groundConeMinElevationDeg, setGroundConeMinElevationDeg] = useState(30);
@@ -121,6 +122,7 @@ function App() {
     cameraMode,
     ecef,
     brightEarth,
+    whiteBackground,
     onSelect: handleSelectSatellite,
     onSelectStation: setSelectedGsIdx,
     onSimTimeChange: setSimTime,
@@ -138,7 +140,10 @@ function App() {
           position: "fixed",
           right: 8,
           bottom: "calc(env(safe-area-inset-bottom, 0px) + 6px)",
-          color: "#fff",
+          color: whiteBackground ? "#111827" : "#fff",
+          textShadow: whiteBackground
+            ? "0 0 3px #fff, 0 0 3px #fff"
+            : "0 0 3px rgba(0,0,0,0.6)",
           fontFamily: "'Noto Sans Mono', monospace",
           fontVariantNumeric: "tabular-nums",
           fontSize: "0.9rem",
@@ -165,7 +170,10 @@ function App() {
             left: 0,
             top: 0,
             transform: "translate(-50%, -100%)",
-            color: "#fff",
+            color: whiteBackground ? "#111827" : "#fff",
+            textShadow: whiteBackground
+              ? "0 0 3px #fff, 0 0 3px #fff"
+              : "0 0 3px rgba(0,0,0,0.6)",
             fontFamily: "'Noto Sans Mono', monospace",
             fontSize: "0.9rem",
             pointerEvents: "none",
@@ -176,7 +184,7 @@ function App() {
           {gsInfoText}
         </pre>
       )}
-      <SpeedControl value={speedExp} onChange={setSpeedExp} />
+      <SpeedControl value={speedExp} onChange={setSpeedExp} whiteBackground={whiteBackground} />
       <SatelliteEditor
         satRadius={satRadius}
         onSatRadiusChange={setSatRadius}
@@ -221,6 +229,8 @@ function App() {
         onShowDerivedSatelliteInfoChange={setShowDerivedSatelliteInfo}
         brightEarth={brightEarth}
         onBrightEarthChange={setBrightEarth}
+        whiteBackground={whiteBackground}
+        onWhiteBackgroundChange={setWhiteBackground}
         sceneRef={sceneRef}
         onUpdate={(s, gs, start) => {
           setSatellites(s);

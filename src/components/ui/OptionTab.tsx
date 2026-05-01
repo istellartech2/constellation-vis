@@ -54,6 +54,8 @@ interface Props {
   onShowDerivedSatelliteInfoChange: (v: boolean) => void;
   brightEarth: boolean;
   onBrightEarthChange: (v: boolean) => void;
+  whiteBackground: boolean;
+  onWhiteBackgroundChange: (v: boolean) => void;
   sceneRef?: RefObject<SatelliteScene | null>;
 }
 
@@ -101,6 +103,8 @@ export default function OptionTab({
   onShowDerivedSatelliteInfoChange,
   brightEarth,
   onBrightEarthChange,
+  whiteBackground,
+  onWhiteBackgroundChange,
   sceneRef,
 }: Props) {
   const [loadedKMLs, setLoadedKMLs] = useState<string[]>([]);
@@ -294,6 +298,19 @@ export default function OptionTab({
               className="text-sm font-normal cursor-pointer"
             >
               地球を明るく表示
+            </Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="whiteBackground"
+              checked={whiteBackground}
+              onCheckedChange={(checked) => onWhiteBackgroundChange(!!checked)}
+            />
+            <Label
+              htmlFor="whiteBackground"
+              className="text-sm font-normal cursor-pointer"
+            >
+              背景を白にする
             </Label>
           </div>
         </div>

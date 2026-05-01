@@ -93,6 +93,8 @@ export interface SatelliteSceneParams {
   ecef: boolean;
   /** Show bright earth (uniform lighting) */
   brightEarth: boolean;
+  /** Use a white background instead of the default dark space background */
+  whiteBackground?: boolean;
   onSelect?: (idx: number | null) => void;
   onSelectStation?: (idx: number | null) => void;
   onSimTimeChange?: (date: Date) => void;
@@ -194,6 +196,9 @@ export default class SatelliteScene {
     const mountNode = this.params.mountRef.current;
     this.currentSimDate = this.params.startTime;
     this.scene = new THREE.Scene();
+    if (params.whiteBackground) {
+      this.scene.background = new THREE.Color(0xffffff);
+    }
     this.camera = new THREE.PerspectiveCamera(
       45,
       window.innerWidth / window.innerHeight,
@@ -241,7 +246,7 @@ export default class SatelliteScene {
     this.earthGroup.scale.set(1, EARTH_FLATTENING, 1);
     this.scene.add(this.earthGroup);
 
-    this.graticule = createGraticule(20, 0.001);
+    this.graticule = createGraticule(20, 0.001, !!params.whiteBackground);
     this.graticule.visible = this.params.showGraticule;
     this.scene.add(this.graticule);
 
@@ -256,7 +261,9 @@ export default class SatelliteScene {
     this.scene.add(this.sunDot);
 
     this.stationGeo = new THREE.SphereGeometry(0.01, 8, 8);
-    this.stationMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    this.stationMat = new THREE.MeshBasicMaterial({
+      color: params.whiteBackground ? 0x111827 : 0xffffff,
+    });
 
     this.satRecs = this.params.satellites.map((spec) => toSatrec(spec));
 
@@ -323,7 +330,9 @@ export default class SatelliteScene {
       this.scene.add(coneMesh);
       return mesh;
     });
-    this.linkMaterial = new THREE.LineBasicMaterial({ color: 0xffffff });
+    this.linkMaterial = new THREE.LineBasicMaterial({
+      color: params.whiteBackground ? 0x111827 : 0xffffff,
+    });
     this.linkGeometries = this.params.groundStations.map(() =>
       this.satRecs.map(() => new THREE.BufferGeometry()),
     );
@@ -619,7 +628,9 @@ export default class SatelliteScene {
       }
     }
     const geom = new THREE.BufferGeometry().setFromPoints(points);
-    const mat = new THREE.LineBasicMaterial({ color: 0xffffff });
+    const mat = new THREE.LineBasicMaterial({
+      color: this.params.whiteBackground ? 0x111827 : 0xffffff,
+    });
     this.orbitLine = new THREE.Line(geom, mat);
     this.scene.add(this.orbitLine);
   }

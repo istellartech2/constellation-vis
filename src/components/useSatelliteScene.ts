@@ -61,6 +61,7 @@ export function useSatelliteScene(params: SatelliteSceneParams) {
     params.satelliteSelectedColor,
     params.ecef,
     params.brightEarth,
+    params.whiteBackground,
     params.onSelect,
     params.onSelectStation,
     params.onSimTimeChange,

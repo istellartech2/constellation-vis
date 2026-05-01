@@ -62,13 +62,17 @@ export function sunVectorECI(date: Date): {
  * @param stepDeg Angular spacing between lines in degrees.
  * @param offset  Fractional radial offset from the surface.
  */
-export function createGraticule(stepDeg = 20, offset = 0): THREE.LineSegments {
+export function createGraticule(
+  stepDeg = 20,
+  offset = 0,
+  darkMode = false,
+): THREE.LineSegments {
   const verts: number[] = [];
   const colors: number[] = [];
   const r = 1 + offset;
-  const gray = new THREE.Color(0xdcdcdc);
-  const red = new THREE.Color(0xff6666);
-  const blue = new THREE.Color(0x6666ff);
+  const gray = new THREE.Color(darkMode ? 0x4b5563 : 0xdcdcdc);
+  const red = new THREE.Color(darkMode ? 0xb91c1c : 0xff6666);
+  const blue = new THREE.Color(darkMode ? 0x1d4ed8 : 0x6666ff);
 
   // Longitude lines
   for (let lon = -180; lon <= 180; lon += stepDeg) {

@@ -14,7 +14,13 @@
       "Bash(bun --version)",
       "WebSearch",
       "Bash(bun test:*)",
-      "Bash(bun add:*)"
+      "Bash(bun add:*)",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "Bash(kill %1)",
+      "Bash(lsof -ti:5173)",
+      "Bash(xargs kill *)",
+      "Bash(lsof -ti:5174)",
+      "mcp__Claude_Preview__preview_start"
     ],
     "deny": []
   }

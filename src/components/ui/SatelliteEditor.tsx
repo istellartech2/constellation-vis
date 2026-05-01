@@ -125,6 +125,10 @@ interface Props {
   brightEarth: boolean;
   /** Called when bright earth mode changes */
   onBrightEarthChange: (v: boolean) => void;
+  /** Use white background */
+  whiteBackground: boolean;
+  /** Called when white background mode changes */
+  onWhiteBackgroundChange: (v: boolean) => void;
   /** Called when analysis is started (to pause animation) */
   onAnalysisStart?: () => void;
   /** Called when analysis is closed (to resume animation) */
@@ -178,6 +182,8 @@ export default function SatelliteEditor({
   onShowDerivedSatelliteInfoChange,
   brightEarth,
   onBrightEarthChange,
+  whiteBackground,
+  onWhiteBackgroundChange,
   onAnalysisStart,
   onAnalysisEnd,
   sceneRef,
@@ -472,6 +478,8 @@ export default function SatelliteEditor({
                 onShowDerivedSatelliteInfoChange={onShowDerivedSatelliteInfoChange}
                 brightEarth={brightEarth}
                 onBrightEarthChange={onBrightEarthChange}
+                whiteBackground={whiteBackground}
+                onWhiteBackgroundChange={onWhiteBackgroundChange}
                 sceneRef={sceneRef}
               />
             </TabsContent>

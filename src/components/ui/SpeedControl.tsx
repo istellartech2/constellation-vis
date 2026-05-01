@@ -1,12 +1,13 @@
 interface Props {
   value: number;
   onChange: (value: number) => void;
+  whiteBackground?: boolean;
 }
 
 // Speed control with predefined speed steps
 const SPEED_OPTIONS = [1, 5, 10, 30, 60, 120, 240, 360, 600];
 
-export default function SpeedControl({ value, onChange }: Props) {
+export default function SpeedControl({ value, onChange, whiteBackground }: Props) {
   const currentSpeed = Math.pow(10, value);
   
   // Find the closest speed option
@@ -21,9 +22,22 @@ export default function SpeedControl({ value, onChange }: Props) {
   };
 
   return (
-    <div className="speed-control">
+    <div
+      className="speed-control"
+      style={whiteBackground ? { color: '#111827' } : undefined}
+    >
       <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <span style={{ fontSize: '0.9em' }}>Speed:</span>
+        <span
+          style={{
+            fontSize: '0.9em',
+            color: whiteBackground ? '#111827' : undefined,
+            textShadow: whiteBackground
+              ? '0 0 3px #fff, 0 0 3px #fff'
+              : undefined,
+          }}
+        >
+          Speed:
+        </span>
         <select 
           value={selectedSpeed} 
           onChange={handleChange}
