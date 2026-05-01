@@ -8,14 +8,17 @@ A web application that visualizes satellite constellations in Earth orbit.
 
 ## Features
 
-- Draws a 3D Earth
-- Displays satellite positions from orbital elements
-- Gets and displays satellite orbital elements from CelesTrak
-- Checks visibility from ground stations
+- 3D Earth with selectable textures and day/night lighting
+- Plot satellites from TLE strings or Keplerian elements
+- Generate constellations from Walker-pattern shell definitions
+- Import live orbital data from CelesTrak (cached in IndexedDB so subsequent loads work offline and gracefully fall back when CelesTrak rate-limits a group)
+- Define ground stations on a map and visualize their visibility cones (elevation, off-nadir, or both)
+- Analysis tab for access and coverage statistics
+- Save / load the entire configuration as a single `settings.toml` bundle
 
 ## Prerequisites
 
-- Node.js ≥16 and [bun](https://bun.sh/)
+- [bun](https://bun.sh/) ≥ 1.0
 
 ## Installation
 
@@ -54,51 +57,8 @@ bun run build
 ```
 
 ## Deployment
-https://istellartech2.github.io/constellation-vis/
 
-## File Formats
-
-### satellites.toml
-
-- Each satellite entry begins with `[[satellites]]`.
-- Set `type` to `"tle"` or `"elements"`.
-- For `type = "tle"`, provide `line1` and `line2`.
-- For `type = "elements"`, provide:
-  - `satnum`
-  - `epoch` (ISO-8601)
-  - `semiMajorAxisKm`
-  - `eccentricity`
-  - `inclinationDeg`
-  - `raanDeg`
-  - `argPerigeeDeg`
-  - `meanAnomalyDeg`
-- Optional metadata fields: `name`, `objectId`, `noradCatId`.
-
-### groundstations.toml
-
-- Each ground station entry begins with `[[groundstations]]`.
-- Fields:
-  - `name`
-  - `latitudeDeg`
-  - `longitudeDeg`
-  - `heightKm`
-  - `minElevationDeg`
-
-### constellation.toml
-
-- Top-level `[constellation]` table defines `name` and `epoch`.
-- Each `[[constellation.shells]]` block describes a shell with fields:
-  - `name`
-  - `count`
-  - `planes`
-  - `phasing`
-  - `apogee_altitude`
-  - `eccentricity`
-  - `inclination`
-  - `raan_range`
-- The semi-major axis is computed from apogee altitude and eccentricity as
-  `a = (earth_radius + apogee_altitude) / (1 + eccentricity)`.
-- Optional: `raan_start`, `argp`, `mean_anomaly_0`.
+Live build: https://istellartech2.github.io/constellation-vis/
 
 ---
 
@@ -108,18 +68,21 @@ https://istellartech2.github.io/constellation-vis/
 
 ## 機能
 
-- 3Dの地球を描画
-- 軌道要素から衛星の位置を表示
-- CelesTrakから衛星軌道要素を取得し、表示
-- 地上局からの可視性を確認
+- 3D の地球を複数のテクスチャ・昼夜ライティングで描画
+- TLE / Keplerian 軌道要素から衛星をプロット
+- Walker パターンのシェル定義からコンステレーションを生成
+- CelesTrak から軌道データをインポート（IndexedDB にキャッシュし、レート制限時は前回データへ自動フォールバック）
+- 地図上で地上局を定義し、可視範囲（仰角・オフナディア・両方）を可視化
+- アクセス・カバレッジを集計する解析タブ
+- 設定一式を `settings.toml` 1 ファイルにまとめて保存／読み込み
 
 ## 前提条件
 
-- Node.js ≥16 と [bun](https://bun.sh/)
+- [bun](https://bun.sh/) 1.0 以上
 
 ## インストール
 
-リポジトリのフォルダにおいて以下を実行。
+リポジトリのフォルダで以下を実行:
 
 ```bash
 bun install
@@ -127,7 +90,7 @@ bun install
 
 ## 開発
 
-以下で開発サーバーを起動。
+開発サーバーを起動:
 
 ```bash
 bun run dev
@@ -136,8 +99,6 @@ bun run dev
 ブラウザで `http://localhost:5173` を開いてください。
 
 ### テスト実行
-
-テストスイートを実行（Bun ネイティブテストランナー）:
 
 ```bash
 bun run test
@@ -155,49 +116,6 @@ bun run lint
 bun run build
 ```
 
-## アプリケーションURL
+## アプリケーション URL
+
 https://istellartech2.github.io/constellation-vis/
-
-## ファイル形式
-
-### satellites.toml
-
-- 各衛星は `[[satellites]]` から始まります。
-- `type` に `"tle"` または `"elements"` を指定します。
-- `type = "tle"` の場合は `line1` と `line2` を記述します。
-- `type = "elements"` の場合は次の項目を記述します:
-  - `satnum`
-  - `epoch` (ISO-8601)
-  - `semiMajorAxisKm`
-  - `eccentricity`
-  - `inclinationDeg`
-  - `raanDeg`
-  - `argPerigeeDeg`
-  - `meanAnomalyDeg`
-- 任意で `name`、`objectId`、`noradCatId` を付加できます。
-
-### groundstations.toml
-
-- 各地上局は `[[groundstations]]` から始まります。
-- 記述項目:
-  - `name`
-  - `latitudeDeg`
-  - `longitudeDeg`
-  - `heightKm`
-  - `minElevationDeg`
-
-### constellation.toml
-
-- `[constellation]` テーブルで `name` と `epoch` を定義します。
-- `[[constellation.shells]]` には以下を記述します:
-  - `name`
-  - `count`
-  - `planes`
-  - `phasing`
-  - `apogee_altitude`
-  - `eccentricity`
-  - `inclination`
-  - `raan_range`
- - 遠地点高度と離心率から半長軸を計算します。
-   数式は `a = (earth_radius + apogee_altitude) / (1 + eccentricity)` です。
-- 任意項目: `raan_start`、`argp`、`mean_anomaly_0`。
