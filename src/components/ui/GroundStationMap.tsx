@@ -62,11 +62,16 @@ function RecenterOnSelect({ lat, lng, id }: { lat: number; lng: number; id: stri
   return null;
 }
 
+function isValidLatLng(lat: number, lng: number): boolean {
+  return Number.isFinite(lat) && Number.isFinite(lng);
+}
+
 export default function GroundStationMap({ stations, selectedId, onMapClick, onSelect }: Props) {
   const selected = stations.find((s) => s.id === selectedId);
-  const center: [number, number] = selected
-    ? [selected.latitudeDeg, selected.longitudeDeg]
-    : [20, 0];
+  const center: [number, number] =
+    selected && isValidLatLng(selected.latitudeDeg, selected.longitudeDeg)
+      ? [selected.latitudeDeg, selected.longitudeDeg]
+      : [20, 0];
 
   return (
     <div className="w-full h-full">
@@ -86,14 +91,16 @@ export default function GroundStationMap({ stations, selectedId, onMapClick, onS
           lng={selected?.longitudeDeg ?? 0}
           id={selectedId}
         />
-        {stations.map((s) => (
-          <Marker
-            key={s.id}
-            position={[s.latitudeDeg, s.longitudeDeg]}
-            icon={s.id === selectedId ? SelectedIcon : NormalIcon}
-            eventHandlers={{ click: () => onSelect(s.id) }}
-          />
-        ))}
+        {stations
+          .filter((s) => isValidLatLng(s.latitudeDeg, s.longitudeDeg))
+          .map((s) => (
+            <Marker
+              key={s.id}
+              position={[s.latitudeDeg, s.longitudeDeg]}
+              icon={s.id === selectedId ? SelectedIcon : NormalIcon}
+              eventHandlers={{ click: () => onSelect(s.id) }}
+            />
+          ))}
       </MapContainer>
     </div>
   );

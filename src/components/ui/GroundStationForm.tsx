@@ -19,7 +19,12 @@ export default function GroundStationForm({ station, index, errors, onChange }: 
       hasErr ? "border-red-500" : "border-gray-600 focus:border-amber-500"
     }`;
 
-  const numberValue = (n: number) => (Number.isFinite(n) ? n : 0);
+  const numberValue = (n: number): number | "" => (Number.isFinite(n) ? n : "");
+  const parseNum = (raw: string): number => {
+    if (raw === "" || raw === "-") return NaN;
+    const v = parseFloat(raw);
+    return v;
+  };
 
   return (
     <div className="p-3 space-y-3">
@@ -38,7 +43,7 @@ export default function GroundStationForm({ station, index, errors, onChange }: 
             type="number"
             step="0.0001"
             value={numberValue(station.latitudeDeg)}
-            onChange={(e) => onChange({ latitudeDeg: parseFloat(e.target.value) })}
+            onChange={(e) => onChange({ latitudeDeg: parseNum(e.target.value) })}
             className={inputCls(!!fieldError("latitudeDeg"))}
           />
         </Field>
@@ -47,7 +52,7 @@ export default function GroundStationForm({ station, index, errors, onChange }: 
             type="number"
             step="0.0001"
             value={numberValue(station.longitudeDeg)}
-            onChange={(e) => onChange({ longitudeDeg: parseFloat(e.target.value) })}
+            onChange={(e) => onChange({ longitudeDeg: parseNum(e.target.value) })}
             className={inputCls(!!fieldError("longitudeDeg"))}
           />
         </Field>
@@ -59,7 +64,7 @@ export default function GroundStationForm({ station, index, errors, onChange }: 
             type="number"
             step="0.001"
             value={numberValue(station.heightKm)}
-            onChange={(e) => onChange({ heightKm: parseFloat(e.target.value) })}
+            onChange={(e) => onChange({ heightKm: parseNum(e.target.value) })}
             className={inputCls(!!fieldError("heightKm"))}
           />
         </Field>
@@ -68,7 +73,7 @@ export default function GroundStationForm({ station, index, errors, onChange }: 
             type="number"
             step="0.1"
             value={numberValue(station.minElevationDeg)}
-            onChange={(e) => onChange({ minElevationDeg: parseFloat(e.target.value) })}
+            onChange={(e) => onChange({ minElevationDeg: parseNum(e.target.value) })}
             className={inputCls(!!fieldError("minElevationDeg"))}
           />
         </Field>
