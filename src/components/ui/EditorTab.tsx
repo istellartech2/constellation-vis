@@ -9,9 +9,10 @@ import {
 import { validateSatellites, validateGroundStations } from "../../utils/validators";
 import { Button } from "./button";
 import { Textarea } from "./textarea";
-import { Download, Upload, Trash2, Globe, Save, FolderOpen, Settings, Satellite } from "lucide-react";
+import { Download, Upload, Trash2, Globe, Save, FolderOpen, Settings, Satellite, MapPin } from "lucide-react";
 import ConstellationEditorDialog from "./ConstellationEditorDialog";
 import SatelliteTomlEditorDialog from "./SatelliteTomlEditorDialog";
+import GroundStationEditorDialog from "./GroundStationEditorDialog";
 
 interface Props {
   satText: string;
@@ -48,6 +49,7 @@ export default function EditorTab({
   const bundleInputRef = useRef<HTMLInputElement | null>(null);
   const [constEditorOpen, setConstEditorOpen] = useState(false);
   const [satEditorOpen, setSatEditorOpen] = useState(false);
+  const [gsEditorOpen, setGsEditorOpen] = useState(false);
 
   return (
     <>
@@ -213,6 +215,15 @@ export default function EditorTab({
             >
               <Trash2 className="h-4 w-4" />
             </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 border-2 shadow-md bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white border-gray-500 hover:border-gray-400"
+              onClick={() => setGsEditorOpen(true)}
+              title="地上局編集"
+            >
+              <MapPin className="h-4 w-4" />
+            </Button>
           </div>
         </div>
         <Textarea
@@ -299,6 +310,12 @@ export default function EditorTab({
         satText={satText}
         onSatTextChange={onSatTextChange}
         onClose={() => setSatEditorOpen(false)}
+      />
+      <GroundStationEditorDialog
+        open={gsEditorOpen}
+        gsText={gsText}
+        onGsTextChange={onGsTextChange}
+        onClose={() => setGsEditorOpen(false)}
       />
     </>
   );
