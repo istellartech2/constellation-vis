@@ -262,7 +262,7 @@ export default class SatelliteScene {
 
     this.stationGeo = new THREE.SphereGeometry(0.01, 8, 8);
     this.stationMat = new THREE.MeshBasicMaterial({
-      color: params.whiteBackground ? 0x111827 : 0xffffff,
+      color: params.whiteBackground ? 0x2563eb : 0xffffff,
     });
 
     this.satRecs = this.params.satellites.map((spec) => toSatrec(spec));
@@ -331,7 +331,7 @@ export default class SatelliteScene {
       return mesh;
     });
     this.linkMaterial = new THREE.LineBasicMaterial({
-      color: params.whiteBackground ? 0x111827 : 0xffffff,
+      color: params.whiteBackground ? 0x2563eb : 0xffffff,
     });
     this.linkGeometries = this.params.groundStations.map(() =>
       this.satRecs.map(() => new THREE.BufferGeometry()),
