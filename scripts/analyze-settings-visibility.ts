@@ -418,22 +418,6 @@ function escapeSvgText(text: string): string {
     .replaceAll(">", "&gt;");
 }
 
-function selectTickValues(values: number[], maxTickCount = 10): number[] {
-  const sorted = uniqueSorted(values);
-  if (sorted.length <= maxTickCount) return sorted;
-
-  const selected: number[] = [];
-  const lastIndex = sorted.length - 1;
-  const step = lastIndex / (maxTickCount - 1);
-
-  for (let i = 0; i < maxTickCount; i++) {
-    const index = Math.round(i * step);
-    selected.push(sorted[index]);
-  }
-
-  return uniqueSorted(selected);
-}
-
 function selectTickValuesBySpacing(
   values: number[],
   widthPx: number,

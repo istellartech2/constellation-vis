@@ -41,7 +41,7 @@ function App() {
   const [showSunDirection, setShowSunDirection] = useState(true);
   const [ecef, setEcef] = useState(false);
   const [showPerturbation, setShowPerturbation] = useState(false);
-  const [showDerivedSatelliteInfo, setShowDerivedSatelliteInfo] = useState(true);
+  const [showDerivedSatelliteInfo, setShowDerivedSatelliteInfo] = useState(false);
   const [brightEarth, setBrightEarth] = useState(false);
   const [whiteBackground, setWhiteBackground] = useState(false);
   const [showGroundStationCones, setShowGroundStationCones] = useState(false);

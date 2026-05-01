@@ -9,10 +9,15 @@ import {
   MapPin,
   RefreshCw,
   Trash2,
+  Pencil,
+  Clock,
+  FileCog,
 } from "lucide-react";
 import ConstellationEditorDialog from "./ConstellationEditorDialog";
 import SatelliteTomlEditorDialog from "./SatelliteTomlEditorDialog";
 import GroundStationEditorDialog from "./GroundStationEditorDialog";
+import PanelSection from "./PanelSection";
+import EntryButton from "./EntryButton";
 
 interface Props {
   satText: string;
@@ -49,34 +54,11 @@ function countConstellationSatellites(text: string): number {
   return total;
 }
 
-function EntryButton({
-  icon,
-  title,
-  count,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  count: number;
-  onClick: () => void;
-}) {
+function CountBadge({ value }: { value: number }) {
   return (
-    <button
-      type="button"
-      data-slot="button"
-      onClick={onClick}
-      className="w-full flex items-center gap-2 text-left bg-gray-700/70 hover:bg-gray-600 active:bg-gray-600/80 border-2 border-gray-500 hover:border-orange-400 rounded-lg px-2 py-1.5 transition-colors shadow-sm"
-    >
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-800 text-orange-300 border border-gray-600">
-        {icon}
-      </div>
-      <div className="flex-1 min-w-0 text-base font-semibold text-white leading-tight">
-        {title}
-      </div>
-      <div className="shrink-0 text-[11px] font-medium text-orange-200 bg-orange-900/50 border border-orange-700 rounded-full px-2 py-0.5 leading-none">
-        {count} 件
-      </div>
-    </button>
+    <span className="text-[11px] font-medium text-orange-200 bg-orange-900/50 border border-orange-700 rounded-full px-2 py-0.5 leading-none">
+      {value} 件
+    </span>
   );
 }
 
@@ -124,71 +106,61 @@ export default function EditorTab({
     }
   };
 
+  const clearAllAction = (
+    <button
+      type="button"
+      onClick={handleClearAll}
+      className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-red-300 transition-colors px-1.5 py-0.5 rounded"
+      title="衛星・コンステレーション・地上局をすべて削除"
+    >
+      <Trash2 className="h-3 w-3" />
+      すべて削除
+    </button>
+  );
 
   return (
     <>
-      <div className="flex items-center justify-between mb-1">
-        <div className="text-xs font-semibold text-gray-200">編集</div>
-        <button
-          type="button"
-          data-slot="button"
-          onClick={handleClearAll}
-          className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-red-300 transition-colors px-1.5 py-0.5 rounded"
-          title="衛星・コンステレーション・地上局をすべて削除"
-        >
-          <Trash2 className="h-3 w-3" />
-          すべて削除
-        </button>
-      </div>
-      <div className="space-y-1.5 mb-2">
+      <PanelSection title="シミュレーション対象" icon={<Pencil />} action={clearAllAction}>
         <EntryButton
           icon={<Satellite className="h-4 w-4" />}
           title="衛星"
-          count={satCount}
           onClick={() => setSatEditorOpen(true)}
+          badge={<CountBadge value={satCount} />}
         />
         <EntryButton
           icon={<Layers className="h-4 w-4" />}
           title="コンステレーション"
-          count={constCount}
           onClick={() => setConstEditorOpen(true)}
+          badge={<CountBadge value={constCount} />}
         />
         <EntryButton
           icon={<MapPin className="h-4 w-4" />}
           title="地上局"
-          count={gsCount}
           onClick={() => setGsEditorOpen(true)}
+          badge={<CountBadge value={gsCount} />}
         />
-      </div>
+        <Button
+          variant="outline"
+          className="w-full h-9 gap-2 bg-gray-700 hover:bg-gray-600 border-2 border-gray-500 hover:border-orange-400 text-white"
+          onClick={onImportClick}
+        >
+          <Globe className="h-4 w-4" />
+          CelesTrak からインポート
+        </Button>
+      </PanelSection>
 
-      <Button
-        variant="outline"
-        className="w-full h-8 gap-2 mb-2 bg-gray-700 hover:bg-gray-600 border-2 border-gray-500 hover:border-orange-400 text-white"
-        onClick={onImportClick}
-      >
-        <Globe className="h-4 w-4" />
-        CelesTrak から衛星をインポート
-      </Button>
-
-      <hr className="border-gray-600 my-2" />
-
-      <div className="mb-2">
-        <label className="block text-xs font-semibold text-gray-200 mb-1">
-          シミュレーション開始時刻 (UTC)
-        </label>
+      <PanelSection title="開始時刻" icon={<Clock />}>
         <input
           type="datetime-local"
           value={startText}
           onChange={(e) => onStartTextChange(e.target.value)}
           className="w-full text-sm bg-gray-800 border-2 border-gray-500 text-gray-100 rounded px-2 py-1 focus:border-orange-500 focus:ring-1 focus:ring-orange-500/20 outline-none"
         />
-      </div>
+        <p className="text-[11px] text-gray-400">UTC で指定します</p>
+      </PanelSection>
 
-      <hr className="border-gray-600 my-2" />
-
-      <div className="mb-2">
-        <div className="text-xs font-semibold text-gray-200 mb-1">設定ファイル</div>
-        <div className="grid grid-cols-2 gap-2 mb-1.5">
+      <PanelSection title="設定ファイル" icon={<FileCog />}>
+        <div className="grid grid-cols-2 gap-2">
           <Button
             variant="outline"
             className="w-full h-9 gap-2 bg-gray-700 border-2 border-gray-500 text-white hover:bg-gray-600 hover:border-orange-400 font-medium"
@@ -217,9 +189,7 @@ export default function EditorTab({
             }}
           />
         </div>
-      </div>
-
-      <hr className="border-gray-600 my-2" />
+      </PanelSection>
 
       <Button
         onClick={onUpdate}

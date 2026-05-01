@@ -1,9 +1,12 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
+import { Radio, Globe2, Rocket, Sun } from "lucide-react";
 import StationAccessAnalysis from "../analysis/StationAccessAnalysis";
 import GlobalAccessAnalysis from "../analysis/GlobalAccessAnalysis";
 import OrbitMaintenanceAnalysis from "../analysis/OrbitMaintenanceAnalysis";
 import SolarImpactAnalysis from "../analysis/SolarImpactAnalysis";
+import PanelSection from "./PanelSection";
+import EntryButton from "./EntryButton";
 
 interface Props {
   satText: string;
@@ -14,7 +17,7 @@ interface Props {
   onAnalysisEnd?: () => void;
 }
 
-type AnalysisType = 
+type AnalysisType =
   | "地上局アクセス設計"
   | "全球アクセス設計"
   | "軌道寿命・推進剤設計"
@@ -40,14 +43,14 @@ export default function AnalysisTab({ satText, constText, gsText, startTime, onA
   const renderAnalysisComponent = () => {
     switch (analysisType) {
       case "地上局アクセス設計":
-        return <StationAccessAnalysis 
+        return <StationAccessAnalysis
           satText={satText}
           constText={constText}
           gsText={gsText}
           startTime={startTime}
         />;
       case "全球アクセス設計":
-        return <GlobalAccessAnalysis 
+        return <GlobalAccessAnalysis
           satText={satText}
           constText={constText}
           startTime={startTime}
@@ -71,43 +74,35 @@ export default function AnalysisTab({ satText, constText, gsText, startTime, onA
 
   return (
     <>
-      <div>
-        <div style={{ marginBottom: 16 }}>
-          <h3 style={{ fontSize: "1.1em", marginBottom: 12 }}>通信・アクセス概念設計</h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <button 
-              className="analysis-button"
-              onClick={() => handleAnalysisClick("地上局アクセス設計")}
-            >
-              地上局アクセス設計
-            </button>
-            <button 
-              className="analysis-button"
-              onClick={() => handleAnalysisClick("全球アクセス設計")}
-            >
-              全球アクセス設計
-            </button>
-          </div>
-        </div>
-        
-        <div style={{ marginBottom: 16 }}>
-          <h3 style={{ fontSize: "1.1em", marginBottom: 12 }}>軌道・電力概念設計</h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <button 
-              className="analysis-button"
-              onClick={() => handleAnalysisClick("軌道寿命・推進剤設計")}
-            >
-              軌道寿命・推進剤設計
-            </button>
-            <button 
-              className="analysis-button"
-              onClick={() => handleAnalysisClick("日照・電力成立性評価")}
-            >
-              日照・電力成立性評価
-            </button>
-          </div>
-        </div>
-      </div>
+      <PanelSection title="通信・アクセス" icon={<Radio />}>
+        <EntryButton
+          icon={<Radio className="h-4 w-4" />}
+          title="地上局アクセス設計"
+          subtitle="衛星と地上局が見通せる時間帯を可視化"
+          onClick={() => handleAnalysisClick("地上局アクセス設計")}
+        />
+        <EntryButton
+          icon={<Globe2 className="h-4 w-4" />}
+          title="全球アクセス設計"
+          subtitle="地球各地点での通信可能性を評価"
+          onClick={() => handleAnalysisClick("全球アクセス設計")}
+        />
+      </PanelSection>
+
+      <PanelSection title="軌道・電力" icon={<Rocket />}>
+        <EntryButton
+          icon={<Rocket className="h-4 w-4" />}
+          title="軌道寿命・推進剤設計"
+          subtitle="大気抵抗による軌道維持に必要な推進剤を試算"
+          onClick={() => handleAnalysisClick("軌道寿命・推進剤設計")}
+        />
+        <EntryButton
+          icon={<Sun className="h-4 w-4" />}
+          title="日照・電力成立性評価"
+          subtitle="日陰時間と発電量から電力収支を確認"
+          onClick={() => handleAnalysisClick("日照・電力成立性評価")}
+        />
+      </PanelSection>
 
       {analysisOpen && createPortal(
         <div className="overlay" style={{ zIndex: 1000 }}>

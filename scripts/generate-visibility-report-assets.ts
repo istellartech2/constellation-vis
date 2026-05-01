@@ -24,7 +24,6 @@ const REPORT_MD = resolve("local/visibility_report_final.md");
 const SVG_FONT_FAMILY = "Verdana, sans-serif";
 const MAGICK_FONT_PATH = "/System/Library/Fonts/Supplemental/Verdana.ttf";
 const BASE_MIN_ELEVATION_DEG = 30;
-const MAIN_CASE_MIN_ELEVATIONS = [20, 30, 40] as const;
 
 const scenarios: Scenario[] = [
   {

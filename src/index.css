@@ -549,95 +549,23 @@ h1 {
   gap: 1.25rem;
 }
 
-/* Option tab styles - Cleaner design */
-.option-section {
-  margin-bottom: 12px;
+/* Panel section spacing & dividers (used by editor / analysis / option tabs) */
+.panel-section {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  border-top: 1px solid rgba(75, 85, 99, 0.4);
 }
 
-.option-section-title {
-  color: #c4c9d1;
-  font-size: 0.85em;
-  font-weight: 500;
-  margin-bottom: 6px;
-  padding-bottom: 3px;
-  border-bottom: 1px solid rgba(68, 71, 83, 0.3);
+.panel-section:first-child {
+  padding-top: 0;
+  border-top: none;
 }
 
-.option-checkbox-group {
-  background: rgba(68, 71, 83, 0.1);
-  border-radius: 6px;
-  padding: 8px;
-  border: 1px solid rgba(68, 71, 83, 0.2);
+.panel-section:last-child {
+  padding-bottom: 2px;
 }
 
-.option-checkbox-item {
-  display: flex;
-  align-items: center;
-  padding: 4px 0;
-  transition: all 0.2s ease;
-  border-radius: 4px;
-  margin: 0 -2px;
-  padding-left: 2px;
-  padding-right: 2px;
-}
-
-.option-checkbox-item:hover {
-  background-color: rgba(68, 71, 83, 0.2);
-}
-
-.option-checkbox-item input[type="checkbox"] {
-  margin-right: 8px;
-  accent-color: #ed6d00;
-  scale: 0.9;
-}
-
-.option-checkbox-item span {
-  color: #c4c9d1;
-  font-size: 0.85em;
-}
-
-.option-advanced {
-  border: 1px solid rgba(68, 71, 83, 0.2);
-  border-radius: 8px;
-  padding: 6px 10px;
-  background: linear-gradient(180deg, rgba(68, 71, 83, 0.12), rgba(47, 48, 54, 0.18));
-}
-
-.option-advanced-toggle {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  background: transparent;
-  border: none;
-  color: #d4d9e5;
-  font-size: 0.85em;
-  font-weight: 500;
-  text-align: left;
-  cursor: pointer;
-  padding: 4px 0;
-  transition: color 0.2s ease;
-}
-
-.option-advanced-toggle:hover {
-  color: #ffffff;
-}
-
-.option-advanced-icon {
-  transition: transform 0.2s ease;
-}
-
-.option-advanced-icon.rotate {
-  transform: rotate(180deg);
-}
-
-.option-advanced-panel {
-  margin-top: 10px;
-  display: grid;
-  gap: 12px;
-}
-
+/* Option tab styles */
 .option-subsection {
   background: rgba(30, 31, 36, 0.5);
   border: 1px solid rgba(68, 71, 83, 0.25);
@@ -701,25 +629,6 @@ h1 {
 .option-control-hint {
   color: #7a808f;
   font-size: 0.7em;
-}
-
-.option-control-inline {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.option-control-pair {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex: 1;
-}
-
-.option-label-small {
-  color: #c4c9d1;
-  font-size: 0.75em;
 }
 
 .option-color-input {
@@ -947,6 +856,17 @@ h1 {
   flex-shrink: 1;
 }
 
+/* In the side panel, normalize font size to match other controls */
+.side-panel .sat-size-control,
+.side-panel .sat-size-control label,
+.side-panel .sat-size-control select {
+  font-size: 0.875rem;
+}
+
+.side-panel .sat-size-control label {
+  color: #e5e7eb;
+}
+
 /* Custom tab styles for sidebar */
 .side-panel [data-slot="tabs-trigger"][data-state="active"] {
   background-color: #ea580c !important; /* orange-600 with reduced opacity feel */
@@ -1005,29 +925,6 @@ h1 {
   padding: 16px;
   border-radius: 6px;
   min-width: 250px;
-}
-
-/* Analysis button */
-.analysis-button {
-  width: 100%;
-  text-align: left;
-  padding: 10px 16px;
-  font-size: 0.9em;
-  background: #444753;
-  border: 1px solid #555;
-  color: #f1f1f1;
-  transition: all 0.2s ease;
-}
-
-.analysis-button:hover:not(:disabled) {
-  background: #ed6d00;
-  border-color: #ed6d00;
-  color: #ffffff;
-}
-
-.analysis-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
 }
 
 /* Legacy editor button styles - now using shadcn/ui buttons */
