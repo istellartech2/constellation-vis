@@ -24,6 +24,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "./tabs";
 import { Button } from "./button";
 import { Menu, X } from "lucide-react";
 import type { EarthTextureMode } from "../../lib/earthTextures";
+import type { ViewSettings } from "../../lib/viewState";
 
 /**
  * Editor side panel allowing the user to load, edit and save TOML files
@@ -139,6 +140,10 @@ interface Props {
   onAnalysisEnd?: () => void;
   /** Reference to the satellite scene for KML loading */
   sceneRef?: RefObject<SatelliteScene | null>;
+  /** Capture the current view (camera + display settings) on demand */
+  getCurrentView: () => ViewSettings;
+  /** Apply a previously saved view */
+  onApplyView: (settings: ViewSettings) => void;
 }
 
 export default function SatelliteEditor({
@@ -191,6 +196,8 @@ export default function SatelliteEditor({
   onAnalysisStart,
   onAnalysisEnd,
   sceneRef,
+  getCurrentView,
+  onApplyView,
 }: Props) {
   const [satText, setSatText] = useState("");
   const [constText, setConstText] = useState("");
@@ -459,6 +466,8 @@ export default function SatelliteEditor({
                 whiteBackground={whiteBackground}
                 onWhiteBackgroundChange={onWhiteBackgroundChange}
                 sceneRef={sceneRef}
+                getCurrentView={getCurrentView}
+                onApplyView={onApplyView}
               />
             </TabsContent>
           </Tabs>

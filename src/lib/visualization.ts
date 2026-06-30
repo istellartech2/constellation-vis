@@ -21,6 +21,7 @@ import {
   resolveLayeredEarthAssets,
   type EarthTextureMode,
 } from "./earthTextures";
+import type { CameraSnapshot } from "./viewState";
 
 /** Equatorial and polar radii of Earth in kilometres. */
 const EARTH_RADIUS_EQUATOR_KM = 6378.137;
@@ -99,6 +100,8 @@ export interface SatelliteSceneParams {
   onSelectStation?: (idx: number | null) => void;
   onSimTimeChange?: (date: Date) => void;
   stationInfoRef?: React.RefObject<HTMLPreElement | null>;
+  /** Fired with the latest framing when the user finishes a camera manipulation or the mode changes. */
+  onCameraChange?: (snapshot: CameraSnapshot) => void;
 }
 
 export default class SatelliteScene {
@@ -223,6 +226,16 @@ export default class SatelliteScene {
     this.controls.minDistance = 1.05;
     this.controls.maxDistance = 30;
     this.resetFreeCamera();
+
+    // Notify React when the user finishes manipulating the camera so the view
+    // can be persisted. 'end' fires once per drag/zoom gesture, avoiding the
+    // per-frame churn of saving on every change.
+    const handleControlsEnd = () =>
+      this.params.onCameraChange?.(this.getCameraSnapshot());
+    this.controls.addEventListener("end", handleControlsEnd);
+    this.disposeFns.push(() =>
+      this.controls.removeEventListener("end", handleControlsEnd),
+    );
 
     const useLayeredEarth = isLayeredEarthMode(params.earthTexture);
     this.ambientLight = new THREE.AmbientLight(
@@ -507,10 +520,14 @@ export default class SatelliteScene {
     this.cameraMode = mode;
     if (mode === "free") {
       this.resetFreeCamera();
+      this.params.onCameraChange?.(this.getCameraSnapshot());
       return;
     }
 
-    if (!this.hasCachedSelection) return;
+    if (!this.hasCachedSelection) {
+      this.params.onCameraChange?.(this.getCameraSnapshot());
+      return;
+    }
     const pos = this.cachedSelectedPosition;
     if (mode === "earthCenter") {
       this.earthCenterDistance = this.getDefaultEarthCenterDistance(pos);
@@ -521,6 +538,39 @@ export default class SatelliteScene {
       if (this.hasCachedVelocity && this.cachedSelectedVelocity.lengthSq() > 1e-8) {
         this.followBasis.copy(this.cachedSelectedVelocity).normalize();
       }
+    }
+    this.params.onCameraChange?.(this.getCameraSnapshot());
+  }
+
+  /** Capture the current camera framing for persistence. */
+  getCameraSnapshot(): CameraSnapshot {
+    return {
+      mode: this.cameraMode,
+      position: [this.camera.position.x, this.camera.position.y, this.camera.position.z],
+      target: [this.controls.target.x, this.controls.target.y, this.controls.target.z],
+      earthCenterDistance: this.earthCenterDistance,
+      thirdPersonDistance: this.thirdPersonDistance,
+      thirdPersonPitch: this.thirdPersonPitch,
+    };
+  }
+
+  /**
+   * Restore a previously captured camera framing. For free mode the camera
+   * position/target are applied directly; for the follow modes the distance and
+   * pitch drive {@link updateCameraFollow} on subsequent frames.
+   */
+  applyCameraSnapshot(snap: CameraSnapshot) {
+    this.cameraMode = snap.mode;
+    this.earthCenterDistance = snap.earthCenterDistance;
+    this.thirdPersonDistance = snap.thirdPersonDistance;
+    this.thirdPersonPitch = snap.thirdPersonPitch;
+    if (snap.mode === "free") {
+      this.controls.enabled = true;
+      this.controls.target.set(snap.target[0], snap.target[1], snap.target[2]);
+      this.camera.position.set(snap.position[0], snap.position[1], snap.position[2]);
+      this.camera.up.copy(UP_AXIS);
+      this.camera.lookAt(this.controls.target);
+      this.controls.update();
     }
   }
 

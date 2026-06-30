@@ -8,6 +8,14 @@ import SatelliteInfo from "./components/ui/SatelliteInfo";
 import { formatGroundStationInfo } from "./lib/formatGroundStationInfo";
 import { type EarthTextureMode } from "./lib/earthTextures";
 import { type SatelliteCameraMode } from "./lib/visualization";
+import {
+  loadLastView,
+  saveLastView,
+  buildViewSettings,
+  type CameraSnapshot,
+  type DisplaySettings,
+  type ViewSettings,
+} from "./lib/viewState";
 
 /**
  * Top level React component hosting the visualization. It sets up
@@ -17,6 +25,12 @@ import { type SatelliteCameraMode } from "./lib/visualization";
 
 const INITIAL_SPEED = 60; // initial 60× real time
 const EARTH_RADIUS_KM = 6378.137;
+
+// Snapshot of the previous session's view (camera + display settings), if any.
+// Read once at module load so every useState below can seed from it; falls back
+// to defaults when absent or invalid.
+const SAVED_VIEW = loadLastView();
+const SAVED_DISPLAY = SAVED_VIEW?.display ?? null;
 
 // Main UI component that wires together scene and UI controls
 function App() {
@@ -28,35 +42,61 @@ function App() {
   const [groundStations, setGroundStations] = useState<GroundStation[]>([]);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [selectedGsIdx, setSelectedGsIdx] = useState<number | null>(null);
-  const [cameraMode, setCameraMode] = useState<SatelliteCameraMode>("free");
+  const [cameraMode, setCameraMode] = useState<SatelliteCameraMode>(
+    SAVED_VIEW?.camera.mode ?? "free",
+  );
   const [simTime, setSimTime] = useState(() => new Date());
 
-  const [satRadius, setSatRadius] = useState(() =>
-    window.innerWidth <= 600 ? 0.02 : 0.015,
+  const [satRadius, setSatRadius] = useState(
+    () => SAVED_DISPLAY?.satRadius ?? (window.innerWidth <= 600 ? 0.02 : 0.015),
   );
 
-  const [earthTexture, setEarthTexture] = useState<EarthTextureMode>("./assets/earth01.webp");
-  const [showGraticule, setShowGraticule] = useState(true);
-  const [showEcliptic, setShowEcliptic] = useState(true);
-  const [showSunDirection, setShowSunDirection] = useState(true);
-  const [ecef, setEcef] = useState(false);
-  const [showPerturbation, setShowPerturbation] = useState(false);
-  const [showDerivedSatelliteInfo, setShowDerivedSatelliteInfo] = useState(false);
-  const [brightEarth, setBrightEarth] = useState(false);
-  const [whiteBackground, setWhiteBackground] = useState(false);
-  const [showGroundStationCones, setShowGroundStationCones] = useState(false);
-  const [showSatelliteFovCones, setShowSatelliteFovCones] = useState(false);
-  const [groundConeMinElevationDeg, setGroundConeMinElevationDeg] = useState(30);
-  const [groundConeDistanceKm, setGroundConeDistanceKm] = useState(1000);
-  const [groundConeColor, setGroundConeColor] = useState("#3ec7a1");
-  const [fovConeHalfAngleDeg, setFovConeHalfAngleDeg] = useState(30);
-  const [fovConeColor, setFovConeColor] = useState("#3388ff");
+  const [earthTexture, setEarthTexture] = useState<EarthTextureMode>(
+    SAVED_DISPLAY?.earthTexture ?? "./assets/earth01.webp",
+  );
+  const [showGraticule, setShowGraticule] = useState(SAVED_DISPLAY?.showGraticule ?? true);
+  const [showEcliptic, setShowEcliptic] = useState(SAVED_DISPLAY?.showEcliptic ?? true);
+  const [showSunDirection, setShowSunDirection] = useState(SAVED_DISPLAY?.showSunDirection ?? true);
+  const [ecef, setEcef] = useState(SAVED_DISPLAY?.ecef ?? false);
+  const [showPerturbation, setShowPerturbation] = useState(SAVED_DISPLAY?.showPerturbation ?? false);
+  const [showDerivedSatelliteInfo, setShowDerivedSatelliteInfo] = useState(
+    SAVED_DISPLAY?.showDerivedSatelliteInfo ?? false,
+  );
+  const [brightEarth, setBrightEarth] = useState(SAVED_DISPLAY?.brightEarth ?? false);
+  const [whiteBackground, setWhiteBackground] = useState(SAVED_DISPLAY?.whiteBackground ?? false);
+  const [showGroundStationCones, setShowGroundStationCones] = useState(
+    SAVED_DISPLAY?.showGroundStationCones ?? false,
+  );
+  const [showSatelliteFovCones, setShowSatelliteFovCones] = useState(
+    SAVED_DISPLAY?.showSatelliteFovCones ?? false,
+  );
+  const [groundConeMinElevationDeg, setGroundConeMinElevationDeg] = useState(
+    SAVED_DISPLAY?.groundConeMinElevationDeg ?? 30,
+  );
+  const [groundConeDistanceKm, setGroundConeDistanceKm] = useState(
+    SAVED_DISPLAY?.groundConeDistanceKm ?? 1000,
+  );
+  const [groundConeColor, setGroundConeColor] = useState(SAVED_DISPLAY?.groundConeColor ?? "#3ec7a1");
+  const [fovConeHalfAngleDeg, setFovConeHalfAngleDeg] = useState(
+    SAVED_DISPLAY?.fovConeHalfAngleDeg ?? 30,
+  );
+  const [fovConeColor, setFovConeColor] = useState(SAVED_DISPLAY?.fovConeColor ?? "#3388ff");
   const fovConeMinHeight = 0.02;
-  const [fovConeAlongTrackDeg, setFovConeAlongTrackDeg] = useState(0);
-  const [fovConeCrossTrackDeg, setFovConeCrossTrackDeg] = useState(0);
-  const [satelliteVisibleColor, setSatelliteVisibleColor] = useState("#00ff00");
-  const [satelliteHiddenColor, setSatelliteHiddenColor] = useState("#ff0000");
-  const [satelliteSelectedColor, setSatelliteSelectedColor] = useState("#00ffff");
+  const [fovConeAlongTrackDeg, setFovConeAlongTrackDeg] = useState(
+    SAVED_DISPLAY?.fovConeAlongTrackDeg ?? 0,
+  );
+  const [fovConeCrossTrackDeg, setFovConeCrossTrackDeg] = useState(
+    SAVED_DISPLAY?.fovConeCrossTrackDeg ?? 0,
+  );
+  const [satelliteVisibleColor, setSatelliteVisibleColor] = useState(
+    SAVED_DISPLAY?.satelliteVisibleColor ?? "#00ff00",
+  );
+  const [satelliteHiddenColor, setSatelliteHiddenColor] = useState(
+    SAVED_DISPLAY?.satelliteHiddenColor ?? "#ff0000",
+  );
+  const [satelliteSelectedColor, setSatelliteSelectedColor] = useState(
+    SAVED_DISPLAY?.satelliteSelectedColor ?? "#00ffff",
+  );
 
   const [startTime, setStartTime] = useState(() => {
     const d = new Date();
@@ -65,17 +105,103 @@ function App() {
   });
 
   // speed exponent slider (0–2 → 1×–100×)
-  const [speedExp, setSpeedExp] = useState(Math.log10(INITIAL_SPEED));
-  const speedRef = useRef(INITIAL_SPEED);
+  const [speedExp, setSpeedExp] = useState(
+    SAVED_DISPLAY?.speedExp ?? Math.log10(INITIAL_SPEED),
+  );
+  const speedRef = useRef(Math.pow(10, SAVED_DISPLAY?.speedExp ?? Math.log10(INITIAL_SPEED)));
   const [isPaused, setIsPaused] = useState(false);
   const savedSpeedRef = useRef(INITIAL_SPEED);
   
   useEffect(() => {
     speedRef.current = isPaused ? 0 : Math.pow(10, speedExp);
   }, [speedExp, isPaused]);
-  
+
   useEffect(() => {
     loadGroundStations().then(setGroundStations);
+  }, []);
+
+  // Latest camera framing, seeded from the saved view. Kept in a ref so it can
+  // be applied on every scene (re)build without triggering rebuilds itself.
+  const cameraSnapshotRef = useRef<CameraSnapshot | null>(SAVED_VIEW?.camera ?? null);
+
+  // Current display settings, assembled fresh each render so the persistence
+  // effect and named-view saving always see the latest values.
+  const currentDisplay: DisplaySettings = {
+    satRadius,
+    earthTexture,
+    showGraticule,
+    showEcliptic,
+    showSunDirection,
+    ecef,
+    showPerturbation,
+    showDerivedSatelliteInfo,
+    brightEarth,
+    whiteBackground,
+    showGroundStationCones,
+    showSatelliteFovCones,
+    groundConeMinElevationDeg,
+    groundConeDistanceKm,
+    groundConeColor,
+    fovConeHalfAngleDeg,
+    fovConeColor,
+    fovConeAlongTrackDeg,
+    fovConeCrossTrackDeg,
+    satelliteVisibleColor,
+    satelliteHiddenColor,
+    satelliteSelectedColor,
+    speedExp,
+  };
+  // Mirror into a ref so the (stable) camera callback can read it without
+  // being recreated on every settings change.
+  const displayRef = useRef(currentDisplay);
+  displayRef.current = currentDisplay;
+
+  // A neutral camera snapshot used only until the scene reports its first one.
+  const fallbackCamera: CameraSnapshot = {
+    mode: cameraMode,
+    position: [0, 0, 3],
+    target: [0, 0, 0],
+    earthCenterDistance: 0.45,
+    thirdPersonDistance: 0.4,
+    thirdPersonPitch: (22 * Math.PI) / 180,
+  };
+
+  // Persist the latest view whenever a display setting changes.
+  useEffect(() => {
+    saveLastView(
+      buildViewSettings(displayRef.current, cameraSnapshotRef.current ?? fallbackCamera),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    satRadius,
+    earthTexture,
+    showGraticule,
+    showEcliptic,
+    showSunDirection,
+    ecef,
+    showPerturbation,
+    showDerivedSatelliteInfo,
+    brightEarth,
+    whiteBackground,
+    showGroundStationCones,
+    showSatelliteFovCones,
+    groundConeMinElevationDeg,
+    groundConeDistanceKm,
+    groundConeColor,
+    fovConeHalfAngleDeg,
+    fovConeColor,
+    fovConeAlongTrackDeg,
+    fovConeCrossTrackDeg,
+    satelliteVisibleColor,
+    satelliteHiddenColor,
+    satelliteSelectedColor,
+    speedExp,
+  ]);
+
+  // Stable handler: scene reports its framing on drag/zoom-end and mode changes.
+  const handleCameraChange = useCallback((snap: CameraSnapshot) => {
+    cameraSnapshotRef.current = snap;
+    saveLastView(buildViewSettings(displayRef.current, snap));
   }, []);
 
   const handleSelectSatellite = useCallback((idx: number | null) => {
@@ -127,7 +253,64 @@ function App() {
     onSelectStation: setSelectedGsIdx,
     onSimTimeChange: setSimTime,
     stationInfoRef: gsInfoRef,
-  });
+    onCameraChange: handleCameraChange,
+  }, { cameraSnapshotRef });
+
+  // Apply a saved named view: restore all display settings, camera mode and
+  // framing. Display changes rebuild the scene, which re-applies the camera via
+  // cameraSnapshotRef; applyCameraSnapshot also runs immediately for snappiness.
+  const applyView = useCallback(
+    (settings: ViewSettings) => {
+      const d = settings.display;
+      setSatRadius(d.satRadius);
+      setEarthTexture(d.earthTexture);
+      setShowGraticule(d.showGraticule);
+      setShowEcliptic(d.showEcliptic);
+      setShowSunDirection(d.showSunDirection);
+      setEcef(d.ecef);
+      setShowPerturbation(d.showPerturbation);
+      setShowDerivedSatelliteInfo(d.showDerivedSatelliteInfo);
+      setBrightEarth(d.brightEarth);
+      setWhiteBackground(d.whiteBackground);
+      setShowGroundStationCones(d.showGroundStationCones);
+      setShowSatelliteFovCones(d.showSatelliteFovCones);
+      setGroundConeMinElevationDeg(d.groundConeMinElevationDeg);
+      setGroundConeDistanceKm(d.groundConeDistanceKm);
+      setGroundConeColor(d.groundConeColor);
+      setFovConeHalfAngleDeg(d.fovConeHalfAngleDeg);
+      setFovConeColor(d.fovConeColor);
+      setFovConeAlongTrackDeg(d.fovConeAlongTrackDeg);
+      setFovConeCrossTrackDeg(d.fovConeCrossTrackDeg);
+      setSatelliteVisibleColor(d.satelliteVisibleColor);
+      setSatelliteHiddenColor(d.satelliteHiddenColor);
+      setSatelliteSelectedColor(d.satelliteSelectedColor);
+      setSpeedExp(d.speedExp);
+      setCameraMode(settings.camera.mode);
+      cameraSnapshotRef.current = settings.camera;
+      sceneRef.current?.applyCameraSnapshot(settings.camera);
+      saveLastView(settings);
+    },
+    [sceneRef],
+  );
+
+  // Snapshot the live view (current display + latest camera framing) on demand,
+  // e.g. when the user clicks "save view".
+  const getCurrentView = useCallback(
+    (): ViewSettings =>
+      buildViewSettings(
+        displayRef.current,
+        sceneRef.current?.getCameraSnapshot() ??
+          cameraSnapshotRef.current ?? {
+            mode: "free",
+            position: [0, 0, 3],
+            target: [0, 0, 0],
+            earthCenterDistance: 0.45,
+            thirdPersonDistance: 0.4,
+            thirdPersonPitch: (22 * Math.PI) / 180,
+          },
+      ),
+    [sceneRef],
+  );
 
   const gsInfoText = formatGroundStationInfo(groundStations, selectedGsIdx);
 
@@ -239,6 +422,8 @@ function App() {
         }}
         onAnalysisStart={handleAnalysisStart}
         onAnalysisEnd={handleAnalysisEnd}
+        getCurrentView={getCurrentView}
+        onApplyView={applyView}
       />
     </div>
   );

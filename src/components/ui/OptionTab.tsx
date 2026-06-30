@@ -14,10 +14,21 @@ import {
   Palette,
   FolderOpen,
   Check,
+  Bookmark,
+  Save,
+  Plus,
+  X,
 } from "lucide-react";
 import PanelSection from "./PanelSection";
 import type SatelliteScene from "../../lib/visualization";
 import type { EarthTextureMode } from "../../lib/earthTextures";
+import {
+  listSavedViews,
+  saveNamedView,
+  deleteNamedView,
+  type NamedView,
+  type ViewSettings,
+} from "../../lib/viewState";
 
 const EARTH_RADIUS_KM = 6378.137;
 
@@ -68,6 +79,10 @@ interface Props {
   whiteBackground: boolean;
   onWhiteBackgroundChange: (v: boolean) => void;
   sceneRef?: RefObject<SatelliteScene | null>;
+  /** Capture the current view (camera + display settings) on demand */
+  getCurrentView: () => ViewSettings;
+  /** Apply a previously saved view */
+  onApplyView: (settings: ViewSettings) => void;
 }
 
 function CheckboxItem({
@@ -225,11 +240,32 @@ export default function OptionTab(props: Props) {
     whiteBackground,
     onWhiteBackgroundChange,
     sceneRef,
+    getCurrentView,
+    onApplyView,
   } = props;
 
   const [loadedKMLs, setLoadedKMLs] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [savedViews, setSavedViews] = useState<NamedView[]>(() => listSavedViews());
+  const [viewName, setViewName] = useState("");
+  const [addingView, setAddingView] = useState(false);
+
+  const handleSaveView = () => {
+    setSavedViews(saveNamedView(viewName, getCurrentView()));
+    setViewName("");
+    setAddingView(false);
+  };
+
+  const handleCancelAddView = () => {
+    setViewName("");
+    setAddingView(false);
+  };
+
+  const handleDeleteView = (id: string) => {
+    setSavedViews(deleteNamedView(id));
+  };
 
   const handleKMLLoad = async () => {
     if (!sceneRef?.current) {
@@ -295,6 +331,98 @@ export default function OptionTab(props: Props) {
 
   return (
     <div>
+      {/* 0. ビュー（画角・表示設定）の保存と呼び出し */}
+      <PanelSection
+        title="ビュー（画角・表示設定）"
+        icon={<Bookmark />}
+        collapsible
+        defaultOpen
+        action={
+          savedViews.length > 0 ? (
+            <span className="rounded-full bg-gray-700 px-1.5 py-0.5 text-[10px] text-gray-300">
+              {savedViews.length}
+            </span>
+          ) : undefined
+        }
+      >
+        {addingView ? (
+          <div className="flex gap-1.5">
+            <input
+              autoFocus
+              className="option-number-input flex-1 min-w-0"
+              type="text"
+              placeholder="ビュー名（例: 東京上空）"
+              value={viewName}
+              onChange={(e) => setViewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSaveView();
+                if (e.key === "Escape") handleCancelAddView();
+              }}
+            />
+            <Button
+              onClick={handleSaveView}
+              className="flex items-center gap-1 h-9 shrink-0"
+              variant="secondary"
+            >
+              <Save className="w-4 h-4" />
+              保存
+            </Button>
+            <button
+              type="button"
+              onClick={handleCancelAddView}
+              className="shrink-0 text-gray-400 hover:text-gray-200 px-1"
+              aria-label="キャンセル"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setAddingView(true)}
+            className="flex w-fit items-center gap-1 rounded-md border border-gray-600 px-2 py-1 text-xs text-gray-300 hover:text-white hover:border-gray-400 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            現在のビューを保存
+          </button>
+        )}
+
+        {savedViews.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {savedViews.map((v) => (
+              <span
+                key={v.id}
+                className="inline-flex items-center rounded-full border border-gray-600 bg-gray-700/70 text-xs text-gray-200 transition-colors hover:border-gray-400"
+              >
+                <button
+                  type="button"
+                  onClick={() => onApplyView(v.settings)}
+                  className="max-w-[150px] truncate py-1 pl-3 pr-1.5 hover:text-white"
+                  title={`「${v.name}」を適用`}
+                >
+                  {v.name}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteView(v.id)}
+                  className="py-1 pl-0.5 pr-2 text-gray-400 hover:text-red-400"
+                  aria-label={`「${v.name}」を削除`}
+                  title="削除"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : (
+          !addingView && (
+            <p className="text-[11px] text-gray-400 leading-snug">
+              現在のカメラ画角と表示設定を保存して、機数を変えても同じ条件で比較できます。
+            </p>
+          )
+        )}
+      </PanelSection>
+
       {/* A. 地球の見た目 */}
       <PanelSection title="地球の見た目" icon={<Globe />}>
         <EarthTextureSelector value={earthTexture} onChange={onEarthTextureChange} />
