@@ -240,30 +240,45 @@ export default function OptionTab(props: Props) {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = ".kml";
+    input.multiple = true;
     input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
+      const files = Array.from((e.target as HTMLInputElement).files ?? []);
+      if (files.length === 0) return;
 
       setLoading(true);
       setError(null);
 
+      const readAsText = (file: File) =>
+        new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (event) => resolve(event.target?.result as string);
+          reader.onerror = () => reject(reader.error ?? new Error("ファイルの読み取りに失敗しました"));
+          reader.readAsText(file);
+        });
+
       try {
-        const reader = new FileReader();
-        reader.onload = async (event) => {
+        // Load each selected file in turn, overlaying them onto any KML that is
+        // already on the globe (append = true) rather than replacing it.
+        for (const file of files) {
+          let objectUrl: string | null = null;
           try {
-            const kmlContent = event.target?.result as string;
-            const dataUrl = `data:application/vnd.google-earth.kml+xml;base64,${btoa(kmlContent)}`;
-            await sceneRef.current!.loadKML(dataUrl);
+            const kmlContent = await readAsText(file);
+            // Use a Blob URL instead of a base64 data URL so that KML files
+            // containing non-Latin1 characters (e.g. Japanese place names) load
+            // correctly. btoa() throws on such characters.
+            const blob = new Blob([kmlContent], {
+              type: "application/vnd.google-earth.kml+xml",
+            });
+            objectUrl = URL.createObjectURL(blob);
+            await sceneRef.current!.loadKML(objectUrl, true);
             setLoadedKMLs((prev) => [...prev, file.name]);
           } catch (err) {
-            setError(err instanceof Error ? err.message : "KMLの読み込みに失敗しました");
+            setError(err instanceof Error ? err.message : `${file.name} の読み込みに失敗しました`);
           } finally {
-            setLoading(false);
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
           }
-        };
-        reader.readAsText(file);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "ファイルの読み取りに失敗しました");
+        }
+      } finally {
         setLoading(false);
       }
     };

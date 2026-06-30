@@ -494,6 +494,7 @@ export default class SatelliteScene {
       this.renderer.setSize(window.innerWidth, window.innerHeight);
       this.camera.aspect = window.innerWidth / window.innerHeight;
       this.camera.updateProjectionMatrix();
+      this.kmlRenderer.setResolution(window.innerWidth, window.innerHeight);
     };
     window.addEventListener("resize", handleResize);
     this.disposeFns.push(() => window.removeEventListener("resize", handleResize));
@@ -1050,10 +1051,10 @@ export default class SatelliteScene {
   /**
    * Load and render a KML file
    */
-  async loadKML(url: string): Promise<void> {
+  async loadKML(url: string, append = false): Promise<void> {
     try {
       const kmlDoc = await loadKMLFromURL(url);
-      this.kmlRenderer.renderKMLDocument(kmlDoc);
+      this.kmlRenderer.renderKMLDocument(kmlDoc, append);
     } catch (error) {
       console.error('Failed to load KML:', error);
       throw error;

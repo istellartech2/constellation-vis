@@ -289,7 +289,8 @@ export default function SatelliteEditor({
       const base = parseSatellitesToml(satText);
       const con = constText ? parseConstellationToml(constText) : [];
       const gs = parseGroundStationsToml(gsText);
-      validateSatellites([...base, ...con]);
+      validateSatellites(base, "satellites.toml");
+      validateSatellites(con, "constellation.toml");
       validateGroundStations(gs);
       onUpdate([...base, ...con], gs, new Date(startText));
     } catch (e) {

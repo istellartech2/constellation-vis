@@ -4,20 +4,46 @@
 
 import * as THREE from "three";
 import * as satellite from "satellite.js";
+import { Line2 } from "three/examples/jsm/lines/Line2.js";
+import { LineGeometry } from "three/examples/jsm/lines/LineGeometry.js";
+import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import type { KMLDocument, KMLGeometry, KMLCoordinate, KMLStyle } from "./kml";
 
 const EARTH_RADIUS_EQUATOR_KM = 6378.137;
 const EARTH_RADIUS_POLAR_KM = 6356.7523142;
 
+// Lines drawn exactly on the surface (altitude 0) share the same radius as the
+// Earth mesh and z-fight with it, which makes them render as broken dashes.
+// Lift line vertices radially by a small amount (~0.2% of the Earth radius,
+// roughly 13 km) so surface-level routes stay continuously visible while still
+// being correctly occluded by the far side of the globe.
+const LINE_SURFACE_OFFSET = 0.002;
+
 export class KMLRenderer {
   private scene: THREE.Scene;
   private geometryGroup: THREE.Group;
-  
+  // Fat-line (Line2) materials need the current drawing-buffer resolution to
+  // render their pixel width correctly. Track them so we can refresh on resize.
+  private lineMaterials: LineMaterial[] = [];
+  private resolution = new THREE.Vector2(
+    typeof window !== "undefined" ? window.innerWidth : 1,
+    typeof window !== "undefined" ? window.innerHeight : 1
+  );
+
   constructor(scene: THREE.Scene) {
     this.scene = scene;
     this.geometryGroup = new THREE.Group();
     this.geometryGroup.name = "KMLGeometries";
     this.scene.add(this.geometryGroup);
+  }
+
+  /**
+   * Update the resolution used by fat-line materials. Call from the renderer's
+   * resize handler so line width stays consistent across viewport changes.
+   */
+  setResolution(width: number, height: number): void {
+    this.resolution.set(width, height);
+    this.lineMaterials.forEach((material) => material.resolution.copy(this.resolution));
   }
 
   /**
@@ -96,20 +122,39 @@ export class KMLRenderer {
    */
   private renderLineString(geometry: KMLGeometry, style?: KMLStyle): void {
     const coords = geometry.coordinates as KMLCoordinate[];
-    const points = coords.map(coord => this.coordinateToVector3(coord));
-    
-    const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
-    
-    const material = new THREE.LineBasicMaterial({
-      color: style?.lineColor ? this.parseStyleColor(style.lineColor) : 0xffffff,
+    const points = coords.map(coord => {
+      const point = this.coordinateToVector3(coord);
+      // Push the vertex slightly outward along its radial direction to avoid
+      // z-fighting with the Earth mesh for surface-level (altitude 0) lines.
+      const length = point.length();
+      if (length > 0) {
+        point.multiplyScalar((length + LINE_SURFACE_OFFSET) / length);
+      }
+      return point;
+    });
+
+    // Use a fat line (Line2) so the configured width renders in pixels. The
+    // WebGL core profile ignores LineBasicMaterial.linewidth (always 1px).
+    const positions: number[] = [];
+    points.forEach((p) => positions.push(p.x, p.y, p.z));
+
+    const lineGeometry = new LineGeometry();
+    lineGeometry.setPositions(positions);
+
+    const material = new LineMaterial({
+      color: style?.lineColor ? this.parseStyleColor(style.lineColor) : new THREE.Color(0xffffff),
       linewidth: style?.lineWidth || 1,
+      worldUnits: false,
       opacity: style?.lineColor ? parseInt(style.lineColor.substring(7, 9), 16) / 255 : 1,
       transparent: true
     });
-    
-    const line = new THREE.Line(lineGeometry, material);
+    material.resolution.copy(this.resolution);
+    this.lineMaterials.push(material);
+
+    const line = new Line2(lineGeometry, material);
+    line.computeLineDistances();
     line.name = geometry.name || "KMLLineString";
-    
+
     this.geometryGroup.add(line);
   }
   
@@ -214,10 +259,12 @@ export class KMLRenderer {
   /**
    * Render all geometries from a KML document
    */
-  renderKMLDocument(kmlDoc: KMLDocument): void {
-    // Clear existing KML geometries
-    this.clear();
-    
+  renderKMLDocument(kmlDoc: KMLDocument, append = false): void {
+    // Clear existing KML geometries unless we are overlaying onto them.
+    if (!append) {
+      this.clear();
+    }
+
     // Render each geometry
     kmlDoc.geometries.forEach(geometry => {
       switch (geometry.type) {
@@ -238,6 +285,7 @@ export class KMLRenderer {
    * Clear all KML geometries from the scene
    */
   clear(): void {
+    this.lineMaterials = [];
     // Remove all children from the geometry group
     while (this.geometryGroup.children.length > 0) {
       const child = this.geometryGroup.children[0];

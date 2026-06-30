@@ -364,13 +364,13 @@ export default function ConstellationShellForm({ shell, errors, onChange }: Prop
           <input
             type="number"
             min={0}
-            step={1}
+            step={0.1}
             value={shell.phasing ?? 0}
-            onChange={(e) => handleNumberChange("phasing", e.target.value, true)}
+            onChange={(e) => handleNumberChange("phasing", e.target.value)}
             className="w-full px-2 py-1.5 text-sm bg-gray-800 border border-gray-600 rounded focus:border-amber-500 focus:outline-none text-gray-100"
           />
           <p className="text-xs text-gray-500">
-            隣接軌道面間の衛星位相オフセット。0〜(軌道面数-1)の整数。
+            隣接軌道面間の衛星位相オフセット。小数1桁まで指定可能。
             0=同位相、1=1衛星分ずれ。均等カバレッジには1が一般的。
           </p>
         </div>

@@ -71,6 +71,12 @@ export interface ConstellationConfig {
   shells: ConstellationShellConfig[];
 }
 
+function numberOrDefault(value: unknown, defaultValue: number): number {
+  if (value === undefined || value === null || value === "") return defaultValue;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : defaultValue;
+}
+
 export function parseSatellitesToml(text: string): SatelliteSpec[] {
   return expandSatelliteEditorConfig(parseSatelliteEditorConfig(text));
 }
@@ -158,18 +164,18 @@ export function parseConstellationConfig(text: string): ConstellationConfig {
     epoch: con.epoch instanceof Date ? con.epoch : new Date(String(con.epoch)),
     shells: (con.shells as Record<string, any>[]).map((shell) => ({
       name: typeof shell.name === "string" ? shell.name : undefined,
-      count: Number(shell.count),
-      planes: Number(shell.planes),
-      phasing: shell.phasing !== undefined ? Number(shell.phasing) : undefined,
-      apogee_altitude: Number(shell.apogee_altitude),
+      count: numberOrDefault(shell.count, 1),
+      planes: numberOrDefault(shell.planes, 1),
+      phasing: shell.phasing !== undefined ? numberOrDefault(shell.phasing, 0) : undefined,
+      apogee_altitude: numberOrDefault(shell.apogee_altitude, 0),
       eccentricity:
-        shell.eccentricity !== undefined ? Number(shell.eccentricity) : undefined,
-      inclination: Number(shell.inclination),
-      raan_range: shell.raan_range !== undefined ? Number(shell.raan_range) : undefined,
-      raan_start: shell.raan_start !== undefined ? Number(shell.raan_start) : undefined,
-      argp: shell.argp !== undefined ? Number(shell.argp) : undefined,
+        shell.eccentricity !== undefined ? numberOrDefault(shell.eccentricity, 0) : undefined,
+      inclination: numberOrDefault(shell.inclination, 0),
+      raan_range: shell.raan_range !== undefined ? numberOrDefault(shell.raan_range, 360) : undefined,
+      raan_start: shell.raan_start !== undefined ? numberOrDefault(shell.raan_start, 0) : undefined,
+      argp: shell.argp !== undefined ? numberOrDefault(shell.argp, 0) : undefined,
       mean_anomaly_0:
-        shell.mean_anomaly_0 !== undefined ? Number(shell.mean_anomaly_0) : undefined,
+        shell.mean_anomaly_0 !== undefined ? numberOrDefault(shell.mean_anomaly_0, 0) : undefined,
     })),
   };
 }

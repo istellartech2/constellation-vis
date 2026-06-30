@@ -1,11 +1,11 @@
 import type { SatelliteSpec } from "../lib/satellites";
 import type { GroundStation } from "../lib/groundStations";
 
-export function validateSatellites(list: SatelliteSpec[]) {
+export function validateSatellites(list: SatelliteSpec[], sourceLabel = "satellites.toml") {
   for (const s of list) {
     if (s.type === "tle") {
       if (!s.lines[0] || !s.lines[1]) {
-        throw new Error("satellites.toml: missing TLE lines");
+        throw new Error(`${sourceLabel}: missing TLE lines`);
       }
     } else if (s.type === "elements") {
       const e = s.elements;
@@ -19,7 +19,7 @@ export function validateSatellites(list: SatelliteSpec[]) {
         Number.isNaN(e.argPerigeeDeg) ||
         Number.isNaN(e.meanAnomalyDeg)
       ) {
-        throw new Error("satellites.toml: incomplete elements entry");
+        throw new Error(`${sourceLabel}: incomplete elements entry`);
       }
     }
   }
