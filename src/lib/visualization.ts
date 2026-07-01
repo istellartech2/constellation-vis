@@ -574,6 +574,76 @@ export default class SatelliteScene {
     }
   }
 
+  /**
+   * Apply non-structural parameter changes to the live scene without rebuilding
+   * it. Visibility toggles and cone tilt are already read from {@link params}
+   * by the animate loop every frame, so updating {@link params} is enough for
+   * those; the remaining items below are state that is only set up once at
+   * construction (object visibility not read in the loop, cached colors, and
+   * geometry derived from angles/ranges) and so must be updated explicitly.
+   *
+   * Structural changes (satellite/ground-station lists, earth texture,
+   * bright-earth lighting, white background) still require a full rebuild and
+   * are NOT handled here — see {@link useSatelliteScene}.
+   */
+  updateParams(next: SatelliteSceneParams) {
+    const prev = this.params;
+    this.params = next;
+
+    // Visibility of objects the animate loop does not touch.
+    this.graticule.visible = next.showGraticule;
+    this.ecliptic.visible = next.showEcliptic;
+    this.sunDot.visible = next.showSunDirection;
+
+    // Satellite point size.
+    if (next.satRadius !== prev.satRadius) {
+      this.satMaterial.size = next.satRadius * 2;
+    }
+
+    // Colors: mutate the cached Color objects in place. fovConeMaterial.color
+    // shares the fovConeColor reference, so it updates with it; the per-station
+    // cone materials were cloned, so update each explicitly.
+    this.satelliteVisibleColor.set(next.satelliteVisibleColor);
+    this.satelliteHiddenColor.set(next.satelliteHiddenColor);
+    this.satelliteSelectedColor.set(next.satelliteSelectedColor);
+    this.fovConeColor.set(next.fovConeColor);
+    this.groundConeColor.set(next.groundConeColor);
+    this.stationConeMaterials.forEach((m) => m.color.set(next.groundConeColor));
+
+    // FOV cone geometry depends on the half-angle.
+    if (next.fovConeHalfAngleDeg !== prev.fovConeHalfAngleDeg) {
+      const rad = THREE.MathUtils.degToRad(
+        THREE.MathUtils.clamp(next.fovConeHalfAngleDeg, 1, 89.9),
+      );
+      const geo = new THREE.ConeGeometry(Math.tan(rad), 1, FOV_CONE_SEGMENTS, 1, true);
+      geo.translate(0, -0.5, 0);
+      this.fovConeGeometry.dispose();
+      this.fovConeGeometry = geo;
+      this.fovConeMeshes.forEach((m) => {
+        m.geometry = geo;
+      });
+    }
+
+    // Ground-station cone geometry depends on the min-elevation and range.
+    if (
+      next.groundConeMinElevationDeg !== prev.groundConeMinElevationDeg ||
+      next.groundConeLength !== prev.groundConeLength
+    ) {
+      const heightNorm = Math.max(next.groundConeLength, 0.01);
+      const minEl = THREE.MathUtils.clamp(next.groundConeMinElevationDeg, 0, 89.9);
+      const halfAngle = THREE.MathUtils.degToRad(90 - minEl);
+      const baseRadius = heightNorm * Math.tan(halfAngle);
+      this.stationConeMeshes.forEach((mesh, idx) => {
+        const geo = new THREE.ConeGeometry(baseRadius, 1, STATION_CONE_SEGMENTS, 1, true);
+        geo.translate(0, -0.5, 0);
+        this.stationConeGeometries[idx].dispose();
+        this.stationConeGeometries[idx] = geo;
+        mesh.geometry = geo;
+        mesh.scale.set(1, heightNorm, 1);
+      });
+    }
+  }
+
   private resetPointerInteraction() {
     this.pointerDownActive = false;
     this.pointerDownId = null;

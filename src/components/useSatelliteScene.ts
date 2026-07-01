@@ -52,6 +52,11 @@ export function useSatelliteScene(
         sceneRef.current = null;
       }
     };
+    // Only STRUCTURAL params force a full rebuild (different object counts,
+    // texture reloads, or lighting/background baked at construction). All other
+    // display settings are applied live via updateParams below — rebuilding for
+    // them caused toggles to intermittently appear not to take effect while a
+    // previous rebuild was still in flight.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     params.mountRef,
@@ -60,8 +65,21 @@ export function useSatelliteScene(
     params.startTime,
     params.satellites,
     params.groundStations,
-    params.satRadius,
     params.earthTexture,
+    params.brightEarth,
+    params.whiteBackground,
+    params.onSelect,
+    params.onSelectStation,
+    params.onSimTimeChange,
+    params.stationInfoRef,
+  ]);
+
+  // Apply non-structural settings live to the existing scene, no rebuild.
+  useEffect(() => {
+    sceneRef.current?.updateParams(params);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    params.satRadius,
     params.showGraticule,
     params.showEcliptic,
     params.showSunDirection,
@@ -72,20 +90,13 @@ export function useSatelliteScene(
     params.groundConeColor,
     params.fovConeHalfAngleDeg,
     params.fovConeColor,
-    params.fovConeMinHeight,
     params.fovConeAlongTrackDeg,
     params.fovConeCrossTrackDeg,
     params.satelliteVisibleColor,
     params.satelliteHiddenColor,
     params.satelliteSelectedColor,
     params.ecef,
-    params.brightEarth,
-    params.whiteBackground,
-    params.onSelect,
-    params.onSelectStation,
-    params.onSimTimeChange,
-    params.stationInfoRef,
   ]);
-  
+
   return sceneRef;
 }
