@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import { jday } from "satellite.js";
+import { gstime, jday, radiansToDegrees } from "satellite.js";
+import type { OrbitalElements } from "./satellites";
 
 // A grab bag of helper functions used when building the Three.js scene.
 
@@ -8,6 +9,73 @@ export const OBLIQUITY = 23.4393 * DEG2RAD;
 
 /** Ratio of Earth's polar to equatorial radius. */
 export const EARTH_FLATTENING = 6356.7523142 / 6378.137;
+
+/** Earth gravitational parameter (GM) in km^3/s^2. */
+const EARTH_MU_KM3_S2 = 398600.4418;
+/** Earth sidereal rotation rate in rad/s. */
+const EARTH_ROTATION_RATE_RAD_S = 7.2921150e-5;
+
+/**
+ * Geostationary semi-major axis in kilometres, derived from GM and the
+ * sidereal rotation rate as (GM / ω²)^(1/3) ≈ 42164.17 km. At this radius the
+ * orbital mean motion matches Earth's rotation, keeping the satellite fixed
+ * over a longitude.
+ */
+export const GEO_SEMI_MAJOR_AXIS_KM = Math.cbrt(
+  EARTH_MU_KM3_S2 / (EARTH_ROTATION_RATE_RAD_S * EARTH_ROTATION_RATE_RAD_S),
+);
+
+function normalizeAngleDeg(value: number): number {
+  const normalized = value % 360;
+  return normalized < 0 ? normalized + 360 : normalized;
+}
+
+/**
+ * Greenwich Mean Sidereal Time at `date`, in degrees. Wraps `satellite.js`
+ * `gstime` so it stays consistent with the ECI→geodetic conversion used
+ * elsewhere for rendering and derived longitude.
+ */
+export function gmstDeg(date: Date): number {
+  return normalizeAngleDeg(radiansToDegrees(gstime(date)));
+}
+
+/**
+ * Right ascension of the ascending node (deg) that places the node over the
+ * given East-positive longitude at `epoch`. Since a ground longitude maps to
+ * ECI right ascension as `eciRA = longitude + GMST`, the node RA is
+ * `normalize(longitude + GMST(epoch))`.
+ *
+ * Used as the RAAN so that at `epoch` the satellite (mean anomaly 0, i.e. at
+ * the ascending node) sits on the equator over the target longitude. For an
+ * equatorial orbit this simply parks it there; for an inclined geosynchronous
+ * orbit it centres the figure-8 ground track on that longitude.
+ */
+export function geoNodeRightAscensionDeg(longitudeDeg: number, epoch: Date): number {
+  return normalizeAngleDeg(longitudeDeg + gmstDeg(epoch));
+}
+
+/**
+ * Build the classical orbital elements for a geostationary (or, with a
+ * non-zero inclination, geosynchronous) satellite parked over `longitudeDeg`
+ * (East positive) at `epoch`.
+ */
+export function geoElementsFromLongitude(opts: {
+  satnum: number;
+  epoch: Date;
+  longitudeDeg: number;
+  inclinationDeg?: number;
+}): OrbitalElements {
+  return {
+    satnum: opts.satnum,
+    epoch: opts.epoch,
+    semiMajorAxisKm: GEO_SEMI_MAJOR_AXIS_KM,
+    eccentricity: 0,
+    inclinationDeg: opts.inclinationDeg ?? 0,
+    raanDeg: geoNodeRightAscensionDeg(opts.longitudeDeg, opts.epoch),
+    argPerigeeDeg: 0,
+    meanAnomalyDeg: 0,
+  };
+}
 
 /** Convert a UTC Date to Julian Date */
 function toJulianDate(date: Date): number {

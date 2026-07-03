@@ -8,7 +8,8 @@ import {
   validateSatelliteEditorConfig,
 } from "../src/lib/satelliteEditorSerializer";
 import { toSatrec } from "../src/lib/satellites";
-import { createDefaultFormationEntry, type SatelliteEditorConfig } from "../src/lib/satelliteEditorTypes";
+import { getSatelliteDerivedInfo } from "../src/lib/satelliteDerivedInfo";
+import { createDefaultFormationEntry, createDefaultGeoEntry, type SatelliteEditorConfig } from "../src/lib/satelliteEditorTypes";
 
 describe("satelliteEditorSerializer", () => {
   it("creates manual elements TOML from an empty config", () => {
@@ -40,7 +41,7 @@ describe("satelliteEditorSerializer", () => {
   });
 
   it("round-trips existing tle and elements entries", async () => {
-    const source = await Bun.file("/Users/ist/Documents/git/constellation-vis/public/satellites.toml").text();
+    const source = await Bun.file("public/satellites.toml").text();
     const parsed = parseSatelliteEditorConfig(source);
     const serialized = serializeSatelliteEditorConfig(parsed);
     const reparsed = parseSatelliteEditorConfig(serialized);
@@ -446,5 +447,115 @@ rotationDirection = "prograde"
     expect(messages).toContain("satnum が重複しています");
     expect(messages).toContain("chiefSatnum に対応する単独衛星がありません");
     expect(messages).toContain("この編隊は 2 機以上の deputy が必要です");
+  });
+
+  it("creates a default geo entry with longitude-only input", () => {
+    const entry = createDefaultGeoEntry();
+    expect(entry.kind).toBe("manual");
+    expect(entry.type).toBe("geo");
+    expect(entry.geo?.longitudeDeg).toBe(0);
+    expect(entry.geo?.inclinationDeg).toBe(0);
+  });
+
+  it("round-trips a geo entry through TOML", () => {
+    const source = `
+[[satellites]]
+type = "geo"
+name = "GEO-140E"
+satnum = 90010
+epoch = "2025-05-20T00:00:00Z"
+longitudeDeg = 140
+inclinationDeg = 0
+`;
+    const parsed = parseSatelliteEditorConfig(source);
+    expect(parsed.entries).toHaveLength(1);
+    const entry = parsed.entries[0];
+    expect(entry?.kind).toBe("manual");
+    if (entry?.kind === "manual") {
+      expect(entry.type).toBe("geo");
+      expect(entry.geo?.longitudeDeg).toBe(140);
+      expect(entry.geo?.satnum).toBe(90010);
+    }
+    const serialized = serializeSatelliteEditorConfig(parsed);
+    expect(serialized).toContain('type = "geo"');
+    expect(serialized).toContain("longitudeDeg = 140");
+    const reparsed = parseSatelliteEditorConfig(serialized);
+    const reEntry = reparsed.entries[0];
+    expect(reEntry?.kind === "manual" && reEntry.type === "geo").toBe(true);
+  });
+
+  it("expands a geo entry into geostationary orbital elements", () => {
+    const config: SatelliteEditorConfig = {
+      entries: [
+        {
+          id: "geo-1",
+          kind: "manual",
+          type: "geo",
+          name: "GEO-140E",
+          meta: { objectName: "GEO-140E" },
+          geo: { satnum: 90010, epoch: new Date("2025-05-20T00:00:00Z"), longitudeDeg: 140, inclinationDeg: 0 },
+        },
+      ],
+    };
+    const expanded = expandSatelliteEditorConfig(config);
+    expect(expanded).toHaveLength(1);
+    const spec = expanded[0];
+    expect(spec?.type).toBe("elements");
+    if (spec?.type !== "elements") return;
+    expect(spec.elements.semiMajorAxisKm).toBeCloseTo(42164.17, 0);
+    expect(spec.elements.eccentricity).toBe(0);
+    expect(spec.elements.inclinationDeg).toBe(0);
+    expect(spec.elements.argPerigeeDeg).toBe(0);
+    expect(spec.elements.meanAnomalyDeg).toBe(0);
+    expect(spec.meta?.objectName).toBe("GEO-140E");
+  });
+
+  it("places a geo satellite over the requested longitude at epoch", () => {
+    const epoch = new Date("2025-05-20T00:00:00Z");
+    const normalize = (lon: number) => (((lon + 180) % 360) + 360) % 360 - 180;
+    for (const longitudeDeg of [140, -100, 0, 200]) {
+      const config: SatelliteEditorConfig = {
+        entries: [
+          {
+            id: `geo-${longitudeDeg}`,
+            kind: "manual",
+            type: "geo",
+            name: "GEO",
+            meta: {},
+            geo: { satnum: 90010, epoch, longitudeDeg, inclinationDeg: 0 },
+          },
+        ],
+      };
+      const spec = expandSatelliteEditorConfig(config)[0];
+      expect(spec?.type).toBe("elements");
+      if (spec?.type !== "elements") continue;
+      const info = getSatelliteDerivedInfo(spec, epoch);
+      expect(info.longitudeDeg).not.toBeNull();
+      expect(info.longitudeDeg!).toBeCloseTo(normalize(longitudeDeg), 1);
+    }
+  });
+
+  it("keeps an inclined geosynchronous satellite over its longitude at epoch", () => {
+    const epoch = new Date("2025-05-20T00:00:00Z");
+    const config: SatelliteEditorConfig = {
+      entries: [
+        {
+          id: "geo-inc",
+          kind: "manual",
+          type: "geo",
+          name: "IGSO",
+          meta: {},
+          geo: { satnum: 90010, epoch, longitudeDeg: 135, inclinationDeg: 30 },
+        },
+      ],
+    };
+    const spec = expandSatelliteEditorConfig(config)[0];
+    expect(spec?.type).toBe("elements");
+    if (spec?.type !== "elements") return;
+    expect(spec.elements.inclinationDeg).toBe(30);
+    const info = getSatelliteDerivedInfo(spec, epoch);
+    // At epoch the ascending node crossing puts it on the equator at the target longitude.
+    expect(info.longitudeDeg!).toBeCloseTo(135, 1);
+    expect(info.latitudeDeg!).toBeCloseTo(0, 1);
   });
 });
