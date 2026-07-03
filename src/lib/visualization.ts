@@ -11,6 +11,7 @@ import {
   sunVectorECI,
   createGraticule,
   createEclipticLine,
+  createGeoOrbitLine,
   EARTH_FLATTENING,
 } from "./astronomy";
 import { KMLRenderer } from "./kmlRenderer";
@@ -26,6 +27,9 @@ import type { CameraSnapshot } from "./viewState";
 /** Equatorial and polar radii of Earth in kilometres. */
 const EARTH_RADIUS_EQUATOR_KM = 6378.137;
 const EARTH_RADIUS_POLAR_KM = 6356.7523142;
+
+/** Geostationary orbit radius (from Earth's centre) in kilometres. */
+const GEO_RADIUS_KM = 42164;
 
 /** Maximum number of shadow trail points to keep in memory */
 const MAX_SHADOW_COORDS = 144000; // 100 days at 1 minute intervals
@@ -72,6 +76,7 @@ export interface SatelliteSceneParams {
   earthTexture: EarthTextureMode;
   showGraticule: boolean;
   showEcliptic: boolean;
+  showGeoOrbit: boolean;
   showSunDirection: boolean;
   showGroundStationCones: boolean;
   showSatelliteFovCones: boolean;
@@ -128,6 +133,7 @@ export default class SatelliteScene {
   private readonly earthAnimationBindings: EarthAnimationBinding[];
   private readonly graticule: THREE.LineSegments;
   private readonly ecliptic: THREE.Line;
+  private readonly geoOrbit: THREE.Line;
   private readonly sunDot: THREE.Mesh;
   private readonly sunlight: THREE.DirectionalLight;
   private readonly ambientLight: THREE.AmbientLight;
@@ -271,6 +277,10 @@ export default class SatelliteScene {
     this.ecliptic = createEclipticLine(1);
     this.ecliptic.visible = this.params.showEcliptic;
     this.scene.add(this.ecliptic);
+
+    this.geoOrbit = createGeoOrbitLine(GEO_RADIUS_KM / EARTH_RADIUS_EQUATOR_KM);
+    this.geoOrbit.visible = this.params.showGeoOrbit;
+    this.scene.add(this.geoOrbit);
 
     const sunDotGeo = new THREE.SphereGeometry(0.01, 8, 8);
     const sunDotMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
@@ -593,6 +603,7 @@ export default class SatelliteScene {
     // Visibility of objects the animate loop does not touch.
     this.graticule.visible = next.showGraticule;
     this.ecliptic.visible = next.showEcliptic;
+    this.geoOrbit.visible = next.showGeoOrbit;
     this.sunDot.visible = next.showSunDirection;
 
     // Satellite point size.
@@ -1223,9 +1234,10 @@ export default class SatelliteScene {
     // Dispose earth mesh
     this.earthResourceDisposers.forEach((dispose) => dispose());
     
-    // Dispose graticule, ecliptic, and sun dot
+    // Dispose graticule, ecliptic, geo orbit, and sun dot
     this.graticule.geometry.dispose();
     this.ecliptic.geometry.dispose();
+    this.geoOrbit.geometry.dispose();
     this.sunDot.geometry.dispose();
     if (this.sunDot.material instanceof THREE.Material) {
       this.sunDot.material.dispose();

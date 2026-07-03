@@ -42,6 +42,7 @@ const DISPLAY: DisplaySettings = {
   earthTexture: "./assets/earth01.webp",
   showGraticule: true,
   showEcliptic: false,
+  showGeoOrbit: false,
   showSunDirection: true,
   ecef: true,
   showPerturbation: false,

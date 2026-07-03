@@ -60,6 +60,10 @@ interface Props {
   showEcliptic: boolean;
   /** Called when ecliptic visibility changes */
   onShowEclipticChange: (v: boolean) => void;
+  /** Show or hide the geostationary orbit circle */
+  showGeoOrbit: boolean;
+  /** Called when geostationary orbit visibility changes */
+  onShowGeoOrbitChange: (v: boolean) => void;
   /** Show or hide sun direction marker */
   showSunDirection: boolean;
   /** Called when sun direction visibility changes */
@@ -156,6 +160,8 @@ export default function SatelliteEditor({
   onShowGraticuleChange,
   showEcliptic,
   onShowEclipticChange,
+  showGeoOrbit,
+  onShowGeoOrbitChange,
   showSunDirection,
   onShowSunDirectionChange,
   showGroundStationCones,
@@ -428,6 +434,8 @@ export default function SatelliteEditor({
                 onShowGraticuleChange={onShowGraticuleChange}
                 showEcliptic={showEcliptic}
                 onShowEclipticChange={onShowEclipticChange}
+                showGeoOrbit={showGeoOrbit}
+                onShowGeoOrbitChange={onShowGeoOrbitChange}
                 showSunDirection={showSunDirection}
                 onShowSunDirectionChange={onShowSunDirectionChange}
                 showGroundStationCones={showGroundStationCones}

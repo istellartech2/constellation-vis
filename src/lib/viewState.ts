@@ -32,6 +32,7 @@ export interface DisplaySettings {
   earthTexture: EarthTextureMode;
   showGraticule: boolean;
   showEcliptic: boolean;
+  showGeoOrbit: boolean;
   showSunDirection: boolean;
   ecef: boolean;
   showPerturbation: boolean;
