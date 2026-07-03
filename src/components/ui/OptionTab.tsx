@@ -41,6 +41,8 @@ interface Props {
   onShowGraticuleChange: (v: boolean) => void;
   showEcliptic: boolean;
   onShowEclipticChange: (v: boolean) => void;
+  showGeoOrbit: boolean;
+  onShowGeoOrbitChange: (v: boolean) => void;
   showSunDirection: boolean;
   onShowSunDirectionChange: (v: boolean) => void;
   showGroundStationCones: boolean;
@@ -202,6 +204,8 @@ export default function OptionTab(props: Props) {
     onShowGraticuleChange,
     showEcliptic,
     onShowEclipticChange,
+    showGeoOrbit,
+    onShowGeoOrbitChange,
     showSunDirection,
     onShowSunDirectionChange,
     showGroundStationCones,
@@ -515,6 +519,12 @@ export default function OptionTab(props: Props) {
             onShowSunDirectionChange(v);
           }}
           label="太陽方向と黄道面を表示"
+        />
+        <CheckboxItem
+          id="geoOrbit"
+          checked={showGeoOrbit}
+          onChange={onShowGeoOrbitChange}
+          label="静止軌道（GEO）を表示"
         />
       </PanelSection>
 

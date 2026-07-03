@@ -141,3 +141,22 @@ export function createEclipticLine(stepDeg = 2): THREE.Line {
   const material = new THREE.LineBasicMaterial({ color: 0xffff00, transparent: true, opacity: 0.4 });
   return new THREE.Line(geometry, material);
 }
+
+/**
+ * Create a line representing the geostationary orbit altitude circle.
+ * The circle lies flat in the equatorial (ECI x-y) plane at the given
+ * scene radius (1 unit = Earth's equatorial radius).
+ */
+export function createGeoOrbitLine(radius: number, stepDeg = 2): THREE.Line {
+  const verts: number[] = [];
+
+  for (let lon = 0; lon <= 360; lon += stepDeg) {
+    const rad = lon * DEG2RAD;
+    verts.push(Math.cos(rad) * radius, 0, -Math.sin(rad) * radius);
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
+  const material = new THREE.LineBasicMaterial({ color: 0xcccccc, transparent: true, opacity: 0.3 });
+  return new THREE.Line(geometry, material);
+}
