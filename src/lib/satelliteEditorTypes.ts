@@ -1,6 +1,6 @@
 import type { OrbitalElements } from "./satellites";
 
-export type ManualSatelliteType = "tle" | "elements";
+export type ManualSatelliteType = "tle" | "elements" | "geo";
 export type FormationRelativeModel = "roe" | "relativeState";
 export type FormationMode =
   | "custom"
@@ -22,6 +22,19 @@ export interface SatelliteEditorMetadata {
 export interface SatelliteEditorTle {
   line1: string;
   line2: string;
+}
+
+/**
+ * Simplified input for a geostationary satellite: the user supplies only the
+ * longitude, and the orbital elements are derived from it. `inclinationDeg`
+ * (default 0) allows inclined geosynchronous orbits; `epoch` anchors the GMST
+ * used to convert longitude into mean anomaly.
+ */
+export interface SatelliteEditorGeo {
+  satnum: number;
+  epoch: Date;
+  longitudeDeg: number;
+  inclinationDeg: number;
 }
 
 export interface SatelliteEditorRoe {
@@ -48,6 +61,7 @@ export interface ManualSatelliteEntry {
   meta?: SatelliteEditorMetadata;
   tle?: SatelliteEditorTle;
   elements?: OrbitalElements;
+  geo?: SatelliteEditorGeo;
 }
 
 export interface FormationBaseEntry {
@@ -164,6 +178,22 @@ export function createDefaultManualEntry(): ManualSatelliteEntry {
       raanDeg: 0,
       argPerigeeDeg: 0,
       meanAnomalyDeg: 0,
+    },
+  };
+}
+
+export function createDefaultGeoEntry(): ManualSatelliteEntry {
+  return {
+    id: crypto.randomUUID(),
+    kind: "manual",
+    type: "geo",
+    name: "",
+    meta: {},
+    geo: {
+      satnum: 90001,
+      epoch: new Date(),
+      longitudeDeg: 0,
+      inclinationDeg: 0,
     },
   };
 }

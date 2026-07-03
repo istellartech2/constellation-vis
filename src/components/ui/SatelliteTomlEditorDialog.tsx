@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, Orbit, Rows3, Satellite, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Globe, Orbit, Rows3, Satellite, Trash2 } from "lucide-react";
 import { Button } from "./button";
+import { GEO_SEMI_MAJOR_AXIS_KM, geoElementsFromLongitude } from "../../lib/astronomy";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "./dialog";
 import { Label } from "./label";
 import {
@@ -15,6 +16,7 @@ import {
 } from "../../lib/satelliteEditorSerializer";
 import {
   createDefaultFormationEntry,
+  createDefaultGeoEntry,
   createDefaultManualEntry,
   FORMATION_MODES,
   type AlongTrackFormationEntry,
@@ -31,6 +33,7 @@ import {
   type ProgradeDirection,
   type SatelliteEditorConfig,
   type SatelliteEditorEntry,
+  type SatelliteEditorGeo,
 } from "../../lib/satelliteEditorTypes";
 
 interface Props {
@@ -48,8 +51,12 @@ function formatDateForInput(date?: Date): string {
 
 function getNextManualSatnum(config: SatelliteEditorConfig): number {
   const maxSatnum = config.entries
-    .filter((entry): entry is ManualSatelliteEntry => entry.kind === "manual" && entry.type === "elements" && !!entry.elements)
-    .reduce((maxValue, entry) => Math.max(maxValue, entry.elements!.satnum), 90000);
+    .filter((entry): entry is ManualSatelliteEntry => entry.kind === "manual")
+    .reduce((maxValue, entry) => {
+      if (entry.type === "elements" && entry.elements) return Math.max(maxValue, entry.elements.satnum);
+      if (entry.type === "geo" && entry.geo) return Math.max(maxValue, entry.geo.satnum);
+      return maxValue;
+    }, 90000);
   return Math.min(maxSatnum + 1, 99999);
 }
 
@@ -71,6 +78,14 @@ function selectionTitle(entry: SatelliteEditorEntry | null): string {
 function summaryForEntry(entry: SatelliteEditorEntry, chiefName?: string): string {
   if (entry.kind === "manual") {
     if (entry.type === "tle") return "2行 TLE をそのまま satellites.toml に保存します。";
+    if (entry.type === "geo") {
+      const geo = entry.geo;
+      if (!geo) return "経度を入力して静止衛星を配置します。";
+      const lon = geo.longitudeDeg;
+      const hemi = lon >= 0 ? "E" : "W";
+      const incNote = geo.inclinationDeg > 0 ? ` / 傾斜 ${geo.inclinationDeg.toFixed(1)}°` : "";
+      return `静止軌道 経度 ${Math.abs(lon).toFixed(2)}°${hemi}${incNote}（a≈${GEO_SEMI_MAJOR_AXIS_KM.toFixed(0)} km, e=0）に配置します。`;
+    }
     const el = entry.elements;
     return el
       ? `satnum ${el.satnum} / a=${el.semiMajorAxisKm.toFixed(1)} km / i=${el.inclinationDeg.toFixed(2)}° / e=${el.eccentricity.toFixed(4)}`
@@ -128,6 +143,15 @@ export default function SatelliteTomlEditorDialog({ open, satText, onSatTextChan
     const newEntry = createDefaultManualEntry();
     updateConfig((current) => {
       if (newEntry.elements) newEntry.elements.satnum = getNextManualSatnum(current);
+      return { entries: [...current.entries, newEntry] };
+    });
+    setSelectedId(newEntry.id);
+  }, [updateConfig]);
+
+  const handleAddGeo = useCallback(() => {
+    const newEntry = createDefaultGeoEntry();
+    updateConfig((current) => {
+      if (newEntry.geo) newEntry.geo.satnum = getNextManualSatnum(current);
       return { entries: [...current.entries, newEntry] };
     });
     setSelectedId(newEntry.id);
@@ -201,6 +225,10 @@ export default function SatelliteTomlEditorDialog({ open, satText, onSatTextChan
               <Button variant="outline" size="sm" onClick={handleAddManual} className="w-full justify-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-100 border-gray-600">
                 <Satellite className="h-4 w-4" />
                 単独衛星を追加
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleAddGeo} className="w-full justify-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-100 border-gray-600">
+                <Globe className="h-4 w-4" />
+                静止衛星を追加
               </Button>
               <Button variant="outline" size="sm" onClick={handleAddFormation} className="w-full justify-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-100 border-gray-600">
                 <Rows3 className="h-4 w-4" />
@@ -279,6 +307,32 @@ export default function SatelliteTomlEditorDialog({ open, satText, onSatTextChan
   );
 }
 
+function changeManualType(
+  current: ManualSatelliteEntry,
+  nextType: ManualSatelliteEntry["type"],
+  fallbackElements: NonNullable<ManualSatelliteEntry["elements"]>,
+): ManualSatelliteEntry {
+  if (nextType === current.type) return current;
+  if (nextType === "tle") {
+    return { ...current, type: "tle", tle: current.tle ?? { line1: "", line2: "" } };
+  }
+  if (nextType === "geo") {
+    const seedSatnum = current.geo?.satnum ?? current.elements?.satnum ?? 90001;
+    const seedEpoch = current.geo?.epoch ?? current.elements?.epoch ?? new Date();
+    return {
+      ...current,
+      type: "geo",
+      geo: current.geo ?? {
+        satnum: seedSatnum,
+        epoch: seedEpoch,
+        longitudeDeg: 0,
+        inclinationDeg: current.elements?.inclinationDeg ?? 0,
+      },
+    };
+  }
+  return { ...current, type: "elements", elements: current.elements ?? fallbackElements };
+}
+
 function ManualEntryForm({
   entry,
   index,
@@ -296,8 +350,9 @@ function ManualEntryForm({
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <Label className="text-xs text-gray-400">保存形式</Label>
-          <select value={entry.type} onChange={(e) => onChange((current) => e.target.value === "tle" ? { ...current, type: "tle", tle: current.tle ?? { line1: "", line2: "" } } : { ...current, type: "elements", elements: current.elements ?? elements })} className="w-full rounded border border-gray-600 bg-gray-800 px-2 py-1.5 text-sm text-gray-100">
+          <select value={entry.type} onChange={(e) => onChange((current) => changeManualType(current, e.target.value as ManualSatelliteEntry["type"], elements))} className="w-full rounded border border-gray-600 bg-gray-800 px-2 py-1.5 text-sm text-gray-100">
             <option value="elements">軌道要素</option>
+            <option value="geo">静止軌道 (経度指定)</option>
             <option value="tle">TLE</option>
           </select>
         </div>
@@ -318,6 +373,8 @@ function ManualEntryForm({
             {errorForField(errors, index, "tle") && <p className="text-xs text-red-400">{errorForField(errors, index, "tle")}</p>}
           </div>
         </div>
+      ) : entry.type === "geo" ? (
+        <GeoEntryForm entry={entry} index={index} errors={errors} onChange={onChange} />
       ) : (
         <div className="grid grid-cols-2 gap-3">
           <NumberField label="衛星番号 satnum" value={elements.satnum} integer onChange={(value) => onChange((current) => ({ ...current, elements: { ...(current.elements ?? elements), satnum: value } }))} error={errorForField(errors, index, "elements.satnum")} />
@@ -330,6 +387,52 @@ function ManualEntryForm({
           <NumberField label="平均近点角 mean anomaly [deg]" value={elements.meanAnomalyDeg} onChange={(value) => onChange((current) => ({ ...current, elements: { ...(current.elements ?? elements), meanAnomalyDeg: value } }))} />
         </div>
       )}
+    </div>
+  );
+}
+
+function GeoEntryForm({
+  entry,
+  index,
+  errors,
+  onChange,
+}: {
+  entry: ManualSatelliteEntry;
+  index: number;
+  errors: SatelliteEditorValidationError[];
+  onChange: (updater: (entry: ManualSatelliteEntry) => ManualSatelliteEntry) => void;
+}) {
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const geo = entry.geo ?? createDefaultGeoEntry().geo!;
+  const updateGeo = (patch: Partial<SatelliteEditorGeo>) =>
+    onChange((current) => ({ ...current, geo: { ...(current.geo ?? geo), ...patch } }));
+  const preview = geoElementsFromLongitude(geo);
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-md border border-sky-800/50 bg-sky-950/20 px-3 py-2 text-xs text-sky-100">
+        経度を入力するだけで静止軌道（円・赤道・高度約 {(GEO_SEMI_MAJOR_AXIS_KM - 6378.137).toFixed(0)} km）の軌道要素を自動生成します。東経を正、西経を負で入力してください。
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <NumberField label="経度 longitude [deg]（東経+ / 西経-）" value={geo.longitudeDeg} onChange={(value) => updateGeo({ longitudeDeg: value })} error={errorForField(errors, index, "geo.longitudeDeg")} />
+        <NumberField label="衛星番号 satnum" value={geo.satnum} integer onChange={(value) => updateGeo({ satnum: value })} error={errorForField(errors, index, "geo.satnum")} />
+      </div>
+
+      <button type="button" onClick={() => setShowAdvanced((value) => !value)} className="text-xs text-amber-300 hover:text-amber-200">
+        {showAdvanced ? "詳細設定を隠す" : "詳細設定を表示（傾斜角・エポック）"}
+      </button>
+      {showAdvanced && (
+        <div className="grid grid-cols-2 gap-3">
+          <NumberField label="軌道傾斜角 inclination [deg]" description="0 で静止軌道。>0 で傾斜同期（8の字）軌道。" value={geo.inclinationDeg} onChange={(value) => updateGeo({ inclinationDeg: value })} error={errorForField(errors, index, "geo.inclinationDeg")} />
+          <DateField label="エポック epoch [UTC]" value={geo.epoch} onChange={(date) => updateGeo({ epoch: date ?? geo.epoch })} />
+        </div>
+      )}
+
+      <div className="space-y-1 rounded-md border border-gray-700 bg-gray-900/70 px-3 py-2 text-xs text-gray-300">
+        <div className="font-medium text-gray-200">生成される軌道要素（プレビュー）</div>
+        <div>長半径 a = {preview.semiMajorAxisKm.toFixed(1)} km / 離心率 e = 0 / 傾斜 i = {preview.inclinationDeg.toFixed(2)}°</div>
+        <div>RAAN = {preview.raanDeg.toFixed(3)}° / 近地点引数 = 0° / 平均近点角 M = 0°</div>
+      </div>
     </div>
   );
 }

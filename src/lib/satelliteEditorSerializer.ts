@@ -1,6 +1,8 @@
 import type { OrbitalElements, SatelliteMetadata, SatelliteSpec } from "./satellites";
+import { geoElementsFromLongitude } from "./astronomy";
 import {
   createDefaultFormationEntry,
+  createDefaultGeoEntry,
   createDefaultManualEntry,
   type AlongTrackFormationEntry,
   type CrossTrackPendulumFormationEntry,
@@ -528,6 +530,10 @@ export function getEntryDisplayName(entry: SatelliteEditorEntry, index: number):
   if (entry.kind === "manual") {
     const label = entry.meta?.objectName || entry.name;
     if (label) return label;
+    if (entry.type === "geo" && entry.geo) {
+      const lon = entry.geo.longitudeDeg;
+      return `GEO ${Math.abs(lon).toFixed(1)}°${lon >= 0 ? "E" : "W"}`;
+    }
     if (entry.type === "elements" && entry.elements) return `Satellite ${entry.elements.satnum}`;
     return `TLE ${index + 1}`;
   }
@@ -547,6 +553,21 @@ export function parseSatelliteEditorConfig(text: string): SatelliteEditorConfig 
         name: entry.name !== undefined ? String(entry.name) : undefined,
         meta: orbitalMetaFromEntry(entry),
         tle: { line1: String(entry.line1 ?? ""), line2: String(entry.line2 ?? "") },
+      } satisfies ManualSatelliteEntry;
+    }
+    if (type === "geo") {
+      return {
+        id: crypto.randomUUID(),
+        kind: "manual",
+        type: "geo",
+        name: entry.name !== undefined ? String(entry.name) : undefined,
+        meta: orbitalMetaFromEntry(entry),
+        geo: {
+          satnum: Number(entry.satnum ?? 90001),
+          epoch: entry.epoch instanceof Date ? entry.epoch : new Date(String(entry.epoch ?? new Date().toISOString())),
+          longitudeDeg: Number(entry.longitudeDeg ?? 0),
+          inclinationDeg: Number(entry.inclinationDeg ?? 0),
+        },
       } satisfies ManualSatelliteEntry;
     }
     if (type === "elements") {
@@ -587,6 +608,16 @@ export function serializeSatelliteEditorConfig(config: SatelliteEditorConfig): s
       if (entry.meta?.noradCatId !== undefined) lines.push(`noradCatId = ${entry.meta.noradCatId}`);
       lines.push(`line1 = ${JSON.stringify(entry.tle?.line1 ?? "")}`);
       lines.push(`line2 = ${JSON.stringify(entry.tle?.line2 ?? "")}`);
+    } else if (entry.kind === "manual" && entry.type === "geo") {
+      const geo = entry.geo ?? createDefaultGeoEntry().geo!;
+      lines.push('type = "geo"');
+      if (entry.name) lines.push(`name = ${JSON.stringify(entry.name)}`);
+      if (entry.meta?.objectId) lines.push(`objectId = ${JSON.stringify(entry.meta.objectId)}`);
+      if (entry.meta?.noradCatId !== undefined) lines.push(`noradCatId = ${entry.meta.noradCatId}`);
+      lines.push(`satnum = ${geo.satnum}`);
+      lines.push(`epoch = ${formatTomlDate(geo.epoch)}`);
+      lines.push(`longitudeDeg = ${formatNumber(geo.longitudeDeg, 4)}`);
+      lines.push(`inclinationDeg = ${formatNumber(geo.inclinationDeg, 4)}`);
     } else if (entry.kind === "manual" && entry.type === "elements") {
       const elements = entry.elements ?? createDefaultManualEntry().elements!;
       lines.push('type = "elements"');
@@ -671,6 +702,17 @@ export function validateSatelliteEditorConfig(config: SatelliteEditorConfig): Sa
     if (entry.kind === "manual") {
       if (entry.type === "tle") {
         if (!entry.tle?.line1 || !entry.tle?.line2) errors.push({ field: `entry.${index}.tle`, message: "TLE 2行が必要です" });
+      } else if (entry.type === "geo") {
+        const geo = entry.geo;
+        if (!geo) {
+          errors.push({ field: `entry.${index}.geo`, message: "静止軌道の入力が必要です" });
+          return;
+        }
+        if (usedSatnums.has(geo.satnum)) errors.push({ field: `entry.${index}.geo.satnum`, message: "satnum が重複しています" });
+        usedSatnums.add(geo.satnum);
+        if (!(geo.epoch instanceof Date) || Number.isNaN(geo.epoch.getTime())) errors.push({ field: `entry.${index}.geo.epoch`, message: "epoch が不正です" });
+        if (!Number.isFinite(geo.longitudeDeg) || geo.longitudeDeg < -180 || geo.longitudeDeg > 360) errors.push({ field: `entry.${index}.geo.longitudeDeg`, message: "経度は -180〜360 の範囲で入力してください" });
+        if (!Number.isFinite(geo.inclinationDeg) || geo.inclinationDeg < 0 || geo.inclinationDeg > 90) errors.push({ field: `entry.${index}.geo.inclinationDeg`, message: "傾斜角は 0〜90 度で入力してください" });
       } else {
         const el = entry.elements;
         if (!el) {
@@ -819,11 +861,15 @@ export function expandSatelliteEditorConfig(config: SatelliteEditorConfig): Sate
     ...config.entries
       .filter((entry): entry is ManualSatelliteEntry => entry.kind === "manual" && entry.type === "elements" && !!entry.elements)
       .map((entry) => entry.elements!.satnum + 1),
+    ...config.entries
+      .filter((entry): entry is ManualSatelliteEntry => entry.kind === "manual" && entry.type === "geo" && !!entry.geo)
+      .map((entry) => entry.geo!.satnum + 1),
   );
 
   for (const entry of config.entries) {
     if (entry.kind === "manual") {
       if (entry.type === "tle" && entry.tle) output.push({ type: "tle", lines: [entry.tle.line1, entry.tle.line2], meta: cloneMeta(entry.meta) });
+      else if (entry.type === "geo" && entry.geo) output.push({ type: "elements", elements: geoElementsFromLongitude(entry.geo), meta: cloneMeta(entry.meta) });
       else if (entry.type === "elements" && entry.elements) output.push({ type: "elements", elements: entry.elements, meta: cloneMeta(entry.meta) });
       continue;
     }
