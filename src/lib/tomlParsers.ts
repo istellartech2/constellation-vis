@@ -81,7 +81,30 @@ export function parseSatellitesToml(text: string): SatelliteSpec[] {
   return expandSatelliteEditorConfig(parseSatelliteEditorConfig(text));
 }
 
-function generateFromShells(con: ConstellationConfig): SatelliteSpec[] {
+/** One shell's satellites plus the metadata needed to resolve ISL participation (§2.4). */
+export interface GeneratedShellRange {
+  /** Stable key: the shell's array index in `con.shells`, as a string. */
+  key: string;
+  name?: string;
+  /** Index (into the combined [...base, ...shells] array) of the shell's first satellite. */
+  startIndex: number;
+  /** Satellites actually generated for this shell (not the nominal `shell.count`). */
+  count: number;
+  planes: number;
+}
+
+interface GeneratedShells {
+  satellites: SatelliteSpec[];
+  ranges: GeneratedShellRange[];
+}
+
+/**
+ * Generate every shell's satellites, tracking each shell's own generated count
+ * separately (a shell's inner loop must stop once *that shell* has produced
+ * `count` satellites — not once the whole accumulated array reaches `count`,
+ * which truncates every shell after the first in a multi-shell constellation).
+ */
+function generateFromShellsDetailed(con: ConstellationConfig, baseOffset: number): GeneratedShells {
   const epoch = con.epoch instanceof Date ? con.epoch : new Date(String(con.epoch));
   // ID ranges:
   //   1-9999: Constellation generated satellites
@@ -90,8 +113,9 @@ function generateFromShells(con: ConstellationConfig): SatelliteSpec[] {
   // Note: TLE format only supports 5-digit satellite numbers (max 99999)
   let nextSatnum = 1;
   const sats: SatelliteSpec[] = [];
+  const ranges: GeneratedShellRange[] = [];
 
-  for (const shell of con.shells ?? []) {
+  (con.shells ?? []).forEach((shell, shellIdx) => {
     const count = Number(shell.count);
     const planes = Number(shell.planes);
     const perPlane = Math.ceil(count / planes);
@@ -106,9 +130,12 @@ function generateFromShells(con: ConstellationConfig): SatelliteSpec[] {
     const apogeeRadius = EARTH_RADIUS_KM + aAltitude;
     const semiMajorAxisKm = apogeeRadius / (1 + ecc);
 
+    const startIndex = baseOffset + sats.length;
+    let generated = 0;
+
     for (let p = 0; p < planes; p++) {
       const raan = raanStart + (raanRange * p) / planes;
-      for (let j = 0; j < perPlane && sats.length < count; j++) {
+      for (let j = 0; j < perPlane && generated < count; j++) {
         const ma = (m0 + (360 / count) * (p * phasing + j * planes)) % 360;
         sats.push({
           type: "elements",
@@ -123,11 +150,34 @@ function generateFromShells(con: ConstellationConfig): SatelliteSpec[] {
             meanAnomalyDeg: ma,
           },
         });
+        generated++;
       }
     }
-  }
 
-  return sats;
+    ranges.push({
+      key: String(shellIdx),
+      name: shell.name,
+      startIndex,
+      count: generated,
+      planes,
+    });
+  });
+
+  return { satellites: sats, ranges };
+}
+
+function generateFromShells(con: ConstellationConfig): SatelliteSpec[] {
+  return generateFromShellsDetailed(con, 0).satellites;
+}
+
+/**
+ * Resolve shell index ranges for ISL participation/topology (§2.4), from the
+ * *actual* generated satellite counts rather than the nominal `shell.count`
+ * (H-1 fix). `baseOffset` is the number of satellites.toml satellites that
+ * precede the constellation shells in the combined array.
+ */
+export function generateShellRanges(con: ConstellationConfig, baseOffset: number): GeneratedShellRange[] {
+  return generateFromShellsDetailed(con, baseOffset).ranges;
 }
 
 export function parseConstellationConfig(text: string): ConstellationConfig {

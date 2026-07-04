@@ -1,6 +1,6 @@
 /** Snapshot graph construction: node positions + settings -> adjacency list (§1.8, §2.2). */
 import * as satellite from "satellite.js";
-import type { Vec3 } from "./geometry";
+import { endpointEci, endpointObserver, type Vec3 } from "./geometry";
 import {
   gridPatternIslCandidates,
   naiveGslCandidates,
@@ -108,10 +108,6 @@ export function buildSnapshotGraph(input: BuildGraphInput): IslGraph {
   };
 }
 
-function pairKey(a: number, b: number): string {
-  return `${Math.min(a, b)}-${Math.max(a, b)}`;
-}
-
 /**
  * Resolve ISL candidates using the uniform-grid scan by default (§1.7.2), with
  * per-shell overrides when `shellRanges` is provided (Phase 3, §2.4):
@@ -144,7 +140,6 @@ function resolveIslEdges(
   });
 
   const edges: CandidateEdge[] = [];
-  const covered = new Set<string>();
 
   // 1. Within-shell candidates, using each shell's own (possibly overridden) link model.
   for (const shell of shellRanges) {
@@ -167,10 +162,7 @@ function resolveIslEdges(
             shellModel.losMarginKm,
           );
 
-    for (const e of shellEdges) {
-      edges.push(e);
-      covered.add(pairKey(e.i, e.j));
-    }
+    edges.push(...shellEdges);
   }
 
   // 2. Cross-shell / unassigned-satellite candidates: always dynamic (never
@@ -188,25 +180,25 @@ function resolveIslEdges(
     linkModel.maxRangeKm,
     ...shellRanges.map((s) => resolvedShellModel(s).maxRangeKm),
   );
+  // Same-shell pairs are fully handled by step 1 above — reject them before
+  // the distance/LoS check runs a second time (P-5), rather than computing
+  // it and discarding the result afterward.
   const candidatePairs = uniformGridIslCandidates(
     satEciPositions,
     participantIndices,
     widestRangeKm,
     linkModel.losMarginKm,
+    (i, j) => {
+      const shellI = shellOfIndex(i);
+      const shellJ = shellOfIndex(j);
+      return !!shellI && !!shellJ && shellI.key === shellJ.key;
+    },
   );
 
   for (const e of candidatePairs) {
-    const key = pairKey(e.i, e.j);
-    if (covered.has(key)) continue;
-
-    const shellI = shellOfIndex(e.i);
-    const shellJ = shellOfIndex(e.j);
-    if (shellI && shellJ && shellI.key === shellJ.key) continue; // same-shell pairs are fully handled in step 1
-
-    const maxPairRangeKm = Math.max(maxRangeKmFor(shellI), maxRangeKmFor(shellJ));
+    const maxPairRangeKm = Math.max(maxRangeKmFor(shellOfIndex(e.i)), maxRangeKmFor(shellOfIndex(e.j)));
     if (e.distanceKm > maxPairRangeKm) continue;
 
-    covered.add(key);
     edges.push(e);
   }
 
@@ -230,13 +222,8 @@ function buildGslEdgesForEndpoint(
   gmst: number,
   maxRangeKm: number,
 ): CandidateEdge[] {
-  const observer = {
-    longitude: satellite.degreesToRadians(endpoint.longitudeDeg),
-    latitude: satellite.degreesToRadians(endpoint.latitudeDeg),
-    height: endpoint.heightKm,
-  };
-  const stationEcf = satellite.geodeticToEcf(observer);
-  const stationEci = satellite.ecfToEci(stationEcf, gmst);
+  const observer = endpointObserver(endpoint);
+  const stationEci = endpointEci(observer, gmst);
   const minElevationRad = satellite.degreesToRadians(endpoint.minElevationDeg);
 
   return naiveGslCandidates(

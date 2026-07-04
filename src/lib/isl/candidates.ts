@@ -56,14 +56,38 @@ export function uniformGridIslCandidates(
   participantIndices: number[],
   maxRangeKm: number,
   losMarginKm: number,
+  /**
+   * Optional early-reject before the distance/LoS check (P-5): return true to
+   * skip a pair entirely. Used by the shell-aware resolver to avoid
+   * re-checking same-shell pairs a second time during the cross-shell pass.
+   */
+  pairFilter?: (i: number, j: number) => boolean,
 ): CandidateEdge[] {
   if (participantIndices.length === 0) return [];
 
   const cellSize = Math.max(maxRangeKm, 1e-6);
   const cellCoord = (v: number) => Math.floor(v / cellSize);
-  const cellKey = (cx: number, cy: number, cz: number) => `${cx},${cy},${cz}`;
+  // Numeric cell key instead of a template-string join (P-3): packs each axis
+  // into AXIS_MOD via wraparound (safe — see below) rather than a
+  // 3-component string, avoiding ~28 string allocations per satellite (27
+  // neighbor lookups + 1 insert) at scan time.
+  //
+  // Wraparound cannot cause a missed neighbor: the same wrap() is applied
+  // consistently on both insert and lookup, so any two cells that collide
+  // under it are still each individually resolved via the exact formula that
+  // put them there. A collision can only ever merge two unrelated cells'
+  // buckets together, which produces extra candidate *pairs* that the
+  // subsequent real distance + line-of-sight check safely rejects — it can
+  // never drop a pair that belongs together.
+  const AXIS_MOD = 1 << 16;
+  const wrapAxis = (v: number) => {
+    const m = v % AXIS_MOD;
+    return m < 0 ? m + AXIS_MOD : m;
+  };
+  const cellKey = (cx: number, cy: number, cz: number) =>
+    wrapAxis(cx) + wrapAxis(cy) * AXIS_MOD + wrapAxis(cz) * AXIS_MOD * AXIS_MOD;
 
-  const grid = new Map<string, number[]>();
+  const grid = new Map<number, number[]>();
   const satCell = new Map<number, [number, number, number]>();
   for (const i of participantIndices) {
     const p = satEciPositions[i];
@@ -94,6 +118,7 @@ export function uniformGridIslCandidates(
           if (!bucket) continue;
           for (const j of bucket) {
             if (j <= i) continue;
+            if (pairFilter?.(i, j)) continue;
 
             const pj = satEciPositions[j];
             const d2 = linkDistanceSqKm2(pi, pj);

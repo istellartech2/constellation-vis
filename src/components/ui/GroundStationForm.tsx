@@ -1,6 +1,7 @@
 import type { GroundStationDraft, GroundStationValidationError } from "../../lib/groundStationSerializer";
 import { VISIBILITY_MODE_OPTIONS } from "../../lib/groundStationSerializer";
 import type { VisibilityMode } from "../../lib/groundStations";
+import { numericInputValue, parseNumericInput } from "../../lib/numericInput";
 import { Label } from "./label";
 
 interface Props {
@@ -19,12 +20,8 @@ export default function GroundStationForm({ station, index, errors, onChange }: 
       hasErr ? "border-red-500" : "border-gray-600 focus:border-amber-500"
     }`;
 
-  const numberValue = (n: number): number | "" => (Number.isFinite(n) ? n : "");
-  const parseNum = (raw: string): number => {
-    if (raw === "" || raw === "-") return NaN;
-    const v = parseFloat(raw);
-    return v;
-  };
+  const numberValue = numericInputValue;
+  const parseNum = parseNumericInput;
 
   return (
     <div className="p-3 space-y-3">

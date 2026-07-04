@@ -20,7 +20,7 @@ export interface IslLinkModel {
 /**
  * Stable description of one shell's satellite index range, used to resolve
  * per-shell link-model overrides and gridPattern topology (§2.4, §3-1 Phase 3).
- * `key` matches the keys of `IslSettings.shellLinkModels` / `participantShellKeys`.
+ * `key` matches the keys of `IslSettings.shellLinkModels` / `excludedShellKeys`.
  */
 export interface IslShellRange {
   key: string;
@@ -43,24 +43,34 @@ export interface IslCostSettings {
    * so it's opt-in and Worker-only.
    */
   stabilityWeightMs?: number;
-  /** tau_min [s] (Phase 4, §1.5.2): remaining-time level considered "stable". */
-  stabilityThresholdS?: number;
 }
 
 export interface IslSettings {
   enabled: boolean;
   endpointA: IslEndpoint | null;
   endpointB: IslEndpoint | null;
-  /** Stable keys: shell array index (optionally suffixed with name). */
-  participantShellKeys: string[];
-  /** satrec.satnum values of individually participating satellites. */
-  participantSatnums: number[];
+  /**
+   * Stable keys (IslShellRange.key) of shells excluded from ISL participation.
+   * Resolved to actual satellite indices at compute time (worker/graph layer),
+   * never pre-resolved and persisted — a key referring to a since-removed
+   * shell is simply a no-op (falls back to "included"), per §2.4 (Phase 5, H-4/H-5).
+   */
+  excludedShellKeys: string[];
+  /** Whether satellites.toml (non-shell) satellites participate. */
+  includeBaseSatellites: boolean;
   linkModel: IslLinkModel;
   shellLinkModels?: Record<string, Partial<IslLinkModel>>;
-  /** Shell index-range metadata resolved by the UI from constellation.toml (Phase 3). */
-  shellRanges: IslShellRange[];
   cost: IslCostSettings;
   recomputeIntervalSimS: number;
+  /**
+   * Display settings (S-3): kept in IslSettings rather than threaded as
+   * separate App/DisplaySettings/SceneParams fields, which previously meant
+   * touching 5 files to add one color. The endpoint A/B markers reuse these
+   * same two colors (they used to be a hardcoded, settings-independent
+   * duplicate of the same hex values) rather than getting their own fields.
+   */
+  gslColor: string;
+  islColor: string;
 }
 
 /** Graph node id convention: 0..N-1 = satellite index, N = endpoint A, N+1 = endpoint B. */
@@ -108,17 +118,20 @@ export const DEFAULT_COST_SETTINGS: IslCostSettings = {
 
 export const DEFAULT_ADHOC_MIN_ELEVATION_DEG = 10;
 export const DEFAULT_RECOMPUTE_INTERVAL_SIM_S = 10;
+export const DEFAULT_GSL_COLOR = "#ff33cc";
+export const DEFAULT_ISL_COLOR = "#33e0ff";
 
 export function createDefaultIslSettings(): IslSettings {
   return {
     enabled: false,
     endpointA: null,
     endpointB: null,
-    participantShellKeys: [],
-    participantSatnums: [],
+    excludedShellKeys: [],
+    includeBaseSatellites: true,
     linkModel: { ...DEFAULT_LINK_MODEL },
-    shellRanges: [],
     cost: { ...DEFAULT_COST_SETTINGS },
     recomputeIntervalSimS: DEFAULT_RECOMPUTE_INTERVAL_SIM_S,
+    gslColor: DEFAULT_GSL_COLOR,
+    islColor: DEFAULT_ISL_COLOR,
   };
 }

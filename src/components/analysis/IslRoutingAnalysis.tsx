@@ -2,8 +2,8 @@ import { useRef, useState } from "react";
 import ReactECharts from "echarts-for-react";
 import { Button } from "../ui/button";
 import { downloadCSV, downloadPNG } from "./utils/downloadUtils";
-import { parseConstellationToml, parseSatellitesToml } from "../../lib/tomlParsers";
-import type { IslPathResult, IslSettings } from "../../lib/isl/types";
+import type { SatelliteSpec } from "../../lib/satellites";
+import type { IslPathResult, IslSettings, IslShellRange } from "../../lib/isl/types";
 import type {
   IslRoutingWorkerInitRequest,
   IslRoutingWorkerResponse,
@@ -11,18 +11,23 @@ import type {
 } from "../../workers/islRoutingWorker.types";
 
 interface Props {
-  satText: string;
-  constText: string;
+  /** The currently active (committed) satellite array — matches islShellRanges exactly (H-4). */
+  satellites: SatelliteSpec[];
   islSettings: IslSettings;
+  islShellRanges: IslShellRange[];
   startTime: Date;
 }
 
 /**
  * Time-window sweep analysis for the ISL routing feature (§2.5.4, Phase 4).
  * Runs entirely in a dedicated ISL routing worker instance (one "init" +
- * "sweep" round trip), independent of the live scene's own worker.
+ * "sweep" round trip), independent of the live scene's own worker. Takes the
+ * same committed `satellites`/`islShellRanges` the live scene uses, rather
+ * than re-parsing the (possibly newer, not-yet-"Update"d) editor text — this
+ * makes the "new TOML + stale ISL snapshot" combination structurally
+ * impossible instead of merely avoided (isl-routing-review.md H-4).
  */
-export default function IslRoutingAnalysis({ satText, constText, islSettings, startTime }: Props) {
+export default function IslRoutingAnalysis({ satellites, islSettings, islShellRanges, startTime }: Props) {
   const [durationMin, setDurationMin] = useState(10);
   const [stepS, setStepS] = useState(10);
   const [running, setRunning] = useState(false);
@@ -43,9 +48,6 @@ export default function IslRoutingAnalysis({ satText, constText, islSettings, st
 
     let worker: Worker | null = null;
     try {
-      const base = parseSatellitesToml(satText);
-      const constellation = constText ? parseConstellationToml(constText) : [];
-      const satellites = [...base, ...constellation];
       if (satellites.length === 0) throw new Error("衛星データがありません");
 
       worker = new Worker(new URL("../../workers/islRoutingWorker.ts", import.meta.url), {
@@ -87,17 +89,14 @@ export default function IslRoutingAnalysis({ satText, constText, islSettings, st
             startIso: startTime.toISOString(),
             durationS: durationMin * 60,
             stepS,
-            participantSatnums: islSettings.participantSatnums,
+            excludedShellKeys: islSettings.excludedShellKeys,
+            includeBaseSatellites: islSettings.includeBaseSatellites,
             endpointA: islSettings.endpointA!,
             endpointB: islSettings.endpointB!,
             linkModel: islSettings.linkModel,
-            shellRanges: islSettings.shellRanges,
+            shellRanges: islShellRanges,
             shellLinkModels: islSettings.shellLinkModels,
-            hopPenaltyMs: islSettings.cost.hopPenaltyMs,
-            kindPenaltyMs: islSettings.cost.kindPenaltyMs,
-            switchDiscount: islSettings.cost.switchDiscount,
-            stabilityWeightMs: islSettings.cost.stabilityWeightMs,
-            stabilityThresholdS: islSettings.cost.stabilityThresholdS,
+            cost: islSettings.cost,
           },
         };
         activeWorker.postMessage(sweepRequest);

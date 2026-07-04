@@ -63,6 +63,38 @@ export function elevationRad(
   return look.elevation;
 }
 
+export interface GeodeticObserver {
+  longitude: number;
+  latitude: number;
+  height: number;
+}
+
+/**
+ * Convert an {@link IslEndpoint}-shaped lat/lon/height (degrees, degrees, km)
+ * into the radians-based observer shape `satellite.js` expects. Shared by
+ * `graph.ts`, `stability.ts` and `visualization.ts` (isl-routing-review.md
+ * D-2) — previously reimplemented independently in all three.
+ *
+ * Accepts an optional `target` to mutate in place (avoids an allocation in
+ * visualization.ts's per-frame call, P-1); defaults to allocating a fresh
+ * object for the (non-hot-path) graph/stability call sites.
+ */
+export function endpointObserver(
+  endpoint: { longitudeDeg: number; latitudeDeg: number; heightKm: number },
+  target: GeodeticObserver = { longitude: 0, latitude: 0, height: 0 },
+): GeodeticObserver {
+  target.longitude = satellite.degreesToRadians(endpoint.longitudeDeg);
+  target.latitude = satellite.degreesToRadians(endpoint.latitudeDeg);
+  target.height = endpoint.heightKm;
+  return target;
+}
+
+/** ECI position [km] of a geodetic observer at the given GMST (D-2). */
+export function endpointEci(observer: GeodeticObserver, gmst: number): Vec3 {
+  const ecf = satellite.geodeticToEcf(observer);
+  return satellite.ecfToEci(ecf, gmst) as Vec3;
+}
+
 export const DEFAULT_REMAINING_LINK_TIME_HORIZON_S = 300;
 export const DEFAULT_REMAINING_LINK_TIME_STEP_S = 10;
 /** Binary-search refinement iterations; 20 halvings of a 10 s step resolves to sub-millisecond precision. */

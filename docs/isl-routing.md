@@ -391,6 +391,22 @@ export interface IslPathResult {
 - **個別衛星の識別子**: `SatelliteSpec` の `"tle"` 型は satnum フィールドを持たないため、`toSatrec()` 後の `satrec.satnum`(TLE / elements のどちらでも得られる)を識別子とする。satnum 重複時は警告のうえ両方を参加させる。
 - `minElevationDeg` の既定 10° は臨時地点用(通信リンクの典型値)。既存局を選んだ場合はその局の `minElevationDeg` をそのまま使う(既存の `normalizeVisibilityCriteria` の既定 0° とは用途が異なる意図的な差)。
 
+**設計変更(Phase 5, isl-routing-review.md H-1/H-2/H-4/H-5/S-1)**: 上記 `participantShellKeys`/`participantSatnums` は実装せず、代わりに以下へ差し替えた。
+
+```ts
+export interface IslSettings {
+  // ...
+  excludedShellKeys: string[];      // 除外するシェルの安定キー(IslShellRange.key)
+  includeBaseSatellites: boolean;   // satellites.toml 由来の個別衛星を含めるか
+  // participantShellKeys / participantSatnums は削除
+}
+```
+
+- `participantSatnums`(satnum への事前解決スナップショット)は、TOML 再パースのたびに satnum が 1 から振り直される(`tomlParsers.ts`)ことと、UI コンポーネントのマウント状態に依存して更新タイミングがずれることの二重の理由で陳腐化しやすく、実際に「新しい衛星配列に古いスナップショットを適用してしまう」バグ(H-4)と「全解除が全参加に反転する」バグ(H-2、空配列の意味が「フィルタなし」と衝突)の根本原因になっていた。
+- 解決策は元々の設計意図(本節末尾の「シェルの安定キーについて」の注記)に忠実に戻すことで、除外シェルキー + 個別衛星フラグという**小さく安定した状態**だけを保存し、実際の衛星 index への解決は compute 直前(Worker/graph 層、`isl/participants.ts` の `resolveIslParticipantIndices`)に**毎回**行う。解決は satnum ではなく **shellRanges の index range** に対して行うため、satnum の重複や Alpha-5 形式(L-2)の影響も受けない。
+- `shellRanges`(`IslShellRange[]`)自体も `IslSettings` から外し、localStorage には一切永続化しない。`satellites.length`/`shellRanges` を生成する唯一の場所(`SatelliteEditor.handleUpdate`、内部で `tomlParsers.ts` の `generateShellRanges` を呼ぶ)で衛星配列と同時に導出し、App state として一体で保持することで、「衛星配列と shellRanges が別々のタイミングで更新されてずれる」余地を構造的に排除した。
+- `tomlParsers.ts` の `generateFromShells` 自体にも既存バグがあった(H-1): シェルごとの内側ループが**累積**の `sats.length < count` で打ち切っていたため、2 番目以降のシェルが切り詰められていた(ISL 機能に限らず、多シェル constellation.toml では表示衛星数自体が仕様より少なかった)。シェルごとの生成数を個別に数える形へ修正済み。
+
 ### 2.5 UI/UX 設計
 
 #### 2.5.1 設定の置き場所(決定: 新規「ISL」タブ)

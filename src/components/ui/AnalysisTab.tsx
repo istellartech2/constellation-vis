@@ -8,14 +8,18 @@ import SolarImpactAnalysis from "../analysis/SolarImpactAnalysis";
 import IslRoutingAnalysis from "../analysis/IslRoutingAnalysis";
 import PanelSection from "./PanelSection";
 import EntryButton from "./EntryButton";
-import type { IslSettings } from "../../lib/isl/types";
+import type { SatelliteSpec } from "../../lib/satellites";
+import type { IslSettings, IslShellRange } from "../../lib/isl/types";
 
 interface Props {
   satText: string;
   constText: string;
   gsText: string;
   startTime: Date;
+  /** The currently active (committed) satellite array — matches islShellRanges exactly. */
+  satellites: SatelliteSpec[];
   islSettings: IslSettings;
+  islShellRanges: IslShellRange[];
   onAnalysisStart?: () => void;
   onAnalysisEnd?: () => void;
 }
@@ -33,7 +37,9 @@ export default function AnalysisTab({
   constText,
   gsText,
   startTime,
+  satellites,
   islSettings,
+  islShellRanges,
   onAnalysisStart,
   onAnalysisEnd,
 }: Props) {
@@ -81,9 +87,9 @@ export default function AnalysisTab({
         />;
       case "ISL経路タイムライン解析":
         return <IslRoutingAnalysis
-          satText={satText}
-          constText={constText}
+          satellites={satellites}
           islSettings={islSettings}
+          islShellRanges={islShellRanges}
           startTime={startTime}
         />;
       default:

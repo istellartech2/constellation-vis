@@ -3,7 +3,8 @@ import * as satellite from "satellite.js";
 import { parseConstellationToml } from "../src/lib/tomlParsers";
 import { toSatrec } from "../src/lib/satellites";
 import { buildSnapshotGraph } from "../src/lib/isl/graph";
-import { edgeKey, findShortestPath } from "../src/lib/isl/shortestPath";
+import { edgeKey } from "../src/lib/isl/edgeKey";
+import { findShortestPath } from "../src/lib/isl/shortestPath";
 import type { IslEndpoint, IslLinkModel } from "../src/lib/isl/types";
 
 /**
@@ -72,7 +73,7 @@ inclination = 86.4
         linkModel,
         hopPenaltyMs,
       });
-      const result = findShortestPath(graph, simDate.getTime(), graph.candidateEdgeCount, 0, {
+      const result = findShortestPath(graph, simDate.getTime(), 0, {
         previousPathEdgeKeys,
         switchDiscount,
       });

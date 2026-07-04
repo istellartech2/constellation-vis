@@ -4,8 +4,8 @@
  * Dijkstra shortest-path time for a seeded Walker-like LEO shell at
  * N = 100 / 1,000 / 10,000 satellites. Run with: bun run scripts/bench-isl.ts
  */
-import * as satellite from "satellite.js";
 import { toSatrec, type SatelliteSpec } from "../src/lib/satellites";
+import { generateFromShells } from "../src/lib/tomlParsers";
 import {
   gridPatternIslCandidates,
   naiveIslCandidates,
@@ -14,10 +14,9 @@ import {
 } from "../src/lib/isl/candidates";
 import { findShortestPath } from "../src/lib/isl/shortestPath";
 import { buildSnapshotGraph } from "../src/lib/isl/graph";
-import type { Vec3 } from "../src/lib/isl/geometry";
+import { propagateAll } from "../src/lib/isl/propagate";
 import type { IslEndpoint, IslLinkModel } from "../src/lib/isl/types";
 
-const EARTH_RADIUS_KM = 6378.137;
 const ALTITUDE_KM = 550;
 // A single LEO shell's diameter (~2 * (R_e + alt) ~= 13,860 km) is only ~2.8x
 // the ISL spec default of 5,000 km, so at that range nearly every satellite
@@ -31,49 +30,26 @@ const REALISTIC_MAX_RANGE_KM = 1500;
 const MAX_RANGE_KM = 5000;
 const LOS_MARGIN_KM = 80;
 
-/** Seeded LCG so bench runs are reproducible. */
-function makeRng(seed: number) {
-  let state = seed >>> 0;
-  return () => {
-    state = (state * 1664525 + 1013904223) >>> 0;
-    return state / 0xffffffff;
-  };
-}
-
-/** A single-shell Walker-like constellation with `count` satellites, plane-major indexed (matches generateFromShells). */
-function makeWalkerShell(count: number, seed: number): { specs: SatelliteSpec[]; shell: ShellIndexRange } {
+/**
+ * A single-shell Walker-like constellation with `count` satellites,
+ * plane-major indexed — generated via the same `generateFromShells` used by
+ * `constellation.toml` (D-4), rather than a hand-rolled reimplementation that
+ * could silently drift from the real generator's indexing/geometry.
+ */
+function makeWalkerShell(count: number): { specs: SatelliteSpec[]; shell: ShellIndexRange } {
   const planes = Math.max(1, Math.round(Math.sqrt(count / 2)));
-  const perPlane = Math.ceil(count / planes);
-  const rng = makeRng(seed);
-  const specs: SatelliteSpec[] = [];
-  let satnum = 1;
-  for (let p = 0; p < planes && specs.length < count; p++) {
-    const raanDeg = (360 * p) / planes;
-    for (let j = 0; j < perPlane && specs.length < count; j++) {
-      specs.push({
-        type: "elements",
-        elements: {
-          satnum: satnum++,
-          epoch: new Date("2024-01-01T00:00:00.000Z"),
-          semiMajorAxisKm: EARTH_RADIUS_KM + ALTITUDE_KM,
-          eccentricity: 0,
-          inclinationDeg: 53 + rng() * 0.01, // tiny jitter so planes aren't degenerate
-          raanDeg,
-          argPerigeeDeg: 0,
-          meanAnomalyDeg: (360 * j) / perPlane,
-        },
-      });
-    }
-  }
-  return { specs, shell: { startIndex: 0, count: specs.length, planes } };
-}
-
-function propagateAll(specs: SatelliteSpec[], date: Date): Vec3[] {
-  return specs.map((spec) => {
-    const rec = toSatrec(spec);
-    const pv = satellite.propagate(rec, date);
-    return pv?.position ?? { x: 0, y: 0, z: 0 };
+  const specs = generateFromShells({
+    epoch: new Date("2024-01-01T00:00:00.000Z"),
+    shells: [
+      {
+        count,
+        planes,
+        apogee_altitude: ALTITUDE_KM,
+        inclination: 53,
+      },
+    ],
   });
+  return { specs, shell: { startIndex: 0, count: specs.length, planes } };
 }
 
 function timeMs(fn: () => void): number {
@@ -84,10 +60,11 @@ function timeMs(fn: () => void): number {
 
 function runBench(n: number, skipNaive: boolean) {
   console.log(`\n=== N = ${n} ===`);
-  const { specs, shell } = makeWalkerShell(n, 42);
+  const { specs, shell } = makeWalkerShell(n);
   const date = new Date("2024-01-01T00:10:00.000Z");
-  const positions = propagateAll(specs, date);
-  const participantIndices = positions.map((_, i) => i);
+  const satRecs = specs.map((spec) => toSatrec(spec));
+  const { positions, valid } = propagateAll(satRecs, date);
+  const participantIndices = positions.map((_, i) => i).filter((i) => valid[i]);
 
   let naiveMs: number | null = null;
   let naiveCount = 0;
@@ -146,7 +123,7 @@ function runBench(n: number, skipNaive: boolean) {
     });
     candidateEdgeCount = graph.candidateEdgeCount;
     const dijkstraStart = performance.now();
-    const result = findShortestPath(graph, date.getTime(), graph.candidateEdgeCount, 0);
+    const result = findShortestPath(graph, date.getTime(), 0);
     dijkstraMs = performance.now() - dijkstraStart;
     reachable = result.reachable;
   });

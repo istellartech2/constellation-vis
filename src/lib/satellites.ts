@@ -67,15 +67,6 @@ function elementsToTle(el: OrbitalElements): [string, string] {
   return [line1, line2];
 }
 
-/** Extract the catalog number from a satellite spec (TLE line 1 columns 3-7, or elements.satnum). */
-export function getSatnum(spec: SatelliteSpec): number | null {
-  if (spec.type === "elements") {
-    return spec.elements.satnum;
-  }
-  const match = spec.lines[0]?.match(/^1\s+(\d+)/);
-  return match ? Number(match[1]) : null;
-}
-
 /** Convert a satellite specification to a `satellite.js` satrec. */
 export function toSatrec(spec: SatelliteSpec): satellite.SatRec {
   if (spec.type === "tle") {

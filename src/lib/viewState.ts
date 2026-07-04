@@ -1,6 +1,6 @@
 import type { EarthTextureMode } from "./earthTextures";
 import type { SatelliteCameraMode } from "./visualization";
-import type { IslSettings } from "./isl/types";
+import { createDefaultIslSettings, DEFAULT_GSL_COLOR, DEFAULT_ISL_COLOR, type IslSettings } from "./isl/types";
 
 /**
  * Persistence of the current "view" — camera framing plus display settings —
@@ -11,7 +11,11 @@ import type { IslSettings } from "./isl/types";
  * framing while changing only the constellation size for comparison.
  */
 
-const STORAGE_VERSION = 1 as const;
+// Bumped to 2 when IslSettings dropped `participantSatnums`/`shellRanges` in
+// favor of stable-key participation (Phase 5, H-4). `migrateViewSettings`
+// below is the one place old-shaped `display.isl` data gets defaulted away.
+const STORAGE_VERSION = 2 as const;
+const MIGRATABLE_VERSIONS = new Set<number>([1, STORAGE_VERSION]);
 const LAST_VIEW_KEY = "constellation-vis:lastView";
 const SAVED_VIEWS_KEY = "constellation-vis:savedViews";
 
@@ -54,8 +58,6 @@ export interface DisplaySettings {
   satelliteSelectedColor: string;
   speedExp: number;
   isl: IslSettings;
-  islGslColor: string;
-  islIslColor: string;
 }
 
 export interface ViewSettings {
@@ -90,16 +92,55 @@ function writeJson(key: string, value: unknown): void {
   }
 }
 
-/** Validate that a parsed object is a current-version ViewSettings. */
+/** Validate that a parsed object is a migratable-version ViewSettings. */
 function isValidViewSettings(v: unknown): v is ViewSettings {
   if (!v || typeof v !== "object") return false;
   const obj = v as Partial<ViewSettings>;
-  return obj.version === STORAGE_VERSION && !!obj.display && !!obj.camera;
+  return typeof obj.version === "number" && MIGRATABLE_VERSIONS.has(obj.version) && !!obj.display && !!obj.camera;
+}
+
+/**
+ * Bring a possibly-older ViewSettings up to the current shape. `display.isl`
+ * may be absent (pre-ISL saves), in the pre-Phase-5 shape
+ * (`participantSatnums`/`shellRanges` instead of
+ * `excludedShellKeys`/`includeBaseSatellites`), or missing `gslColor`/
+ * `islColor` (pre-Phase-8-2, when those lived as separate top-level
+ * `display.islGslColor`/`islIslColor` fields, S-3) — in all cases fall back
+ * to defaults rather than trusting a type assertion that no longer matches
+ * (M-3), while still salvaging a legacy top-level color if present.
+ */
+function migrateViewSettings(v: ViewSettings): ViewSettings {
+  const isl = v.display.isl as unknown;
+  const islObj = isl && typeof isl === "object" ? (isl as Partial<IslSettings>) : null;
+  const hasCurrentIslShape = !!islObj && Array.isArray(islObj.excludedShellKeys);
+  const legacyDisplay = v.display as DisplaySettings & { islGslColor?: string; islIslColor?: string };
+
+  const migratedIsl: IslSettings = hasCurrentIslShape
+    ? {
+        ...(islObj as IslSettings),
+        gslColor: typeof islObj?.gslColor === "string" ? islObj.gslColor : legacyDisplay.islGslColor ?? DEFAULT_GSL_COLOR,
+        islColor: typeof islObj?.islColor === "string" ? islObj.islColor : legacyDisplay.islIslColor ?? DEFAULT_ISL_COLOR,
+      }
+    : {
+        ...createDefaultIslSettings(),
+        gslColor: legacyDisplay.islGslColor ?? DEFAULT_GSL_COLOR,
+        islColor: legacyDisplay.islIslColor ?? DEFAULT_ISL_COLOR,
+      };
+
+  const { islGslColor, islIslColor, ...restDisplay } = legacyDisplay;
+  void islGslColor;
+  void islIslColor;
+
+  return {
+    version: STORAGE_VERSION,
+    camera: v.camera,
+    display: { ...restDisplay, isl: migratedIsl },
+  };
 }
 
 export function loadLastView(): ViewSettings | null {
   const v = readJson<unknown>(LAST_VIEW_KEY);
-  return isValidViewSettings(v) ? v : null;
+  return isValidViewSettings(v) ? migrateViewSettings(v) : null;
 }
 
 export function saveLastView(view: ViewSettings): void {
@@ -109,14 +150,16 @@ export function saveLastView(view: ViewSettings): void {
 export function listSavedViews(): NamedView[] {
   const v = readJson<unknown>(SAVED_VIEWS_KEY);
   if (!Array.isArray(v)) return [];
-  return v.filter(
-    (entry): entry is NamedView =>
-      !!entry &&
-      typeof entry === "object" &&
-      typeof (entry as NamedView).id === "string" &&
-      typeof (entry as NamedView).name === "string" &&
-      isValidViewSettings((entry as NamedView).settings),
-  );
+  return v
+    .filter(
+      (entry): entry is NamedView =>
+        !!entry &&
+        typeof entry === "object" &&
+        typeof (entry as NamedView).id === "string" &&
+        typeof (entry as NamedView).name === "string" &&
+        isValidViewSettings((entry as NamedView).settings),
+    )
+    .map((entry) => ({ ...entry, settings: migrateViewSettings(entry.settings) }));
 }
 
 function newId(): string {

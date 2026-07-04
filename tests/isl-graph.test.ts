@@ -142,7 +142,7 @@ describe("isl graph", () => {
       linkModel,
       hopPenaltyMs,
     });
-    const result = findShortestPath(graph, simDate.getTime(), graph.candidateEdgeCount, 0);
+    const result = findShortestPath(graph, simDate.getTime(), 0);
 
     expect(result.reachable).toBe(true);
     expect(result.hopCount).toBe(2);

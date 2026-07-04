@@ -1,18 +1,37 @@
 /** Shared satellite-participation resolution, used by both the main thread and the routing worker. */
-import type * as satelliteNs from "satellite.js";
+import type { IslShellRange } from "./types";
 
-/** Resolve participant satellite indices from IslSettings.participantSatnums (empty = all). */
+/**
+ * Resolve participant satellite indices from stable exclusion state (§2.4,
+ * Phase 5 H-4/H-5): a satellite belonging to a shell in `excludedShellKeys`
+ * is excluded; a satellite not covered by any shell range (a
+ * satellites.toml-defined satellite) is included iff `includeBaseSatellites`.
+ * Resolution is index-based (no satnum lookup), so it is immune to the
+ * Alpha-5 catalog-number issue (L-2) and always matches the actual satellite
+ * array — there is no snapshot to go stale.
+ */
 export function resolveIslParticipantIndices(
-  satRecs: satelliteNs.SatRec[],
-  participantSatnums: number[],
+  satCount: number,
+  shellRanges: IslShellRange[],
+  excludedShellKeys: string[],
+  includeBaseSatellites: boolean,
 ): number[] {
-  if (participantSatnums.length === 0) {
-    return satRecs.map((_, i) => i);
-  }
-  const wanted = new Set(participantSatnums);
+  const excluded = new Set(excludedShellKeys);
+  const shellOfIndex = (idx: number): IslShellRange | null => {
+    for (const shell of shellRanges) {
+      if (idx >= shell.startIndex && idx < shell.startIndex + shell.count) return shell;
+    }
+    return null;
+  };
+
   const indices: number[] = [];
-  satRecs.forEach((rec, i) => {
-    if (wanted.has(Number(rec.satnum))) indices.push(i);
-  });
+  for (let i = 0; i < satCount; i++) {
+    const shell = shellOfIndex(i);
+    if (shell) {
+      if (!excluded.has(shell.key)) indices.push(i);
+    } else if (includeBaseSatellites) {
+      indices.push(i);
+    }
+  }
   return indices;
 }

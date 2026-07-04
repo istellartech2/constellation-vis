@@ -1,4 +1,5 @@
 /** Binary-heap Dijkstra over an IslGraph, with optional hysteresis discount (§1.5.1, §1.6.1). */
+import { edgeKey } from "./edgeKey";
 import type { IslGraph } from "./graph";
 import type { IslPathEdge, IslPathResult } from "./types";
 
@@ -55,13 +56,9 @@ class MinHeap {
   }
 }
 
-export function edgeKey(a: number, b: number): string {
-  return a < b ? `${a}-${b}` : `${b}-${a}`;
-}
-
 export interface ShortestPathOptions {
-  /** Edges (by undirected key) belonging to the previously adopted path (§1.5.1). */
-  previousPathEdgeKeys?: Set<string>;
+  /** Edges (by undirected key, see {@link edgeKey}) belonging to the previously adopted path (§1.5.1). */
+  previousPathEdgeKeys?: Set<number>;
   /** beta in [0, 0.5], default 0 (no hysteresis in Phase 1). */
   switchDiscount?: number;
 }
@@ -69,31 +66,38 @@ export interface ShortestPathOptions {
 export function findShortestPath(
   graph: IslGraph,
   computedAtSimMs: number,
-  candidateEdgeCount: number,
   computeTimeMs: number,
   options: ShortestPathOptions = {},
 ): IslPathResult {
   const { previousPathEdgeKeys, switchDiscount = 0 } = options;
+  // Always graph.candidateEdgeCount at every call site — read it from the
+  // graph rather than threading it as a separate positional argument (S-6).
+  const candidateEdgeCount = graph.candidateEdgeCount;
 
-  const dist = new Map<number, number>();
-  const prevNode = new Map<number, number>();
-  const prevEdge = new Map<number, IslPathEdge>();
-  const visited = new Set<number>();
+  // Node ids are dense (0..satCount-1 = satellites, satCount/satCount+1 = the
+  // two endpoints), so typed arrays indexed directly by node id outperform
+  // Map/Set here (P-4) — no hashing, no boxed entries, one allocation instead
+  // of per-relaxation Map writes.
+  const nodeCount = graph.nodeBId + 1;
+  const dist = new Float64Array(nodeCount).fill(Infinity);
+  const prevNode = new Int32Array(nodeCount).fill(-1);
+  const prevEdge: (IslPathEdge | undefined)[] = new Array(nodeCount);
+  const visited = new Uint8Array(nodeCount);
 
   const heap = new MinHeap();
-  dist.set(graph.nodeAId, 0);
+  dist[graph.nodeAId] = 0;
   heap.push({ nodeId: graph.nodeAId, dist: 0 });
 
   while (heap.size() > 0) {
     const current = heap.pop();
     if (!current) break;
-    if (visited.has(current.nodeId)) continue;
-    visited.add(current.nodeId);
+    if (visited[current.nodeId]) continue;
+    visited[current.nodeId] = 1;
     if (current.nodeId === graph.nodeBId) break;
 
     const neighbors = graph.adjacency.get(current.nodeId) ?? [];
     for (const edge of neighbors) {
-      if (visited.has(edge.to)) continue;
+      if (visited[edge.to]) continue;
 
       let cost = edge.costMs;
       if (previousPathEdgeKeys?.has(edgeKey(current.nodeId, edge.to))) {
@@ -101,23 +105,22 @@ export function findShortestPath(
       }
 
       const candidateDist = current.dist + cost;
-      const existing = dist.get(edge.to);
-      if (existing === undefined || candidateDist < existing) {
-        dist.set(edge.to, candidateDist);
-        prevNode.set(edge.to, current.nodeId);
-        prevEdge.set(edge.to, {
+      if (candidateDist < dist[edge.to]) {
+        dist[edge.to] = candidateDist;
+        prevNode[edge.to] = current.nodeId;
+        prevEdge[edge.to] = {
           fromNodeId: current.nodeId,
           toNodeId: edge.to,
           kind: edge.kind,
           distanceKm: edge.distanceKm,
           delayMs: edge.costMs,
-        });
+        };
         heap.push({ nodeId: edge.to, dist: candidateDist });
       }
     }
   }
 
-  if (!visited.has(graph.nodeBId)) {
+  if (!visited[graph.nodeBId]) {
     return {
       reachable: false,
       computedAtSimMs,
@@ -135,10 +138,10 @@ export function findShortestPath(
   const edges: IslPathEdge[] = [];
   let node = graph.nodeBId;
   while (node !== graph.nodeAId) {
-    const edge = prevEdge.get(node);
+    const edge = prevEdge[node];
     if (!edge) break;
     edges.push(edge);
-    node = prevNode.get(node) as number;
+    node = prevNode[node];
   }
   edges.reverse();
 

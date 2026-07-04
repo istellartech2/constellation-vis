@@ -9,6 +9,7 @@ import {
   type CameraSnapshot,
   type DisplaySettings,
 } from "../src/lib/viewState";
+import { createDefaultIslSettings } from "../src/lib/isl/types";
 
 // Minimal in-memory localStorage so the persistence helpers can be exercised
 // outside a browser (Bun test runner has no DOM).
@@ -62,6 +63,7 @@ const DISPLAY: DisplaySettings = {
   satelliteHiddenColor: "#ff0000",
   satelliteSelectedColor: "#00ffff",
   speedExp: 1.7,
+  isl: createDefaultIslSettings(),
 };
 
 beforeEach(() => {
@@ -109,5 +111,62 @@ describe("viewState persistence", () => {
     const view = buildViewSettings(DISPLAY, CAMERA);
     const result = saveNamedView("   ", view);
     expect(result[0].name).toBe("(無題)");
+  });
+
+  it("migrates a pre-Phase-5 (version 1) view instead of discarding it (M-3)", () => {
+    const oldShapeDisplay = {
+      ...DISPLAY,
+      isl: { enabled: true, participantSatnums: [1, 2, 3], shellRanges: [] },
+    };
+    localStorage.setItem(
+      "constellation-vis:lastView",
+      JSON.stringify({ version: 1, display: oldShapeDisplay, camera: CAMERA }),
+    );
+
+    const loaded = loadLastView();
+    expect(loaded).not.toBeNull();
+    expect(loaded!.version).toBe(2);
+    // The old-shaped isl object is not trusted — it falls back to defaults
+    // rather than silently running with a satnum-based snapshot that no
+    // longer matches the current IslSettings semantics.
+    expect(loaded!.display.isl.excludedShellKeys).toEqual([]);
+    expect(loaded!.display.isl.includeBaseSatellites).toBe(true);
+    expect(loaded!.display.isl.gslColor).toBe("#ff33cc");
+  });
+
+  it("migrates a version-1 view with no isl field at all", () => {
+    const { isl, ...withoutIsl } = DISPLAY;
+    void isl;
+    localStorage.setItem(
+      "constellation-vis:lastView",
+      JSON.stringify({ version: 1, display: withoutIsl, camera: CAMERA }),
+    );
+
+    const loaded = loadLastView();
+    expect(loaded).not.toBeNull();
+    expect(loaded!.display.isl.includeBaseSatellites).toBe(true);
+    expect(loaded!.display.isl.islColor).toBe("#33e0ff");
+  });
+
+  // S-3: the two ISL colors used to live as separate top-level
+  // display.islGslColor/islIslColor fields — verify a saved view in that
+  // shape still recovers its colors after moving into display.isl.
+  it("migrates legacy top-level islGslColor/islIslColor into isl.gslColor/islColor", () => {
+    const legacyDisplay = {
+      ...DISPLAY,
+      isl: { ...createDefaultIslSettings(), gslColor: undefined, islColor: undefined },
+      islGslColor: "#123456",
+      islIslColor: "#abcdef",
+    };
+    localStorage.setItem(
+      "constellation-vis:lastView",
+      JSON.stringify({ version: 2, display: legacyDisplay, camera: CAMERA }),
+    );
+
+    const loaded = loadLastView();
+    expect(loaded).not.toBeNull();
+    expect(loaded!.display.isl.gslColor).toBe("#123456");
+    expect(loaded!.display.isl.islColor).toBe("#abcdef");
+    expect((loaded!.display as unknown as { islGslColor?: string }).islGslColor).toBeUndefined();
   });
 });

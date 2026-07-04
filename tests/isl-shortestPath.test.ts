@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { GraphEdge, IslGraph } from "../src/lib/isl/graph";
-import { edgeKey, findShortestPath } from "../src/lib/isl/shortestPath";
+import { edgeKey } from "../src/lib/isl/edgeKey";
+import { findShortestPath } from "../src/lib/isl/shortestPath";
 import { edgeCostMs } from "../src/lib/isl/cost";
 
 const NODE_A = 100;
@@ -32,7 +33,7 @@ describe("isl shortestPath", () => {
       [3, NODE_B, 1],
     ]);
 
-    const result = findShortestPath(graph, 0, graph.candidateEdgeCount, 0);
+    const result = findShortestPath(graph, 0, 0);
     expect(result.reachable).toBe(true);
     expect(result.totalDelayMs).toBeCloseTo(3, 6);
     expect(result.nodeSatIndices).toEqual([2, 3]);
@@ -46,7 +47,7 @@ describe("isl shortestPath", () => {
       // 0 and 1 are not connected to each other.
     ]);
 
-    const result = findShortestPath(graph, 0, graph.candidateEdgeCount, 0);
+    const result = findShortestPath(graph, 0, 0);
     expect(result.reachable).toBe(false);
     expect(result.edges).toEqual([]);
   });
@@ -57,7 +58,7 @@ describe("isl shortestPath", () => {
       [5, NODE_B, 6],
     ]);
 
-    const result = findShortestPath(graph, 0, graph.candidateEdgeCount, 0);
+    const result = findShortestPath(graph, 0, 0);
     expect(result.reachable).toBe(true);
     expect(result.hopCount).toBe(1);
     expect(result.nodeSatIndices).toEqual([5]);
@@ -100,7 +101,7 @@ describe("isl shortestPath", () => {
 
     it("keeps the old path when the new path isn't cheap enough to overcome the discount (100 vs 85, beta 0.2 -> keep, discounted old = 80 < 85)", () => {
       const graph = makeHysteresisGraph(85);
-      const result = findShortestPath(graph, 0, graph.candidateEdgeCount, 0, {
+      const result = findShortestPath(graph, 0, 0, {
         previousPathEdgeKeys,
         switchDiscount: 0.2,
       });
@@ -110,7 +111,7 @@ describe("isl shortestPath", () => {
 
     it("switches to the new path once it's cheap enough (100 vs 75, beta 0.2 -> switch, 75 < 80)", () => {
       const graph = makeHysteresisGraph(75);
-      const result = findShortestPath(graph, 0, graph.candidateEdgeCount, 0, {
+      const result = findShortestPath(graph, 0, 0, {
         previousPathEdgeKeys,
         switchDiscount: 0.2,
       });
@@ -120,7 +121,7 @@ describe("isl shortestPath", () => {
 
     it("keeps the old path on an exact tie (100 vs 80, discounted old = 80 == 80 -> tie keeps old)", () => {
       const graph = makeHysteresisGraph(80);
-      const result = findShortestPath(graph, 0, graph.candidateEdgeCount, 0, {
+      const result = findShortestPath(graph, 0, 0, {
         previousPathEdgeKeys,
         switchDiscount: 0.2,
       });
@@ -154,14 +155,14 @@ describe("isl shortestPath", () => {
 
     it("prefers the shorter-distance, more-hop path when hopPenaltyMs is 0", () => {
       const graph = makeTradeoffGraph(0);
-      const result = findShortestPath(graph, 0, graph.candidateEdgeCount, 0);
+      const result = findShortestPath(graph, 0, 0);
       expect(result.hopCount).toBe(2);
       expect(result.nodeSatIndices).toEqual([0, 1]);
     });
 
     it("switches to the fewer-hop path once hopPenaltyMs is large enough", () => {
       const graph = makeTradeoffGraph(10);
-      const result = findShortestPath(graph, 0, graph.candidateEdgeCount, 0);
+      const result = findShortestPath(graph, 0, 0);
       expect(result.hopCount).toBe(1);
       expect(result.nodeSatIndices).toEqual([2]);
     });

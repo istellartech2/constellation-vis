@@ -1,16 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import PanelSection from "./PanelSection";
 import { Checkbox } from "./checkbox";
 import { Label } from "./label";
 import { Button } from "./button";
 import { ArrowLeftRight, Radio, Satellite, Gauge, Layers } from "lucide-react";
-import {
-  parseConstellationConfig,
-  parseConstellationToml,
-  parseGroundStationsToml,
-  parseSatellitesToml,
-} from "../../lib/tomlParsers";
-import { getSatnum } from "../../lib/satellites";
+import { parseGroundStationsToml } from "../../lib/tomlParsers";
+import type { GroundStation } from "../../lib/groundStations";
+import { numericInputValue, parseNumericInput } from "../../lib/numericInput";
 import { propagationDelayMs } from "../../lib/isl/cost";
 import {
   DEFAULT_ADHOC_MIN_ELEVATION_DEG,
@@ -22,12 +18,14 @@ import {
 } from "../../lib/isl/types";
 
 interface Props {
-  satText: string;
-  constText: string;
   gsText: string;
   islSettings: IslSettings;
   onIslSettingsChange: (next: IslSettings) => void;
+  /** Shell index ranges for the currently active satellite array (from the last "Update" click). */
+  islShellRanges: IslShellRange[];
   islResult: IslPathResult | null;
+  /** User-facing message from the last routing worker error, or null. */
+  islError: string | null;
   /** Cumulative count of path switches since ISL was enabled (Phase 2) */
   islSwitchCount: number;
   /** Sim-time (ms) of the last path switch, or null if none yet */
@@ -48,19 +46,16 @@ function defaultAdhocEndpoint(name: string): IslEndpoint {
 }
 
 export default function IslTab({
-  satText,
-  constText,
   gsText,
   islSettings,
   onIslSettingsChange,
+  islShellRanges,
   islResult,
+  islError,
   islSwitchCount,
   islLastSwitchSimMs,
   currentSimMs,
 }: Props) {
-  const [excludedShellIndices, setExcludedShellIndices] = useState<Set<number>>(new Set());
-  const [includeBaseSatellites, setIncludeBaseSatellites] = useState(true);
-
   const groundStations = useMemo(() => {
     try {
       return parseGroundStationsToml(gsText);
@@ -69,54 +64,13 @@ export default function IslTab({
     }
   }, [gsText]);
 
-  const baseSats = useMemo(() => {
-    try {
-      return parseSatellitesToml(satText);
-    } catch {
-      return [];
-    }
-  }, [satText]);
-
-  const shells = useMemo(() => {
-    try {
-      return constText ? parseConstellationConfig(constText).shells : [];
-    } catch {
-      return [];
-    }
-  }, [constText]);
-
-  const constellationSats = useMemo(() => {
-    try {
-      return constText ? parseConstellationToml(constText) : [];
-    } catch {
-      return [];
-    }
-  }, [constText]);
-
-  // Shell index ranges (Phase 3, §2.4): shell satellites are appended after
-  // the base satellites.toml satellites in the combined array the app builds
-  // ([...base, ...constellation]), so each shell's startIndex is the running
-  // offset from baseSats.length.
-  const shellRanges = useMemo<IslShellRange[]>(() => {
-    let offset = baseSats.length;
-    return shells.map((shell, idx) => {
-      const count = shell.count ?? 0;
-      const range: IslShellRange = {
-        key: String(idx),
-        name: shell.name,
-        startIndex: offset,
-        count,
-        planes: shell.planes ?? 1,
-      };
-      offset += count;
-      return range;
-    });
-  }, [shells, baseSats.length]);
-
-  useEffect(() => {
-    onIslSettingsChange({ ...islSettings, shellRanges });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shellRanges]);
+  // No participants at all is a distinct, valid state (H-2) — not the same as
+  // "no filter" (which is the excludedShellKeys=[] + includeBaseSatellites=true
+  // default). Resolvable from the stable exclusion state alone, without
+  // needing the actual satellite array or counts.
+  const hasZeroParticipants =
+    !islSettings.includeBaseSatellites &&
+    islShellRanges.every((shell) => islSettings.excludedShellKeys.includes(shell.key));
 
   function updateShellLinkModel(key: string, patch: Partial<IslLinkModel>) {
     // An `undefined` field in patch means "clear this override, fall back to
@@ -132,45 +86,15 @@ export default function IslTab({
     });
   }
 
-  function applyParticipation(nextExcluded: Set<number>, nextIncludeBase: boolean) {
-    const allShellsIncluded = nextExcluded.size === 0;
-    if (allShellsIncluded && nextIncludeBase) {
-      onIslSettingsChange({ ...islSettings, participantSatnums: [] });
-      return;
-    }
-    const satnums: number[] = [];
-    if (nextIncludeBase) {
-      baseSats.forEach((s) => {
-        const n = getSatnum(s);
-        if (n !== null) satnums.push(n);
-      });
-    }
-    let offset = 0;
-    shells.forEach((shell, idx) => {
-      const count = shell.count ?? 0;
-      if (!nextExcluded.has(idx)) {
-        constellationSats.slice(offset, offset + count).forEach((s) => {
-          const n = getSatnum(s);
-          if (n !== null) satnums.push(n);
-        });
-      }
-      offset += count;
-    });
-    onIslSettingsChange({ ...islSettings, participantSatnums: satnums });
-  }
-
-  function toggleShell(idx: number) {
-    const next = new Set(excludedShellIndices);
-    if (next.has(idx)) next.delete(idx);
-    else next.add(idx);
-    setExcludedShellIndices(next);
-    applyParticipation(next, includeBaseSatellites);
+  function toggleShell(key: string) {
+    const excluded = new Set(islSettings.excludedShellKeys);
+    if (excluded.has(key)) excluded.delete(key);
+    else excluded.add(key);
+    onIslSettingsChange({ ...islSettings, excludedShellKeys: Array.from(excluded) });
   }
 
   function toggleIncludeBase() {
-    const next = !includeBaseSatellites;
-    setIncludeBaseSatellites(next);
-    applyParticipation(excludedShellIndices, next);
+    onIslSettingsChange({ ...islSettings, includeBaseSatellites: !islSettings.includeBaseSatellites });
   }
 
   function updateEndpoint(which: "endpointA" | "endpointB", endpoint: IslEndpoint | null) {
@@ -232,27 +156,34 @@ export default function IslTab({
         <div className="flex items-center gap-2">
           <Checkbox
             id="isl-include-base"
-            checked={includeBaseSatellites}
+            checked={islSettings.includeBaseSatellites}
             onCheckedChange={() => toggleIncludeBase()}
           />
           <Label htmlFor="isl-include-base" className="text-sm text-gray-200">
             個別衛星 (satellites.toml) を含める
           </Label>
         </div>
-        {shells.map((shell, idx) => (
-          <div key={idx} className="flex items-center gap-2">
+        {islShellRanges.map((shell) => (
+          <div key={shell.key} className="flex items-center gap-2">
             <Checkbox
-              id={`isl-shell-${idx}`}
-              checked={!excludedShellIndices.has(idx)}
-              onCheckedChange={() => toggleShell(idx)}
+              id={`isl-shell-${shell.key}`}
+              checked={!islSettings.excludedShellKeys.includes(shell.key)}
+              onCheckedChange={() => toggleShell(shell.key)}
             />
-            <Label htmlFor={`isl-shell-${idx}`} className="text-sm text-gray-200">
-              {shell.name || `シェル ${idx + 1}`} ({shell.count} 機)
+            <Label htmlFor={`isl-shell-${shell.key}`} className="text-sm text-gray-200">
+              {shell.name || `シェル ${Number(shell.key) + 1}`} ({shell.count} 機)
             </Label>
           </div>
         ))}
-        {shells.length === 0 && (
-          <p className="text-xs text-gray-500">constellation.toml にシェルがありません。</p>
+        {islShellRanges.length === 0 && (
+          <p className="text-xs text-gray-500">
+            constellation.toml にシェルがありません(「編集」タブで更新すると反映されます)。
+          </p>
+        )}
+        {hasZeroParticipants && (
+          <p className="text-xs text-red-400 mt-2">
+            参加衛星が 0 機です。経路は常に到達不能になります。
+          </p>
         )}
       </PanelSection>
 
@@ -263,7 +194,7 @@ export default function IslTab({
           大規模コンステレーションでの候補生成が高速になります(§1.7.3)。異なるシェル同士のリンクは常に
           dynamic(自由トポロジ)として扱われ、その最大距離は両シェルの設定の大きい方が使われます。
         </p>
-        {shellRanges.map((shell) => (
+        {islShellRanges.map((shell) => (
           <ShellOverrideRow
             key={shell.key}
             shell={shell}
@@ -271,7 +202,7 @@ export default function IslTab({
             onChange={(patch) => updateShellLinkModel(shell.key, patch)}
           />
         ))}
-        {shellRanges.length === 0 && (
+        {islShellRanges.length === 0 && (
           <p className="text-xs text-gray-500">constellation.toml にシェルがありません。</p>
         )}
       </PanelSection>
@@ -394,7 +325,9 @@ export default function IslTab({
         {!islSettings.enabled || !islResult ? (
           <p className="text-sm text-gray-400">計算していません。</p>
         ) : !islResult.reachable ? (
-          <p className="text-sm text-red-400">経路なし(到達不能)</p>
+          <p className="text-sm text-red-400">
+            経路なし(到達不能{hasZeroParticipants ? " / 参加衛星 0" : ""})
+          </p>
         ) : (
           <div className="text-sm text-gray-200 space-y-1">
             <div>総遅延: {islResult.totalDelayMs.toFixed(2)} ms</div>
@@ -417,6 +350,9 @@ export default function IslTab({
 
       <PanelSection title="診断" icon={<Gauge />} collapsible defaultOpen={false}>
         <div className="text-xs text-gray-400 space-y-1">
+          {islError && (
+            <div className="text-red-400 bg-red-900/20 rounded p-1.5 mb-1">{islError}</div>
+          )}
           <div>候補エッジ数: {islResult?.candidateEdgeCount ?? "-"}</div>
           <div>計算時間: {islResult ? `${islResult.computeTimeMs.toFixed(2)} ms` : "-"}</div>
           <div>
@@ -449,7 +385,7 @@ function EndpointEditor({
 }: {
   label: string;
   endpoint: IslEndpoint | null;
-  groundStations: { name: string; latitudeDeg: number; longitudeDeg: number; heightKm: number; minElevationDeg: number }[];
+  groundStations: GroundStation[];
   onChange: (endpoint: IslEndpoint | null) => void;
 }) {
   const mode = endpoint === null ? "none" : endpoint.kind;
@@ -643,6 +579,13 @@ function CostSlider({
   );
 }
 
+const NUM_FIELD_DEBOUNCE_MS = 300;
+
+/**
+ * Numeric text input that can be cleared (or hold a bare "-") while typing
+ * without snapping to 0, and debounces the committed `onChange` so each
+ * keystroke doesn't trigger its own ISL recompute (isl-routing-review.md M-1).
+ */
 function NumField({
   label,
   value,
@@ -652,6 +595,33 @@ function NumField({
   value: number;
   onChange: (v: number) => void;
 }) {
+  const [draft, setDraft] = useState<string>(String(value));
+  const timerRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    // Resync from external changes (e.g. A/B swap) — but not while the value
+    // we'd commit from the current draft already matches, which would
+    // otherwise clobber an in-progress edit (e.g. a trailing ".") on every
+    // parent re-render.
+    if (parseNumericInput(draft) !== value) setDraft(String(numericInputValue(value)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== undefined) window.clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  function handleChange(raw: string) {
+    setDraft(raw);
+    if (timerRef.current !== undefined) window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => {
+      const n = parseNumericInput(raw);
+      if (Number.isFinite(n)) onChange(n);
+    }, NUM_FIELD_DEBOUNCE_MS);
+  }
+
   return (
     <label className="text-xs text-gray-400">
       {label}
@@ -659,8 +629,8 @@ function NumField({
         type="number"
         step="0.0001"
         className="w-full bg-gray-700 text-gray-100 rounded px-1 py-0.5 mt-0.5"
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
+        value={draft}
+        onChange={(e) => handleChange(e.target.value)}
       />
     </label>
   );

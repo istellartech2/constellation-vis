@@ -16,7 +16,12 @@ import {
   type DisplaySettings,
   type ViewSettings,
 } from "./lib/viewState";
-import { createDefaultIslSettings, type IslPathResult, type IslSettings } from "./lib/isl/types";
+import {
+  createDefaultIslSettings,
+  type IslPathResult,
+  type IslSettings,
+  type IslShellRange,
+} from "./lib/isl/types";
 
 /**
  * Top level React component hosting the visualization. It sets up
@@ -105,8 +110,11 @@ function App() {
   const [islResult, setIslResult] = useState<IslPathResult | null>(null);
   const [islSwitchCount, setIslSwitchCount] = useState(0);
   const [islLastSwitchSimMs, setIslLastSwitchSimMs] = useState<number | null>(null);
-  const [islGslColor, setIslGslColor] = useState(SAVED_DISPLAY?.islGslColor ?? "#ff33cc");
-  const [islIslColor, setIslIslColor] = useState(SAVED_DISPLAY?.islIslColor ?? "#33e0ff");
+  const [islError, setIslError] = useState<string | null>(null);
+  // Derived from the same [...base, ...shells] array as `satellites`, computed
+  // at the same moment (Update click) — never a stale localStorage snapshot
+  // (Phase 5, H-1/H-4). Not part of DisplaySettings: it's not persisted.
+  const [islShellRanges, setIslShellRanges] = useState<IslShellRange[]>([]);
 
   // Track cumulative path switches and time-since-last-switch for the ISL result
   // card (§2.5.2, Phase 2). switchedFromPrevious is only meaningful once a path
@@ -182,8 +190,6 @@ function App() {
     satelliteSelectedColor,
     speedExp,
     isl: islSettings,
-    islGslColor,
-    islIslColor,
   };
   // Mirror into a ref so the (stable) camera callback can read it without
   // being recreated on every settings change.
@@ -232,8 +238,6 @@ function App() {
     satelliteSelectedColor,
     speedExp,
     islSettings,
-    islGslColor,
-    islIslColor,
   ]);
 
   // Stable handler: scene reports its framing on drag/zoom-end and mode changes.
@@ -294,9 +298,9 @@ function App() {
     stationInfoRef: gsInfoRef,
     onCameraChange: handleCameraChange,
     islSettings,
+    islShellRanges,
     onIslResult: handleIslResult,
-    islGslColor,
-    islIslColor,
+    onIslError: setIslError,
   }, { cameraSnapshotRef });
 
   // Apply a saved named view: restore all display settings, camera mode and
@@ -330,8 +334,6 @@ function App() {
       setSatelliteSelectedColor(d.satelliteSelectedColor);
       setSpeedExp(d.speedExp);
       setIslSettings(d.isl ?? createDefaultIslSettings());
-      setIslGslColor(d.islGslColor ?? "#ff33cc");
-      setIslIslColor(d.islIslColor ?? "#33e0ff");
       setCameraMode(settings.camera.mode);
       cameraSnapshotRef.current = settings.camera;
       sceneRef.current?.applyCameraSnapshot(settings.camera);
@@ -464,25 +466,25 @@ function App() {
         whiteBackground={whiteBackground}
         onWhiteBackgroundChange={setWhiteBackground}
         sceneRef={sceneRef}
-        onUpdate={(s, gs, start) => {
+        onUpdate={(s, gs, start, shellRanges) => {
           setSatellites(s);
           setGroundStations(gs);
           setStartTime(start);
+          setIslShellRanges(shellRanges);
         }}
         onAnalysisStart={handleAnalysisStart}
         onAnalysisEnd={handleAnalysisEnd}
         getCurrentView={getCurrentView}
         onApplyView={applyView}
+        satellites={satellites}
         islSettings={islSettings}
         onIslSettingsChange={setIslSettings}
+        islShellRanges={islShellRanges}
         islResult={islResult}
+        islError={islError}
         islSwitchCount={islSwitchCount}
         islLastSwitchSimMs={islLastSwitchSimMs}
         currentSimMs={simTime.getTime()}
-        islGslColor={islGslColor}
-        onIslGslColorChange={setIslGslColor}
-        islIslColor={islIslColor}
-        onIslIslColorChange={setIslIslColor}
       />
     </div>
   );

@@ -1,7 +1,16 @@
 /** Stability penalty (c_stab, §1.5.2, Phase 4) applied on top of a built snapshot graph. */
 import * as satellite from "satellite.js";
-import { elevationRad, hasLineOfSight, linkDistanceKm, remainingLinkTime, type Vec3 } from "./geometry";
+import {
+  elevationRad,
+  endpointEci,
+  endpointObserver,
+  hasLineOfSight,
+  linkDistanceKm,
+  remainingLinkTime,
+  type Vec3,
+} from "./geometry";
 import { stabilityPenaltyMs } from "./cost";
+import { edgeKey } from "./edgeKey";
 import type { GraphEdge, IslGraph } from "./graph";
 import type { IslEndpoint } from "./types";
 
@@ -50,9 +59,9 @@ export function applyStabilityPenalties(graph: IslGraph, params: StabilityParams
     weightMs,
   } = params;
 
-  const remainingCache = new Map<string, number>();
+  const remainingCache = new Map<number, number>();
   const remainingFor = (fromNodeId: number, toNodeId: number, kind: "isl" | "gsl"): number => {
-    const key = `${Math.min(fromNodeId, toNodeId)}-${Math.max(fromNodeId, toNodeId)}`;
+    const key = edgeKey(fromNodeId, toNodeId);
     const cached = remainingCache.get(key);
     if (cached !== undefined) return cached;
 
@@ -116,13 +125,8 @@ function buildExistsAt(
 
   return (dt: number) => {
     const gmst = gmstAt(dt);
-    const observer = {
-      longitude: satellite.degreesToRadians(endpoint.longitudeDeg),
-      latitude: satellite.degreesToRadians(endpoint.latitudeDeg),
-      height: endpoint.heightKm,
-    };
-    const stationEcf = satellite.geodeticToEcf(observer);
-    const stationEci = satellite.ecfToEci(stationEcf, gmst);
+    const observer = endpointObserver(endpoint);
+    const stationEci = endpointEci(observer, gmst);
     const satEci = predictSatPosition(satIndex, dt);
     if (linkDistanceKm(stationEci, satEci) > maxRangeKm) return false;
     const satEcf = satellite.eciToEcf(satEci as satellite.EciVec3<number>, gmst);

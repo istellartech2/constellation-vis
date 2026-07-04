@@ -10,12 +10,13 @@ import {
   buildConfigBundle,
   downloadFile,
 } from "../../lib/config";
+import { parseConstellationConfig, generateShellRanges } from "../../lib/tomlParsers";
 import EditorTab from "./EditorTab";
 import AnalysisTab from "./AnalysisTab";
 import OptionTab from "./OptionTab";
 import IslTab from "./IslTab";
 import ImportDialog from "./ImportDialog";
-import type { IslPathResult, IslSettings } from "../../lib/isl/types";
+import type { IslPathResult, IslSettings, IslShellRange } from "../../lib/isl/types";
 import {
   celestrakEntryToSat,
   satellitesToToml,
@@ -45,6 +46,7 @@ interface Props {
     sats: SatelliteSpec[],
     stations: GroundStation[],
     startTime: Date,
+    islShellRanges: IslShellRange[],
   ) => void;
   /** Current satellite draw radius */
   satRadius: number;
@@ -150,26 +152,24 @@ interface Props {
   getCurrentView: () => ViewSettings;
   /** Apply a previously saved view */
   onApplyView: (settings: ViewSettings) => void;
+  /** The currently active (committed) satellite array, for analyses that must match islShellRanges exactly */
+  satellites: SatelliteSpec[];
   /** Current ISL routing settings */
   islSettings: IslSettings;
   /** Called when ISL routing settings change */
   onIslSettingsChange: (next: IslSettings) => void;
+  /** Shell index ranges for `satellites`, resolved at the same Update click that produced it */
+  islShellRanges: IslShellRange[];
   /** Latest computed ISL path result (null when disabled or not yet computed) */
   islResult: IslPathResult | null;
+  /** User-facing message from the last ISL routing worker error, or null */
+  islError: string | null;
   /** Cumulative count of path switches since ISL was enabled (§2.5.2, Phase 2) */
   islSwitchCount: number;
   /** Sim-time (ms) of the last path switch, or null if none yet */
   islLastSwitchSimMs: number | null;
   /** Current simulation time (ms), used to compute elapsed time since last switch */
   currentSimMs: number;
-  /** Color for GSL segments of the ISL path */
-  islGslColor: string;
-  /** Called when the GSL path color changes */
-  onIslGslColorChange: (color: string) => void;
-  /** Color for ISL segments of the ISL path */
-  islIslColor: string;
-  /** Called when the ISL path color changes */
-  onIslIslColorChange: (color: string) => void;
 }
 
 export default function SatelliteEditor({
@@ -226,16 +226,15 @@ export default function SatelliteEditor({
   sceneRef,
   getCurrentView,
   onApplyView,
+  satellites,
   islSettings,
   onIslSettingsChange,
+  islShellRanges,
   islResult,
+  islError,
   islSwitchCount,
   islLastSwitchSimMs,
   currentSimMs,
-  islGslColor,
-  onIslGslColorChange,
-  islIslColor,
-  onIslIslColorChange,
 }: Props) {
   const [satText, setSatText] = useState("");
   const [constText, setConstText] = useState("");
@@ -337,7 +336,14 @@ export default function SatelliteEditor({
       validateSatellites(base, "satellites.toml");
       validateSatellites(con, "constellation.toml");
       validateGroundStations(gs);
-      onUpdate([...base, ...con], gs, new Date(startText));
+      // Derived from the exact same constText parse that produced `con`, at
+      // the exact moment the new satellite array is committed — the only way
+      // to guarantee shellRanges never describes a different array than the
+      // one actually in use (Phase 5, H-1/H-4).
+      const shellRanges: IslShellRange[] = constText
+        ? generateShellRanges(parseConstellationConfig(constText), base.length)
+        : [];
+      onUpdate([...base, ...con], gs, new Date(startText), shellRanges);
     } catch (e) {
       alert("ファイルの解析に失敗しました: " + (e as Error).message);
     }
@@ -457,20 +463,22 @@ export default function SatelliteEditor({
                 constText={constText}
                 gsText={gsText}
                 startTime={new Date(startText)}
+                satellites={satellites}
                 islSettings={islSettings}
+                islShellRanges={islShellRanges}
                 onAnalysisStart={onAnalysisStart}
                 onAnalysisEnd={onAnalysisEnd}
               />
             </TabsContent>
-            
+
             <TabsContent value="isl" className="mt-0 bg-gray-800/40 border-2 border-gray-600 rounded-lg p-6 shadow-inner">
               <IslTab
-                satText={satText}
-                constText={constText}
                 gsText={gsText}
                 islSettings={islSettings}
                 onIslSettingsChange={onIslSettingsChange}
+                islShellRanges={islShellRanges}
                 islResult={islResult}
+                islError={islError}
                 islSwitchCount={islSwitchCount}
                 islLastSwitchSimMs={islLastSwitchSimMs}
                 currentSimMs={currentSimMs}
@@ -529,10 +537,8 @@ export default function SatelliteEditor({
                 sceneRef={sceneRef}
                 getCurrentView={getCurrentView}
                 onApplyView={onApplyView}
-                islGslColor={islGslColor}
-                onIslGslColorChange={onIslGslColorChange}
-                islIslColor={islIslColor}
-                onIslIslColorChange={onIslIslColorChange}
+                islSettings={islSettings}
+                onIslSettingsChange={onIslSettingsChange}
               />
             </TabsContent>
           </Tabs>

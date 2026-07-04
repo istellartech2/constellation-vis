@@ -12,6 +12,7 @@ import { parseConstellationToml } from "../src/lib/tomlParsers";
 import { toSatrec } from "../src/lib/satellites";
 import { buildSnapshotGraph } from "../src/lib/isl/graph";
 import { findShortestPath } from "../src/lib/isl/shortestPath";
+import { propagateAll } from "../src/lib/isl/propagate";
 import type { IslEndpoint, IslLinkModel } from "../src/lib/isl/types";
 
 const SPEED_OF_LIGHT_KM_PER_S = 299792.458;
@@ -60,11 +61,12 @@ function greatCircleDistanceKm(a: IslEndpoint, b: IslEndpoint): number {
 }
 
 function computeAt(satRecs: satellite.SatRec[], simDate: Date) {
-  const participantIndices = satRecs.map((_, i) => i);
-  const satEciPositions = satRecs.map((rec) => {
-    const pv = satellite.propagate(rec, simDate);
-    return pv?.position ?? { x: 0, y: 0, z: 0 };
-  });
+  const { positions: satEciPositions, valid } = propagateAll(satRecs, simDate);
+  // Matches the routing worker's actual behavior (a satellite whose
+  // propagation fails must never be treated as a real position) rather than
+  // silently substituting {0,0,0}, which would verify a different code path
+  // than what ships (D-3).
+  const participantIndices = satRecs.map((_, i) => i).filter((i) => valid[i]);
 
   const linkModel: IslLinkModel = { mode: "dynamic", maxRangeKm: 5000, losMarginKm: 80 };
   const graph = buildSnapshotGraph({
@@ -76,7 +78,7 @@ function computeAt(satRecs: satellite.SatRec[], simDate: Date) {
     linkModel,
     hopPenaltyMs: 2,
   });
-  return findShortestPath(graph, simDate.getTime(), graph.candidateEdgeCount, 0);
+  return findShortestPath(graph, simDate.getTime(), 0);
 }
 
 function main() {

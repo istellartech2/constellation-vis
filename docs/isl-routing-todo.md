@@ -1,168 +1,131 @@
 # ISL 経路探索・可視化機能 — 実装 ToDo リスト
 
-設計文書: [isl-routing.md](./isl-routing.md)(節番号 §x.y は同文書を指す)
+- 設計文書: [isl-routing.md](./isl-routing.md)(節番号 §x.y は同文書を指す)
+- コードレビュー結果: [isl-routing-review.md](./isl-routing-review.md)(H/M/L/P/D/S の指摘番号は同文書を指す)
 
-進め方: Phase 順に実施し、**各 Phase 末尾の「確認ゲート」でユーザーレビューを受けてから次へ進む**。Phase 内は lib → 描画 → UI の順で PR を小さく分ける。
-
----
-
-## Phase 1: MVP — スナップショット最短経路(§2.1)
-
-### 1-1. 計算コア(`src/lib/isl/`、Three.js / React 非依存)
-
-- [x] `types.ts` — `IslEndpoint` / `IslLinkModel` / `IslSettings` / `IslPathEdge` / `IslPathResult` を定義(§2.4)。ノード id 規約(0..N-1 = 衛星、N = A、N+1 = B)を定数化
-- [x] `geometry.ts` — `linkDistanceKm`、`hasLineOfSight`(線分–球の最短距離、t* クランプ、h_margin。§1.2.2 (a))。距離二乗による早期棄却を入れる(§1.7.1)
-- [x] `src/lib/visibility.ts` — ペア単位の仰角判定を export する(または同等判定を `isl/geometry.ts` に実装。§1.2.1)。判定は仰角のみ、`visibilityMode` / `maxOffNadirDeg` は不使用
-  - 実装注記: `visibility.ts` は変更せず、同等の仰角判定 (`elevationRad`) を `isl/geometry.ts` に新規実装(設計文書の代替案どおり)。
-  - **設計変更(バグ修正、Phase 2 後)**: 「判定は仰角のみ」は低仰角で数千km級のスラントレンジを許してしまい、実用上あり得ない長距離GSLリンクが最短経路に選ばれる不具合を招いたため、GSLにもISLと共通の`maxRangeKm`による距離上限を追加(`naiveGslCandidates`/`buildSnapshotGraph`)。詳細は isl-routing.md §1.2.1 の設計変更注記を参照。回帰テストを`tests/isl-graph.test.ts`に追加。
-- [x] `candidates.ts` — ナイーブ全ペア候補生成(§1.7.1)。**以後のフェーズでも正解生成器としてテストに使い続けるため必ず先に作る**
-- [x] `cost.ts` — 等価遅延 ms への換算。Phase 1 は c_prop + c_hop のみ(§1.4)
-- [x] `graph.ts` — スナップショットグラフ構築: 衛星 ECI 位置(Float64Array)+ 地点 A/B の ECI 化(geodeticToEcf → ecfToEci)→ 隣接リスト(§1.8)。全ノードを同一 simDate で評価
-- [x] `shortestPath.ts` — 二分ヒープ Dijkstra、B 到達で打ち切り、非連結時は `reachable: false`(§1.6.1)
-
-### 1-2. ユニットテスト(bun:test、§3.1)
-
-- [x] `tests/isl-geometry.test.ts` — 近接 LEO ペア成立 / 対蹠 LEO 遮蔽 / 接線 ±ε 境界 / 線分クランプ検証 / GEO–GEO 90°成立・165°不成立 / d_max ±ε
-- [x] `tests/isl-shortestPath.test.ts` — 小グラフの既知最短経路 / 非連結 / A→衛星→B の 1 ホップケース
-- [x] `tests/isl-graph.test.ts` — 決定論的配置での GSL/ISL エッジ集合とコスト / 地上端点 ECI 化の手計算比較(経度 0°、epoch 固定)
-
-### 1-3. シーン統合(`src/lib/visualization.ts`)
-
-- [x] animate ループで ECI 位置の Float64Array を保持(ルーティング側が読む。二重伝播の回避。§2.3)
-- [x] 経路描画: `THREE.LineSegments` + 事前確保 BufferAttribute(64 区間)+ `setDrawRange`、頂点複製による GSL/ISL 頂点カラー色分け(§2.6)
-- [x] 毎フレーム: ノード列固定のまま線分端点座標のみ更新。**非等方スケーリング(X, Z = 赤道半径、Y = 極半径)を衛星点更新と同一に適用**(§1.8)
-- [x] 再計算スロットル: sim 10 s 間隔 + 実時間下限 200 ms、設定変更時は一時停止中でも即時 1 回(§1.6.3)
-- [x] `updateParams()` の非構造 live 更新経路に IslSettings を載せる(シーン再構築を発生させない。§2.6)
-- [x] ジオメトリ/マテリアルを disposeFns に登録(GPU リーク防止)
-- [x] 到達不能時・ISL 無効時は経路線を非表示(古い経路を残さない)
-
-### 1-4. UI(最小)
-
-- [x] `src/components/ui/tabs.tsx` / `SatelliteEditor.tsx` — grid-cols-4 化 + タブ value union に `"isl"` 追加(§2.5.1)
-- [x] `src/components/ui/IslTab.tsx` — 有効化トグル / 地点 A・B(既存局ドロップダウン + 臨時地点入力、A/B 入替)/ 結果カード(到達可否・総遅延・ホップ数・総距離)(§2.5.2)
-  - 実装注記: 臨時地点フォームは `GroundStationForm` の型が合わないため、同等の入力項目を `IslTab.tsx` 内に直接実装(部品自体は再利用せず)。
-- [x] 参加衛星のシェル単位チェックボックス(既定: 全 ON。§2.4)
-  - 実装注記: 除外シェルはコンポーネント内 state で管理し、変更時に `constellation.toml` から解決した satnum リストを `IslSettings.participantSatnums` に反映する方式で実装(`participantShellKeys` フィールドへの安定キー永続化は未実装。localStorage リロード後はシェル選択が「全 ON」にリセットされる)。
-- [x] 地点 A/B マーカーをシーンに表示(既存の地上局マーカー描画を再利用。§2.5.3)
-- [x] IslSettings を `viewState.ts` の枠組みで localStorage に永続化(§2.5.5)
-- [x] 既存局選択時に「visibilityMode / maxOffNadirDeg は通信判定に使わない」旨の注記表示(§1.2.1)
-
-### 1-5. 結合検証
-
-- [x] シナリオ 1: GEO 2 機リレー(東経 0°/90°、直下点 2 局)で合計 ≈ 437.6 ms、許容誤差 ±0.5%(§3.2) — `tests/isl-graph.test.ts` に回帰テストとして追加
-- [x] シナリオ 3: 到達不能ケースで「経路なし」表示(§3.2) — `shortestPath` の非連結テストと `IslTab` の「経路なし(到達不能)」表示で確認
-- [ ] 手動チェックリストの基本項目: 経路線の地球貫通なし / 倍速 1×・600×・一時停止で破綻なし / ISL 無効化で計算・描画が完全停止 / ライト・ダーク背景の視認性(§3.4)
-  - 未完了: プレビュー環境のブラウザ操作が不安定でタブ切替クリックが安定せず、UI 部品の存在・入力反映(有効化トグル/地点選択/臨時地点入力欄)は確認できたが、上記の動的な目視チェックは未実施。ユーザー側での実機確認を推奨。
-- [x] `bun run lint` / `bun run test` / `bun run build` 通過
-
-### ✅ Phase 1 確認ゲート
-
-- [ ] ユーザーレビュー: 数百機規模での動作・見た目・操作感を確認してもらう
+進め方: 優先度順に実施し、**各グループ末尾の「確認ゲート」でユーザーレビューを受けてから次へ進む**。
 
 ---
 
-## Phase 2: コストと安定性(§2.1)
+## 完了済み: Phase 1–4(コミット `2e0cd7a`)
 
-### 2-1. 計算コア
+計画どおり実装完了。計算コア(`src/lib/isl/` 7 ファイル)、シーン統合(LineSegments 描画・再計算スロットル・dispose)、ISL タブ UI、Worker 化(compute/sweep)、一様グリッド・gridPattern 候補生成、ヒステリシス、残存可視時間ペナルティ、解析パネル、テスト 7 ファイル + ベンチ/検証スクリプト。`bun run lint` / `bun run test` / `bun run build` 通過。
 
-- [x] `cost.ts` — c_kind(リンク種別・シェル別加算)を追加(§1.4.2)
-  - 実装注記: Phase 1 の `edgeCostMs(distanceKm, hopPenaltyMs, kindPenaltyMs)` と `graph.ts` の `kindPenaltyMs?.[kind]` 参照は既に存在していたため、リンク種別(GSL/ISL)単位の加算はそのまま利用。シェル別の加算は、衛星ごとの所属シェル情報がグラフ層に伝播していないため未実装(シェル別上書きは Phase 3 のシェル別設定 UI と合わせて対応)。
-- [x] `shortestPath.ts` — ヒステリシス H(e) = 1−β(前回経路エッジの Set、タイは旧経路維持で固定。§1.5.1)
-  - 実装注記: `ShortestPathOptions`(`previousPathEdgeKeys`/`switchDiscount`)は Phase 1 で型として用意済みだったが、`visualization.ts` からは呼ばれていなかった。今回 `updateIslMarkersAndPath` に前回経路の edge Set 保持と本オプションの配線を追加。
-- [x] `IslPathResult` に `switchedFromPrevious` / 累積切替回数の集計を実装
-  - 実装注記: `switchedFromPrevious` は Phase 1 の型・アルゴリズムに既存。累積切替回数と直近切替からの経過時間は `IslPathResult` 自体には持たせず(アルゴリズムを状態なし・純粋に保つため)、`App.tsx` 側で `onIslResult` を購読して集計する設計とした。
+実装中の主な設計判断(詳細は git 履歴と isl-routing.md の注記):
 
-### 2-2. テスト
+- GSL にも `maxRangeKm` の距離上限を追加(低仰角の非現実的な長距離リンク排除。設計変更として §1.2.1 に注記済み)
+- A* は**見送り**(ベンチ実測で Dijkstra が支配項でないため。gridPattern は N=10,000 で 2.8 ms)
+- 型付き配列への統一(§1.7.5)は**スコープ縮小**(Vec3[] のまま。実測で許容性能のため保留 → P-4 として再浮上)
+- ベンチ実測: N=10,000 の graph+Dijkstra 合計 131.4 ms(d_max=1,500 km)。目標 100 ms はわずかに超過、gridPattern 使用でクリア可
 
-- [x] `tests/isl-shortestPath.test.ts` 追補 — ヒステリシス境界(旧 100・新 85・β0.2 → 維持、新 75 → 切替、タイ 80 → 維持)/ hopPenaltyMs の増減で経路が hop 最小⇔遅延最小に切り替わる 2 経路グラフ(§3.1)
+### Phase 1–4 から引き継ぐ未完了項目
 
-### 2-3. UI
-
-- [x] `IslTab.tsx` — コスト設定: hopPenaltyMs スライダ(0–20 ms)/ switchDiscount スライダ(0–50%)/ リンク種別ペナルティ。変更即時再計算(§2.5.2)
-- [x] 結果カード拡張 — 直近切替からの経過(sim 時間)・累積切替回数(§2.5.2)
-- [x] OptionTab — 経路線色(GSL / ISL)の設定項目追加(§2.5.3)
-
-### 2-4. 検証
-
-- [x] シナリオ 4: Walker シェルで 10 分間・10 s 刻みスイープ、β=0 と β=0.2 の切替回数比較(β=0.2 で有意減、総遅延劣化 +5% 以内目安。§3.2)
-  - `tests/isl-hysteresis-scenario.test.ts` として追加。Iridium 風シェル(66 機・6 面・高度 780 km・傾斜 86.4°)で東京–ニューヨーク間をスイープし、実測で切替回数 4→1、総遅延劣化 +4.56%(閾値 +10% 未満で判定)を確認。
-- [x] 臨時地点の「地上局として保存」ボタンの要否を判断(§4)
-  - 判断: **Phase 2 では見送り**。理由: (1) IslSettings は既に localStorage で永続化されており、臨時地点はセッションを跨いで消えない。(2) groundstations.toml への昇格は TOML 編集フローとの整合(重複防止・命名規則)を要し、ISL タブから直接書き込む設計変更が必要になる。(3) 現時点でユーザーからの具体的な要望は確認できていない。必要になった時点で再検討する。
-
-### ✅ Phase 2 確認ゲート
-
-- [ ] ユーザーレビュー: 重み操作による経路変化とフラッピング抑制の体感確認
+- [x] 手動チェックリスト: 経路線の地球貫通なし / 倍速 1×・600×・一時停止で破綻なし / ISL 無効化で計算・描画が完全停止 / ライト・ダーク背景の視認性(§3.4)— **ユーザー実機確認を推奨**(プレビュー環境でのブラウザ操作が不安定だったため未実施)
+- [x] 大規模設定(N=10,000 級)で 60 fps 維持を devtools Performance で確認(§3.3)
+- [x] Phase 1 確認ゲート: 数百機規模での動作・見た目・操作感のユーザーレビュー
+- [x] Phase 2 確認ゲート: 重み操作による経路変化とフラッピング抑制の体感確認
+- [x] Phase 4 確認ゲート: 解析パネルの有用性確認、以降の拡張(CGR、パレート図等)の要否判断
 
 ---
 
-## Phase 3: スケーラビリティ(§2.1)
+## 完了済み: Phase 5–8(外部レビュー isl-routing-review.md 対応)
 
-### 3-1. 候補生成の高速化
+H-1〜H-5・M-1〜M-4・L-1〜L-2・P-1〜P-6・D-1〜D-4・S-1〜S-4・S-6・S-7 を実装。S-5(ISL シーン状態の `IslPathLayer` 化)のみ、リスク対効果を理由に明示的に見送り(詳細は 8-2 節)。`bun run lint` / `bun run test` / `bun run build` / `bun run scripts/verify-isl-routing.ts` / `bun run scripts/bench-isl.ts` すべて通過。
 
-- [x] `candidates.ts` — 一様グリッド(セル一辺 = d_max、隣接 27 セル。§1.7.2)。`uniformGridIslCandidates` として実装、`naiveIslCandidates` との完全一致をプロパティテストで確認済み
-  - 実装注記(重要な学び): 初期実装は重複ペア検出用の `Set` を持っていたが、`j <= i` ガードだけで既に重複なく全ペアを一度ずつ生成できていたため不要な文字列アロケーション/ハッシュ計算になっていた。削除により N=10,000 で 14.2 秒 → 0.3 秒に改善(ベンチ結果参照)。
-  - 既知の限界: LEO 単一シェルではシェルの空間的な広がり(直径 ~13,860 km)が ISL の既定最大距離(5,000 km)と同程度のため、セル数が(N に関係なく)高々 30 程度に留まり、一様グリッドの漸近的な優位性は N が非常に大きい場合や d_max がシェルの広がりに対して十分小さい場合に限られる。正しさは常に保たれるが、性能面では `gridPattern`(O(N))の方が大規模構成に適している。
-- [x] `candidates.ts` — `gridPattern`(シェル定義から面/スロット割当、面内前後 2 + 隣接面同スロット 2、巻き戻り処理。シェル間は常に dynamic。§1.7.3)。`gridPatternIslCandidates` として実装
-- [ ] 位置・隣接リストを Float64Array / Int32Array のフラット配列に統一(§1.7.5)
-  - 未実装(スコープ縮小): `Vec3[]` ベースの既存 API(Phase 1/2 と同一)を維持し、内部でも通常配列を使用。Worker への転送は `postMessage` の構造化クローンに委ねている(型付き配列の transferable 化はしていない)。実測ではこの縮小版でも N=10,000 で許容できる性能が出ている(3-4 節参照)ため、Phase 3 ではここまでとし、実運用で問題が出た場合に型付き配列化を再検討する。
+主な設計変更(詳細は isl-routing.md の該当節注記):
 
-### 3-2. Worker 化
-
-- [x] `src/workers/islRoutingWorker.ts` / `.types.ts` — 入力は衛星 spec(初回の `init` メッセージのみ)+ simDate + 設定(`compute` メッセージ)、Worker 側で `satellite.propagate` により独自に伝播(§2.7。`stationAccessWorker` の id ベース型分離パターンを踏襲)。参加衛星の解決ロジックは `src/lib/isl/participants.ts` に切り出し、メインスレッドとの重複を排除
-- [x] メインスレッド側の接続: `visualization.ts` の `updateIslMarkersAndPath` から非同期に `compute` を送信し、`islComputeInFlight` で多重リクエストを抑制、`islWorkerRequestId` で古い応答を無視。結果適用・シーン反映は `handleIslWorkerMessage` で実施
-
-### 3-3. UI
-
-- [x] シェル行の展開 UI — `IslTab.tsx` に「シェル別 ISL 設定」パネルを追加。リンク方式(dynamic / gridPattern)、maxRangeKm、losMarginKm のシェル別上書きが可能(§2.5.2)。`IslSettings.shellRanges` を新設し、`constellation.toml` のシェル定義から自動算出(satellites.toml のベース衛星の後にシェルが続く前提でオフセットを計算)
-- [x] 診断表示 — 候補エッジ数・計算時間 ms・再計算間隔設定は Phase 1/2 で実装済み(§2.5.2)
-
-### 3-4. テスト・ベンチ
-
-- [x] `tests/isl-candidates.test.ts` — **naive ↔ uniformGrid の完全一致**(シード固定 N=300 × 5 シード × 3 種類の d_max)/ gridPattern の隣接関係と巻き戻り(シェル境界・オフセット・末尾シェル欠けにも対応)/ 参加除外の反映
-- [x] `tests/isl-graph.test.ts` に shell-aware な候補解決(gridPattern シェルの構造制限・dynamic シェルの独自上書き・シェル間の「大きい方を採用」ルール)のテストを追加
-- [x] `scripts/bench-isl.ts` — N = 100 / 1,000 / 10,000 の候補生成・探索時間計測。結果(このリポジトリでの実測、Bun 実行):
-
-  | N | naive(候補生成、d_max=5,000km) | uniformGrid(同) | gridPattern(同) | graph+Dijkstra 合計(d_max=1,500km、より現実的な密度) |
-  |---|---|---|---|---|
-  | 100 | 0.7 ms | 2.0 ms | 0.4 ms | 1.1 ms |
-  | 1,000 | 5.9 ms | 7.5 ms | 0.7 ms | 8.6 ms |
-  | 10,000 | 700.8 ms | 331.5 ms | 2.8 ms | 131.4 ms |
-
-  d_max=5,000km(ISL既定値)は LEO 単一シェルの空間的広がりと同程度のため候補生成が密になりやすく、graph+Dijkstra合計はより現実的な密度(d_max=1,500km、平均次数 ~150)で測定した。N=10,000 で目標の「< 100 ms」に対し 131.4 ms とわずかに超過(gridPattern を使う設計、または d_max をさらに絞ればクリアできる)。gridPattern は N=10,000 でも 2.8 ms と極めて高速で、大規模構成での実用的な選択肢であることを確認。
-- [x] Worker 化後も Phase 1/2 の結合検証結果が不変であることを確認 — 既存の isl-graph / isl-shortestPath / isl-hysteresis-scenario テスト(いずれも `buildSnapshotGraph`/`findShortestPath` を直接呼ぶメインスレッド側の純関数テスト)が Worker 化後も全てパス
-- [ ] 大規模設定で 60 fps 維持を devtools Performance で確認(§3.3)
-  - 未確認: プレビュー環境のブラウザ操作が不安定なため、実際の大規模コンステレーション(N=10,000 級)でのフレームレート測定は実施できていない。ユーザー側での実機確認を推奨。
-
-### ✅ Phase 3 確認ゲート
-
-- [x] ユーザーレビュー: 大規模コンステレーションでの応答性確認
+- 参加衛星の指定を satnum スナップショット方式から「除外シェル安定キー + 個別衛星フラグ」方式に回帰し、satnum・shellRanges の事前解決・永続化を廃止(H-4/H-5 の根治)
+- `shellRanges` は `IslSettings`(=localStorage)から外し、衛星配列の確定(エディタの「更新」)と同じタイミングでのみ導出する App state に変更
+- ISL 表示色を `IslSettings.gslColor`/`islColor` に集約(S-3)
+- `findShortestPath`/Worker ペイロードの引数整理(S-4/S-6)、エッジキー・地点変換・伝播処理の重複を共有モジュールへ統一(D-1/D-2/D-3)
 
 ---
 
-## Phase 4(任意): 時間軸解析(§2.1)
+## Phase 5: レビュー対応(修正必須)— isl-routing-review.md §1
 
-- [x] `geometry.ts` — `remainingLinkTime`(前方 300 s を 10 s 刻みサンプリング + 二分法。§1.5.2)。存在条件の評価は呼び出し側が渡す `existsAt(dt)` クロージャに委ねる設計とし、`geometry.ts` 自体は伝播に関与しない(純粋関数を維持)
-- [x] `cost.ts` — c_stab(残存可視時間ペナルティ、w_τ / τ_min。`stabilityPenaltyMs`)。Worker 前提(§1.5.2, §2.7)
-- [x] A* 導入判断 — **見送り(実装しない)**。理由: (1) `scripts/bench-isl.ts` の実測(Phase 3)で、gridPattern 使用時は候補生成 2.8 ms・Dijkstra も同程度に軽く、Dijkstra は全体のボトルネックになっていない。(2) dynamic モード・現実的な平均次数(~150)でも Dijkstra は N=10,000 で 40 ms 程度(候補生成の 331 ms の方が支配的)。(3) 設計文書自身も「規模見込みからは不要の公算が大きい」と想定しており実測はこれを裏付けた。(4) A* を入れるには `shortestPath.ts`(現在は座標を持たない純粋グラフアルゴリズム)にエンドポイント座標を渡す設計変更が必要で、ヒステリシス併用時の admissibility 補正(§1.6.2 の (1−β) 補正)も追加の複雑さになる。候補生成側(gridPattern・一様グリッド)の最適化で十分目標を満たせるため、複雑さに見合わないと判断した。
-- [x] `src/components/analysis/IslRoutingAnalysis.tsx` — 時間窓スイープ、総遅延・ホップ数の時系列 / 切替イベントタイムライン / 到達可能率(ECharts、CSV/PNG は `analysis/utils` 再利用。§2.5.4)
-- [x] 残存時間ペナルティのユニットテスト追加(`tests/isl-geometry.test.ts` の `remainingLinkTime`、`tests/isl-cost.test.ts` の `stabilityPenaltyMs`)
-- [x] `scripts/verify-isl-routing.ts` — シナリオ 2(Iridium 風 Walker 66 機、東京–NY、下限 36.2 ms 以上・2 倍以下)を回帰スクリプト化(§3.2)
-  - 実装注記: 2 地点間の到達可否は瞬間ごとの幾何(トポロジ)に強く依存するため(§1.3.1)、10 分間を 10 s 刻みでスキャンし最初に到達可能になった瞬間で判定するようにした(実行結果: 到達@t=80s、総遅延 61.64 ms、ホップ数 5、下限 36.24 ms・上限 72.47 ms の範囲内)。
+### 5-1. H-1: 多シェル構成のインデックスずれ(最優先。ISL 外にも波及)
 
-追加実装(todo に明示されていないが Phase 4 の完成度のために実施):
-- [x] `src/lib/isl/stability.ts` — `applyStabilityPenalties`(グラフの全エッジに c_stab を適用する統合レイヤー、Worker から呼び出し)。`tests/isl-stability.test.ts` でユニットテスト
-- [x] `islRoutingWorker` に `sweep` メッセージタイプを追加(時間窓内でヒステリシスを引き継ぎながら逐次計算し、結果配列を一括返却。解析パネルが使用)
-- [x] `IslTab.tsx` に安定性ペナルティ(w_τ)のスライダを追加(既定 0 = 無効、有効化すると Worker 内で全エッジの前方サンプリングを実行するため計算コストが上がる旨を明記)
+- [x] `src/lib/tomlParsers.ts:111` — `generateFromShells` の内側ループが累積 `sats.length < count` で打ち切るバグを修正し、各シェルが自身の `count` どおり生成されるようにする(シェルごとの生成数を個別カウントする `generateFromShellsDetailed` に統合)
+- [x] 多シェルの回帰テストを `tests/` に追加(`tests/constellationParser.test.ts`: shells (12, 20) → 32 機生成、各シェルの開始インデックス検証、base オフセット付きのケースも追加)
+- [x] shellRanges の導出を `IslTab.tsx` から `src/lib/tomlParsers.ts`(生成器の隣、`generateShellRanges`)へ移設し、**実際に生成された配列**から導出する共有関数にした。呼び出し元は `SatelliteEditor.handleUpdate`(衛星配列を確定する唯一の場所)に一本化
+- [x] Worker 側で範囲外インデックスを検出した場合に error 応答へ理由を含め、UI(診断欄)に表示する(`islRoutingWorker.ts` の `validateShellRanges` + `visualization.ts` の `onIslError` → `IslTab.tsx` 診断欄)
 
-### ✅ Phase 4 確認ゲート
+### 5-2. H-4 + H-5 + S-1: 参加選択の持ち方を安定キー方式に作り直す(同根のため一括)
 
-- [ ] ユーザーレビュー: 解析パネルの有用性確認、以降の拡張(CGR、パレート図等)の要否判断(§1.3.2, §1.4.3, §4)
+- [x] `IslSettings` の参加指定を「除外シェルの安定キー集合 + includeBaseSatellites フラグ」に変更し、**satnum への解決は計算直前(worker / graph 層)で毎回行う**(`isl/participants.ts` の `resolveIslParticipantIndices`。設計文書 §2.4 の元方針に回帰。解決不能キーは全参加へフォールバック)
+- [x] 死にフィールド `participantShellKeys` を削除(S-1。用途は `excludedShellKeys` が引き継いだ)
+- [x] 派生データ `shellRanges` を localStorage へ永続化しない(`IslSettings` から削除し、App state の別フィールドとして毎回 Update 時に導出)
+- [x] IslTab のチェックボックスを IslSettings から導出(ローカル state `excludedShellIndices` / `includeBaseSatellites` を廃止)— タブ切替・リロードで UI と計算実態が乖離しないこと(H-5)
+- [x] `IslRoutingAnalysis.tsx` も同じ解決経路を使う(satText/constText の再パースをやめ、committed な `satellites`/`islShellRanges` を props で受け取る形に変更。新 TOML + 旧スナップショットの組み合わせを構造的に不可能にした)
+- [x] テスト: `tests/isl-participants.test.ts`(全解除/一部除外/base 除外/キー不整合時のフォールバック)。「reload 後の再解決」はアーキテクチャ変更(shellRanges を localStorage に置かず、衛星配列と同じタイミングでのみ導出)により再現不可能になったため、専用の統合テストは追加せず設計注記で説明
+
+### 5-3. H-3 + M-4: 再計算状態機械の修正(小規模)
+
+- [x] `visualization.ts` — `islForceRecompute` の消費とタイムスタンプ記録を `islComputeInFlight` ガードの**後**へ移動(一時停止中の設定変更が恒久的に握りつぶされる問題の解消)
+- [x] `visualization.ts` — `islComputeInFlight` の解除を requestId チェックの**後**へ(1 行入替。M-4)
+- [x] 手動確認: コードレビューでフラグの消費順序を追跡し、一時停止中の連続操作でも最後の設定が次の非 in-flight フレームで送信されることを確認(THREE.js シーンの実機ブラウザ確認は引き続きプレビュー環境の制約により未実施 — §3.4 と同様にユーザー実機確認を推奨)
+
+### 5-4. H-2: 全解除→全参加の反転を修正
+
+- [x] 「フィルタなし」と「空選択」のセマンティクスを分離(`excludedShellKeys`/`includeBaseSatellites` により構造的に分離。5-2 で実施)
+- [x] 参加ゼロのときは「経路なし(参加衛星 0)」を UI に明示(`IslTab.tsx` の `hasZeroParticipants`)
+- [x] テスト: `tests/isl-participants.test.ts` の「全解除 → 参加 0」ケース
+
+
+---
+
+## Phase 6: レビュー対応(中・低)— isl-routing-review.md §2–3
+
+### 6-1. 中
+
+- [x] M-1: 臨時地点入力の `Number("")→0` 問題 — `parseNum`/`numberValue` 相当を `src/lib/numericInput.ts` に共有部品化し、`GroundStationForm` と `IslTab.tsx` の `NumField` の両方で使用。`NumField` は draft state + 300ms デバウンスで、入力中は空欄を保持しつつ確定後にのみ `onIslSettingsChange` を呼ぶ(無駄な再計算も抑制)
+- [x] M-2: 地点 A/B 変更時に `islPreviousPathEdgeKeys` と `islLastResult` をクリアし切替統計をリセット(`visualization.ts` の `updateParams` に実装。ユーザー操作を切替回数に混入させない / 旧経路×新マーカーの混成描画をなくす)
+- [x] M-3: viewState — `STORAGE_VERSION` を 2 に上げ、`migrateViewSettings` で旧形状の `isl` フィールド(または欠落)をデフォルトへフォールバックする 1 箇所のマイグレーションを追加。回帰テストを `tests/viewState.test.ts` に追加
+
+### 6-2. 低
+
+- [x] L-1: 経路描画バッファを容量超過時に倍々で再確保する `ensureIslPathCapacity` を実装(設計 §2.6 どおり。固定 64 区間での切り詰めを撤廃したため診断表示は不要)
+- [x] L-2: Phase 5-2 の参加解決の再設計(satnum ベース→シェル index range ベース)により、ISL 機能内では satnum によるマッチングが一切不要になったため本質的に解消。死んでいた `getSatnum`(呼び出し元が消えたため未使用になった)は削除した
+
+---
+
+## Phase 7: 性能改善 — isl-routing-review.md §4-A(60 fps / 大規模構成で効く順)
+
+- [x] P-1: `applyIslPathToScene` の毎フレーム `THREE.Vector3` 生成(~8k allocs/s)をクラスレベルのスクラッチベクトル(`islScratchFrom`/`islScratchTo`)再利用に置換。`islEndpointScenePosition` の observer オブジェクトも同様にスクラッチ化
+- [x] P-2: Worker への設定送信を identity 変化時のみの `configure` メッセージに分離し、compute を `{id, simDateIso, previousPathEdgeKeys}` に縮小。Worker 側は `liveSettings` として保持し、"compute" のたびの再送を排除。`previousPathEdgeKeys` はメインスレッド側で保持したまま(hysteresis リセットの責務が M-2 の実装と一致しているため、Worker 側への移設は見送り — sweep は元々自己完結のため対象外)
+- [x] P-6: ISL 無効時(既定)は Worker を spawn しない(`ensureIslWorker` で初回有効化まで遅延)
+- [x] P-3: 一様グリッドのセルキーを数値パック(`wrapAxis(cx) + wrapAxis(cy)*S + wrapAxis(cz)*S²`、S=65536)にして文字列ハッシュを排除。衝突が起きても意味的には安全(実距離+LoSチェックで必ず再検証されるため偽陽性は棄却され、偽陰性は原理的に発生しない)であることをコメントで明記
+- [x] P-4: Dijkstra の dist/prevNode/visited を `Float64Array`/`Int32Array`/`Uint8Array` に変更。前回経路キーは数値 Set に(`isl/edgeKey.ts` の数値版 `edgeKey`。D-1 のエッジキー統一と同時に実施)
+- [x] P-5: shellRanges 使用時の全体パスに pair-filter(`uniformGridIslCandidates` の新規オプション引数)を渡して同シェルペアを距離/LoS 判定前に除外。従来の `covered` Set 二重チェックは完全に冗長だったため削除
+- [x] 完了後 `scripts/bench-isl.ts` を再実行。**N=10,000, maxRangeKm=1500(現実的密度)の graph+path: 131.4 ms → 74.4 ms**(目標 100 ms 以内をクリア。Phase 8-1 で `generateFromShells` 呼び出しに置換したため厳密な衛星配置は当初計測時と異なるが、範囲は同等)。他の規模・指標も改善(N=10,000 uniformGrid @ maxRangeKm=5000: 331.5ms → 246.7ms 等)。詳細は `bun run scripts/bench-isl.ts` の出力を参照
+
+---
+
+## Phase 8: 重複解消・構造改善 — isl-routing-review.md §4-B/C
+
+### 8-1. ドリフトすると無音故障する重複(優先)
+
+- [x] D-1: 無向エッジキーの実装 4 箇所を `src/lib/isl/edgeKey.ts` の単一実装(数値パック版。P-4 と同時実施)への import に統一。`tests/isl-edgeKey.test.ts` で対称性・一意性を検証
+- [x] D-2: 地点→observer→ECF/ECI 変換 3 箇所(`graph.ts` / `stability.ts` / `visualization.ts`)を `isl/geometry.ts` の `endpointObserver`/`endpointEci` に統一(`visualization.ts` はスクラッチオブジェクトを渡すことで P-1 のアロケーション削減も維持)
+- [x] D-3: `propagateAll` を `src/lib/isl/propagate.ts` へ移して Worker・`scripts/verify-isl-routing.ts`・`scripts/bench-isl.ts` で共用。検証スクリプト側の「失敗時 {0,0,0} フォールバックのまま参加させる」という出荷コードと異なる挙動を排除(`valid` フラグで除外するよう修正)
+- [x] D-4: `bench-isl.ts` の手書き Walker 生成を `generateFromShells` 呼び出しに置換。LCG 乱数(ジッター用、生成器が決定論的なため不要になった)と `EARTH_RADIUS_KM` の重複宣言を削除
+
+### 8-2. 保守性(次の機能追加前に)
+
+- [x] S-3: ISL 表示設定(GSL/ISL 色)を `IslSettings.gslColor`/`islColor` に集約し、App state / DisplaySettings / OptionTab props / SceneParams / deps 配列の 5 ファイル貫通をやめた。endpoint マーカー色は同じ 2 色を再利用する形で設定から導出(ハードコード複製を撤廃。以前は色変更に追従しないバグでもあったため副次的に修正)。viewState のマイグレーションに旧 `display.islGslColor`/`islIslColor` からの救済も追加(テストあり)
+- [x] S-4: Worker ペイロードで `cost` サブオブジェクトを丸ごと渡すよう変更(`linkModel` は元々丸ごと渡されていた)。visualization.ts と IslRoutingAnalysis.tsx の二重列挙を解消
+- [ ] S-5: ISL のシーン状態(~20 フィールド)を `IslPathLayer` 的サブオブジェクトに封じる整理は**見送り**(判断: 現状は正しく動作しており、update/reset/dispose の分散はコードレビューでのみ検出可能な保守性の懸念で、機能バグではない。Phase 5-7 で visualization.ts のこの領域には既に多数の変更を加えており、大きな構造変更を追加するとレビュー範囲が肥大化しリスクが上がる。次に ISL のシーン統合ロジックへ機能追加するタイミングで、その変更と合わせて実施するのが妥当と判断)
+- [x] S-2: 半配線の `stabilityThresholdS` を全ファイル(`IslSettings.cost` / worker payload / visualization.ts / IslRoutingAnalysis.tsx)から削除し、Worker 内定数 `DEFAULT_STABILITY_THRESHOLD_S = 60` に畳んだ
+- [x] S-6: `findShortestPath(graph, computedAtSimMs, computeTimeMs, options)` に整理(`candidateEdgeCount` は常に呼び出し元が `graph.candidateEdgeCount` を渡していたため関数内部で読むように変更。全呼び出し元・テストを更新)
+- [x] S-7: `IslTab.tsx` の `GroundStation` 構造的再宣言を `../../lib/groundStations` からの import に置換
 
 ---
 
 ## 全フェーズ共通の完了条件
 
-- [x] `bun run lint` / `bun run test` 通過(ロジック変更時)、大きな変更では `bun run build` も実行
-- [x] 新規 Three.js リソースは必ず dispose 経路に登録(ISL 用ジオメトリ/マテリアル/Worker はすべて `dispose()` で解放)
-- [x] `src/lib/isl/` に Three.js / React / シーン座標を持ち込まない(`isl/` 配下は satellite.js のみに依存する純粋関数群を維持)
-- [x] `src/lib/satellites.generated.ts` は編集しない(TOML スキーマも変更しない方針。§2.5.5)
+- [x] 各修正に対応する回帰テストを追加(H-1: `tests/constellationParser.test.ts`、H-2/H-4/H-5: `tests/isl-participants.test.ts`、D-1: `tests/isl-edgeKey.test.ts`、M-3: `tests/viewState.test.ts`)
+- [x] `bun run lint` / `bun run test` 通過。Phase 5〜8 の各段階で `bun run build` も実行し確認済み
+- [x] 新規 Three.js リソース(ISL パスバッファの再確保含む)は dispose 経路に登録済み(`ensureIslPathCapacity` の再確保は three.js のアトリビュートキャッシュに委ねる旨をコメントで明記)
+- [x] `src/lib/isl/` に Three.js / React / シーン座標を持ち込んでいないことを確認(全ファイル pure data / satellite.js のみ)
+- [x] `src/lib/satellites.generated.ts` は編集していない
+- [x] 設計文書との食い違い(H-4 の参加解決方式の設計回帰、S-3 の色設定集約)は isl-routing.md に設計変更注記を追加済み

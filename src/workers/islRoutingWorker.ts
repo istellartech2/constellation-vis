@@ -2,15 +2,16 @@
 import * as satellite from "satellite.js";
 import { toSatrec } from "../lib/satellites";
 import { resolveIslParticipantIndices } from "../lib/isl/participants";
+import { edgeKey } from "../lib/isl/edgeKey";
 import { buildSnapshotGraph } from "../lib/isl/graph";
 import { findShortestPath } from "../lib/isl/shortestPath";
 import { applyStabilityPenalties } from "../lib/isl/stability";
 import {
   DEFAULT_REMAINING_LINK_TIME_HORIZON_S,
   DEFAULT_REMAINING_LINK_TIME_STEP_S,
-  type Vec3,
 } from "../lib/isl/geometry";
-import type { IslPathResult } from "../lib/isl/types";
+import { propagateAll } from "../lib/isl/propagate";
+import type { IslPathResult, IslShellRange } from "../lib/isl/types";
 import type {
   IslRoutingWorkerRequest,
   IslRoutingWorkerResponse,
@@ -19,39 +20,48 @@ import type {
 
 const ctx: DedicatedWorkerGlobalScope = self as unknown as DedicatedWorkerGlobalScope;
 
-let satRecs: satellite.SatRec[] = [];
+/** tau_min [s] (§1.5.2). Folded to a constant (S-2) — no UI ever wired up a way to override it. */
+const DEFAULT_STABILITY_THRESHOLD_S = 60;
 
-/** Propagate all satrecs at simDate; mirrors the main thread's per-frame loop, minus rendering. */
-function propagateAll(simDate: Date): { positions: Vec3[]; valid: boolean[] } {
-  const positions: Vec3[] = new Array(satRecs.length);
-  const valid: boolean[] = new Array(satRecs.length);
-  for (let i = 0; i < satRecs.length; i++) {
-    const pv = satellite.propagate(satRecs[i], simDate);
-    if (pv?.position) {
-      positions[i] = { x: pv.position.x, y: pv.position.y, z: pv.position.z };
-      valid[i] = true;
-    } else {
-      positions[i] = { x: 0, y: 0, z: 0 };
-      valid[i] = false;
+let satRecs: satellite.SatRec[] = [];
+/** Set by "configure" and reused by every "compute" until the next one (P-2). */
+let liveSettings: IslRoutingWorkerSettingsPayload | null = null;
+
+/**
+ * Guard against stale/inconsistent shellRanges (H-1): if the UI ever sends
+ * ranges that don't fit the worker's own satellite count (e.g. a race between
+ * an in-flight compute request and a constellation update), fail with a
+ * descriptive message instead of an out-of-bounds array read.
+ */
+function validateShellRanges(shellRanges: IslShellRange[], satCount: number): void {
+  for (const shell of shellRanges) {
+    if (shell.startIndex < 0 || shell.startIndex + shell.count > satCount) {
+      throw new Error(
+        `シェル「${shell.name ?? shell.key}」の衛星範囲(開始 ${shell.startIndex} + ${shell.count} 機)が` +
+          `現在の衛星数(${satCount} 機)と整合しません。エディタで「更新」を押し直してください。`,
+      );
     }
   }
-  return { positions, valid };
 }
 
 /** Build the snapshot graph + (optional) stability pass + Dijkstra for one instant. */
 function computeAt(
   simDate: Date,
   settings: IslRoutingWorkerSettingsPayload,
-  previousPathEdgeKeys: Set<string> | undefined,
+  previousPathEdgeKeys: Set<number> | undefined,
 ): IslPathResult {
-  const { positions: satEciPositions, valid: satEciValid } = propagateAll(simDate);
+  validateShellRanges(settings.shellRanges, satRecs.length);
+
+  const { positions: satEciPositions, valid: satEciValid } = propagateAll(satRecs, simDate);
 
   // Exclude satellites whose propagation failed at this instant — matches
   // the main-thread bug fix (a stale/zeroed position must never be treated
   // as a real, current satellite location for routing).
   const participantIndices = resolveIslParticipantIndices(
-    satRecs,
-    settings.participantSatnums,
+    satRecs.length,
+    settings.shellRanges,
+    settings.excludedShellKeys,
+    settings.includeBaseSatellites,
   ).filter((i) => satEciValid[i]);
 
   const computeStartedAtMs = Date.now();
@@ -62,13 +72,13 @@ function computeAt(
     endpointB: settings.endpointB,
     simDate,
     linkModel: settings.linkModel,
-    hopPenaltyMs: settings.hopPenaltyMs,
-    kindPenaltyMs: settings.kindPenaltyMs,
+    hopPenaltyMs: settings.cost.hopPenaltyMs,
+    kindPenaltyMs: settings.cost.kindPenaltyMs,
     shellRanges: settings.shellRanges,
     shellLinkModels: settings.shellLinkModels,
   });
 
-  const stabilityWeightMs = settings.stabilityWeightMs ?? 0;
+  const stabilityWeightMs = settings.cost.stabilityWeightMs ?? 0;
   if (stabilityWeightMs > 0) {
     graph = applyStabilityPenalties(graph, {
       satCount: satRecs.length,
@@ -84,7 +94,7 @@ function computeAt(
       losMarginKm: settings.linkModel.losMarginKm,
       horizonS: DEFAULT_REMAINING_LINK_TIME_HORIZON_S,
       stepS: DEFAULT_REMAINING_LINK_TIME_STEP_S,
-      thresholdS: settings.stabilityThresholdS ?? 60,
+      thresholdS: DEFAULT_STABILITY_THRESHOLD_S,
       weightMs: stabilityWeightMs,
     });
   }
@@ -92,23 +102,16 @@ function computeAt(
   return findShortestPath(
     graph,
     simDate.getTime(),
-    graph.candidateEdgeCount,
     Date.now() - computeStartedAtMs,
     {
       previousPathEdgeKeys,
-      switchDiscount: settings.switchDiscount,
+      switchDiscount: settings.cost.switchDiscount,
     },
   );
 }
 
-function edgeKeysOf(result: IslPathResult): Set<string> {
-  return new Set(
-    result.edges.map((e) => {
-      const a = Math.min(e.fromNodeId, e.toNodeId);
-      const b = Math.max(e.fromNodeId, e.toNodeId);
-      return `${a}-${b}`;
-    }),
-  );
+function edgeKeysOf(result: IslPathResult): Set<number> {
+  return new Set(result.edges.map((e) => edgeKey(e.fromNodeId, e.toNodeId)));
 }
 
 ctx.addEventListener("message", (event: MessageEvent<IslRoutingWorkerRequest>) => {
@@ -123,11 +126,21 @@ ctx.addEventListener("message", (event: MessageEvent<IslRoutingWorkerRequest>) =
       return;
     }
 
+    if (message.type === "configure") {
+      liveSettings = message.payload;
+      const response: IslRoutingWorkerResponse = { id, type: "ack" };
+      ctx.postMessage(response);
+      return;
+    }
+
     if (message.type === "compute") {
-      const { simDateIso, previousPathEdgeKeys, ...settings } = message.payload;
+      if (!liveSettings) {
+        throw new Error("ISL 経路設定が未初期化です(configure が compute より先に届いていません)。");
+      }
+      const { simDateIso, previousPathEdgeKeys } = message.payload;
       const result = computeAt(
         new Date(simDateIso),
-        settings,
+        liveSettings,
         previousPathEdgeKeys ? new Set(previousPathEdgeKeys) : undefined,
       );
       const response: IslRoutingWorkerResponse = { id, type: "result", payload: { result } };
@@ -139,7 +152,7 @@ ctx.addEventListener("message", (event: MessageEvent<IslRoutingWorkerRequest>) =
     const { startIso, durationS, stepS, ...settings } = message.payload;
     const startMs = new Date(startIso).getTime();
     const results: IslPathResult[] = [];
-    let previousPathEdgeKeys: Set<string> | undefined;
+    let previousPathEdgeKeys: Set<number> | undefined;
 
     for (let t = 0; t <= durationS; t += stepS) {
       const simDate = new Date(startMs + t * 1000);

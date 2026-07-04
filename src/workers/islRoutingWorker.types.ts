@@ -1,5 +1,5 @@
 import type { SatelliteSpec } from "../lib/satellites";
-import type { IslEndpoint, IslLinkModel, IslPathResult, IslShellRange } from "../lib/isl/types";
+import type { IslCostSettings, IslEndpoint, IslLinkModel, IslPathResult, IslShellRange } from "../lib/isl/types";
 
 /** Sent once (and again whenever the satellite list changes) so the worker can build its own satrecs. */
 export interface IslRoutingWorkerInitPayload {
@@ -12,28 +12,47 @@ export interface IslRoutingWorkerInitRequest {
   payload: IslRoutingWorkerInitPayload;
 }
 
-/** Common routing settings shared by "compute" and "sweep" requests. */
+/**
+ * Common routing settings shared by "compute" and "sweep" requests. `cost`
+ * and `linkModel` are passed as whole plain-data sub-objects rather than
+ * manually flattened (S-4) — adding a cost field used to mean editing every
+ * one of the (now two) call sites that build this payload; a forgotten one
+ * silently reverted that field to its default without either call site
+ * showing an error.
+ */
 export interface IslRoutingWorkerSettingsPayload {
-  participantSatnums: number[];
+  /** Stable keys of shells excluded from participation (§2.4, Phase 5). */
+  excludedShellKeys: string[];
+  includeBaseSatellites: boolean;
   endpointA: IslEndpoint;
   endpointB: IslEndpoint;
   linkModel: IslLinkModel;
   shellRanges: IslShellRange[];
   shellLinkModels?: Record<string, Partial<IslLinkModel>>;
-  hopPenaltyMs: number;
-  kindPenaltyMs?: Record<string, number>;
-  switchDiscount: number;
-  /** w_tau [ms] (§1.5.2, Phase 4); omit or <= 0 to skip the (expensive) stability pass entirely. */
-  stabilityWeightMs?: number;
-  /** tau_min [s] (§1.5.2, Phase 4). */
-  stabilityThresholdS?: number;
+  cost: IslCostSettings;
 }
 
-/** Sent per recompute; the worker re-propagates from its cached satrecs at simDateIso (§2.3, §2.7). */
-export interface IslRoutingWorkerComputePayload extends IslRoutingWorkerSettingsPayload {
+/**
+ * Sent whenever the live scene's routing settings change identity (endpoints,
+ * participation, link model, cost, shellRanges — anything besides the clock).
+ * The worker caches this and applies it to every subsequent "compute" until
+ * the next "configure" (P-2): settings no longer need to be re-serialized
+ * (structured-cloned) on every recompute, only on actual settings edits.
+ */
+export interface IslRoutingWorkerConfigureRequest {
+  id: number;
+  type: "configure";
+  payload: IslRoutingWorkerSettingsPayload;
+}
+
+/**
+ * Sent per recompute; the worker re-propagates from its cached satrecs at
+ * simDateIso (§2.3, §2.7) using the settings from the last "configure".
+ */
+export interface IslRoutingWorkerComputePayload {
   simDateIso: string;
-  /** Undirected edge keys of the previously adopted path, for hysteresis (§1.5.1). */
-  previousPathEdgeKeys?: string[];
+  /** Undirected edge keys (see isl/edgeKey.ts) of the previously adopted path, for hysteresis (§1.5.1). */
+  previousPathEdgeKeys?: number[];
 }
 
 export interface IslRoutingWorkerComputeRequest {
@@ -57,6 +76,7 @@ export interface IslRoutingWorkerSweepRequest {
 
 export type IslRoutingWorkerRequest =
   | IslRoutingWorkerInitRequest
+  | IslRoutingWorkerConfigureRequest
   | IslRoutingWorkerComputeRequest
   | IslRoutingWorkerSweepRequest;
 
