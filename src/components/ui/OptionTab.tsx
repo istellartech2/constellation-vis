@@ -22,7 +22,6 @@ import {
 import PanelSection from "./PanelSection";
 import type SatelliteScene from "../../lib/visualization";
 import type { EarthTextureMode } from "../../lib/earthTextures";
-import type { IslSettings } from "../../lib/isl/types";
 import {
   listSavedViews,
   saveNamedView,
@@ -46,16 +45,8 @@ interface Props {
   onShowGeoOrbitChange: (v: boolean) => void;
   showSunDirection: boolean;
   onShowSunDirectionChange: (v: boolean) => void;
-  showGroundStationCones: boolean;
-  onShowGroundStationConesChange: (v: boolean) => void;
   showSatelliteFovCones: boolean;
   onShowSatelliteFovConesChange: (v: boolean) => void;
-  groundConeMinElevationDeg: number;
-  onGroundConeMinElevationDegChange: (v: number) => void;
-  groundConeDistanceKm: number;
-  onGroundConeDistanceKmChange: (v: number) => void;
-  groundConeColor: string;
-  onGroundConeColorChange: (color: string) => void;
   fovConeHalfAngleDeg: number;
   onFovConeHalfAngleDegChange: (v: number) => void;
   fovConeMinHeight: number;
@@ -86,10 +77,6 @@ interface Props {
   getCurrentView: () => ViewSettings;
   /** Apply a previously saved view */
   onApplyView: (settings: ViewSettings) => void;
-  /** Current ISL routing settings (only `gslColor`/`islColor` are read/written here) */
-  islSettings: IslSettings;
-  /** Called when ISL routing settings change */
-  onIslSettingsChange: (next: IslSettings) => void;
 }
 
 function CheckboxItem({
@@ -213,16 +200,8 @@ export default function OptionTab(props: Props) {
     onShowGeoOrbitChange,
     showSunDirection,
     onShowSunDirectionChange,
-    showGroundStationCones,
-    onShowGroundStationConesChange,
     showSatelliteFovCones,
     onShowSatelliteFovConesChange,
-    groundConeMinElevationDeg,
-    onGroundConeMinElevationDegChange,
-    groundConeDistanceKm,
-    onGroundConeDistanceKmChange,
-    groundConeColor,
-    onGroundConeColorChange,
     fovConeHalfAngleDeg,
     onFovConeHalfAngleDegChange,
     fovConeMinHeight,
@@ -251,8 +230,6 @@ export default function OptionTab(props: Props) {
     sceneRef,
     getCurrentView,
     onApplyView,
-    islSettings,
-    onIslSettingsChange,
   } = props;
 
   const [loadedKMLs, setLoadedKMLs] = useState<string[]>([]);
@@ -535,8 +512,8 @@ export default function OptionTab(props: Props) {
         />
       </PanelSection>
 
-      {/* D. 可視範囲 */}
-      <PanelSection title="可視範囲（コーン）" icon={<Radio />}>
+      {/* D. 衛星の視野コーン(地上局の通信範囲コーンは通信タブへ移設) */}
+      <PanelSection title="衛星の視野（コーン）" icon={<Radio />}>
         <CheckboxItem
           id="satelliteFovCones"
           checked={showSatelliteFovCones}
@@ -590,37 +567,6 @@ export default function OptionTab(props: Props) {
             <ColorControl label="表示カラー" value={fovConeColor} onChange={onFovConeColorChange} />
           </div>
         )}
-
-        <CheckboxItem
-          id="groundStationCones"
-          checked={showGroundStationCones}
-          onChange={onShowGroundStationConesChange}
-          label="地上局の通信可能範囲を表示"
-        />
-        {showGroundStationCones && (
-          <div className="option-subsection">
-            <SliderControl
-              label="最小仰角しきい値"
-              valueText={`${groundConeMinElevationDeg.toFixed(0)}°`}
-              min={0}
-              max={85}
-              step={1}
-              value={groundConeMinElevationDeg}
-              onChange={onGroundConeMinElevationDegChange}
-              unit="°"
-            />
-            <SliderControl
-              label="可視距離上限"
-              valueText={`${Math.round(groundConeDistanceKm).toLocaleString()} km`}
-              min={100}
-              max={20000}
-              step={50}
-              value={groundConeDistanceKm}
-              onChange={onGroundConeDistanceKmChange}
-            />
-            <ColorControl label="表示カラー" value={groundConeColor} onChange={onGroundConeColorChange} />
-          </div>
-        )}
       </PanelSection>
 
       {/* E. 衛星ポイントカラー */}
@@ -655,32 +601,6 @@ export default function OptionTab(props: Props) {
               onChange={(e) => onSatelliteSelectedColorChange(e.target.value)}
             />
             <span className="option-color-value">{satelliteSelectedColor.toUpperCase()}</span>
-          </div>
-        </div>
-      </PanelSection>
-
-      {/* E2. ISL 経路カラー */}
-      <PanelSection title="ISL 経路カラー" icon={<Palette />} collapsible defaultOpen={false}>
-        <div className="option-color-grid">
-          <div className="option-color-row">
-            <span className="option-color-label">GSL 区間</span>
-            <input
-              className="option-color-input"
-              type="color"
-              value={islSettings.gslColor}
-              onChange={(e) => onIslSettingsChange({ ...islSettings, gslColor: e.target.value })}
-            />
-            <span className="option-color-value">{islSettings.gslColor.toUpperCase()}</span>
-          </div>
-          <div className="option-color-row">
-            <span className="option-color-label">ISL 区間</span>
-            <input
-              className="option-color-input"
-              type="color"
-              value={islSettings.islColor}
-              onChange={(e) => onIslSettingsChange({ ...islSettings, islColor: e.target.value })}
-            />
-            <span className="option-color-value">{islSettings.islColor.toUpperCase()}</span>
           </div>
         </div>
       </PanelSection>

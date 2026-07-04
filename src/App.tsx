@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import SpeedControl from "./components/ui/SpeedControl";
 import SatelliteEditor from "./components/ui/SatelliteEditor";
+import IslHud from "./components/ui/IslHud";
 import { useSatelliteScene } from "./components/useSatelliteScene";
 import { SATELLITES as INITIAL_SATS, INITIAL_SHELL_RANGES } from "./lib/satellites";
 import { loadGroundStations, type GroundStation } from "./lib/groundStations";
@@ -115,6 +116,11 @@ function App() {
   // at the same moment (Update click) — never a stale localStorage snapshot
   // (Phase 5, H-1/H-4). Not part of DisplaySettings: it's not persisted.
   const [islShellRanges, setIslShellRanges] = useState<IslShellRange[]>(INITIAL_SHELL_RANGES);
+  // External "open the panel on this tab" request (e.g. clicking the ISL HUD card)
+  const [openTabRequest, setOpenTabRequest] = useState<{
+    tab: "editor" | "analysis" | "isl" | "option";
+    nonce: number;
+  } | null>(null);
 
   // Track cumulative path switches and time-since-last-switch for the ISL result
   // card (§2.5.2, Phase 2). switchedFromPrevious is only meaningful once a path
@@ -417,6 +423,14 @@ function App() {
         </pre>
       )}
       <SpeedControl value={speedExp} onChange={setSpeedExp} whiteBackground={whiteBackground} />
+      <IslHud
+        islSettings={islSettings}
+        islResult={islResult}
+        islSwitchCount={islSwitchCount}
+        onClick={() =>
+          setOpenTabRequest((p) => ({ tab: "isl", nonce: (p?.nonce ?? 0) + 1 }))
+        }
+      />
       <SatelliteEditor
         satRadius={satRadius}
         onSatRadiusChange={setSatRadius}
@@ -485,6 +499,7 @@ function App() {
         islSwitchCount={islSwitchCount}
         islLastSwitchSimMs={islLastSwitchSimMs}
         currentSimMs={simTime.getTime()}
+        openTabRequest={openTabRequest}
       />
     </div>
   );

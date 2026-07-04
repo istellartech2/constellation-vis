@@ -11,7 +11,7 @@ import {
 } from "../../lib/config";
 import { buildConstellation } from "../../lib/tomlParsers";
 import EditorTab from "./EditorTab";
-import AnalysisTab from "./AnalysisTab";
+import AnalysisTab, { type AnalysisType } from "./AnalysisTab";
 import OptionTab from "./OptionTab";
 import IslTab from "./IslTab";
 import ImportDialog from "./ImportDialog";
@@ -160,6 +160,8 @@ interface Props {
   islLastSwitchSimMs: number | null;
   /** Current simulation time (ms), used to compute elapsed time since last switch */
   currentSimMs: number;
+  /** External request to open the panel on a specific tab (e.g. from the ISL HUD). */
+  openTabRequest?: { tab: "editor" | "analysis" | "isl" | "option"; nonce: number } | null;
 }
 
 export default function SatelliteEditor({
@@ -225,6 +227,7 @@ export default function SatelliteEditor({
   islSwitchCount,
   islLastSwitchSimMs,
   currentSimMs,
+  openTabRequest,
 }: Props) {
   const [satText, setSatText] = useState("");
   const [constText, setConstText] = useState("");
@@ -239,6 +242,16 @@ export default function SatelliteEditor({
   const [importOpen, setImportOpen] = useState(false);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
+  // Analysis-modal open request forwarded to AnalysisTab (e.g. 「タイムライン解析を開く」 from IslTab)
+  const [analysisRequest, setAnalysisRequest] = useState<{ type: AnalysisType; nonce: number } | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (!openTabRequest) return;
+    setOpen(true);
+    setTab(openTabRequest.tab);
+  }, [openTabRequest]);
 
 
   function toggleGroup(g: string) {
@@ -399,7 +412,13 @@ export default function SatelliteEditor({
                 value="editor"
                 className="data-[state=active]:!bg-orange-600 data-[state=active]:!text-orange-50 data-[state=active]:!shadow-sm data-[state=active]:!border-transparent hover:bg-gray-600/60 text-gray-200 transition-colors rounded-md font-medium"
               >
-                編集
+                シナリオ
+              </TabsTrigger>
+              <TabsTrigger
+                value="isl"
+                className="data-[state=active]:!bg-orange-600 data-[state=active]:!text-orange-50 data-[state=active]:!shadow-sm data-[state=active]:!border-transparent hover:bg-gray-600/60 text-gray-200 transition-colors rounded-md font-medium"
+              >
+                通信
               </TabsTrigger>
               <TabsTrigger
                 value="analysis"
@@ -408,16 +427,10 @@ export default function SatelliteEditor({
                 解析
               </TabsTrigger>
               <TabsTrigger
-                value="isl"
-                className="data-[state=active]:!bg-orange-600 data-[state=active]:!text-orange-50 data-[state=active]:!shadow-sm data-[state=active]:!border-transparent hover:bg-gray-600/60 text-gray-200 transition-colors rounded-md font-medium"
-              >
-                ISL
-              </TabsTrigger>
-              <TabsTrigger
                 value="option"
                 className="data-[state=active]:!bg-orange-600 data-[state=active]:!text-orange-50 data-[state=active]:!shadow-sm data-[state=active]:!border-transparent hover:bg-gray-600/60 text-gray-200 transition-colors rounded-md font-medium"
               >
-                設定
+                表示
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -461,6 +474,8 @@ export default function SatelliteEditor({
                 islShellRanges={islShellRanges}
                 onAnalysisStart={onAnalysisStart}
                 onAnalysisEnd={onAnalysisEnd}
+                requestedAnalysis={analysisRequest}
+                onRequestedAnalysisHandled={() => setAnalysisRequest(null)}
               />
             </TabsContent>
 
@@ -475,6 +490,21 @@ export default function SatelliteEditor({
                 islSwitchCount={islSwitchCount}
                 islLastSwitchSimMs={islLastSwitchSimMs}
                 currentSimMs={currentSimMs}
+                onOpenTimelineAnalysis={() => {
+                  setAnalysisRequest((p) => ({
+                    type: "ISL経路タイムライン解析",
+                    nonce: (p?.nonce ?? 0) + 1,
+                  }));
+                  setTab("analysis");
+                }}
+                showGroundStationCones={showGroundStationCones}
+                onShowGroundStationConesChange={onShowGroundStationConesChange}
+                groundConeMinElevationDeg={groundConeMinElevationDeg}
+                onGroundConeMinElevationDegChange={onGroundConeMinElevationDegChange}
+                groundConeDistanceKm={groundConeDistanceKm}
+                onGroundConeDistanceKmChange={onGroundConeDistanceKmChange}
+                groundConeColor={groundConeColor}
+                onGroundConeColorChange={onGroundConeColorChange}
               />
             </TabsContent>
 
@@ -492,16 +522,8 @@ export default function SatelliteEditor({
                 onShowGeoOrbitChange={onShowGeoOrbitChange}
                 showSunDirection={showSunDirection}
                 onShowSunDirectionChange={onShowSunDirectionChange}
-                showGroundStationCones={showGroundStationCones}
-                onShowGroundStationConesChange={onShowGroundStationConesChange}
                 showSatelliteFovCones={showSatelliteFovCones}
                 onShowSatelliteFovConesChange={onShowSatelliteFovConesChange}
-                groundConeMinElevationDeg={groundConeMinElevationDeg}
-                onGroundConeMinElevationDegChange={onGroundConeMinElevationDegChange}
-                groundConeDistanceKm={groundConeDistanceKm}
-                onGroundConeDistanceKmChange={onGroundConeDistanceKmChange}
-                groundConeColor={groundConeColor}
-                onGroundConeColorChange={onGroundConeColorChange}
                 fovConeHalfAngleDeg={fovConeHalfAngleDeg}
                 onFovConeHalfAngleDegChange={onFovConeHalfAngleDegChange}
                 fovConeColor={fovConeColor}
@@ -530,8 +552,6 @@ export default function SatelliteEditor({
                 sceneRef={sceneRef}
                 getCurrentView={getCurrentView}
                 onApplyView={onApplyView}
-                islSettings={islSettings}
-                onIslSettingsChange={onIslSettingsChange}
               />
             </TabsContent>
           </Tabs>

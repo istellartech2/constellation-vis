@@ -3,7 +3,7 @@ import PanelSection from "./PanelSection";
 import { Checkbox } from "./checkbox";
 import { Label } from "./label";
 import { Button } from "./button";
-import { ArrowLeftRight, Radio, Satellite, Gauge, Layers } from "lucide-react";
+import { ArrowUpDown, Radio, Gauge, Layers, LineChart } from "lucide-react";
 import { parseGroundStationsToml } from "../../lib/tomlParsers";
 import type { GroundStation } from "../../lib/groundStations";
 import { numericInputValue, parseNumericInput } from "../../lib/numericInput";
@@ -33,6 +33,17 @@ interface Props {
   islLastSwitchSimMs: number | null;
   /** Current simulation time (ms) */
   currentSimMs: number;
+  /** Opens the ISL timeline analysis (解析タブのモーダル) directly from the result card. */
+  onOpenTimelineAnalysis?: () => void;
+  /** Ground-station communication cone display (通信タブへ移設した表示設定) */
+  showGroundStationCones: boolean;
+  onShowGroundStationConesChange: (v: boolean) => void;
+  groundConeMinElevationDeg: number;
+  onGroundConeMinElevationDegChange: (v: number) => void;
+  groundConeDistanceKm: number;
+  onGroundConeDistanceKmChange: (v: number) => void;
+  groundConeColor: string;
+  onGroundConeColorChange: (color: string) => void;
 }
 
 function defaultAdhocEndpoint(name: string): IslEndpoint {
@@ -56,6 +67,15 @@ export default function IslTab({
   islSwitchCount,
   islLastSwitchSimMs,
   currentSimMs,
+  onOpenTimelineAnalysis,
+  showGroundStationCones,
+  onShowGroundStationConesChange,
+  groundConeMinElevationDeg,
+  onGroundConeMinElevationDegChange,
+  groundConeDistanceKm,
+  onGroundConeDistanceKmChange,
+  groundConeColor,
+  onGroundConeColorChange,
 }: Props) {
   const groundStations = useMemo(() => {
     try {
@@ -72,6 +92,11 @@ export default function IslTab({
   const hasZeroParticipants =
     !islSettings.includeBaseSatellites &&
     islShellRanges.every((shell) => islSettings.excludedShellKeys.includes(shell.key));
+
+  const enabled = islSettings.enabled;
+  const missingEndpoints: string[] = [];
+  if (!islSettings.endpointA) missingEndpoints.push("A");
+  if (!islSettings.endpointB) missingEndpoints.push("B");
 
   function updateShellLinkModel(key: string, patch: Partial<IslLinkModel>) {
     // An `undefined` field in patch means "clear this override, fall back to
@@ -112,259 +137,419 @@ export default function IslTab({
 
   return (
     <div className="space-y-3">
-      <PanelSection title="ISL 経路探索" icon={<Radio />}>
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="isl-enabled"
-            checked={islSettings.enabled}
-            onCheckedChange={(v) => onIslSettingsChange({ ...islSettings, enabled: v === true })}
-          />
-          <Label htmlFor="isl-enabled" className="text-sm text-gray-200">
-            ISL 経路探索を有効化
-          </Label>
-        </div>
-      </PanelSection>
-
-      <PanelSection title="地点 A / B" icon={<Satellite />}>
+      {/* 1. 経路探索 — 地点選択と有効化。常に表示する唯一の設定入口 */}
+      <PanelSection
+        title="経路探索"
+        icon={<Radio />}
+        action={
+          <div className="flex items-center gap-1.5">
+            <span className={`text-xs ${enabled ? "text-orange-300" : "text-gray-400"}`}>
+              {enabled ? "有効" : "無効"}
+            </span>
+            <ToggleSwitch
+              checked={enabled}
+              onChange={(v) => onIslSettingsChange({ ...islSettings, enabled: v })}
+              ariaLabel="ISL 経路探索を有効化"
+            />
+          </div>
+        }
+      >
         <EndpointEditor
           label="地点 A"
           endpoint={islSettings.endpointA}
           groundStations={groundStations}
           onChange={(ep) => updateEndpoint("endpointA", ep)}
         />
+        <div className="flex justify-center -my-1.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-gray-400 hover:text-gray-200"
+            onClick={swapEndpoints}
+            title="A/B を入替"
+            aria-label="A/B を入替"
+          >
+            <ArrowUpDown className="h-3.5 w-3.5" />
+          </Button>
+        </div>
         <EndpointEditor
           label="地点 B"
           endpoint={islSettings.endpointB}
           groundStations={groundStations}
           onChange={(ep) => updateEndpoint("endpointB", ep)}
         />
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full mt-1"
-          onClick={swapEndpoints}
-        >
-          <ArrowLeftRight className="h-3.5 w-3.5 mr-1" />
-          A/B を入替
-        </Button>
-        <p className="text-xs text-gray-400 mt-2">
-          既存局を選んだ場合、通信リンクの判定は仰角のみで行います(局の
-          visibilityMode / maxOffNadirDeg は使用しません)。
+        {!enabled && (
+          <p className="text-xs text-gray-400 mt-2">
+            地点 A と B を選び、右上のスイッチで有効化すると、衛星間リンク (ISL)
+            を経由する 2 地点間の最短経路を計算して 3D 表示します。
+          </p>
+        )}
+        <p className="text-[11px] text-gray-500 mt-1.5">
+          既存局を選んだ場合の通信判定は仰角のみです(観測用の視野設定 visibilityMode /
+          maxOffNadirDeg は使いません)。
         </p>
       </PanelSection>
 
-      <PanelSection title="参加衛星" icon={<Satellite />} collapsible defaultOpen={false}>
+      {enabled && (
+        <>
+          {/* 2. 結果 — 設定より上に置き、パラメータ操作→数値変化のループを 1 画面で成立させる */}
+          <PanelSection title="結果" icon={<Gauge />}>
+            {missingEndpoints.length > 0 ? (
+              <p className="text-xs text-amber-400">
+                地点 {missingEndpoints.join(" と ")} が未設定です。上の「経路探索」で地点を選択すると
+                計算を開始します。
+              </p>
+            ) : !islResult ? (
+              <p className="text-sm text-gray-400 tabular-nums">計算中…</p>
+            ) : !islResult.reachable ? (
+              <p className="text-sm text-red-400">
+                経路なし(到達不能{hasZeroParticipants ? " / 参加衛星 0" : ""})
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                <div className="grid grid-cols-3 gap-1.5 tabular-nums">
+                  <KpiCard value={islResult.totalDelayMs.toFixed(1)} unit="ms" label="総遅延" />
+                  <KpiCard value={String(islResult.hopCount)} unit="hop" label="中継衛星" />
+                  <KpiCard
+                    value={Math.round(islResult.totalDistanceKm).toLocaleString()}
+                    unit="km"
+                    label="総距離"
+                  />
+                </div>
+                <div className="text-xs text-gray-400 tabular-nums">
+                  伝搬遅延 {propagationDelayMs(islResult.totalDistanceKm).toFixed(2)} ms + 追加コスト{" "}
+                  {(islResult.totalDelayMs - propagationDelayMs(islResult.totalDistanceKm)).toFixed(2)}{" "}
+                  ms
+                </div>
+                <div className="text-xs text-gray-400 tabular-nums">
+                  経路切替 {islSwitchCount} 回
+                  {islLastSwitchSimMs !== null &&
+                    ` ・ 直近の切替から ${Math.max(0, (currentSimMs - islLastSwitchSimMs) / 1000).toFixed(0)} 秒`}
+                </div>
+              </div>
+            )}
+            {onOpenTimelineAnalysis && (
+              <Button
+                variant="secondary"
+                size="sm"
+                className="w-full mt-1.5"
+                onClick={onOpenTimelineAnalysis}
+              >
+                <LineChart className="h-3.5 w-3.5 mr-1" />
+                タイムライン解析を開く
+              </Button>
+            )}
+          </PanelSection>
+
+          {/* 3. 経路の重み付け — 探索的に動かして経路の変化を見るための設定 */}
+          <PanelSection title="経路の重み付け" icon={<Gauge />} collapsible defaultOpen={false}>
+            <p className="text-xs text-gray-400 mb-2">
+              総遅延 = 伝搬遅延(距離 ÷ 光速)+ 下記の追加コスト。値を大きくすると、その要素を避ける
+              経路が選ばれます。変更は即時反映されます。
+            </p>
+            <CostSlider
+              label="中継ペナルティ(衛星1機あたり)"
+              value={islSettings.cost.hopPenaltyMs}
+              min={0}
+              max={20}
+              step={0.5}
+              unit="ms"
+              hint="大きくするほど中継数の少ない経路を優先します。0 で純粋な最短遅延経路になります。"
+              onChange={(v) =>
+                onIslSettingsChange({ ...islSettings, cost: { ...islSettings.cost, hopPenaltyMs: v } })
+              }
+            />
+            <CostSlider
+              label="経路の切替えにくさ(ヒステリシス)"
+              value={islSettings.cost.switchDiscount}
+              min={0}
+              max={0.5}
+              step={0.01}
+              unit=""
+              format={(v) => `${Math.round(v * 100)}%`}
+              hint="今の経路をこの割合ぶん割安に扱い、頻繁な経路切替(フラッピング)を抑えます。0% で毎回コスト最小の経路に切り替わります。"
+              onChange={(v) =>
+                onIslSettingsChange({ ...islSettings, cost: { ...islSettings.cost, switchDiscount: v } })
+              }
+            />
+            <div className="grid grid-cols-2 gap-2 mt-1">
+              <NumField
+                label="GSL ペナルティ(ms)"
+                value={islSettings.cost.kindPenaltyMs?.gsl ?? 0}
+                onChange={(v) =>
+                  onIslSettingsChange({
+                    ...islSettings,
+                    cost: {
+                      ...islSettings.cost,
+                      kindPenaltyMs: { ...islSettings.cost.kindPenaltyMs, gsl: v },
+                    },
+                  })
+                }
+              />
+              <NumField
+                label="ISL ペナルティ(ms)"
+                value={islSettings.cost.kindPenaltyMs?.isl ?? 0}
+                onChange={(v) =>
+                  onIslSettingsChange({
+                    ...islSettings,
+                    cost: {
+                      ...islSettings.cost,
+                      kindPenaltyMs: { ...islSettings.cost.kindPenaltyMs, isl: v },
+                    },
+                  })
+                }
+              />
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              リンク種別(GSL = 地上⇔衛星 / ISL = 衛星⇔衛星)ごとの固定加算。ISL
+              を避けたい場合は ISL 側を大きくします。
+            </p>
+            <CostSlider
+              label="切れそうなリンクの回避(先読み)"
+              value={islSettings.cost.stabilityWeightMs ?? 0}
+              min={0}
+              max={50}
+              step={1}
+              unit="ms"
+              hint="前方 300 秒を先読みし、もうすぐ切れるリンクを避けます。0 = 無効(既定)。有効にすると再計算が重くなります。"
+              onChange={(v) =>
+                onIslSettingsChange({ ...islSettings, cost: { ...islSettings.cost, stabilityWeightMs: v } })
+              }
+            />
+          </PanelSection>
+
+          {/* 4. 詳細設定 — 一度決めたら普段は触らない設定 */}
+          <PanelSection title="詳細設定" icon={<Layers />} collapsible defaultOpen={false}>
+            <SubHeader first>参加衛星</SubHeader>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="isl-include-base"
+                checked={islSettings.includeBaseSatellites}
+                onCheckedChange={() => toggleIncludeBase()}
+              />
+              <Label htmlFor="isl-include-base" className="text-sm text-gray-200">
+                個別衛星 (satellites.toml) を含める
+              </Label>
+            </div>
+            {islShellRanges.map((shell) => (
+              <div key={shell.key} className="flex items-center gap-2">
+                <Checkbox
+                  id={`isl-shell-${shell.key}`}
+                  checked={!islSettings.excludedShellKeys.includes(shell.key)}
+                  onCheckedChange={() => toggleShell(shell.key)}
+                />
+                <Label htmlFor={`isl-shell-${shell.key}`} className="text-sm text-gray-200">
+                  {shell.name || `シェル ${Number(shell.key) + 1}`} ({shell.count} 機)
+                </Label>
+              </div>
+            ))}
+            {islShellRanges.length === 0 && (
+              <p className="text-xs text-gray-500">constellation.toml にシェルがありません。</p>
+            )}
+            {hasZeroParticipants && (
+              <p className="text-xs text-red-400">
+                参加衛星が 0 機です。経路は常に到達不能になります。
+              </p>
+            )}
+
+            <SubHeader>リンク距離制限</SubHeader>
+            <CostSlider
+              label="最大リンク距離"
+              value={islSettings.linkModel.maxRangeKm}
+              min={100}
+              max={20000}
+              step={100}
+              unit="km"
+              hint="ISL・GSL 共通の上限(通信端末の性能に相当)。小さくすると低仰角の遠い衛星が経路に選ばれにくくなります(既定 5,000 km)。"
+              onChange={(v) =>
+                onIslSettingsChange({
+                  ...islSettings,
+                  linkModel: { ...islSettings.linkModel, maxRangeKm: v },
+                })
+              }
+            />
+            <CostSlider
+              label="地球遮蔽マージン(ISL のみ)"
+              value={islSettings.linkModel.losMarginKm}
+              min={0}
+              max={500}
+              step={10}
+              unit="km"
+              hint="ISL が地球の縁をかすめるのを避ける余裕高度(既定 80 km)。GSL には適用されません。"
+              onChange={(v) =>
+                onIslSettingsChange({
+                  ...islSettings,
+                  linkModel: { ...islSettings.linkModel, losMarginKm: v },
+                })
+              }
+            />
+
+            <SubHeader>シェル別リンク方式</SubHeader>
+            <p className="text-xs text-gray-400 mb-1">
+              gridPattern は面内前後 2 機 + 隣接面同スロット 2 機に限定した固定トポロジで、
+              大規模構成での候補生成が高速です。シェル間リンクは常に dynamic として扱われます。
+              未設定の項目は上の共通設定を使います。
+            </p>
+            {islShellRanges.map((shell) => (
+              <ShellOverrideRow
+                key={shell.key}
+                shell={shell}
+                override={islSettings.shellLinkModels?.[shell.key]}
+                onChange={(patch) => updateShellLinkModel(shell.key, patch)}
+              />
+            ))}
+            {islShellRanges.length === 0 && (
+              <p className="text-xs text-gray-500">constellation.toml にシェルがありません。</p>
+            )}
+
+            <SubHeader>経路の表示色</SubHeader>
+            <div className="option-color-grid">
+              <div className="option-color-row">
+                <span className="option-color-label">GSL 区間</span>
+                <input
+                  className="option-color-input"
+                  type="color"
+                  value={islSettings.gslColor}
+                  onChange={(e) => onIslSettingsChange({ ...islSettings, gslColor: e.target.value })}
+                />
+                <span className="option-color-value">{islSettings.gslColor.toUpperCase()}</span>
+              </div>
+              <div className="option-color-row">
+                <span className="option-color-label">ISL 区間</span>
+                <input
+                  className="option-color-input"
+                  type="color"
+                  value={islSettings.islColor}
+                  onChange={(e) => onIslSettingsChange({ ...islSettings, islColor: e.target.value })}
+                />
+                <span className="option-color-value">{islSettings.islColor.toUpperCase()}</span>
+              </div>
+            </div>
+          </PanelSection>
+
+          {/* 5. 診断 — 開発者向け */}
+          <PanelSection title="診断" icon={<Gauge />} collapsible defaultOpen={false}>
+            <div className="text-xs text-gray-400 space-y-1 tabular-nums">
+              {islError && (
+                <div className="text-red-400 bg-red-900/20 rounded p-1.5 mb-1">{islError}</div>
+              )}
+              <div>候補エッジ数: {islResult?.candidateEdgeCount ?? "-"}</div>
+              <div>計算時間: {islResult ? `${islResult.computeTimeMs.toFixed(2)} ms` : "-"}</div>
+              <div className="w-32">
+                <NumField
+                  label="再計算間隔(sim秒)"
+                  value={islSettings.recomputeIntervalSimS}
+                  min={1}
+                  step="1"
+                  onChange={(v) => onIslSettingsChange({ ...islSettings, recomputeIntervalSimS: v })}
+                />
+              </div>
+            </div>
+          </PanelSection>
+        </>
+      )}
+
+      {/* 地上局の通信範囲コーン — 経路探索とは独立した通信系の表示設定(旧・設定タブから移設) */}
+      <PanelSection title="地上局の通信範囲(コーン表示)" icon={<Radio />} collapsible defaultOpen={false}>
         <div className="flex items-center gap-2">
           <Checkbox
-            id="isl-include-base"
-            checked={islSettings.includeBaseSatellites}
-            onCheckedChange={() => toggleIncludeBase()}
+            id="isl-gs-cones"
+            checked={showGroundStationCones}
+            onCheckedChange={(v) => onShowGroundStationConesChange(v === true)}
           />
-          <Label htmlFor="isl-include-base" className="text-sm text-gray-200">
-            個別衛星 (satellites.toml) を含める
+          <Label htmlFor="isl-gs-cones" className="text-sm text-gray-200">
+            地上局の通信可能範囲を表示
           </Label>
         </div>
-        {islShellRanges.map((shell) => (
-          <div key={shell.key} className="flex items-center gap-2">
-            <Checkbox
-              id={`isl-shell-${shell.key}`}
-              checked={!islSettings.excludedShellKeys.includes(shell.key)}
-              onCheckedChange={() => toggleShell(shell.key)}
+        {showGroundStationCones && (
+          <div className="mt-1.5">
+            <CostSlider
+              label="最小仰角しきい値"
+              value={groundConeMinElevationDeg}
+              min={0}
+              max={85}
+              step={1}
+              unit="°"
+              onChange={onGroundConeMinElevationDegChange}
             />
-            <Label htmlFor={`isl-shell-${shell.key}`} className="text-sm text-gray-200">
-              {shell.name || `シェル ${Number(shell.key) + 1}`} ({shell.count} 機)
-            </Label>
-          </div>
-        ))}
-        {islShellRanges.length === 0 && (
-          <p className="text-xs text-gray-500">constellation.toml にシェルがありません。</p>
-        )}
-        {hasZeroParticipants && (
-          <p className="text-xs text-red-400 mt-2">
-            参加衛星が 0 機です。経路は常に到達不能になります。
-          </p>
-        )}
-      </PanelSection>
-
-      <PanelSection title="シェル別 ISL 設定" icon={<Layers />} collapsible defaultOpen={false}>
-        <p className="text-xs text-gray-400 mb-2">
-          シェルごとに ISL のリンク方式・最大距離・地球遮蔽マージンを上書きできます(未設定の項目は上の
-          共通設定を使用)。「gridPattern」は面内前後2機+隣接面同スロット2機のみに限定した固定トポロジで、
-          大規模コンステレーションでの候補生成が高速になります(§1.7.3)。異なるシェル同士のリンクは常に
-          dynamic(自由トポロジ)として扱われ、その最大距離は両シェルの設定の大きい方が使われます。
-        </p>
-        {islShellRanges.map((shell) => (
-          <ShellOverrideRow
-            key={shell.key}
-            shell={shell}
-            override={islSettings.shellLinkModels?.[shell.key]}
-            onChange={(patch) => updateShellLinkModel(shell.key, patch)}
-          />
-        ))}
-        {islShellRanges.length === 0 && (
-          <p className="text-xs text-gray-500">constellation.toml にシェルがありません。</p>
-        )}
-      </PanelSection>
-
-      <PanelSection title="リンク距離制限" icon={<Radio />} collapsible defaultOpen={false}>
-        <p className="text-xs text-gray-400 mb-2">
-          衛星間(ISL)・地上⇔衛星(GSL)どちらのリンクにも適用される最大距離です。これを超える距離のリンクは
-          候補から除外されます。特に GSL は仰角の条件だけでは低仰角・長距離の「かすめるような」リンクも
-          成立してしまうため、ここで実用上の上限を設定できます。
-        </p>
-        <CostSlider
-          label="最大リンク距離"
-          value={islSettings.linkModel.maxRangeKm}
-          min={100}
-          max={20000}
-          step={100}
-          unit="km"
-          hint="ISL・GSL 共通の最大リンク距離。通信端末の性能に相当します。これより遠い相手とはリンクしません(既定 5,000 km)。小さくするほど、地上局からうんと離れた低仰角の衛星が経路に選ばれるのを防げます。"
-          onChange={(v) =>
-            onIslSettingsChange({
-              ...islSettings,
-              linkModel: { ...islSettings.linkModel, maxRangeKm: v },
-            })
-          }
-        />
-        <CostSlider
-          label="地球遮蔽マージン(ISL のみ)"
-          value={islSettings.linkModel.losMarginKm}
-          min={0}
-          max={500}
-          step={10}
-          unit="km"
-          hint="衛星間(ISL)リンクが地球の縁をかすめるのを避けるための余裕高度。GSL(地上⇔衛星)には適用されません(GSLは仰角と上の最大リンク距離で判定します)。大きくすると地球に近い(低空を通る)ISLリンクがより厳しく除外されます(既定 80 km)。"
-          onChange={(v) =>
-            onIslSettingsChange({
-              ...islSettings,
-              linkModel: { ...islSettings.linkModel, losMarginKm: v },
-            })
-          }
-        />
-      </PanelSection>
-
-      <PanelSection title="コスト設定(経路選択の重み付け)" icon={<Gauge />} collapsible defaultOpen={false}>
-        <p className="text-xs text-gray-400 mb-2">
-          経路の総遅延は「伝搬遅延(距離 ÷ 光速。常に自動計算・調整不可)」+「下記の追加コスト」の合計です。
-          下記の値を大きくすると、その要素を避ける経路が選ばれやすくなります。すべて即時に経路計算へ反映されます。
-        </p>
-        <CostSlider
-          label="ホップペナルティ"
-          value={islSettings.cost.hopPenaltyMs}
-          min={0}
-          max={20}
-          step={0.5}
-          unit="ms"
-          hint="中継する衛星 1 機ごとに加算される遅延。大きくするほど、遅延は多少増えても中継衛星の少ない経路が優先されます。0 にすると純粋に伝搬遅延が最小の経路になります。"
-          onChange={(v) =>
-            onIslSettingsChange({ ...islSettings, cost: { ...islSettings.cost, hopPenaltyMs: v } })
-          }
-        />
-        <CostSlider
-          label="経路の安定性(ヒステリシス β)"
-          value={islSettings.cost.switchDiscount}
-          min={0}
-          max={0.5}
-          step={0.01}
-          unit=""
-          format={(v) => `${Math.round(v * 100)}%`}
-          hint="コストではなく「今の経路を維持しやすくする割引率」です。新しい経路のコストが、今の経路のコストをこの割合分割り引いた値より安くならない限り切り替えません。0% だと毎回コスト最小の経路に切り替わり、値を大きくするほど経路のちらつき(フラッピング)が起きにくくなります。"
-          onChange={(v) =>
-            onIslSettingsChange({ ...islSettings, cost: { ...islSettings.cost, switchDiscount: v } })
-          }
-        />
-        <div className="grid grid-cols-2 gap-2 mt-1">
-          <NumField
-            label="GSL ペナルティ(ms)"
-            value={islSettings.cost.kindPenaltyMs?.gsl ?? 0}
-            onChange={(v) =>
-              onIslSettingsChange({
-                ...islSettings,
-                cost: {
-                  ...islSettings.cost,
-                  kindPenaltyMs: { ...islSettings.cost.kindPenaltyMs, gsl: v },
-                },
-              })
-            }
-          />
-          <NumField
-            label="ISL ペナルティ(ms)"
-            value={islSettings.cost.kindPenaltyMs?.isl ?? 0}
-            onChange={(v) =>
-              onIslSettingsChange({
-                ...islSettings,
-                cost: {
-                  ...islSettings.cost,
-                  kindPenaltyMs: { ...islSettings.cost.kindPenaltyMs, isl: v },
-                },
-              })
-            }
-          />
-        </div>
-        <p className="text-xs text-gray-500 mt-1">
-          GSL(地上⇔衛星)/ISL(衛星⇔衛星)のリンク種別ごとに固定で加算するペナルティです。
-          例えば ISL を避けたい(地上局とだけ通信させたい)場合は ISL ペナルティを大きくします。
-        </p>
-        <CostSlider
-          label="安定性ペナルティ(残存リンク時間, 既定 0 = 無効)"
-          value={islSettings.cost.stabilityWeightMs ?? 0}
-          min={0}
-          max={50}
-          step={1}
-          unit="ms"
-          hint="もうすぐ切れそうなリンク(前方300秒を先読みして予測)を避けやすくするペナルティの上限値。各エッジについて将来の衛星位置を先読みするため計算コストが高く、既定では無効(0ms)です。0 より大きくすると経路が長持ちしやすくなりますが、再計算が重くなります(Worker内で実行)。"
-          onChange={(v) =>
-            onIslSettingsChange({ ...islSettings, cost: { ...islSettings.cost, stabilityWeightMs: v } })
-          }
-        />
-      </PanelSection>
-
-      <PanelSection title="結果" icon={<Gauge />}>
-        {!islSettings.enabled || !islResult ? (
-          <p className="text-sm text-gray-400">計算していません。</p>
-        ) : !islResult.reachable ? (
-          <p className="text-sm text-red-400">
-            経路なし(到達不能{hasZeroParticipants ? " / 参加衛星 0" : ""})
-          </p>
-        ) : (
-          <div className="text-sm text-gray-200 space-y-1">
-            <div>総遅延: {islResult.totalDelayMs.toFixed(2)} ms</div>
-            <div className="text-xs text-gray-400 pl-2">
-              (内、伝搬遅延: {propagationDelayMs(islResult.totalDistanceKm).toFixed(2)} ms / 追加コスト:{" "}
-              {(islResult.totalDelayMs - propagationDelayMs(islResult.totalDistanceKm)).toFixed(2)} ms)
-            </div>
-            <div>ホップ数: {islResult.hopCount}</div>
-            <div>総距離: {islResult.totalDistanceKm.toFixed(1)} km</div>
-            <div>累積切替回数: {islSwitchCount}</div>
-            <div>
-              直近の切替から:{" "}
-              {islLastSwitchSimMs === null
-                ? "-"
-                : `${Math.max(0, (currentSimMs - islLastSwitchSimMs) / 1000).toFixed(0)} 秒`}
+            <CostSlider
+              label="可視距離上限"
+              value={groundConeDistanceKm}
+              min={100}
+              max={20000}
+              step={50}
+              unit="km"
+              format={(v) => `${Math.round(v).toLocaleString()} km`}
+              onChange={onGroundConeDistanceKmChange}
+            />
+            <div className="option-color-grid">
+              <div className="option-color-row">
+                <span className="option-color-label">表示カラー</span>
+                <input
+                  className="option-color-input"
+                  type="color"
+                  value={groundConeColor}
+                  onChange={(e) => onGroundConeColorChange(e.target.value)}
+                />
+                <span className="option-color-value">{groundConeColor.toUpperCase()}</span>
+              </div>
             </div>
           </div>
         )}
       </PanelSection>
+    </div>
+  );
+}
 
-      <PanelSection title="診断" icon={<Gauge />} collapsible defaultOpen={false}>
-        <div className="text-xs text-gray-400 space-y-1">
-          {islError && (
-            <div className="text-red-400 bg-red-900/20 rounded p-1.5 mb-1">{islError}</div>
-          )}
-          <div>候補エッジ数: {islResult?.candidateEdgeCount ?? "-"}</div>
-          <div>計算時間: {islResult ? `${islResult.computeTimeMs.toFixed(2)} ms` : "-"}</div>
-          <div className="w-32">
-            <NumField
-              label="再計算間隔(sim秒)"
-              value={islSettings.recomputeIntervalSimS}
-              min={1}
-              step="1"
-              onChange={(v) => onIslSettingsChange({ ...islSettings, recomputeIntervalSimS: v })}
-            />
-          </div>
-        </div>
-      </PanelSection>
+function ToggleSwitch({
+  checked,
+  onChange,
+  ariaLabel,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  ariaLabel: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+        checked ? "bg-orange-600" : "bg-gray-600"
+      }`}
+    >
+      <span
+        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+          checked ? "translate-x-[19px]" : "translate-x-[3px]"
+        }`}
+      />
+    </button>
+  );
+}
+
+function KpiCard({ value, unit, label }: { value: string; unit: string; label: string }) {
+  return (
+    <div className="bg-gray-900/60 border border-gray-700 rounded-md px-1.5 py-1 text-center">
+      <div className="text-base font-semibold text-gray-100 leading-tight">
+        {value}
+        <span className="text-[10px] font-normal text-gray-400 ml-0.5">{unit}</span>
+      </div>
+      <div className="text-[10px] text-gray-400">{label}</div>
+    </div>
+  );
+}
+
+function SubHeader({ children, first = false }: { children: string; first?: boolean }) {
+  return (
+    <div
+      className={`text-[11px] font-semibold uppercase tracking-wide text-gray-300 ${
+        first ? "" : "mt-3"
+      } mb-1 pb-0.5 border-b border-gray-700`}
+    >
+      {children}
     </div>
   );
 }
@@ -398,7 +583,7 @@ function EndpointEditor({
   }
 
   return (
-    <div className="border border-gray-600 rounded-md p-2 mb-2">
+    <div className="border border-gray-600 rounded-md p-2">
       <div className="text-xs font-semibold text-gray-300 mb-1">{label}</div>
       <select
         className="w-full bg-gray-700 text-gray-100 rounded px-1 py-1 text-sm mb-1"
@@ -539,7 +724,7 @@ function CostSlider({
     <div className="mb-2">
       <div className="flex justify-between text-xs text-gray-300 mb-0.5">
         <span>{label}</span>
-        <span>{valueText}</span>
+        <span className="tabular-nums">{valueText}</span>
       </div>
       <input
         type="range"

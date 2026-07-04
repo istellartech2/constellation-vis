@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Radio, Globe2, Rocket, Sun, Waypoints } from "lucide-react";
 import StationAccessAnalysis from "../analysis/StationAccessAnalysis";
@@ -22,9 +22,13 @@ interface Props {
   islShellRanges: IslShellRange[];
   onAnalysisStart?: () => void;
   onAnalysisEnd?: () => void;
+  /** External request to open a specific analysis modal (e.g. from the 通信 tab's result card). */
+  requestedAnalysis?: { type: AnalysisType; nonce: number } | null;
+  /** Called once the requested analysis has been opened, so the parent can clear the request. */
+  onRequestedAnalysisHandled?: () => void;
 }
 
-type AnalysisType =
+export type AnalysisType =
   | "地上局アクセス設計"
   | "全球アクセス設計"
   | "軌道寿命・推進剤設計"
@@ -42,6 +46,8 @@ export default function AnalysisTab({
   islShellRanges,
   onAnalysisStart,
   onAnalysisEnd,
+  requestedAnalysis,
+  onRequestedAnalysisHandled,
 }: Props) {
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [analysisType, setAnalysisType] = useState<AnalysisType>("");
@@ -51,6 +57,15 @@ export default function AnalysisTab({
     setAnalysisOpen(true);
     onAnalysisStart?.();
   }
+
+  // Open an analysis requested from outside this tab (runs on mount too, since
+  // the tab content unmounts on tab switch — a pending request survives that).
+  useEffect(() => {
+    if (!requestedAnalysis || !requestedAnalysis.type) return;
+    handleAnalysisClick(requestedAnalysis.type);
+    onRequestedAnalysisHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedAnalysis]);
 
   function handleAnalysisClose() {
     setAnalysisOpen(false);
