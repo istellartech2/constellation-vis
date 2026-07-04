@@ -1,16 +1,15 @@
 import { useEffect, useState, type RefObject } from "react";
 import type { SatelliteSpec } from "../../lib/satellites";
-import type { GroundStation } from "../../lib/groundStations";
+import type { CommittedScenario } from "../../lib/scenario";
 import type SatelliteScene from "../../lib/visualization";
 import {
   parseSatellitesToml,
-  parseConstellationToml,
   parseGroundStationsToml,
   parseConfigBundle,
   buildConfigBundle,
   downloadFile,
 } from "../../lib/config";
-import { parseConstellationConfig, generateShellRanges } from "../../lib/tomlParsers";
+import { buildConstellation } from "../../lib/tomlParsers";
 import EditorTab from "./EditorTab";
 import AnalysisTab from "./AnalysisTab";
 import OptionTab from "./OptionTab";
@@ -37,17 +36,8 @@ import type { ViewSettings } from "../../lib/viewState";
  */
 
 interface Props {
-  /**
-   * Called when the user clicks Update. Provides the parsed satellite list,
-   * ground station list and simulation start time back to the parent
-   * component.
-   */
-  onUpdate: (
-    sats: SatelliteSpec[],
-    stations: GroundStation[],
-    startTime: Date,
-    islShellRanges: IslShellRange[],
-  ) => void;
+  /** Called when the user clicks Update, with the newly committed scenario. */
+  onUpdate: (scenario: CommittedScenario) => void;
   /** Current satellite draw radius */
   satRadius: number;
   /** Called when satellite size is changed */
@@ -331,19 +321,22 @@ export default function SatelliteEditor({
   const handleUpdate = () => {
     try {
       const base = parseSatellitesToml(satText);
-      const con = constText ? parseConstellationToml(constText) : [];
+      // Parsed and generated in a single pass (SP-9) — `con` and `shellRanges`
+      // are guaranteed to describe the same generated array, rather than
+      // relying on two independent parses of the same text happening to agree.
+      const { satellites: con, ranges: shellRanges } = constText
+        ? buildConstellation(constText, base.length)
+        : { satellites: [], ranges: [] };
       const gs = parseGroundStationsToml(gsText);
       validateSatellites(base, "satellites.toml");
       validateSatellites(con, "constellation.toml");
       validateGroundStations(gs);
-      // Derived from the exact same constText parse that produced `con`, at
-      // the exact moment the new satellite array is committed — the only way
-      // to guarantee shellRanges never describes a different array than the
-      // one actually in use (Phase 5, H-1/H-4).
-      const shellRanges: IslShellRange[] = constText
-        ? generateShellRanges(parseConstellationConfig(constText), base.length)
-        : [];
-      onUpdate([...base, ...con], gs, new Date(startText), shellRanges);
+      onUpdate({
+        satellites: [...base, ...con],
+        groundStations: gs,
+        startTime: new Date(startText),
+        islShellRanges: shellRanges,
+      });
     } catch (e) {
       alert("ファイルの解析に失敗しました: " + (e as Error).message);
     }

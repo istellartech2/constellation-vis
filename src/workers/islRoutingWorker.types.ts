@@ -1,5 +1,12 @@
 import type { SatelliteSpec } from "../lib/satellites";
-import type { IslCostSettings, IslEndpoint, IslLinkModel, IslPathResult, IslShellRange } from "../lib/isl/types";
+import type {
+  IslCostSettings,
+  IslEndpoint,
+  IslLinkModel,
+  IslPathResult,
+  IslSettings,
+  IslShellRange,
+} from "../lib/isl/types";
 
 /** Sent once (and again whenever the satellite list changes) so the worker can build its own satrecs. */
 export interface IslRoutingWorkerInitPayload {
@@ -43,6 +50,31 @@ export interface IslRoutingWorkerConfigureRequest {
   id: number;
   type: "configure";
   payload: IslRoutingWorkerSettingsPayload;
+}
+
+/**
+ * Builds the settings payload shared by "configure" and "sweep" requests.
+ * Previously hand-assembled independently in `visualization.ts` and
+ * `IslRoutingAnalysis.tsx` — a forgotten field on one side silently made the
+ * live scene and the sweep analysis diverge (isl-routing-review.md SP-1, the
+ * same drift class S-4 fixed for the `cost`/`linkModel` sub-objects).
+ */
+export function buildIslWorkerSettingsPayload(
+  islSettings: IslSettings,
+  shellRanges: IslShellRange[],
+  endpointA: IslEndpoint,
+  endpointB: IslEndpoint,
+): IslRoutingWorkerSettingsPayload {
+  return {
+    excludedShellKeys: islSettings.excludedShellKeys,
+    includeBaseSatellites: islSettings.includeBaseSatellites,
+    endpointA,
+    endpointB,
+    linkModel: islSettings.linkModel,
+    shellRanges,
+    shellLinkModels: islSettings.shellLinkModels,
+    cost: islSettings.cost,
+  };
 }
 
 /**

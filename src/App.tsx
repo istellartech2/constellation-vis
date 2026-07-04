@@ -2,7 +2,7 @@ import { useRef, useEffect, useState, useCallback } from "react";
 import SpeedControl from "./components/ui/SpeedControl";
 import SatelliteEditor from "./components/ui/SatelliteEditor";
 import { useSatelliteScene } from "./components/useSatelliteScene";
-import { SATELLITES as INITIAL_SATS } from "./lib/satellites";
+import { SATELLITES as INITIAL_SATS, INITIAL_SHELL_RANGES } from "./lib/satellites";
 import { loadGroundStations, type GroundStation } from "./lib/groundStations";
 import SatelliteInfo from "./components/ui/SatelliteInfo";
 import { formatGroundStationInfo } from "./lib/formatGroundStationInfo";
@@ -114,7 +114,7 @@ function App() {
   // Derived from the same [...base, ...shells] array as `satellites`, computed
   // at the same moment (Update click) — never a stale localStorage snapshot
   // (Phase 5, H-1/H-4). Not part of DisplaySettings: it's not persisted.
-  const [islShellRanges, setIslShellRanges] = useState<IslShellRange[]>([]);
+  const [islShellRanges, setIslShellRanges] = useState<IslShellRange[]>(INITIAL_SHELL_RANGES);
 
   // Track cumulative path switches and time-since-last-switch for the ISL result
   // card (§2.5.2, Phase 2). switchedFromPrevious is only meaningful once a path
@@ -466,11 +466,11 @@ function App() {
         whiteBackground={whiteBackground}
         onWhiteBackgroundChange={setWhiteBackground}
         sceneRef={sceneRef}
-        onUpdate={(s, gs, start, shellRanges) => {
-          setSatellites(s);
-          setGroundStations(gs);
-          setStartTime(start);
-          setIslShellRanges(shellRanges);
+        onUpdate={(scenario) => {
+          setSatellites(scenario.satellites);
+          setGroundStations(scenario.groundStations);
+          setStartTime(scenario.startTime);
+          setIslShellRanges(scenario.islShellRanges);
         }}
         onAnalysisStart={handleAnalysisStart}
         onAnalysisEnd={handleAnalysisEnd}

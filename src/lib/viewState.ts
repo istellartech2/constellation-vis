@@ -100,42 +100,43 @@ function isValidViewSettings(v: unknown): v is ViewSettings {
 }
 
 /**
- * Bring a possibly-older ViewSettings up to the current shape. `display.isl`
- * may be absent (pre-ISL saves), in the pre-Phase-5 shape
- * (`participantSatnums`/`shellRanges` instead of
- * `excludedShellKeys`/`includeBaseSatellites`), or missing `gslColor`/
- * `islColor` (pre-Phase-8-2, when those lived as separate top-level
- * `display.islGslColor`/`islIslColor` fields, S-3) — in all cases fall back
- * to defaults rather than trusting a type assertion that no longer matches
- * (M-3), while still salvaging a legacy top-level color if present.
+ * Per-version upgrade steps, keyed by the version a record was *stored as*
+ * (not the version it upgrades to). `migrateViewSettings` below applies every
+ * step from the stored version up to {@link STORAGE_VERSION} in order, so
+ * adding a v3 migration later means adding one new entry here rather than
+ * editing a monolithic shape-sniffing function (isl-routing-review.md SP-12).
+ *
+ * Only one step exists today: v1 -> v2, when `IslSettings` dropped
+ * `participantSatnums`/`shellRanges` for stable-key participation (Phase 5,
+ * H-4) and — in the same pre-release branch — folded the ISL display colors
+ * from top-level `display.islGslColor`/`islIslColor` into `isl.gslColor`/
+ * `islColor` (S-3). `display.isl` may be absent (pre-ISL saves) or in the
+ * pre-Phase-5 shape; in both cases it's discarded rather than trusted, since
+ * a stale participation snapshot is worse than losing it (M-3). There is
+ * deliberately no "v2 record missing isl colors" step: every v2 record this
+ * app has ever written already has `isl.gslColor`/`islColor`, since both
+ * changes shipped in the same release.
  */
+const MIGRATIONS: Record<number, (display: unknown) => unknown> = {
+  1: (display) => {
+    const legacyDisplay = display as DisplaySettings & { islGslColor?: string; islIslColor?: string };
+    const { islGslColor, islIslColor, ...restDisplay } = legacyDisplay;
+    const migratedIsl: IslSettings = {
+      ...createDefaultIslSettings(),
+      gslColor: islGslColor ?? DEFAULT_GSL_COLOR,
+      islColor: islIslColor ?? DEFAULT_ISL_COLOR,
+    };
+    return { ...restDisplay, isl: migratedIsl };
+  },
+};
+
 function migrateViewSettings(v: ViewSettings): ViewSettings {
-  const isl = v.display.isl as unknown;
-  const islObj = isl && typeof isl === "object" ? (isl as Partial<IslSettings>) : null;
-  const hasCurrentIslShape = !!islObj && Array.isArray(islObj.excludedShellKeys);
-  const legacyDisplay = v.display as DisplaySettings & { islGslColor?: string; islIslColor?: string };
-
-  const migratedIsl: IslSettings = hasCurrentIslShape
-    ? {
-        ...(islObj as IslSettings),
-        gslColor: typeof islObj?.gslColor === "string" ? islObj.gslColor : legacyDisplay.islGslColor ?? DEFAULT_GSL_COLOR,
-        islColor: typeof islObj?.islColor === "string" ? islObj.islColor : legacyDisplay.islIslColor ?? DEFAULT_ISL_COLOR,
-      }
-    : {
-        ...createDefaultIslSettings(),
-        gslColor: legacyDisplay.islGslColor ?? DEFAULT_GSL_COLOR,
-        islColor: legacyDisplay.islIslColor ?? DEFAULT_ISL_COLOR,
-      };
-
-  const { islGslColor, islIslColor, ...restDisplay } = legacyDisplay;
-  void islGslColor;
-  void islIslColor;
-
-  return {
-    version: STORAGE_VERSION,
-    camera: v.camera,
-    display: { ...restDisplay, isl: migratedIsl },
-  };
+  let display: unknown = v.display;
+  for (let version = v.version; version < STORAGE_VERSION; version++) {
+    const step = MIGRATIONS[version];
+    if (step) display = step(display);
+  }
+  return { version: STORAGE_VERSION, camera: v.camera, display: display as DisplaySettings };
 }
 
 export function loadLastView(): ViewSettings | null {

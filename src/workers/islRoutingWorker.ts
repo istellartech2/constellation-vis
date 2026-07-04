@@ -2,15 +2,13 @@
 import * as satellite from "satellite.js";
 import { toSatrec } from "../lib/satellites";
 import { resolveIslParticipantIndices } from "../lib/isl/participants";
-import { edgeKey } from "../lib/isl/edgeKey";
+import { pathEdgeKeys } from "../lib/isl/edgeKey";
 import { buildSnapshotGraph } from "../lib/isl/graph";
 import { findShortestPath } from "../lib/isl/shortestPath";
 import { applyStabilityPenalties } from "../lib/isl/stability";
-import {
-  DEFAULT_REMAINING_LINK_TIME_HORIZON_S,
-  DEFAULT_REMAINING_LINK_TIME_STEP_S,
-} from "../lib/isl/geometry";
-import { propagateAll } from "../lib/isl/propagate";
+import { DEFAULT_REMAINING_LINK_TIME_STEP_S } from "../lib/isl/geometry";
+import { propagateAll, type PropagateAllResult } from "../lib/isl/propagate";
+import type { Vec3 } from "../lib/isl/geometry";
 import type { IslPathResult, IslShellRange } from "../lib/isl/types";
 import type {
   IslRoutingWorkerRequest,
@@ -20,10 +18,14 @@ import type {
 
 const ctx: DedicatedWorkerGlobalScope = self as unknown as DedicatedWorkerGlobalScope;
 
-/** tau_min [s] (§1.5.2). Folded to a constant (S-2) — no UI ever wired up a way to override it. */
-const DEFAULT_STABILITY_THRESHOLD_S = 60;
-
 let satRecs: satellite.SatRec[] = [];
+/**
+ * Reused across every "compute"/sweep-step for the lifetime of one "init"
+ * (SP-17) — `propagateAll` mutates this in place instead of allocating N
+ * position objects + 2 arrays per call. Reset to undefined on "init" since
+ * the satellite count may have changed.
+ */
+let propagateBuffer: PropagateAllResult | undefined;
 /** Set by "configure" and reused by every "compute" until the next one (P-2). */
 let liveSettings: IslRoutingWorkerSettingsPayload | null = null;
 
@@ -44,6 +46,59 @@ function validateShellRanges(shellRanges: IslShellRange[], satCount: number): vo
   }
 }
 
+/**
+ * Memoized position/GMST prediction for the stability pass (§1.5.2). Without
+ * this, every ISL edge re-propagates its own satellites at every one of
+ * `remainingLinkTime`'s coarse sample times (satCount * avgEdgesPerSat * ~31
+ * samples * 2 endpoints — the dominant cost when stabilityWeightMs > 0). The
+ * coarse samples land on a shared (satIndex, dt) grid across every edge, so
+ * caching by that pair turns the redundant re-propagation into a single call
+ * per satellite per sample. Binary-search refinement dt values aren't
+ * grid-aligned and are rare (only for edges that actually break, ~20 calls
+ * each) — they skip the cache and are computed directly, which is fine since
+ * they were never the bottleneck (isl-routing-review.md SP-13).
+ */
+function memoizedStabilityPredictors(
+  satEciPositions: Vec3[],
+  simDate: Date,
+  stepS: number = DEFAULT_REMAINING_LINK_TIME_STEP_S,
+) {
+  const posCache = new Map<number, Vec3>();
+  const gmstCache = new Map<number, number>();
+  const scratchDate = new Date(simDate.getTime());
+
+  const predictSatPosition = (satIndex: number, dt: number): Vec3 => {
+    const gridIndex = dt / stepS;
+    if (!Number.isInteger(gridIndex)) {
+      scratchDate.setTime(simDate.getTime() + dt * 1000);
+      const pv = satellite.propagate(satRecs[satIndex], scratchDate);
+      return pv?.position ?? satEciPositions[satIndex];
+    }
+    const key = satIndex * 1_000_000 + gridIndex;
+    const cached = posCache.get(key);
+    if (cached) return cached;
+    scratchDate.setTime(simDate.getTime() + dt * 1000);
+    const pv = satellite.propagate(satRecs[satIndex], scratchDate);
+    const pos = pv?.position ?? satEciPositions[satIndex];
+    posCache.set(key, pos);
+    return pos;
+  };
+
+  const gmstAt = (dt: number): number => {
+    const gridIndex = dt / stepS;
+    if (!Number.isInteger(gridIndex)) {
+      return satellite.gstime(new Date(simDate.getTime() + dt * 1000));
+    }
+    const cached = gmstCache.get(gridIndex);
+    if (cached !== undefined) return cached;
+    const gmst = satellite.gstime(new Date(simDate.getTime() + dt * 1000));
+    gmstCache.set(gridIndex, gmst);
+    return gmst;
+  };
+
+  return { predictSatPosition, gmstAt };
+}
+
 /** Build the snapshot graph + (optional) stability pass + Dijkstra for one instant. */
 function computeAt(
   simDate: Date,
@@ -52,7 +107,8 @@ function computeAt(
 ): IslPathResult {
   validateShellRanges(settings.shellRanges, satRecs.length);
 
-  const { positions: satEciPositions, valid: satEciValid } = propagateAll(satRecs, simDate);
+  propagateBuffer = propagateAll(satRecs, simDate, propagateBuffer);
+  const { positions: satEciPositions, valid: satEciValid } = propagateBuffer;
 
   // Exclude satellites whose propagation failed at this instant — matches
   // the main-thread bug fix (a stale/zeroed position must never be treated
@@ -80,21 +136,14 @@ function computeAt(
 
   const stabilityWeightMs = settings.cost.stabilityWeightMs ?? 0;
   if (stabilityWeightMs > 0) {
+    const { predictSatPosition, gmstAt } = memoizedStabilityPredictors(satEciPositions, simDate);
     graph = applyStabilityPenalties(graph, {
-      satCount: satRecs.length,
-      predictSatPosition: (satIndex, dt) => {
-        const future = new Date(simDate.getTime() + dt * 1000);
-        const pv = satellite.propagate(satRecs[satIndex], future);
-        return pv?.position ?? satEciPositions[satIndex];
-      },
-      gmstAt: (dt) => satellite.gstime(new Date(simDate.getTime() + dt * 1000)),
+      predictSatPosition,
+      gmstAt,
       endpointA: settings.endpointA,
       endpointB: settings.endpointB,
       maxRangeKm: settings.linkModel.maxRangeKm,
       losMarginKm: settings.linkModel.losMarginKm,
-      horizonS: DEFAULT_REMAINING_LINK_TIME_HORIZON_S,
-      stepS: DEFAULT_REMAINING_LINK_TIME_STEP_S,
-      thresholdS: DEFAULT_STABILITY_THRESHOLD_S,
       weightMs: stabilityWeightMs,
     });
   }
@@ -110,10 +159,6 @@ function computeAt(
   );
 }
 
-function edgeKeysOf(result: IslPathResult): Set<number> {
-  return new Set(result.edges.map((e) => edgeKey(e.fromNodeId, e.toNodeId)));
-}
-
 ctx.addEventListener("message", (event: MessageEvent<IslRoutingWorkerRequest>) => {
   const message = event.data;
   const { id } = message;
@@ -121,6 +166,7 @@ ctx.addEventListener("message", (event: MessageEvent<IslRoutingWorkerRequest>) =
   try {
     if (message.type === "init") {
       satRecs = message.payload.satellites.map((spec) => toSatrec(spec));
+      propagateBuffer = undefined; // satellite count may have changed
       const response: IslRoutingWorkerResponse = { id, type: "ack" };
       ctx.postMessage(response);
       return;
@@ -158,7 +204,7 @@ ctx.addEventListener("message", (event: MessageEvent<IslRoutingWorkerRequest>) =
       const simDate = new Date(startMs + t * 1000);
       const result = computeAt(simDate, settings, previousPathEdgeKeys);
       results.push(result);
-      if (result.reachable) previousPathEdgeKeys = edgeKeysOf(result);
+      if (result.reachable) previousPathEdgeKeys = new Set(pathEdgeKeys(result.edges));
     }
 
     const response: IslRoutingWorkerResponse = { id, type: "sweepResult", payload: { results } };

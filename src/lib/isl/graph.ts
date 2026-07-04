@@ -8,6 +8,7 @@ import {
   type CandidateEdge,
 } from "./candidates";
 import { edgeCostMs } from "./cost";
+import { shellOfIndex } from "./participants";
 import {
   endpointANodeId,
   endpointBNodeId,
@@ -167,12 +168,6 @@ function resolveIslEdges(
 
   // 2. Cross-shell / unassigned-satellite candidates: always dynamic (never
   // gridPattern, which is only meaningful within a single shell's structure).
-  const shellOfIndex = (idx: number): IslShellRange | null => {
-    for (const shell of shellRanges) {
-      if (idx >= shell.startIndex && idx < shell.startIndex + shell.count) return shell;
-    }
-    return null;
-  };
   const maxRangeKmFor = (shell: IslShellRange | null): number =>
     shell ? resolvedShellModel(shell).maxRangeKm : linkModel.maxRangeKm;
 
@@ -189,14 +184,17 @@ function resolveIslEdges(
     widestRangeKm,
     linkModel.losMarginKm,
     (i, j) => {
-      const shellI = shellOfIndex(i);
-      const shellJ = shellOfIndex(j);
+      const shellI = shellOfIndex(i, shellRanges);
+      const shellJ = shellOfIndex(j, shellRanges);
       return !!shellI && !!shellJ && shellI.key === shellJ.key;
     },
   );
 
   for (const e of candidatePairs) {
-    const maxPairRangeKm = Math.max(maxRangeKmFor(shellOfIndex(e.i)), maxRangeKmFor(shellOfIndex(e.j)));
+    const maxPairRangeKm = Math.max(
+      maxRangeKmFor(shellOfIndex(e.i, shellRanges)),
+      maxRangeKmFor(shellOfIndex(e.j, shellRanges)),
+    );
     if (e.distanceKm > maxPairRangeKm) continue;
 
     edges.push(e);

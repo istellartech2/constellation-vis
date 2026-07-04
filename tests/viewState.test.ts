@@ -148,19 +148,11 @@ describe("viewState persistence", () => {
     expect(loaded!.display.isl.islColor).toBe("#33e0ff");
   });
 
-  // S-3: the two ISL colors used to live as separate top-level
-  // display.islGslColor/islIslColor fields — verify a saved view in that
-  // shape still recovers its colors after moving into display.isl.
-  it("migrates legacy top-level islGslColor/islIslColor into isl.gslColor/islColor", () => {
-    const legacyDisplay = {
-      ...DISPLAY,
-      isl: { ...createDefaultIslSettings(), gslColor: undefined, islColor: undefined },
-      islGslColor: "#123456",
-      islIslColor: "#abcdef",
-    };
+  it("migrates a version-1 view with legacy top-level islGslColor/islIslColor into isl.gslColor/islColor", () => {
+    const legacyDisplay = { ...DISPLAY, islGslColor: "#123456", islIslColor: "#abcdef" };
     localStorage.setItem(
       "constellation-vis:lastView",
-      JSON.stringify({ version: 2, display: legacyDisplay, camera: CAMERA }),
+      JSON.stringify({ version: 1, display: legacyDisplay, camera: CAMERA }),
     );
 
     const loaded = loadLastView();

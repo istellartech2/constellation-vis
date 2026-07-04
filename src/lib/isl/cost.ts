@@ -2,9 +2,6 @@
 
 export const SPEED_OF_LIGHT_KM_PER_S = 299792.458;
 
-export const DEFAULT_STABILITY_THRESHOLD_S = 60;
-export const DEFAULT_STABILITY_WEIGHT_MS = 20;
-
 export function propagationDelayMs(distanceKm: number): number {
   return (distanceKm / SPEED_OF_LIGHT_KM_PER_S) * 1000;
 }
@@ -17,11 +14,7 @@ export function propagationDelayMs(distanceKm: number): number {
  * remaining-time level considered "stable"; `weightMs` (w_tau) is the penalty
  * cap applied when remainingS is 0.
  */
-export function stabilityPenaltyMs(
-  remainingS: number,
-  thresholdS: number = DEFAULT_STABILITY_THRESHOLD_S,
-  weightMs: number = DEFAULT_STABILITY_WEIGHT_MS,
-): number {
+export function stabilityPenaltyMs(remainingS: number, thresholdS: number, weightMs: number): number {
   if (thresholdS <= 0) return 0;
   return weightMs * Math.max(0, 1 - remainingS / thresholdS);
 }

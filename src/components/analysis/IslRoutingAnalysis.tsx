@@ -4,10 +4,12 @@ import { Button } from "../ui/button";
 import { downloadCSV, downloadPNG } from "./utils/downloadUtils";
 import type { SatelliteSpec } from "../../lib/satellites";
 import type { IslPathResult, IslSettings, IslShellRange } from "../../lib/isl/types";
-import type {
-  IslRoutingWorkerInitRequest,
-  IslRoutingWorkerResponse,
-  IslRoutingWorkerSweepRequest,
+import { numericInputValue, parseNumericInput } from "../../lib/numericInput";
+import {
+  buildIslWorkerSettingsPayload,
+  type IslRoutingWorkerInitRequest,
+  type IslRoutingWorkerResponse,
+  type IslRoutingWorkerSweepRequest,
 } from "../../workers/islRoutingWorker.types";
 
 interface Props {
@@ -28,8 +30,14 @@ interface Props {
  * impossible instead of merely avoided (isl-routing-review.md H-4).
  */
 export default function IslRoutingAnalysis({ satellites, islSettings, islShellRanges, startTime }: Props) {
-  const [durationMin, setDurationMin] = useState(10);
-  const [stepS, setStepS] = useState(10);
+  // Held as raw text rather than a coerced number (M-1/SP-7): a plain
+  // `Number(e.target.value) || 1` immediately snapped the field back to 1 the
+  // moment it was cleared while typing, since the coerced value round-trips
+  // straight back into this controlled input's `value`.
+  const [durationMinDraft, setDurationMinDraft] = useState("10");
+  const [stepSDraft, setStepSDraft] = useState("10");
+  const durationMin = Math.max(1, parseNumericInput(durationMinDraft) || 1);
+  const stepS = Math.max(1, parseNumericInput(stepSDraft) || 1);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
   const [results, setResults] = useState<IslPathResult[] | null>(null);
@@ -89,14 +97,7 @@ export default function IslRoutingAnalysis({ satellites, islSettings, islShellRa
             startIso: startTime.toISOString(),
             durationS: durationMin * 60,
             stepS,
-            excludedShellKeys: islSettings.excludedShellKeys,
-            includeBaseSatellites: islSettings.includeBaseSatellites,
-            endpointA: islSettings.endpointA!,
-            endpointB: islSettings.endpointB!,
-            linkModel: islSettings.linkModel,
-            shellRanges: islShellRanges,
-            shellLinkModels: islSettings.shellLinkModels,
-            cost: islSettings.cost,
+            ...buildIslWorkerSettingsPayload(islSettings, islShellRanges, islSettings.endpointA!, islSettings.endpointB!),
           },
         };
         activeWorker.postMessage(sweepRequest);
@@ -209,8 +210,8 @@ export default function IslRoutingAnalysis({ satellites, islSettings, islShellRa
             min={1}
             step={1}
             className="w-20 bg-gray-700 text-gray-100 rounded px-1 py-0.5 mt-0.5 block"
-            value={durationMin}
-            onChange={(e) => setDurationMin(Math.max(1, Number(e.target.value) || 1))}
+            value={numericInputValue(parseNumericInput(durationMinDraft))}
+            onChange={(e) => setDurationMinDraft(e.target.value)}
           />
         </label>
         <label className="text-xs text-gray-400">
@@ -220,8 +221,8 @@ export default function IslRoutingAnalysis({ satellites, islSettings, islShellRa
             min={1}
             step={1}
             className="w-20 bg-gray-700 text-gray-100 rounded px-1 py-0.5 mt-0.5 block"
-            value={stepS}
-            onChange={(e) => setStepS(Math.max(1, Number(e.target.value) || 1))}
+            value={numericInputValue(parseNumericInput(stepSDraft))}
+            onChange={(e) => setStepSDraft(e.target.value)}
           />
         </label>
         <Button onClick={runSweep} disabled={running || !endpointsConfigured} variant="secondary">

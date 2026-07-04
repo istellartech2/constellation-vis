@@ -2,6 +2,7 @@
 import * as satellite from "satellite.js";
 import type { Vec3 } from "./geometry";
 import { elevationRad, hasLineOfSight, linkDistanceKm, linkDistanceSqKm2 } from "./geometry";
+import { edgeKey } from "./edgeKey";
 
 export interface CandidateEdge {
   /** Node id at one end of the edge. */
@@ -88,12 +89,9 @@ export function uniformGridIslCandidates(
     wrapAxis(cx) + wrapAxis(cy) * AXIS_MOD + wrapAxis(cz) * AXIS_MOD * AXIS_MOD;
 
   const grid = new Map<number, number[]>();
-  const satCell = new Map<number, [number, number, number]>();
   for (const i of participantIndices) {
     const p = satEciPositions[i];
-    const c: [number, number, number] = [cellCoord(p.x), cellCoord(p.y), cellCoord(p.z)];
-    satCell.set(i, c);
-    const key = cellKey(c[0], c[1], c[2]);
+    const key = cellKey(cellCoord(p.x), cellCoord(p.y), cellCoord(p.z));
     const bucket = grid.get(key);
     if (bucket) bucket.push(i);
     else grid.set(key, [i]);
@@ -109,8 +107,15 @@ export function uniformGridIslCandidates(
   // the symmetric visit from j's own outer-loop iteration), every unordered
   // pair is produced exactly once.
   for (const i of participantIndices) {
-    const [cx, cy, cz] = satCell.get(i)!;
     const pi = satEciPositions[i];
+    // Recomputed inline (3 divisions) rather than fetched from a per-satellite
+    // Map built above (SP-16) — a Map<number, [number,number,number]> lookup
+    // plus the tuple allocation that built it is more expensive than 3
+    // divisions for this small a computation, and this coordinate was already
+    // computed once during the grid-build loop above.
+    const cx = cellCoord(pi.x);
+    const cy = cellCoord(pi.y);
+    const cz = cellCoord(pi.z);
     for (const dx of OFFSETS) {
       for (const dy of OFFSETS) {
         for (const dz of OFFSETS) {
@@ -184,13 +189,13 @@ export function gridPatternIslCandidates(
 
   const maxRangeSqKm2 = maxRangeKm * maxRangeKm;
   const edges: CandidateEdge[] = [];
-  const seen = new Set<string>();
+  const seen = new Set<number>();
 
   const tryAddEdge = (a: number | null, b: number | null) => {
     if (a === null || b === null || a === b) return;
     const i = Math.min(a, b);
     const j = Math.max(a, b);
-    const key = `${i}-${j}`;
+    const key = edgeKey(i, j);
     if (seen.has(key)) return;
     seen.add(key);
 

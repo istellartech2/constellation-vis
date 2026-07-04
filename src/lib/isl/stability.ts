@@ -1,6 +1,8 @@
 /** Stability penalty (c_stab, §1.5.2, Phase 4) applied on top of a built snapshot graph. */
 import * as satellite from "satellite.js";
 import {
+  DEFAULT_REMAINING_LINK_TIME_HORIZON_S,
+  DEFAULT_REMAINING_LINK_TIME_STEP_S,
   elevationRad,
   endpointEci,
   endpointObserver,
@@ -14,8 +16,17 @@ import { edgeKey } from "./edgeKey";
 import type { GraphEdge, IslGraph } from "./graph";
 import type { IslEndpoint } from "./types";
 
+/**
+ * tau_min [s] (§1.5.2). Single source of truth for the stability tuning
+ * constant — previously triple-managed: an unused default on
+ * `stabilityPenaltyMs` in cost.ts, a re-declared local constant in the
+ * routing worker, and every call site of `applyStabilityPenalties` passing
+ * the same value explicitly (isl-routing-review.md SP-3). No UI has ever
+ * wired up a way to override this.
+ */
+export const DEFAULT_STABILITY_THRESHOLD_S = 60;
+
 export interface StabilityParams {
-  satCount: number;
   /** Predicts a satellite's ECI position `dtSeconds` after the snapshot's simDate. */
   predictSatPosition: (satIndex: number, dtSeconds: number) => Vec3;
   /** GMST at simDate + dtSeconds. */
@@ -29,9 +40,10 @@ export interface StabilityParams {
    */
   maxRangeKm: number;
   losMarginKm: number;
-  horizonS: number;
-  stepS: number;
-  thresholdS: number;
+  /** Defaults to geometry.ts's DEFAULT_REMAINING_LINK_TIME_HORIZON_S/STEP_S and DEFAULT_STABILITY_THRESHOLD_S above. */
+  horizonS?: number;
+  stepS?: number;
+  thresholdS?: number;
   /** w_tau [ms]; a value <= 0 disables this entirely (returns the graph unchanged). */
   weightMs: number;
 }
@@ -46,18 +58,21 @@ export function applyStabilityPenalties(graph: IslGraph, params: StabilityParams
   if (params.weightMs <= 0) return graph;
 
   const {
-    satCount,
     predictSatPosition,
     gmstAt,
     endpointA,
     endpointB,
     maxRangeKm,
     losMarginKm,
-    horizonS,
-    stepS,
-    thresholdS,
+    horizonS = DEFAULT_REMAINING_LINK_TIME_HORIZON_S,
+    stepS = DEFAULT_REMAINING_LINK_TIME_STEP_S,
+    thresholdS = DEFAULT_STABILITY_THRESHOLD_S,
     weightMs,
   } = params;
+  // satCount is exactly nodeAId (endpointANodeId(satCount) === satCount) — no
+  // need for callers to also pass it separately (it was previously a
+  // redundant required field on StabilityParams).
+  const satCount = graph.nodeAId;
 
   const remainingCache = new Map<number, number>();
   const remainingFor = (fromNodeId: number, toNodeId: number, kind: "isl" | "gsl"): number => {

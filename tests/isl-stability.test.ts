@@ -35,7 +35,6 @@ describe("applyStabilityPenalties (§1.5.2, Phase 4)", () => {
     const originalCost = graph.adjacency.get(0)![0].costMs;
 
     const result = applyStabilityPenalties(graph, {
-      satCount: 2,
       predictSatPosition: (i) => positions[i],
       gmstAt: () => 0,
       endpointA,
@@ -72,7 +71,6 @@ describe("applyStabilityPenalties (§1.5.2, Phase 4)", () => {
     const originalCost = graph.adjacency.get(0)!.find((e) => e.to === 1)!.costMs;
 
     const result = applyStabilityPenalties(graph, {
-      satCount: 2,
       predictSatPosition: (i, dt) => ({
         x: 7000,
         y: (i === 0 ? 0 : 100) + (i === 0 ? -1 : 1) * v * dt,
@@ -117,7 +115,6 @@ describe("applyStabilityPenalties (§1.5.2, Phase 4)", () => {
     const originalCost = graph.adjacency.get(0)!.find((e) => e.to === 1)!.costMs;
 
     const result = applyStabilityPenalties(graph, {
-      satCount: 2,
       predictSatPosition: (i) => positions[i], // never moves -> link never breaks
       gmstAt: (dt) => satellite.gstime(new Date(simDate.getTime() + dt * 1000)),
       endpointA,

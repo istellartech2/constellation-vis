@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { SatelliteSpec } from "./satellites";
 import type { GroundStation, VisibilityMode } from "./groundStations";
+import type { IslShellRange } from "./isl/types";
 import {
   expandSatelliteEditorConfig,
   parseSatelliteEditorConfig,
@@ -81,21 +82,10 @@ export function parseSatellitesToml(text: string): SatelliteSpec[] {
   return expandSatelliteEditorConfig(parseSatelliteEditorConfig(text));
 }
 
-/** One shell's satellites plus the metadata needed to resolve ISL participation (§2.4). */
-export interface GeneratedShellRange {
-  /** Stable key: the shell's array index in `con.shells`, as a string. */
-  key: string;
-  name?: string;
-  /** Index (into the combined [...base, ...shells] array) of the shell's first satellite. */
-  startIndex: number;
-  /** Satellites actually generated for this shell (not the nominal `shell.count`). */
-  count: number;
-  planes: number;
-}
-
 interface GeneratedShells {
   satellites: SatelliteSpec[];
-  ranges: GeneratedShellRange[];
+  /** One entry per shell, with the metadata needed to resolve ISL participation (§2.4). */
+  ranges: IslShellRange[];
 }
 
 /**
@@ -113,7 +103,7 @@ function generateFromShellsDetailed(con: ConstellationConfig, baseOffset: number
   // Note: TLE format only supports 5-digit satellite numbers (max 99999)
   let nextSatnum = 1;
   const sats: SatelliteSpec[] = [];
-  const ranges: GeneratedShellRange[] = [];
+  const ranges: IslShellRange[] = [];
 
   (con.shells ?? []).forEach((shell, shellIdx) => {
     const count = Number(shell.count);
@@ -176,7 +166,7 @@ function generateFromShells(con: ConstellationConfig): SatelliteSpec[] {
  * (H-1 fix). `baseOffset` is the number of satellites.toml satellites that
  * precede the constellation shells in the combined array.
  */
-export function generateShellRanges(con: ConstellationConfig, baseOffset: number): GeneratedShellRange[] {
+export function generateShellRanges(con: ConstellationConfig, baseOffset: number): IslShellRange[] {
   return generateFromShellsDetailed(con, baseOffset).ranges;
 }
 
@@ -232,6 +222,22 @@ export function parseConstellationConfig(text: string): ConstellationConfig {
 
 export function parseConstellationToml(text: string): SatelliteSpec[] {
   return generateFromShells(parseConstellationConfig(text));
+}
+
+/**
+ * Parse constellation.toml and generate its satellites + shell ranges in one
+ * pass. `SatelliteEditor.handleUpdate` used to call `parseConstellationToml`
+ * and `generateShellRanges` independently — each internally re-parsing and
+ * re-generating from the same text — so the invariant "shellRanges matches
+ * the satellite array in use" held only because both calls happened to
+ * receive identical text, not because it was structurally guaranteed
+ * (isl-routing-review.md SP-9, the same drift class as H-1).
+ */
+export function buildConstellation(
+  text: string,
+  baseOffset: number,
+): { satellites: SatelliteSpec[]; ranges: IslShellRange[] } {
+  return generateFromShellsDetailed(parseConstellationConfig(text), baseOffset);
 }
 
 export function parseGroundStationsToml(text: string): GroundStation[] {

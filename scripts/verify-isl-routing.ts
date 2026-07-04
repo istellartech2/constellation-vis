@@ -13,10 +13,9 @@ import { toSatrec } from "../src/lib/satellites";
 import { buildSnapshotGraph } from "../src/lib/isl/graph";
 import { findShortestPath } from "../src/lib/isl/shortestPath";
 import { propagateAll } from "../src/lib/isl/propagate";
+import { EARTH_RADIUS_EQUATOR_KM } from "../src/lib/isl/geometry";
+import { SPEED_OF_LIGHT_KM_PER_S } from "../src/lib/isl/cost";
 import type { IslEndpoint, IslLinkModel } from "../src/lib/isl/types";
-
-const SPEED_OF_LIGHT_KM_PER_S = 299792.458;
-const EARTH_RADIUS_KM = 6378.137;
 
 const constellationToml = `
 [constellation]
@@ -57,7 +56,7 @@ function greatCircleDistanceKm(a: IslEndpoint, b: IslEndpoint): number {
   const dLat = lat2 - lat1;
   const dLon = ((b.longitudeDeg - a.longitudeDeg) * Math.PI) / 180;
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-  return 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(h));
+  return 2 * EARTH_RADIUS_EQUATOR_KM * Math.asin(Math.sqrt(h));
 }
 
 function computeAt(satRecs: satellite.SatRec[], simDate: Date) {

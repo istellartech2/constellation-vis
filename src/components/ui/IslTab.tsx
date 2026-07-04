@@ -10,6 +10,7 @@ import { numericInputValue, parseNumericInput } from "../../lib/numericInput";
 import { propagationDelayMs } from "../../lib/isl/cost";
 import {
   DEFAULT_ADHOC_MIN_ELEVATION_DEG,
+  stationEndpoint,
   type IslEndpoint,
   type IslLinkModel,
   type IslPathResult,
@@ -176,9 +177,7 @@ export default function IslTab({
           </div>
         ))}
         {islShellRanges.length === 0 && (
-          <p className="text-xs text-gray-500">
-            constellation.toml にシェルがありません(「編集」タブで更新すると反映されます)。
-          </p>
+          <p className="text-xs text-gray-500">constellation.toml にシェルがありません。</p>
         )}
         {hasZeroParticipants && (
           <p className="text-xs text-red-400 mt-2">
@@ -355,20 +354,13 @@ export default function IslTab({
           )}
           <div>候補エッジ数: {islResult?.candidateEdgeCount ?? "-"}</div>
           <div>計算時間: {islResult ? `${islResult.computeTimeMs.toFixed(2)} ms` : "-"}</div>
-          <div>
-            再計算間隔(sim秒):{" "}
-            <input
-              type="number"
-              min={1}
-              step={1}
-              className="w-16 bg-gray-700 text-gray-100 rounded px-1 py-0.5 ml-1"
+          <div className="w-32">
+            <NumField
+              label="再計算間隔(sim秒)"
               value={islSettings.recomputeIntervalSimS}
-              onChange={(e) =>
-                onIslSettingsChange({
-                  ...islSettings,
-                  recomputeIntervalSimS: Number(e.target.value) || 1,
-                })
-              }
+              min={1}
+              step="1"
+              onChange={(v) => onIslSettingsChange({ ...islSettings, recomputeIntervalSimS: v })}
             />
           </div>
         </div>
@@ -398,14 +390,7 @@ function EndpointEditor({
     } else {
       const first = groundStations[0];
       if (first) {
-        onChange({
-          kind: "station",
-          name: first.name,
-          latitudeDeg: first.latitudeDeg,
-          longitudeDeg: first.longitudeDeg,
-          heightKm: first.heightKm,
-          minElevationDeg: first.minElevationDeg,
-        });
+        onChange(stationEndpoint(first));
       } else {
         onChange(defaultAdhocEndpoint(label));
       }
@@ -431,16 +416,7 @@ function EndpointEditor({
           value={endpoint.name}
           onChange={(e) => {
             const gs = groundStations.find((s) => s.name === e.target.value);
-            if (gs) {
-              onChange({
-                kind: "station",
-                name: gs.name,
-                latitudeDeg: gs.latitudeDeg,
-                longitudeDeg: gs.longitudeDeg,
-                heightKm: gs.heightKm,
-                minElevationDeg: gs.minElevationDeg,
-              });
-            }
+            if (gs) onChange(stationEndpoint(gs));
           }}
         >
           {groundStations.map((gs) => (
@@ -590,10 +566,15 @@ function NumField({
   label,
   value,
   onChange,
+  min,
+  step = "0.0001",
 }: {
   label: string;
   value: number;
   onChange: (v: number) => void;
+  /** Clamped up to on commit, e.g. for a "at least 1" setting. */
+  min?: number;
+  step?: string;
 }) {
   const [draft, setDraft] = useState<string>(String(value));
   const timerRef = useRef<number | undefined>(undefined);
@@ -618,7 +599,7 @@ function NumField({
     if (timerRef.current !== undefined) window.clearTimeout(timerRef.current);
     timerRef.current = window.setTimeout(() => {
       const n = parseNumericInput(raw);
-      if (Number.isFinite(n)) onChange(n);
+      if (Number.isFinite(n)) onChange(min !== undefined ? Math.max(min, n) : n);
     }, NUM_FIELD_DEBOUNCE_MS);
   }
 
@@ -627,7 +608,8 @@ function NumField({
       {label}
       <input
         type="number"
-        step="0.0001"
+        min={min}
+        step={step}
         className="w-full bg-gray-700 text-gray-100 rounded px-1 py-0.5 mt-0.5"
         value={draft}
         onChange={(e) => handleChange(e.target.value)}

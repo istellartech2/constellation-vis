@@ -1,5 +1,6 @@
 import type { SatelliteSpec } from "../src/lib/satellites";
-import { parseSatellitesToml, parseConstellationToml } from "../src/lib/tomlParsers";
+import type { IslShellRange } from "../src/lib/isl/types";
+import { parseSatellitesToml, buildConstellation } from "../src/lib/tomlParsers";
 
 function extractSatnum(sat: SatelliteSpec): number | null {
   if (sat.type === "elements") {
@@ -45,10 +46,13 @@ const satText = await Bun.file("public/satellites.toml").text();
 const baseSatellites = parseSatellitesToml(satText);
 
 let constellationSatellites: SatelliteSpec[] = [];
+let shellRanges: IslShellRange[] = [];
 try {
   const constRaw = await Bun.file("public/constellation.toml").text();
   if (constRaw.trim()) {
-    constellationSatellites = parseConstellationToml(constRaw);
+    const built = buildConstellation(constRaw, baseSatellites.length);
+    constellationSatellites = built.satellites;
+    shellRanges = built.ranges;
   }
 } catch {
   /* optional constellation file */
@@ -75,8 +79,12 @@ const normalized: SatelliteSpec[] = [...baseSatellites, ...constellationSatellit
 validateUniqueSatnums(normalized);
 
 const content = `import type { SatelliteSpec } from "./satellites";
+import type { IslShellRange } from "./isl/types";
 
 const SATELLITES: SatelliteSpec[] = ${serialize(normalized)};
+
+/** Shell ranges for the satellites generated from public/constellation.toml at build time — seeds the ISL tab's shell UI before the user ever clicks "更新" (isl-routing-review.md SP-10). */
+export const SHELL_RANGES: IslShellRange[] = ${serialize(shellRanges)};
 
 export default SATELLITES;
 `;

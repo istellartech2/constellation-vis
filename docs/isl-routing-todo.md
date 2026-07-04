@@ -121,6 +121,47 @@ H-1〜H-5・M-1〜M-4・L-1〜L-2・P-1〜P-6・D-1〜D-4・S-1〜S-4・S-6・S-
 
 ---
 
+## 完了済み: Phase 9(簡素化フォローアップ、`/simplify` 再レビュー §7 対応)
+
+SP-1〜SP-17(9-1〜9-4 の全項目)を実装。`bun run lint` / `bun run test` / `bun run build` / `bun run scripts/verify-isl-routing.ts` / `bun run scripts/bench-isl.ts` すべて通過。SP-6 の一環として、`graph.ts` に残っていた `shellOfIndex` のもう 1 箇所の重複実装(cross-shell 候補生成のフィルタ用)も `participants.ts` の共有ヘルパーへ統一した(レビュー原文が名指ししていた箇所そのもの)。
+
+ベンチ再計測: N=10,000, maxRangeKm=1500 の graph+path: 131.2 ms → **67.6 ms**(Phase 7 時点の 74.4 ms からさらに改善。SP-13 のメモ化・SP-15/16/17 のアロケーション削減が効いている)。
+
+### 9-1. ドリフトリスクの高い重複(優先)
+
+- [x] SP-1: Worker 設定ペイロードの手組み 2 箇所(`visualization.ts` / `IslRoutingAnalysis.tsx`)を `buildIslWorkerSettingsPayload()`(`islRoutingWorker.types.ts`)に共通化
+- [x] SP-2: 経路→エッジキー導出を `isl/edgeKey.ts` の `pathEdgeKeys(edges)` に統一(worker の `edgeKeysOf` を削除)。メイン側の保持を Set→`number[]` に変更し、compute 送信時の `Array.from` コピーも削除
+- [x] SP-3: 安定性定数を `stability.ts` の `DEFAULT_STABILITY_THRESHOLD_S` に一本化。cost.ts の未使用デフォルト定数 2 つと worker ローカル定数を削除し、`StabilityParams` の horizonS/stepS/thresholdS を optional 化、冗長な `satCount` フィールドを削除(`graph.nodeAId` から導出)
+- [x] SP-9: `buildConstellation(text, baseOffset): { satellites, ranges }` を tomlParsers に export し、`SatelliteEditor.handleUpdate` の二重パース・二重生成を 1 回の呼び出しに統一
+
+### 9-2. 構造(次のシナリオ級データ追加の前に)
+
+- [x] SP-10: `scripts/generate-satellites.ts` が `SHELL_RANGES` を `satellites.generated.ts` に出力し、`src/lib/satellites.ts` の `INITIAL_SHELL_RANGES` 経由で App の `islShellRanges` 初期値を seed。IslTab の「更新すると反映されます」注記を削除(隠れモード解消)
+- [x] SP-11: `src/lib/scenario.ts` に `CommittedScenario { satellites, groundStations, startTime, islShellRanges }` を新設し、`onUpdate` の 4 位置引数を 1 オブジェクトに集約
+- [x] SP-12: viewState マイグレーションを `MIGRATIONS: Record<number, (display) => display>` のステップテーブル(v1→v2 の 1 エントリ)に再構成。「v2 形状だが色欠落」という到達不能分岐と対応テストを削除し、v1→v2 の一部として legacy 色救済を統合
+
+### 9-3. 効率(残存分)
+
+- [x] SP-13: `islRoutingWorker.ts` に `memoizedStabilityPredictors` を追加。coarse サンプル(dt が stepS の倍数)を `(satIndex, dt)` キーで memo 化し `Date.setTime` を再利用。refinement 用の非グリッド dt はキャッシュ対象外(頻度が低いため無影響)
+- [x] SP-14: `applyIslPathToScene` に `islColorsAppliedFor`/`islColorsDirty` を追加し、色バッファの書き換え・GPU アップロードを「結果参照または色設定が変わったとき」のみに限定(位置は毎フレーム更新を維持)
+- [x] SP-15: `gridPatternIslCandidates` の重複排除 Set を文字列キーから `edgeKey(i, j)` の数値キーに変更
+- [x] SP-16: `uniformGridIslCandidates` の `satCell` タプル Map を廃止し、走査ループ内で `cellCoord` をインライン再計算
+- [x] SP-17: `propagateAll` に optional な `out: PropagateAllResult` を追加。worker が `propagateBuffer` を "init" ごとにリセットしつつ compute 間で保持・in-place 更新するよう変更(`positions`/`valid` 配列と各 `Vec3` オブジェクトの再確保を排除)
+
+### 9-4. 小物(ついでに)
+
+- [x] SP-4: `isl/types.ts` に `stationEndpoint(gs): IslEndpoint` を追加し、`IslTab.tsx` の 2 箇所のリテラルを置換
+- [x] SP-5: `scripts/verify-isl-routing.ts` の物理定数を `isl/geometry.ts`(`EARTH_RADIUS_EQUATOR_KM`)/ `isl/cost.ts`(`SPEED_OF_LIGHT_KM_PER_S`)から import
+- [x] SP-6: `GeneratedShellRange` を削除して `tomlParsers.ts` から `IslShellRange` を直接使用。`shellOfIndex` を `participants.ts` に export し、`graph.ts` の重複実装(cross-shell フィルタ用)を統一
+- [x] SP-7: `IslRoutingAnalysis.tsx` の時間窓・刻み、`IslTab.tsx` の再計算間隔(`NumField` に `min`/`step` オプションを追加して再利用)を `parseNumericInput` ベースの draft 保持に変更。編集中に既定値へスナップする問題を解消(M-1 の残穴)
+- [x] SP-8: `GroundStationForm` の別名残骸(`numberValue`/`parseNum`)を削除し、`numericInputValue`/`parseNumericInput` を直接呼ぶよう変更
+
+### 備考
+
+- S-5(`IslPathLayer` 化)は依然据え置き。Phase 9 でも `visualization.ts` の ISL 領域(色ダーティフラグ等)に手を入れたが、大規模な構造変更は次の機能追加と合わせて実施する方針を継続(isl-routing-review.md §7-D)。
+
+---
+
 ## 全フェーズ共通の完了条件
 
 - [x] 各修正に対応する回帰テストを追加(H-1: `tests/constellationParser.test.ts`、H-2/H-4/H-5: `tests/isl-participants.test.ts`、D-1: `tests/isl-edgeKey.test.ts`、M-3: `tests/viewState.test.ts`)

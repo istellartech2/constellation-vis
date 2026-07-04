@@ -24,13 +24,14 @@ import {
 } from "./earthTextures";
 import type { CameraSnapshot } from "./viewState";
 import type { IslEndpoint, IslPathResult, IslSettings, IslShellRange } from "./isl/types";
-import { edgeKey } from "./isl/edgeKey";
+import { pathEdgeKeys } from "./isl/edgeKey";
 import { endpointEci, endpointObserver, type Vec3 } from "./isl/geometry";
-import type {
-  IslRoutingWorkerComputeRequest,
-  IslRoutingWorkerConfigureRequest,
-  IslRoutingWorkerInitRequest,
-  IslRoutingWorkerResponse,
+import {
+  buildIslWorkerSettingsPayload,
+  type IslRoutingWorkerComputeRequest,
+  type IslRoutingWorkerConfigureRequest,
+  type IslRoutingWorkerInitRequest,
+  type IslRoutingWorkerResponse,
 } from "../workers/islRoutingWorker.types";
 
 /** Equatorial and polar radii of Earth in kilometres. */
@@ -214,9 +215,22 @@ export default class SatelliteScene {
   private islLastRecomputeSimMs: number | null = null;
   private islLastRecomputeRealMs = 0;
   private islForceRecompute = true;
-  private islPreviousPathEdgeKeys: Set<number> | null = null;
+  private islPreviousPathEdgeKeys: number[] | null = null;
   private readonly islGslColor: THREE.Color;
   private readonly islIslColor: THREE.Color;
+  private islGslColorHex: string;
+  private islIslColorHex: string;
+  /**
+   * The path result whose colors are currently baked into
+   * `islPathColorAttr`, and whether a color-setting change since then still
+   * needs to be applied. `applyIslPathToScene` runs every frame (positions
+   * move continuously), but the color buffer only actually needs rewriting
+   * when the result reference changes (a new compute) or the ISL/GSL color
+   * setting changes — previously it was rewritten and re-uploaded to the GPU
+   * unconditionally every frame (isl-routing-review.md SP-14).
+   */
+  private islColorsAppliedFor: IslPathResult | null = null;
+  private islColorsDirty = true;
   /**
    * Offloads ISL candidate generation + Dijkstra to a worker thread (Phase 3,
    * §2.7). Lazily created on first enable via {@link ensureIslWorker} (P-6).
@@ -443,6 +457,8 @@ export default class SatelliteScene {
     this.islPathGeometry.setDrawRange(0, 0);
     this.islGslColor = new THREE.Color(params.islSettings.gslColor);
     this.islIslColor = new THREE.Color(params.islSettings.islColor);
+    this.islGslColorHex = params.islSettings.gslColor;
+    this.islIslColorHex = params.islSettings.islColor;
     this.islPathMaterial = new THREE.LineBasicMaterial({ vertexColors: true, linewidth: 2 });
     this.islPathLines = new THREE.LineSegments(this.islPathGeometry, this.islPathMaterial);
     this.islPathLines.visible = false;
@@ -741,10 +757,15 @@ export default class SatelliteScene {
     this.fovConeColor.set(next.fovConeColor);
     this.groundConeColor.set(next.groundConeColor);
     this.stationConeMaterials.forEach((m) => m.color.set(next.groundConeColor));
-    this.islGslColor.set(next.islSettings.gslColor);
-    this.islIslColor.set(next.islSettings.islColor);
-    this.islEndpointMatA.color.set(next.islSettings.gslColor);
-    this.islEndpointMatB.color.set(next.islSettings.islColor);
+    if (this.islGslColorHex !== next.islSettings.gslColor || this.islIslColorHex !== next.islSettings.islColor) {
+      this.islGslColor.set(next.islSettings.gslColor);
+      this.islIslColor.set(next.islSettings.islColor);
+      this.islEndpointMatA.color.set(next.islSettings.gslColor);
+      this.islEndpointMatB.color.set(next.islSettings.islColor);
+      this.islGslColorHex = next.islSettings.gslColor;
+      this.islIslColorHex = next.islSettings.islColor;
+      this.islColorsDirty = true;
+    }
 
     // FOV cone geometry depends on the half-angle.
     if (next.fovConeHalfAngleDeg !== prev.fovConeHalfAngleDeg) {
@@ -1029,16 +1050,7 @@ export default class SatelliteScene {
       const configureRequest: IslRoutingWorkerConfigureRequest = {
         id: 0,
         type: "configure",
-        payload: {
-          excludedShellKeys: settings.excludedShellKeys,
-          includeBaseSatellites: settings.includeBaseSatellites,
-          endpointA,
-          endpointB,
-          linkModel: settings.linkModel,
-          shellRanges: this.params.islShellRanges,
-          shellLinkModels: settings.shellLinkModels,
-          cost: settings.cost,
-        },
+        payload: buildIslWorkerSettingsPayload(settings, this.params.islShellRanges, endpointA, endpointB),
       };
       // Message order is preserved per worker, so this is guaranteed to be
       // applied before the "compute" posted right below it.
@@ -1053,9 +1065,7 @@ export default class SatelliteScene {
       type: "compute",
       payload: {
         simDateIso: simDate.toISOString(),
-        previousPathEdgeKeys: this.islPreviousPathEdgeKeys
-          ? Array.from(this.islPreviousPathEdgeKeys)
-          : undefined,
+        previousPathEdgeKeys: this.islPreviousPathEdgeKeys ?? undefined,
       },
     };
     worker.postMessage(computeRequest);
@@ -1094,9 +1104,7 @@ export default class SatelliteScene {
 
     const result = message.payload.result;
     if (result.reachable) {
-      this.islPreviousPathEdgeKeys = new Set(
-        result.edges.map((e) => edgeKey(e.fromNodeId, e.toNodeId)),
-      );
+      this.islPreviousPathEdgeKeys = pathEdgeKeys(result.edges);
     }
     this.islLastResult = result;
     this.params.onIslResult?.(result);
@@ -1125,31 +1133,48 @@ export default class SatelliteScene {
     this.islPathColorAttr = new THREE.BufferAttribute(new Float32Array(maxVertices * 3), 3);
     this.islPathGeometry.setAttribute("position", this.islPathPosAttr);
     this.islPathGeometry.setAttribute("color", this.islPathColorAttr);
+    // The new color attribute starts zeroed — force a full rewrite (SP-14).
+    this.islColorsDirty = true;
   }
 
   private applyIslPathToScene(result: IslPathResult | null) {
     if (!result || !result.reachable || result.edges.length === 0) {
       this.islPathLines.visible = false;
       this.islPathGeometry.setDrawRange(0, 0);
+      this.islColorsAppliedFor = null;
       return;
     }
 
     const segments = result.edges.length;
     this.ensureIslPathCapacity(segments);
+
+    // Positions move every frame even when the edge list hasn't changed, so
+    // they're always rewritten. Colors only depend on each edge's kind and
+    // the two color settings, so re-writing (and re-uploading to the GPU)
+    // every frame is wasted work outside of an actual new result or color
+    // change — at most ~5/s, not 60/s (SP-14).
+    const rewriteColors = this.islColorsAppliedFor !== result || this.islColorsDirty;
+
     for (let s = 0; s < segments; s++) {
       const edge = result.edges[s];
       const fromPos = this.islNodeScenePosition(edge.fromNodeId, this.islScratchFrom);
       const toPos = this.islNodeScenePosition(edge.toNodeId, this.islScratchTo);
-      const color = edge.kind === "isl" ? this.islIslColor : this.islGslColor;
       const v0 = s * 2;
       const v1 = v0 + 1;
       this.islPathPosAttr.setXYZ(v0, fromPos.x, fromPos.y, fromPos.z);
       this.islPathPosAttr.setXYZ(v1, toPos.x, toPos.y, toPos.z);
-      this.islPathColorAttr.setXYZ(v0, color.r, color.g, color.b);
-      this.islPathColorAttr.setXYZ(v1, color.r, color.g, color.b);
+      if (rewriteColors) {
+        const color = edge.kind === "isl" ? this.islIslColor : this.islGslColor;
+        this.islPathColorAttr.setXYZ(v0, color.r, color.g, color.b);
+        this.islPathColorAttr.setXYZ(v1, color.r, color.g, color.b);
+      }
     }
     this.islPathPosAttr.needsUpdate = true;
-    this.islPathColorAttr.needsUpdate = true;
+    if (rewriteColors) {
+      this.islPathColorAttr.needsUpdate = true;
+      this.islColorsAppliedFor = result;
+      this.islColorsDirty = false;
+    }
     this.islPathGeometry.setDrawRange(0, segments * 2);
     this.islPathLines.visible = true;
   }

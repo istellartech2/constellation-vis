@@ -20,9 +20,6 @@ export default function GroundStationForm({ station, index, errors, onChange }: 
       hasErr ? "border-red-500" : "border-gray-600 focus:border-amber-500"
     }`;
 
-  const numberValue = numericInputValue;
-  const parseNum = parseNumericInput;
-
   return (
     <div className="p-3 space-y-3">
       <Field label="名前" error={fieldError("name")?.message}>
@@ -39,8 +36,8 @@ export default function GroundStationForm({ station, index, errors, onChange }: 
           <input
             type="number"
             step="0.0001"
-            value={numberValue(station.latitudeDeg)}
-            onChange={(e) => onChange({ latitudeDeg: parseNum(e.target.value) })}
+            value={numericInputValue(station.latitudeDeg)}
+            onChange={(e) => onChange({ latitudeDeg: parseNumericInput(e.target.value) })}
             className={inputCls(!!fieldError("latitudeDeg"))}
           />
         </Field>
@@ -48,8 +45,8 @@ export default function GroundStationForm({ station, index, errors, onChange }: 
           <input
             type="number"
             step="0.0001"
-            value={numberValue(station.longitudeDeg)}
-            onChange={(e) => onChange({ longitudeDeg: parseNum(e.target.value) })}
+            value={numericInputValue(station.longitudeDeg)}
+            onChange={(e) => onChange({ longitudeDeg: parseNumericInput(e.target.value) })}
             className={inputCls(!!fieldError("longitudeDeg"))}
           />
         </Field>
@@ -60,8 +57,8 @@ export default function GroundStationForm({ station, index, errors, onChange }: 
           <input
             type="number"
             step="0.001"
-            value={numberValue(station.heightKm)}
-            onChange={(e) => onChange({ heightKm: parseNum(e.target.value) })}
+            value={numericInputValue(station.heightKm)}
+            onChange={(e) => onChange({ heightKm: parseNumericInput(e.target.value) })}
             className={inputCls(!!fieldError("heightKm"))}
           />
         </Field>
@@ -69,8 +66,8 @@ export default function GroundStationForm({ station, index, errors, onChange }: 
           <input
             type="number"
             step="0.1"
-            value={numberValue(station.minElevationDeg)}
-            onChange={(e) => onChange({ minElevationDeg: parseNum(e.target.value) })}
+            value={numericInputValue(station.minElevationDeg)}
+            onChange={(e) => onChange({ minElevationDeg: parseNumericInput(e.target.value) })}
             className={inputCls(!!fieldError("minElevationDeg"))}
           />
         </Field>

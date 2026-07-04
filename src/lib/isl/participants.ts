@@ -2,6 +2,19 @@
 import type { IslShellRange } from "./types";
 
 /**
+ * Find the shell (if any) a satellite index falls within. Previously
+ * reimplemented identically in `graph.ts` for its cross-shell candidate pass
+ * (isl-routing-review.md SP-6) — a linear scan is fine here since
+ * `shellRanges` is at most a handful of entries.
+ */
+export function shellOfIndex(idx: number, shellRanges: IslShellRange[]): IslShellRange | null {
+  for (const shell of shellRanges) {
+    if (idx >= shell.startIndex && idx < shell.startIndex + shell.count) return shell;
+  }
+  return null;
+}
+
+/**
  * Resolve participant satellite indices from stable exclusion state (§2.4,
  * Phase 5 H-4/H-5): a satellite belonging to a shell in `excludedShellKeys`
  * is excluded; a satellite not covered by any shell range (a
@@ -17,16 +30,10 @@ export function resolveIslParticipantIndices(
   includeBaseSatellites: boolean,
 ): number[] {
   const excluded = new Set(excludedShellKeys);
-  const shellOfIndex = (idx: number): IslShellRange | null => {
-    for (const shell of shellRanges) {
-      if (idx >= shell.startIndex && idx < shell.startIndex + shell.count) return shell;
-    }
-    return null;
-  };
 
   const indices: number[] = [];
   for (let i = 0; i < satCount; i++) {
-    const shell = shellOfIndex(i);
+    const shell = shellOfIndex(i, shellRanges);
     if (shell) {
       if (!excluded.has(shell.key)) indices.push(i);
     } else if (includeBaseSatellites) {

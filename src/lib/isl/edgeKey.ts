@@ -16,3 +16,13 @@ const EDGE_KEY_MULTIPLIER = 1 << 21;
 export function edgeKey(a: number, b: number): number {
   return a < b ? a * EDGE_KEY_MULTIPLIER + b : b * EDGE_KEY_MULTIPLIER + a;
 }
+
+/**
+ * Undirected edge-key list for a path's edges — previously reimplemented
+ * independently in the routing worker (`edgeKeysOf`) and in `visualization.ts`
+ * (inline `.map(...)`), risking the same drift class as D-1 if "which edges
+ * count toward hysteresis" ever changed (isl-routing-review.md SP-2).
+ */
+export function pathEdgeKeys(edges: Array<{ fromNodeId: number; toNodeId: number }>): number[] {
+  return edges.map((e) => edgeKey(e.fromNodeId, e.toNodeId));
+}

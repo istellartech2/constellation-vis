@@ -1,5 +1,7 @@
 /** ISL routing domain types. Pure data — no Three.js / React / scene coordinates. */
 
+import type { GroundStation } from "../groundStations";
+
 export interface IslEndpoint {
   kind: "station" | "adhoc";
   name: string;
@@ -7,6 +9,23 @@ export interface IslEndpoint {
   longitudeDeg: number;
   heightKm: number;
   minElevationDeg: number;
+}
+
+/**
+ * Converts a saved ground station into a "station"-kind ISL endpoint.
+ * Previously copy-pasted as a 5-field object literal at both the initial
+ * mode-switch and the station-reselect call sites in `IslTab.tsx`
+ * (isl-routing-review.md SP-4).
+ */
+export function stationEndpoint(gs: GroundStation): IslEndpoint {
+  return {
+    kind: "station",
+    name: gs.name,
+    latitudeDeg: gs.latitudeDeg,
+    longitudeDeg: gs.longitudeDeg,
+    heightKm: gs.heightKm,
+    minElevationDeg: gs.minElevationDeg,
+  };
 }
 
 export interface IslLinkModel {

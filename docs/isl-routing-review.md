@@ -168,3 +168,52 @@
 5. **M-1**(入力部品の共有化)、M-2、M-3
 6. §4 の P-1/P-2、D-1/D-2/D-3(性能と無音故障リスクの高い重複)
 7. 残りは次フェーズの改修時に随時
+
+---
+
+## 7. 簡素化フォローアップレビュー(/simplify、コミット `92b99cf` 時点)
+
+§1–4 の指摘は Phase 5–8(コミット `92b99cf`)で S-5 を除き対応済み。本節は 2 コミット(`2e0cd7a` + `92b99cf`)を対象に再利用/簡素化/効率/実装深度の 4 観点で再レビューした結果で、**修正コミット自体が持ち込んだ残存・新規の簡素化ポイント**をまとめる(バグ指摘ではない。修正は未適用 — ToDo は isl-routing-todo.md の Phase 9)。
+
+### 7-A. 重複の再発・残存(ドリフトすると無音で挙動が割れる箇所を優先)
+
+| # | 該当 | 内容 | 提案 |
+|---|---|---|---|
+| SP-1 | `visualization.ts:1032-1042` / `IslRoutingAnalysis.tsx:92` | Worker 設定ペイロード(8 フィールド)を 2 箇所で手組みしている。項目追加時に片方を忘れるとライブ表示とスイープ解析が黙って食い違う — **H-4 で構造的に潰したはずの乖離クラスの再発** | `buildIslWorkerSettingsPayload(islSettings, shellRanges, endpointA, endpointB)` を `islRoutingWorker.types.ts` に export し両方から呼ぶ |
+| SP-2 | `islRoutingWorker.ts:113` / `visualization.ts:1097-1099` | 経路→エッジキー Set の導出(`edgeKeysOf`)が Worker とメインスレッドに二重実装。「どのエッジをヒステリシス対象にするか」の変更が 2 箇所同期修正になる(D-1 と同じドリフトクラス) | `pathEdgeKeys(edges)` を `isl/edgeKey.ts` に export して共用。あわせてメイン側の保持を Set→`number[]` にすれば compute ごとの `Array.from` コピーも消える(SP-17 参照) |
+| SP-3 | `cost.ts:5` / `islRoutingWorker.ts:24` / `stability.ts:18` | 安定性チューニング定数が三重管理: cost.ts の `DEFAULT_STABILITY_THRESHOLD_S`/`DEFAULT_STABILITY_WEIGHT_MS` は誰も使わないデフォルト引数(weight=20 は実質死にコード。実際の既定は types.ts の 0)、worker はローカルで 60 を再宣言、`StabilityParams` の horizonS/stepS/thresholdS は全呼び出し元が同一値(300/10/60)を明示的に渡す必須フィールド | 定数の一次ソースを stability.ts に一本化(StabilityParams の 3 フィールドを optional + 内部デフォルトに)。cost.ts の 2 定数と worker のローカル const を削除。ついでに `StabilityParams.satCount` も冗長(常に `graph.nodeAId` と一致)なので削除 |
+| SP-4 | `IslTab.tsx:401-408, 435-442` | `GroundStation → IslEndpoint` の 7 フィールドリテラルが EndpointEditor 内に 2 回コピー(モード切替と局選択) | `stationEndpoint(gs): IslEndpoint` ヘルパーを 1 つ置いて両方から呼ぶ |
+| SP-5 | `scripts/verify-isl-routing.ts:18` | `SPEED_OF_LIGHT_KM_PER_S` と `EARTH_RADIUS_KM` をローカル再宣言。回帰スクリプトの物理境界値が出荷コードの定数からドリフトし得る(D-3 で潰したのと同じ失敗モード) | `isl/cost.ts` / `isl/geometry.ts` から import(遅延下限は `propagationDelayMs` を直接使うのでも可) |
+| SP-6 | `tomlParsers.ts:85` / `isl/types.ts:25` | `GeneratedShellRange` が `IslShellRange` のフィールド単位の複製(構造的型付けで偶然一致しているだけ)。また index→シェル逆引きループが `participants.ts:20` と `graph.ts:170` に二重実装 | `GeneratedShellRange` を削除して `IslShellRange` を import(isl/types.ts は依存ゼロなので方向は健全)。`shellOfIndex` を isl/ 配下の共有ヘルパーに |
+| SP-7 | `IslRoutingAnalysis.tsx:213, 224` / `IslTab.tsx:369` | 時間窓・刻み・再計算間隔の数値入力 3 箇所が `Number(e.target.value) \|\| 1` を手書き — M-1 で潰した「編集中に既定値へスナップする」問題が同じ機能内に残存し、数値入力の流儀が 2 系統ある | `numericInput.ts` の `parseNumericInput` で確定時のみ commit(+clamp)、または NumField に min プロップを足して再利用 |
+| SP-8 | `GroundStationForm.tsx:23` | NumField 共通化の残骸: `const numberValue = numericInputValue; const parseNum = parseNumericInput;` という毎レンダーの別名付けだけが残っている | 別名を削除して直接呼ぶ(または import 時にリネーム) |
+
+### 7-B. 構造(修正の実装深度が浅い箇所)
+
+| # | 該当 | 内容 | 提案 |
+|---|---|---|---|
+| SP-9 | `SatelliteEditor.tsx:343-344` | `handleUpdate` が constText を **2 回パースし、シェル衛星を 2 回生成**している(`parseConstellationToml` と `generateShellRanges` がそれぞれ内部で `generateFromShellsDetailed` を呼ぶ)。H-1 の不変条件「shellRanges は使用中の配列と必ず対応する」が、**独立した 2 回の呼び出しがたまたま同じテキストを受け取ること**でしか保証されていない。大規模構成では O(N) の二重生成コストも | `buildConstellation(constText, baseOffset): { satellites, ranges }` を tomlParsers に export し、handleUpdate は 1 回呼んで分割代入 — 対応関係を構成上保証する |
+| SP-10 | `App.tsx:117` / `IslTab.tsx:178-182` | 初期ロード時は `islShellRanges=[]` のため、「更新」を押すまでシェル除外・シェル別設定・gridPattern が無効という**隠れた 2 モード**が存在する(UI は「更新を押してください」の注記で回避)。同一 TOML でも起動直後と更新後で挙動が違い、再現困難なレポートを生む | predev の `scripts/generate-satellites.ts` に `generateFromShellsDetailed` を呼ばせて `SHELL_RANGES` を `satellites.generated.ts` に出力し、App の初期値を INITIAL_SATS と同様に seed する(注記テキストも不要になる) |
+| SP-11 | `App.tsx:469` ほか | committed シナリオが 4 本の並列 state/props(`onUpdate(s, gs, start, shellRanges)` の 4 位置引数)として 6 ファイルを貫通 — S-3/S-4 で批判した多ファイル波及の形が新データで再発。「satellites と islShellRanges は必ず対応する」不変条件もコメント 3 箇所での記述のみ | `CommittedScenario { satellites, groundStations, startTime, shellRanges }` を 1 つの state/props に集約。次のシナリオ級データ追加をシグネチャ変更ゼロにする |
+| SP-12 | `viewState.ts:112, 118` | v2 マイグレーションが「バージョン許容集合 + 形状スニッフィングの一枚岩関数」で、保存版数を**遷移ステップの選択に使っていない** — v3 追加時に条件分岐を編み足す構造。さらに「v2 形状だが色欠落」分岐は出荷コードが書き得ない状態で、テストだけが人工的に通す到達不能コード | `MIGRATIONS: Record<number, (v) => unknown>` のステップテーブルを保存版数から順に適用する形へ。到達不能分岐と対応テストは削除 |
+
+### 7-C. 効率(残存分。優先度順)
+
+| # | 該当 | 内容 | 提案 |
+|---|---|---|---|
+| SP-13 | `islRoutingWorker.ts:85`(`predictSatPosition`) | 安定性ペナルティ有効時、同一 (衛星, サンプル時刻) の伝播をエッジごとに再計算(衛星あたり平均 4+ エッジ → 4–8 倍の冗長 propagate。E×30 サンプル×2 で数百万回/compute になり得る)。毎回 `new Date` も生成 | 粗サンプルは共有グリッドに載るので `Map<number, Vec3>`(キー = `satIndex*(horizon/step+1)+dt/step`)で memo 化。Date は `setTime` で再利用。**本機能の文書化済みボトルネックへの最有効打** |
+| SP-14 | `visualization.ts:1148` | `applyIslPathToScene` が**色バッファを毎フレーム全書き換え + GPU 再アップロード**している(色が変わるのは新しい結果か色設定変更時のみ = 最大 5 回/秒。位置と違い毎フレーム更新は不要) | 直前に適用した result 参照と色 dirty フラグを持ち、変化時のみ色ループと `needsUpdate` を実行 |
+| SP-15 | `candidates.ts:193` | `gridPatternIslCandidates` の重複排除 Set が文字列キー `${i}-${j}` のまま(P-3/P-4 で潰したパターンの残存。10k 機 × 5 compute/s で ~10 万文字列/s) | `edgeKey(i, j)` の数値キーに置換 |
+| SP-16 | `candidates.ts:91` | `uniformGridIslCandidates` が参加衛星ごとに `[cx,cy,cz]` タプル配列を Map に確保し、走査ループで Map.get で引き直している(~10k タプル + Map エントリ/compute) | satCell Map を廃止し、走査ループ先頭でセル座標をインライン再計算(除算 3 回 < Map.get) |
+| SP-17 | `isl/propagate.ts:23` / `visualization.ts:1056` | `propagateAll` が compute ごとに N 個の `{x,y,z}` リテラル + 配列 2 本を新規確保(satRec 数は init 後固定)。メイン側の `islPreviousPathEdgeKeys` も Set で保持→毎 compute `Array.from` コピーの往復無駄 | out パラメータ(worker が init 時に確保したバッファを in-place 更新)を optional で受ける。previous keys は `number[]` のまま保持して postMessage に直渡し(SP-2 と同時に) |
+
+### 7-D. S-5(据え置き判断)の現状メモ
+
+Phase 5–8 で `SatelliteScene` の ISL フィールドは約 20 → 約 26 個に増加(worker 関連 6 フィールド追加)。一方で worker のライフサイクル(遅延生成 / requestId 失効 / dispose)は自己完結した状態機械になっており、**切り出しの縫い目はむしろ明確になった**。据え置き判断自体は妥当のままだが、次に visualization.ts の ISL 領域へ機能追加する際は S-5(`IslPathLayer` 化)を先行または同時に実施するのが良い。
+
+### 7-E. 確認して問題なしとした事項
+
+- viewState の `createDefaultIslSettings`/色デフォルトの再利用、新テスト 3 ファイルのフィクスチャ(意図的な差異であり統合不要)
+- worker configure/compute の順序保証(単一送信サイト + worker 側ガード + シーン再構築時の worker 再生成)
+- `ensureIslPathCapacity` の倍々確保(汎用機構として妥当)、`onIslError` の単一チャネル
+- sweep が設定を自己完結で持つこと(ワンショット解析として妥当)、NumField の draft/デバウンス state(M-1 修正に固有のもの)、`naiveIslCandidates` の存置(テスト・ベンチの正解生成器として現役)
