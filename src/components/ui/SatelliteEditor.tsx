@@ -13,7 +13,9 @@ import {
 import EditorTab from "./EditorTab";
 import AnalysisTab from "./AnalysisTab";
 import OptionTab from "./OptionTab";
+import IslTab from "./IslTab";
 import ImportDialog from "./ImportDialog";
+import type { IslPathResult, IslSettings } from "../../lib/isl/types";
 import {
   celestrakEntryToSat,
   satellitesToToml,
@@ -148,6 +150,26 @@ interface Props {
   getCurrentView: () => ViewSettings;
   /** Apply a previously saved view */
   onApplyView: (settings: ViewSettings) => void;
+  /** Current ISL routing settings */
+  islSettings: IslSettings;
+  /** Called when ISL routing settings change */
+  onIslSettingsChange: (next: IslSettings) => void;
+  /** Latest computed ISL path result (null when disabled or not yet computed) */
+  islResult: IslPathResult | null;
+  /** Cumulative count of path switches since ISL was enabled (§2.5.2, Phase 2) */
+  islSwitchCount: number;
+  /** Sim-time (ms) of the last path switch, or null if none yet */
+  islLastSwitchSimMs: number | null;
+  /** Current simulation time (ms), used to compute elapsed time since last switch */
+  currentSimMs: number;
+  /** Color for GSL segments of the ISL path */
+  islGslColor: string;
+  /** Called when the GSL path color changes */
+  onIslGslColorChange: (color: string) => void;
+  /** Color for ISL segments of the ISL path */
+  islIslColor: string;
+  /** Called when the ISL path color changes */
+  onIslIslColorChange: (color: string) => void;
 }
 
 export default function SatelliteEditor({
@@ -204,6 +226,16 @@ export default function SatelliteEditor({
   sceneRef,
   getCurrentView,
   onApplyView,
+  islSettings,
+  onIslSettingsChange,
+  islResult,
+  islSwitchCount,
+  islLastSwitchSimMs,
+  currentSimMs,
+  islGslColor,
+  onIslGslColorChange,
+  islIslColor,
+  onIslIslColorChange,
 }: Props) {
   const [satText, setSatText] = useState("");
   const [constText, setConstText] = useState("");
@@ -214,7 +246,7 @@ export default function SatelliteEditor({
     return d.toISOString().slice(0, 16);
   });
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<"editor" | "analysis" | "option">("editor");
+  const [tab, setTab] = useState<"editor" | "analysis" | "option" | "isl">("editor");
   const [importOpen, setImportOpen] = useState(false);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
@@ -360,10 +392,10 @@ export default function SatelliteEditor({
         <div className="side-panel-header">
           <Tabs
             value={tab}
-            onValueChange={(value) => setTab(value as "editor" | "analysis" | "option")}
+            onValueChange={(value) => setTab(value as "editor" | "analysis" | "option" | "isl")}
             className="flex-1 min-w-0"
           >
-            <TabsList className="grid w-full grid-cols-3 h-10 bg-gray-700/80 rounded-lg p-1 shadow-inner border border-gray-600">
+            <TabsList className="grid w-full grid-cols-4 h-10 bg-gray-700/80 rounded-lg p-1 shadow-inner border border-gray-600">
               <TabsTrigger
                 value="editor"
                 className="data-[state=active]:!bg-orange-600 data-[state=active]:!text-orange-50 data-[state=active]:!shadow-sm data-[state=active]:!border-transparent hover:bg-gray-600/60 text-gray-200 transition-colors rounded-md font-medium"
@@ -375,6 +407,12 @@ export default function SatelliteEditor({
                 className="data-[state=active]:!bg-orange-600 data-[state=active]:!text-orange-50 data-[state=active]:!shadow-sm data-[state=active]:!border-transparent hover:bg-gray-600/60 text-gray-200 transition-colors rounded-md font-medium"
               >
                 解析
+              </TabsTrigger>
+              <TabsTrigger
+                value="isl"
+                className="data-[state=active]:!bg-orange-600 data-[state=active]:!text-orange-50 data-[state=active]:!shadow-sm data-[state=active]:!border-transparent hover:bg-gray-600/60 text-gray-200 transition-colors rounded-md font-medium"
+              >
+                ISL
               </TabsTrigger>
               <TabsTrigger
                 value="option"
@@ -395,7 +433,7 @@ export default function SatelliteEditor({
           </Button>
         </div>
         <div className="side-panel-content">
-          <Tabs value={tab} onValueChange={(value) => setTab(value as "editor" | "analysis" | "option")} className="w-full">
+          <Tabs value={tab} onValueChange={(value) => setTab(value as "editor" | "analysis" | "option" | "isl")} className="w-full">
             <TabsContent value="editor" className="mt-0 bg-gray-800/40 border-2 border-gray-600 rounded-lg p-6 shadow-inner">
               <EditorTab
                 satText={satText}
@@ -419,11 +457,26 @@ export default function SatelliteEditor({
                 constText={constText}
                 gsText={gsText}
                 startTime={new Date(startText)}
+                islSettings={islSettings}
                 onAnalysisStart={onAnalysisStart}
                 onAnalysisEnd={onAnalysisEnd}
               />
             </TabsContent>
             
+            <TabsContent value="isl" className="mt-0 bg-gray-800/40 border-2 border-gray-600 rounded-lg p-6 shadow-inner">
+              <IslTab
+                satText={satText}
+                constText={constText}
+                gsText={gsText}
+                islSettings={islSettings}
+                onIslSettingsChange={onIslSettingsChange}
+                islResult={islResult}
+                islSwitchCount={islSwitchCount}
+                islLastSwitchSimMs={islLastSwitchSimMs}
+                currentSimMs={currentSimMs}
+              />
+            </TabsContent>
+
             <TabsContent value="option" className="mt-0 bg-gray-800/40 border-2 border-gray-600 rounded-lg p-6 shadow-inner">
               <OptionTab
                 satRadius={satRadius}
@@ -476,6 +529,10 @@ export default function SatelliteEditor({
                 sceneRef={sceneRef}
                 getCurrentView={getCurrentView}
                 onApplyView={onApplyView}
+                islGslColor={islGslColor}
+                onIslGslColorChange={onIslGslColorChange}
+                islIslColor={islIslColor}
+                onIslIslColorChange={onIslIslColorChange}
               />
             </TabsContent>
           </Tabs>

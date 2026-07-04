@@ -1,18 +1,21 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { Radio, Globe2, Rocket, Sun } from "lucide-react";
+import { Radio, Globe2, Rocket, Sun, Waypoints } from "lucide-react";
 import StationAccessAnalysis from "../analysis/StationAccessAnalysis";
 import GlobalAccessAnalysis from "../analysis/GlobalAccessAnalysis";
 import OrbitMaintenanceAnalysis from "../analysis/OrbitMaintenanceAnalysis";
 import SolarImpactAnalysis from "../analysis/SolarImpactAnalysis";
+import IslRoutingAnalysis from "../analysis/IslRoutingAnalysis";
 import PanelSection from "./PanelSection";
 import EntryButton from "./EntryButton";
+import type { IslSettings } from "../../lib/isl/types";
 
 interface Props {
   satText: string;
   constText: string;
   gsText: string;
   startTime: Date;
+  islSettings: IslSettings;
   onAnalysisStart?: () => void;
   onAnalysisEnd?: () => void;
 }
@@ -22,9 +25,18 @@ type AnalysisType =
   | "全球アクセス設計"
   | "軌道寿命・推進剤設計"
   | "日照・電力成立性評価"
+  | "ISL経路タイムライン解析"
   | "";
 
-export default function AnalysisTab({ satText, constText, gsText, startTime, onAnalysisStart, onAnalysisEnd }: Props) {
+export default function AnalysisTab({
+  satText,
+  constText,
+  gsText,
+  startTime,
+  islSettings,
+  onAnalysisStart,
+  onAnalysisEnd,
+}: Props) {
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [analysisType, setAnalysisType] = useState<AnalysisType>("");
 
@@ -67,6 +79,13 @@ export default function AnalysisTab({ satText, constText, gsText, startTime, onA
           constText={constText}
           startTime={startTime}
         />;
+      case "ISL経路タイムライン解析":
+        return <IslRoutingAnalysis
+          satText={satText}
+          constText={constText}
+          islSettings={islSettings}
+          startTime={startTime}
+        />;
       default:
         return null;
     }
@@ -101,6 +120,15 @@ export default function AnalysisTab({ satText, constText, gsText, startTime, onA
           title="日照・電力成立性評価"
           subtitle="日陰時間と発電量から電力収支を確認"
           onClick={() => handleAnalysisClick("日照・電力成立性評価")}
+        />
+      </PanelSection>
+
+      <PanelSection title="ISL 経路探索" icon={<Waypoints />}>
+        <EntryButton
+          icon={<Waypoints className="h-4 w-4" />}
+          title="ISL経路タイムライン解析"
+          subtitle="時間窓スイープで総遅延・ホップ数・切替回数・到達可能率を確認"
+          onClick={() => handleAnalysisClick("ISL経路タイムライン解析")}
         />
       </PanelSection>
 

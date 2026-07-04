@@ -23,6 +23,14 @@ import {
   type EarthTextureMode,
 } from "./earthTextures";
 import type { CameraSnapshot } from "./viewState";
+import type { IslEndpoint, IslPathResult, IslSettings } from "./isl/types";
+import { edgeKey } from "./isl/shortestPath";
+import type { Vec3 } from "./isl/geometry";
+import type {
+  IslRoutingWorkerComputeRequest,
+  IslRoutingWorkerInitRequest,
+  IslRoutingWorkerResponse,
+} from "../workers/islRoutingWorker.types";
 
 /** Equatorial and polar radii of Earth in kilometres. */
 const EARTH_RADIUS_EQUATOR_KM = 6378.137;
@@ -47,6 +55,12 @@ const THIRDPERSON_DEFAULT_PITCH = THREE.MathUtils.degToRad(22);
 const THIRDPERSON_MIN_PITCH = THREE.MathUtils.degToRad(-70);
 const THIRDPERSON_MAX_PITCH = THREE.MathUtils.degToRad(82);
 const FOLLOW_LERP_ALPHA = 0.14;
+
+/** Pre-allocated capacity for the ISL path LineSegments geometry (§2.6). */
+const ISL_PATH_MAX_SEGMENTS = 64;
+const ISL_ENDPOINT_A_COLOR = 0xff33cc;
+const ISL_ENDPOINT_B_COLOR = 0x33e0ff;
+const ISL_RECOMPUTE_MIN_REAL_MS = 200;
 
 export function pickSatelliteHitIndex(
   hitIndexes: number[],
@@ -107,6 +121,14 @@ export interface SatelliteSceneParams {
   stationInfoRef?: React.RefObject<HTMLPreElement | null>;
   /** Fired with the latest framing when the user finishes a camera manipulation or the mode changes. */
   onCameraChange?: (snapshot: CameraSnapshot) => void;
+  /** ISL routing settings; enabled:false (or endpoints unset) fully disables computation & rendering. */
+  islSettings: IslSettings;
+  /** Fired whenever the ISL path result is (re)computed, and with null when disabled. */
+  onIslResult?: (result: IslPathResult | null) => void;
+  /** Color for the GSL (ground-satellite) segments of the ISL path (§2.5.3). */
+  islGslColor: string;
+  /** Color for the ISL (inter-satellite) segments of the ISL path (§2.5.3). */
+  islIslColor: string;
 }
 
 export default class SatelliteScene {
@@ -165,6 +187,29 @@ export default class SatelliteScene {
   private readonly satelliteSelectedColor: THREE.Color;
   private readonly fovConeMinHeight: number;
   private linkMaterial: THREE.LineBasicMaterial;
+
+  private readonly islPathGeometry: THREE.BufferGeometry;
+  private readonly islPathPosAttr: THREE.BufferAttribute;
+  private readonly islPathColorAttr: THREE.BufferAttribute;
+  private readonly islPathLines: THREE.LineSegments;
+  private readonly islPathMaterial: THREE.LineBasicMaterial;
+  private readonly islEndpointGeo: THREE.SphereGeometry;
+  private readonly islEndpointMatA: THREE.MeshBasicMaterial;
+  private readonly islEndpointMatB: THREE.MeshBasicMaterial;
+  private readonly islEndpointMeshA: THREE.Mesh;
+  private readonly islEndpointMeshB: THREE.Mesh;
+  private satEciPositions: Vec3[] = [];
+  private islLastResult: IslPathResult | null = null;
+  private islLastRecomputeSimMs: number | null = null;
+  private islLastRecomputeRealMs = 0;
+  private islForceRecompute = true;
+  private islPreviousPathEdgeKeys: Set<string> | null = null;
+  private readonly islGslColor: THREE.Color;
+  private readonly islIslColor: THREE.Color;
+  /** Offloads ISL candidate generation + Dijkstra to a worker thread (Phase 3, §2.7). */
+  private readonly islWorker: Worker;
+  private islWorkerRequestId = 0;
+  private islComputeInFlight = false;
 
   private readonly startReal: number;
   private readonly startSim: number;
@@ -367,6 +412,45 @@ export default class SatelliteScene {
     this.linkLines = this.linkGeometries.map((arr) =>
       arr.map((g) => new THREE.Line(g, this.linkMaterial)),
     );
+
+    this.satEciPositions = this.satRecs.map(() => ({ x: 0, y: 0, z: 0 }));
+
+    const islMaxVertices = ISL_PATH_MAX_SEGMENTS * 2;
+    const islPositions = new Float32Array(islMaxVertices * 3);
+    const islColors = new Float32Array(islMaxVertices * 3);
+    this.islPathGeometry = new THREE.BufferGeometry();
+    this.islPathPosAttr = new THREE.BufferAttribute(islPositions, 3);
+    this.islPathColorAttr = new THREE.BufferAttribute(islColors, 3);
+    this.islPathGeometry.setAttribute("position", this.islPathPosAttr);
+    this.islPathGeometry.setAttribute("color", this.islPathColorAttr);
+    this.islPathGeometry.setDrawRange(0, 0);
+    this.islGslColor = new THREE.Color(params.islGslColor);
+    this.islIslColor = new THREE.Color(params.islIslColor);
+    this.islPathMaterial = new THREE.LineBasicMaterial({ vertexColors: true, linewidth: 2 });
+    this.islPathLines = new THREE.LineSegments(this.islPathGeometry, this.islPathMaterial);
+    this.islPathLines.visible = false;
+    this.scene.add(this.islPathLines);
+
+    this.islEndpointGeo = new THREE.SphereGeometry(0.014, 12, 12);
+    this.islEndpointMatA = new THREE.MeshBasicMaterial({ color: ISL_ENDPOINT_A_COLOR });
+    this.islEndpointMatB = new THREE.MeshBasicMaterial({ color: ISL_ENDPOINT_B_COLOR });
+    this.islEndpointMeshA = new THREE.Mesh(this.islEndpointGeo, this.islEndpointMatA);
+    this.islEndpointMeshB = new THREE.Mesh(this.islEndpointGeo, this.islEndpointMatB);
+    this.islEndpointMeshA.visible = false;
+    this.islEndpointMeshB.visible = false;
+    this.scene.add(this.islEndpointMeshA);
+    this.scene.add(this.islEndpointMeshB);
+
+    this.islWorker = new Worker(new URL("../workers/islRoutingWorker.ts", import.meta.url), {
+      type: "module",
+    });
+    this.islWorker.addEventListener("message", this.handleIslWorkerMessage);
+    const initRequest: IslRoutingWorkerInitRequest = {
+      id: 0,
+      type: "init",
+      payload: { satellites: this.params.satellites },
+    };
+    this.islWorker.postMessage(initRequest);
 
     const fovHalfAngleRad = THREE.MathUtils.degToRad(
       THREE.MathUtils.clamp(this.params.fovConeHalfAngleDeg, 1, 89.9),
@@ -600,6 +684,13 @@ export default class SatelliteScene {
     const prev = this.params;
     this.params = next;
 
+    // ISL settings changes must trigger an immediate recompute even while paused
+    // (§1.6.3); the throttled sim/real-time checks in updateIslMarkersAndPath
+    // otherwise only fire once the sim clock advances.
+    if (next.islSettings !== prev.islSettings) {
+      this.islForceRecompute = true;
+    }
+
     // Visibility of objects the animate loop does not touch.
     this.graticule.visible = next.showGraticule;
     this.ecliptic.visible = next.showEcliptic;
@@ -620,6 +711,8 @@ export default class SatelliteScene {
     this.fovConeColor.set(next.fovConeColor);
     this.groundConeColor.set(next.groundConeColor);
     this.stationConeMaterials.forEach((m) => m.color.set(next.groundConeColor));
+    this.islGslColor.set(next.islGslColor);
+    this.islIslColor.set(next.islIslColor);
 
     // FOV cone geometry depends on the half-angle.
     if (next.fovConeHalfAngleDeg !== prev.fovConeHalfAngleDeg) {
@@ -806,6 +899,162 @@ export default class SatelliteScene {
     this.shadowLine.geometry = geom;
   }
 
+  private islEndpointScenePosition(endpoint: IslEndpoint, gmst: number): THREE.Vector3 {
+    const observer = {
+      longitude: satellite.degreesToRadians(endpoint.longitudeDeg),
+      latitude: satellite.degreesToRadians(endpoint.latitudeDeg),
+      height: endpoint.heightKm,
+    };
+    const ecf = satellite.geodeticToEcf(observer);
+    const eci = satellite.ecfToEci(ecf, gmst);
+    return new THREE.Vector3(
+      eci.x / EARTH_RADIUS_EQUATOR_KM,
+      eci.z / EARTH_RADIUS_POLAR_KM,
+      -eci.y / EARTH_RADIUS_EQUATOR_KM,
+    );
+  }
+
+  private islNodeScenePosition(nodeId: number): THREE.Vector3 {
+    const satCount = this.satRecs.length;
+    if (nodeId === satCount) return this.islEndpointMeshA.position;
+    if (nodeId === satCount + 1) return this.islEndpointMeshB.position;
+    const p = this.satEciPositions[nodeId];
+    return new THREE.Vector3(
+      p.x / EARTH_RADIUS_EQUATOR_KM,
+      p.z / EARTH_RADIUS_POLAR_KM,
+      -p.y / EARTH_RADIUS_EQUATOR_KM,
+    );
+  }
+
+  /**
+   * Recompute (throttled per §1.6.3) and render the ISL path, and keep the
+   * endpoint markers positioned every frame regardless of recompute timing.
+   */
+  private updateIslMarkersAndPath(simDate: Date, gmst: number, nowRealMs: number) {
+    const settings = this.params.islSettings;
+    const endpointA = settings.endpointA;
+    const endpointB = settings.endpointB;
+    const active = settings.enabled && !!endpointA && !!endpointB;
+
+    this.islEndpointMeshA.visible = active;
+    this.islEndpointMeshB.visible = active;
+
+    if (!active) {
+      this.islPathLines.visible = false;
+      this.islPathGeometry.setDrawRange(0, 0);
+      this.islLastRecomputeSimMs = null;
+      this.islPreviousPathEdgeKeys = null;
+      // Invalidate any in-flight worker request so a late response can't
+      // resurrect a path after ISL has been disabled.
+      this.islWorkerRequestId++;
+      this.islComputeInFlight = false;
+      if (this.islLastResult !== null) {
+        this.islLastResult = null;
+        this.params.onIslResult?.(null);
+      }
+      return;
+    }
+
+    this.islEndpointMeshA.position.copy(this.islEndpointScenePosition(endpointA, gmst));
+    this.islEndpointMeshB.position.copy(this.islEndpointScenePosition(endpointB, gmst));
+
+    const simMs = simDate.getTime();
+    const dueBySim =
+      this.islLastRecomputeSimMs === null ||
+      Math.abs(simMs - this.islLastRecomputeSimMs) >= settings.recomputeIntervalSimS * 1000;
+    const dueByReal = nowRealMs - this.islLastRecomputeRealMs >= ISL_RECOMPUTE_MIN_REAL_MS;
+
+    if (!this.islForceRecompute && !(dueBySim && dueByReal)) {
+      this.applyIslPathToScene(this.islLastResult);
+      return;
+    }
+    this.islForceRecompute = false;
+    this.islLastRecomputeSimMs = simMs;
+    this.islLastRecomputeRealMs = nowRealMs;
+
+    // Node list stays fixed until the worker responds — keep rendering the
+    // last known path with fresh (moving) vertex positions this frame.
+    this.applyIslPathToScene(this.islLastResult);
+
+    // Avoid piling up requests if the worker is still busy with a previous one
+    // (it will simply be retried on a later due-for-recompute frame).
+    if (this.islComputeInFlight) return;
+    this.islComputeInFlight = true;
+
+    const requestId = ++this.islWorkerRequestId;
+    const computeRequest: IslRoutingWorkerComputeRequest = {
+      id: requestId,
+      type: "compute",
+      payload: {
+        simDateIso: simDate.toISOString(),
+        participantSatnums: settings.participantSatnums,
+        endpointA,
+        endpointB,
+        linkModel: settings.linkModel,
+        shellRanges: settings.shellRanges,
+        shellLinkModels: settings.shellLinkModels,
+        hopPenaltyMs: settings.cost.hopPenaltyMs,
+        kindPenaltyMs: settings.cost.kindPenaltyMs,
+        previousPathEdgeKeys: this.islPreviousPathEdgeKeys
+          ? Array.from(this.islPreviousPathEdgeKeys)
+          : undefined,
+        switchDiscount: settings.cost.switchDiscount,
+        stabilityWeightMs: settings.cost.stabilityWeightMs,
+        stabilityThresholdS: settings.cost.stabilityThresholdS,
+      },
+    };
+    this.islWorker.postMessage(computeRequest);
+  }
+
+  private handleIslWorkerMessage = (event: MessageEvent<IslRoutingWorkerResponse>) => {
+    const message = event.data;
+    if (message.type === "ack" || message.type === "sweepResult") return; // the scene only issues "compute" requests
+
+    this.islComputeInFlight = false;
+    if (message.id !== this.islWorkerRequestId) return; // superseded by a later request
+
+    if (message.type === "error") {
+      console.error("ISL routing worker error:", message.message);
+      return;
+    }
+
+    const result = message.payload.result;
+    if (result.reachable) {
+      this.islPreviousPathEdgeKeys = new Set(
+        result.edges.map((e) => edgeKey(e.fromNodeId, e.toNodeId)),
+      );
+    }
+    this.islLastResult = result;
+    this.params.onIslResult?.(result);
+    this.applyIslPathToScene(result);
+  };
+
+  private applyIslPathToScene(result: IslPathResult | null) {
+    if (!result || !result.reachable || result.edges.length === 0) {
+      this.islPathLines.visible = false;
+      this.islPathGeometry.setDrawRange(0, 0);
+      return;
+    }
+
+    const segments = Math.min(result.edges.length, ISL_PATH_MAX_SEGMENTS);
+    for (let s = 0; s < segments; s++) {
+      const edge = result.edges[s];
+      const fromPos = this.islNodeScenePosition(edge.fromNodeId);
+      const toPos = this.islNodeScenePosition(edge.toNodeId);
+      const color = edge.kind === "isl" ? this.islIslColor : this.islGslColor;
+      const v0 = s * 2;
+      const v1 = v0 + 1;
+      this.islPathPosAttr.setXYZ(v0, fromPos.x, fromPos.y, fromPos.z);
+      this.islPathPosAttr.setXYZ(v1, toPos.x, toPos.y, toPos.z);
+      this.islPathColorAttr.setXYZ(v0, color.r, color.g, color.b);
+      this.islPathColorAttr.setXYZ(v1, color.r, color.g, color.b);
+    }
+    this.islPathPosAttr.needsUpdate = true;
+    this.islPathColorAttr.needsUpdate = true;
+    this.islPathGeometry.setDrawRange(0, segments * 2);
+    this.islPathLines.visible = true;
+  }
+
   private animate = () => {
     this.animationFrameId = requestAnimationFrame(this.animate);
     const nowReal = Date.now();
@@ -902,6 +1151,9 @@ export default class SatelliteScene {
           -y / EARTH_RADIUS_EQUATOR_KM,
         );
         this.satPosAttr.setXYZ(i, satPosition.x, satPosition.y, satPosition.z);
+        this.satEciPositions[i].x = x;
+        this.satEciPositions[i].y = y;
+        this.satEciPositions[i].z = z;
         const geo = satellite.eciToGeodetic(pv.position, gmst);
         const groundEcf = satellite.geodeticToEcf({
           longitude: geo.longitude,
@@ -1028,7 +1280,9 @@ export default class SatelliteScene {
           }
         }
       } else {
-        // Propagation failed: explicitly mark satellite as hidden and hide link lines
+        // Propagation failed: explicitly mark satellite as hidden and hide link lines.
+        // (The ISL routing worker re-propagates independently and applies the
+        // same failed-propagation exclusion on its own copy of the satrecs.)
         this.satColorAttr.setXYZ(i, this.satelliteHiddenColor.r, this.satelliteHiddenColor.g, this.satelliteHiddenColor.b);
         this.params.groundStations.forEach((_, gi) => {
           this.linkLines[gi][i].visible = false;
@@ -1047,6 +1301,7 @@ export default class SatelliteScene {
     this.groundGeometry.computeBoundingSphere();
 
     this.updateShadow();
+    this.updateIslMarkersAndPath(simDate, gmst, nowReal);
 
     if (this.params.timeRef.current) this.params.timeRef.current.textContent = this.formatTime(simDate);
 
@@ -1205,7 +1460,10 @@ export default class SatelliteScene {
       cancelAnimationFrame(this.animationFrameId);
       this.animationFrameId = null;
     }
-    
+
+    this.islWorker.removeEventListener("message", this.handleIslWorkerMessage);
+    this.islWorker.terminate();
+
     this.disposeFns.forEach((fn) => fn());
     
     // Clear the scene first
@@ -1220,7 +1478,9 @@ export default class SatelliteScene {
     this.stationConeGeometries.forEach((g) => g.dispose());
     this.fovConeGeometry.dispose();
     this.linkGeometries.forEach(arr => arr.forEach(g => g.dispose()));
-    
+    this.islPathGeometry.dispose();
+    this.islEndpointGeo.dispose();
+
     // Dispose all materials
     this.satMaterial.dispose();
     if (this.satMaterial.map) this.satMaterial.map.dispose();
@@ -1230,6 +1490,9 @@ export default class SatelliteScene {
     this.stationConeMaterials.forEach((m) => m.dispose());
     this.fovConeMaterial.dispose();
     this.linkMaterial.dispose();
+    this.islPathMaterial.dispose();
+    this.islEndpointMatA.dispose();
+    this.islEndpointMatB.dispose();
     
     // Dispose earth mesh
     this.earthResourceDisposers.forEach((dispose) => dispose());

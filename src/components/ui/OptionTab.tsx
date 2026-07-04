@@ -85,6 +85,14 @@ interface Props {
   getCurrentView: () => ViewSettings;
   /** Apply a previously saved view */
   onApplyView: (settings: ViewSettings) => void;
+  /** Color for GSL segments of the ISL path */
+  islGslColor: string;
+  /** Called when the GSL path color changes */
+  onIslGslColorChange: (color: string) => void;
+  /** Color for ISL segments of the ISL path */
+  islIslColor: string;
+  /** Called when the ISL path color changes */
+  onIslIslColorChange: (color: string) => void;
 }
 
 function CheckboxItem({
@@ -246,6 +254,10 @@ export default function OptionTab(props: Props) {
     sceneRef,
     getCurrentView,
     onApplyView,
+    islGslColor,
+    onIslGslColorChange,
+    islIslColor,
+    onIslIslColorChange,
   } = props;
 
   const [loadedKMLs, setLoadedKMLs] = useState<string[]>([]);
@@ -648,6 +660,32 @@ export default function OptionTab(props: Props) {
               onChange={(e) => onSatelliteSelectedColorChange(e.target.value)}
             />
             <span className="option-color-value">{satelliteSelectedColor.toUpperCase()}</span>
+          </div>
+        </div>
+      </PanelSection>
+
+      {/* E2. ISL 経路カラー */}
+      <PanelSection title="ISL 経路カラー" icon={<Palette />} collapsible defaultOpen={false}>
+        <div className="option-color-grid">
+          <div className="option-color-row">
+            <span className="option-color-label">GSL 区間</span>
+            <input
+              className="option-color-input"
+              type="color"
+              value={islGslColor}
+              onChange={(e) => onIslGslColorChange(e.target.value)}
+            />
+            <span className="option-color-value">{islGslColor.toUpperCase()}</span>
+          </div>
+          <div className="option-color-row">
+            <span className="option-color-label">ISL 区間</span>
+            <input
+              className="option-color-input"
+              type="color"
+              value={islIslColor}
+              onChange={(e) => onIslIslColorChange(e.target.value)}
+            />
+            <span className="option-color-value">{islIslColor.toUpperCase()}</span>
           </div>
         </div>
       </PanelSection>

@@ -97,6 +97,9 @@ export function useSatelliteScene(
     params.satelliteHiddenColor,
     params.satelliteSelectedColor,
     params.ecef,
+    params.islSettings,
+    params.islGslColor,
+    params.islIslColor,
   ]);
 
   return sceneRef;

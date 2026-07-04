@@ -1,5 +1,6 @@
 import type { EarthTextureMode } from "./earthTextures";
 import type { SatelliteCameraMode } from "./visualization";
+import type { IslSettings } from "./isl/types";
 
 /**
  * Persistence of the current "view" — camera framing plus display settings —
@@ -52,6 +53,9 @@ export interface DisplaySettings {
   satelliteHiddenColor: string;
   satelliteSelectedColor: string;
   speedExp: number;
+  isl: IslSettings;
+  islGslColor: string;
+  islIslColor: string;
 }
 
 export interface ViewSettings {
