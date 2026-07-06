@@ -13,7 +13,7 @@ import {
 } from "../../workers/islRoutingWorker.types";
 
 interface Props {
-  /** The currently active (committed) satellite array — matches islShellRanges exactly (H-4). */
+  /** The currently active (committed) satellite array — matches islShellRanges exactly. */
   satellites: SatelliteSpec[];
   islSettings: IslSettings;
   islShellRanges: IslShellRange[];
@@ -21,16 +21,16 @@ interface Props {
 }
 
 /**
- * Time-window sweep analysis for the ISL routing feature (§2.5.4, Phase 4).
+ * Time-window sweep analysis for the ISL routing feature.
  * Runs entirely in a dedicated ISL routing worker instance (one "init" +
  * "sweep" round trip), independent of the live scene's own worker. Takes the
  * same committed `satellites`/`islShellRanges` the live scene uses, rather
  * than re-parsing the (possibly newer, not-yet-"Update"d) editor text — this
  * makes the "new TOML + stale ISL snapshot" combination structurally
- * impossible instead of merely avoided (isl-routing-review.md H-4).
+ * impossible instead of merely avoided.
  */
 export default function IslRoutingAnalysis({ satellites, islSettings, islShellRanges, startTime }: Props) {
-  // Held as raw text rather than a coerced number (M-1/SP-7): a plain
+  // Held as raw text rather than a coerced number: a plain
   // `Number(e.target.value) || 1` immediately snapped the field back to 1 the
   // moment it was cleared while typing, since the coerced value round-trips
   // straight back into this controlled input's `value`.

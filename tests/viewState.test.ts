@@ -113,7 +113,7 @@ describe("viewState persistence", () => {
     expect(result[0].name).toBe("(無題)");
   });
 
-  it("migrates a pre-Phase-5 (version 1) view instead of discarding it (M-3)", () => {
+  it("migrates a version 1 view instead of discarding it", () => {
     const oldShapeDisplay = {
       ...DISPLAY,
       isl: { enabled: true, participantSatnums: [1, 2, 3], shellRanges: [] },

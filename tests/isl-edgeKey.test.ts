@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { edgeKey } from "../src/lib/isl/edgeKey";
 
-// D-1: edgeKey is the single shared implementation used by shortestPath.ts,
+// edgeKey is the single shared implementation used by shortestPath.ts,
 // graph.ts, stability.ts and the routing worker — a regression here would
 // silently break hysteresis matching across all of them.
 describe("edgeKey", () => {

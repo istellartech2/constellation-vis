@@ -14,8 +14,7 @@ export interface IslEndpoint {
 /**
  * Converts a saved ground station into a "station"-kind ISL endpoint.
  * Previously copy-pasted as a 5-field object literal at both the initial
- * mode-switch and the station-reselect call sites in `IslTab.tsx`
- * (isl-routing-review.md SP-4).
+ * mode-switch and the station-reselect call sites in `IslTab.tsx`.
  */
 export function stationEndpoint(gs: GroundStation): IslEndpoint {
   return {
@@ -28,6 +27,37 @@ export function stationEndpoint(gs: GroundStation): IslEndpoint {
   };
 }
 
+function reconcileEndpoint(
+  ep: IslEndpoint | null,
+  stations: GroundStation[],
+): IslEndpoint | null {
+  if (!ep || ep.kind !== "station") return ep; // 臨時地点はシナリオに依存しない
+  const gs = stations.find((s) => s.name === ep.name);
+  if (!gs) return null; // 参照先の地上局が消えた → 未設定に初期化
+  const next = stationEndpoint(gs);
+  const unchanged =
+    next.latitudeDeg === ep.latitudeDeg &&
+    next.longitudeDeg === ep.longitudeDeg &&
+    next.heightKm === ep.heightKm &&
+    next.minElevationDeg === ep.minElevationDeg;
+  return unchanged ? ep : next; // 同名局の定義変更に追従(座標・仰角を最新化)
+}
+
+/**
+ * シナリオ更新(「更新」ボタン)後に、endpoint の地上局参照を新しい地上局リストへ
+ * 整合させる。station 参照は同名局があれば座標を最新化し、無ければ null(未設定)に
+ * 初期化する。何も変わらなければ同一オブジェクトを返す(不要な再計算・永続化を防ぐ)。
+ */
+export function reconcileIslEndpoints(
+  settings: IslSettings,
+  stations: GroundStation[],
+): IslSettings {
+  const a = reconcileEndpoint(settings.endpointA, stations);
+  const b = reconcileEndpoint(settings.endpointB, stations);
+  if (a === settings.endpointA && b === settings.endpointB) return settings;
+  return { ...settings, endpointA: a, endpointB: b };
+}
+
 export interface IslLinkModel {
   mode: "dynamic" | "gridPattern";
   /** Applied to both ISL (satellite-satellite) and GSL (ground-satellite) links. */
@@ -38,7 +68,7 @@ export interface IslLinkModel {
 
 /**
  * Stable description of one shell's satellite index range, used to resolve
- * per-shell link-model overrides and gridPattern topology (§2.4, §3-1 Phase 3).
+ * per-shell link-model overrides and gridPattern topology.
  * `key` matches the keys of `IslSettings.shellLinkModels` / `excludedShellKeys`.
  */
 export interface IslShellRange {
@@ -52,11 +82,11 @@ export interface IslShellRange {
 
 export interface IslCostSettings {
   hopPenaltyMs: number;
-  /** beta in [0, 0.5], hysteresis discount applied to previous-path edges (Phase 2). */
+  /** beta in [0, 0.5], hysteresis discount applied to previous-path edges. */
   switchDiscount: number;
   kindPenaltyMs?: Record<string, number>;
   /**
-   * w_tau [ms] (Phase 4, §1.5.2): penalty cap for links about to expire. 0
+   * w_tau [ms] (§1.5.2): penalty cap for links about to expire. 0
    * (default) disables the remaining-link-time forward sampling entirely —
    * it's the most expensive cost component (per-edge forward propagation),
    * so it's opt-in and Worker-only.
@@ -72,7 +102,7 @@ export interface IslSettings {
    * Stable keys (IslShellRange.key) of shells excluded from ISL participation.
    * Resolved to actual satellite indices at compute time (worker/graph layer),
    * never pre-resolved and persisted — a key referring to a since-removed
-   * shell is simply a no-op (falls back to "included"), per §2.4 (Phase 5, H-4/H-5).
+   * shell is simply a no-op (falls back to "included").
    */
   excludedShellKeys: string[];
   /** Whether satellites.toml (non-shell) satellites participate. */
@@ -82,7 +112,7 @@ export interface IslSettings {
   cost: IslCostSettings;
   recomputeIntervalSimS: number;
   /**
-   * Display settings (S-3): kept in IslSettings rather than threaded as
+   * Display settings: kept in IslSettings rather than threaded as
    * separate App/DisplaySettings/SceneParams fields, which previously meant
    * touching 5 files to add one color. The endpoint A/B markers reuse these
    * same two colors (they used to be a hardcoded, settings-independent

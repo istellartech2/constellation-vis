@@ -83,7 +83,7 @@ import type { IslShellRange } from "./isl/types";
 
 const SATELLITES: SatelliteSpec[] = ${serialize(normalized)};
 
-/** Shell ranges for the satellites generated from public/constellation.toml at build time — seeds the ISL tab's shell UI before the user ever clicks "更新" (isl-routing-review.md SP-10). */
+/** Shell ranges for the satellites generated from public/constellation.toml at build time — seeds the ISL tab's shell UI before the user ever clicks "更新". */
 export const SHELL_RANGES: IslShellRange[] = ${serialize(shellRanges)};
 
 export default SATELLITES;

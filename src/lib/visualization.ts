@@ -58,7 +58,7 @@ const THIRDPERSON_MIN_PITCH = THREE.MathUtils.degToRad(-70);
 const THIRDPERSON_MAX_PITCH = THREE.MathUtils.degToRad(82);
 const FOLLOW_LERP_ALPHA = 0.14;
 
-/** Pre-allocated capacity for the ISL path LineSegments geometry (§2.6). */
+/** Pre-allocated capacity for the ISL path LineSegments geometry. */
 const ISL_PATH_INITIAL_SEGMENTS = 64;
 const ISL_RECOMPUTE_MIN_REAL_MS = 200;
 
@@ -125,8 +125,8 @@ export interface SatelliteSceneParams {
   islSettings: IslSettings;
   /**
    * Shell index ranges for the current `satellites` array, computed once at
-   * the same time (Update click) that produced it — never a stale snapshot
-   * (Phase 5, H-1/H-4). Empty when the constellation has no shells.
+   * the same time (Update click) that produced it — never a stale snapshot.
+   * Empty when the constellation has no shells.
    */
   islShellRanges: IslShellRange[];
   /** Fired whenever the ISL path result is (re)computed, and with null when disabled. */
@@ -194,12 +194,12 @@ export default class SatelliteScene {
 
   private readonly islPathGeometry: THREE.BufferGeometry;
   // Reassigned (not readonly) by ensureIslPathCapacity when a path exceeds the
-  // current buffer capacity — reallocated on demand rather than clamped, per
-  // §2.6 ("既定容量64区間。超過時のみ再確保").
+  // current buffer capacity — reallocated on demand (default capacity 64
+  // segments) rather than clamped.
   private islPathPosAttr: THREE.BufferAttribute;
   private islPathColorAttr: THREE.BufferAttribute;
   private islPathCapacitySegments = ISL_PATH_INITIAL_SEGMENTS;
-  // Scratch vectors reused every frame by applyIslPathToScene (P-1) — avoids
+  // Scratch vectors reused every frame by applyIslPathToScene — avoids
   // allocating 2 THREE.Vector3 per path segment at up to 60fps.
   private readonly islScratchFrom = new THREE.Vector3();
   private readonly islScratchTo = new THREE.Vector3();
@@ -227,18 +227,18 @@ export default class SatelliteScene {
    * move continuously), but the color buffer only actually needs rewriting
    * when the result reference changes (a new compute) or the ISL/GSL color
    * setting changes — previously it was rewritten and re-uploaded to the GPU
-   * unconditionally every frame (isl-routing-review.md SP-14).
+   * unconditionally every frame.
    */
   private islColorsAppliedFor: IslPathResult | null = null;
   private islColorsDirty = true;
   /**
-   * Offloads ISL candidate generation + Dijkstra to a worker thread (Phase 3,
-   * §2.7). Lazily created on first enable via {@link ensureIslWorker} (P-6).
+   * Offloads ISL candidate generation + Dijkstra to a worker thread.
+   * Lazily created on first enable via {@link ensureIslWorker}.
    */
   private islWorker: Worker | null = null;
   private islWorkerRequestId = 0;
   private islComputeInFlight = false;
-  /** Identity of the settings last sent via "configure" (P-2) — reference equality is enough. */
+  /** Identity of the settings last sent via "configure" — reference equality is enough. */
   private islLastConfiguredSettings: IslSettings | null = null;
   private islLastConfiguredShellRanges: IslShellRange[] | null = null;
 
@@ -464,7 +464,7 @@ export default class SatelliteScene {
     this.islPathLines.visible = false;
     this.scene.add(this.islPathLines);
 
-    // Endpoint markers reuse the same two colors as the path segments (S-3)
+    // Endpoint markers reuse the same two colors as the path segments
     // — matches the pre-existing visual convention of A=GSL-pink, B=ISL-cyan
     // rather than duplicating them as separate hardcoded, settings-independent constants.
     this.islEndpointGeo = new THREE.SphereGeometry(0.014, 12, 12);
@@ -477,7 +477,7 @@ export default class SatelliteScene {
     this.scene.add(this.islEndpointMeshA);
     this.scene.add(this.islEndpointMeshB);
 
-    // Deferred until ISL is actually enabled (P-6): most sessions never turn
+    // Deferred until ISL is actually enabled: most sessions never turn
     // it on, so spawning a worker + shipping the full satellite list to it on
     // every scene construction would be pure overhead for them.
 
@@ -724,7 +724,7 @@ export default class SatelliteScene {
     // hysteresis/switch-tracking state so they don't get miscounted as a path
     // switch, and drop the stale path immediately so it never renders a
     // geometrically-impossible line from the old path's tail to the new
-    // marker position while the fresh compute is in flight (§4-B, M-2).
+    // marker position while the fresh compute is in flight.
     if (
       next.islSettings.endpointA !== prev.islSettings.endpointA ||
       next.islSettings.endpointB !== prev.islSettings.endpointB
@@ -952,7 +952,7 @@ export default class SatelliteScene {
     this.shadowLine.geometry = geom;
   }
 
-  // Reused across calls (P-1): avoids allocating a fresh observer literal
+  // Reused across calls: avoids allocating a fresh observer literal
   // every frame for each of the two endpoints.
   private readonly islScratchObserver = { longitude: 0, latitude: 0, height: 0 };
 
@@ -1030,7 +1030,7 @@ export default class SatelliteScene {
     // Crucially, do NOT consume islForceRecompute or advance the throttle
     // timestamps here — otherwise a setting change that arrives while a
     // compute is in flight is silently dropped, and (while paused, so the sim
-    // clock never re-triggers dueBySim) never gets picked up again (§4-A, H-3).
+    // clock never re-triggers dueBySim) never gets picked up again.
     // Leaving the flag set means the very next non-in-flight frame retries.
     if (this.islComputeInFlight) return;
     this.islComputeInFlight = true;
@@ -1041,7 +1041,7 @@ export default class SatelliteScene {
     const worker = this.ensureIslWorker();
 
     // Only re-send the settings payload when it actually changed identity
-    // (P-2) — otherwise every recompute (up to 5/s) would structured-clone
+    // — otherwise every recompute (up to 5/s) would structured-clone
     // the full shellRanges/cost/linkModel payload for no reason.
     if (
       this.islLastConfiguredSettings !== settings ||
@@ -1071,7 +1071,7 @@ export default class SatelliteScene {
     worker.postMessage(computeRequest);
   }
 
-  /** Lazily creates and initializes the ISL routing worker (P-6). */
+  /** Lazily creates and initializes the ISL routing worker. */
   private ensureIslWorker(): Worker {
     if (this.islWorker) return this.islWorker;
     const worker = new Worker(new URL("../workers/islRoutingWorker.ts", import.meta.url), {
@@ -1113,8 +1113,8 @@ export default class SatelliteScene {
 
   /**
    * Grow the ISL path LineSegments buffers to fit `requiredSegments`, doubling
-   * capacity as needed (§2.6: "既定容量64区間。超過時のみ再確保" — a fixed
-   * cap that silently clamped longer paths was a design deviation, L-1).
+   * capacity as needed — a fixed cap that silently clamped longer paths
+   * would misrender them, so the buffer grows instead.
    * The replaced attribute's GPU buffer is reclaimed lazily by the renderer's
    * WeakMap-keyed attribute cache once the old BufferAttribute is
    * unreferenced; not disposed eagerly here since three.js does not expose a
@@ -1133,7 +1133,7 @@ export default class SatelliteScene {
     this.islPathColorAttr = new THREE.BufferAttribute(new Float32Array(maxVertices * 3), 3);
     this.islPathGeometry.setAttribute("position", this.islPathPosAttr);
     this.islPathGeometry.setAttribute("color", this.islPathColorAttr);
-    // The new color attribute starts zeroed — force a full rewrite (SP-14).
+    // The new color attribute starts zeroed — force a full rewrite.
     this.islColorsDirty = true;
   }
 
@@ -1152,7 +1152,7 @@ export default class SatelliteScene {
     // they're always rewritten. Colors only depend on each edge's kind and
     // the two color settings, so re-writing (and re-uploading to the GPU)
     // every frame is wasted work outside of an actual new result or color
-    // change — at most ~5/s, not 60/s (SP-14).
+    // change — at most ~5/s, not 60/s.
     const rewriteColors = this.islColorsAppliedFor !== result || this.islColorsDirty;
 
     for (let s = 0; s < segments; s++) {

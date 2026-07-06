@@ -8,11 +8,11 @@ import { findShortestPath } from "../src/lib/isl/shortestPath";
 import type { IslEndpoint, IslLinkModel } from "../src/lib/isl/types";
 
 /**
- * Scenario 4 (isl-routing.md §3.2): sweep an Iridium-like Walker shell over
+ * Sweep an Iridium-like Walker shell over
  * 10 minutes at 10 s steps, routing Tokyo <-> New York, and compare the
  * number of path switches with hysteresis off (beta=0) vs on (beta=0.2).
  */
-describe("isl hysteresis scenario (isl-routing.md §3.2 scenario 4)", () => {
+describe("isl hysteresis scenario (Iridium-like Tokyo-NY sweep)", () => {
   const epoch = new Date("2024-01-01T00:00:00.000Z");
   const constellationToml = `
 [constellation]

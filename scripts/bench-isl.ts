@@ -1,5 +1,5 @@
 /**
- * ISL routing performance benchmark (isl-routing.md §3.3, §2.7).
+ * ISL routing performance benchmark (results tabulated in docs/isl-routing.md).
  * Measures candidate generation (naive / uniform grid / gridPattern) and
  * Dijkstra shortest-path time for a seeded Walker-like LEO shell at
  * N = 100 / 1,000 / 10,000 satellites. Run with: bun run scripts/bench-isl.ts
@@ -33,7 +33,7 @@ const LOS_MARGIN_KM = 80;
 /**
  * A single-shell Walker-like constellation with `count` satellites,
  * plane-major indexed — generated via the same `generateFromShells` used by
- * `constellation.toml` (D-4), rather than a hand-rolled reimplementation that
+ * `constellation.toml`, rather than a hand-rolled reimplementation that
  * could silently drift from the real generator's indexing/geometry.
  */
 function makeWalkerShell(count: number): { specs: SatelliteSpec[]; shell: ShellIndexRange } {

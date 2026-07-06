@@ -84,7 +84,7 @@ export function parseSatellitesToml(text: string): SatelliteSpec[] {
 
 interface GeneratedShells {
   satellites: SatelliteSpec[];
-  /** One entry per shell, with the metadata needed to resolve ISL participation (§2.4). */
+  /** One entry per shell, with the metadata needed to resolve ISL participation. */
   ranges: IslShellRange[];
 }
 
@@ -161,9 +161,9 @@ function generateFromShells(con: ConstellationConfig): SatelliteSpec[] {
 }
 
 /**
- * Resolve shell index ranges for ISL participation/topology (§2.4), from the
- * *actual* generated satellite counts rather than the nominal `shell.count`
- * (H-1 fix). `baseOffset` is the number of satellites.toml satellites that
+ * Resolve shell index ranges for ISL participation/topology, from the
+ * *actual* generated satellite counts rather than the nominal `shell.count`.
+ * `baseOffset` is the number of satellites.toml satellites that
  * precede the constellation shells in the combined array.
  */
 export function generateShellRanges(con: ConstellationConfig, baseOffset: number): IslShellRange[] {
@@ -230,8 +230,7 @@ export function parseConstellationToml(text: string): SatelliteSpec[] {
  * and `generateShellRanges` independently — each internally re-parsing and
  * re-generating from the same text — so the invariant "shellRanges matches
  * the satellite array in use" held only because both calls happened to
- * receive identical text, not because it was structurally guaranteed
- * (isl-routing-review.md SP-9, the same drift class as H-1).
+ * receive identical text, not because it was structurally guaranteed.
  */
 export function buildConstellation(
   text: string,

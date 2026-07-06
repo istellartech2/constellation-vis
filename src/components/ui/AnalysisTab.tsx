@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Radio, Globe2, Rocket, Sun, Waypoints } from "lucide-react";
+import { Radio, Globe2, Rocket, Sun } from "lucide-react";
 import StationAccessAnalysis from "../analysis/StationAccessAnalysis";
 import GlobalAccessAnalysis from "../analysis/GlobalAccessAnalysis";
 import OrbitMaintenanceAnalysis from "../analysis/OrbitMaintenanceAnalysis";
@@ -144,15 +144,8 @@ export default function AnalysisTab({
         />
       </PanelSection>
 
-      <PanelSection title="ISL 経路探索" icon={<Waypoints />}>
-        <EntryButton
-          icon={<Waypoints className="h-4 w-4" />}
-          title="ISL経路タイムライン解析"
-          subtitle="時間窓スイープで総遅延・ホップ数・切替回数・到達可能率を確認"
-          onClick={() => handleAnalysisClick("ISL経路タイムライン解析")}
-        />
-      </PanelSection>
-
+      {/* ISL経路タイムライン解析のエントリは通信タブの結果カード(「タイムライン解析を開く」)に
+          集約した — requestedAnalysis 経由でのみここのモーダルが開く */}
       {analysisOpen && createPortal(
         <div className="overlay" style={{ zIndex: 1000 }}>
           <div className="overlay-box" style={{ width: "90%", maxWidth: "1200px", height: "80%", maxHeight: "900px", display: "flex", flexDirection: "column" }}>

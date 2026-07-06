@@ -21,16 +21,16 @@ const ctx: DedicatedWorkerGlobalScope = self as unknown as DedicatedWorkerGlobal
 let satRecs: satellite.SatRec[] = [];
 /**
  * Reused across every "compute"/sweep-step for the lifetime of one "init"
- * (SP-17) — `propagateAll` mutates this in place instead of allocating N
+ * — `propagateAll` mutates this in place instead of allocating N
  * position objects + 2 arrays per call. Reset to undefined on "init" since
  * the satellite count may have changed.
  */
 let propagateBuffer: PropagateAllResult | undefined;
-/** Set by "configure" and reused by every "compute" until the next one (P-2). */
+/** Set by "configure" and reused by every "compute" until the next one. */
 let liveSettings: IslRoutingWorkerSettingsPayload | null = null;
 
 /**
- * Guard against stale/inconsistent shellRanges (H-1): if the UI ever sends
+ * Guard against stale/inconsistent shellRanges: if the UI ever sends
  * ranges that don't fit the worker's own satellite count (e.g. a race between
  * an in-flight compute request and a constellation update), fail with a
  * descriptive message instead of an out-of-bounds array read.
@@ -56,7 +56,7 @@ function validateShellRanges(shellRanges: IslShellRange[], satCount: number): vo
  * per satellite per sample. Binary-search refinement dt values aren't
  * grid-aligned and are rare (only for edges that actually break, ~20 calls
  * each) — they skip the cache and are computed directly, which is fine since
- * they were never the bottleneck (isl-routing-review.md SP-13).
+ * they were never the bottleneck.
  */
 function memoizedStabilityPredictors(
   satEciPositions: Vec3[],

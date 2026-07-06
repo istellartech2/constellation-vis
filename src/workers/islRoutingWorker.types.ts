@@ -22,13 +22,13 @@ export interface IslRoutingWorkerInitRequest {
 /**
  * Common routing settings shared by "compute" and "sweep" requests. `cost`
  * and `linkModel` are passed as whole plain-data sub-objects rather than
- * manually flattened (S-4) — adding a cost field used to mean editing every
+ * manually flattened — adding a cost field used to mean editing every
  * one of the (now two) call sites that build this payload; a forgotten one
  * silently reverted that field to its default without either call site
  * showing an error.
  */
 export interface IslRoutingWorkerSettingsPayload {
-  /** Stable keys of shells excluded from participation (§2.4, Phase 5). */
+  /** Stable keys of shells excluded from participation. */
   excludedShellKeys: string[];
   includeBaseSatellites: boolean;
   endpointA: IslEndpoint;
@@ -43,7 +43,7 @@ export interface IslRoutingWorkerSettingsPayload {
  * Sent whenever the live scene's routing settings change identity (endpoints,
  * participation, link model, cost, shellRanges — anything besides the clock).
  * The worker caches this and applies it to every subsequent "compute" until
- * the next "configure" (P-2): settings no longer need to be re-serialized
+ * the next "configure": settings no longer need to be re-serialized
  * (structured-cloned) on every recompute, only on actual settings edits.
  */
 export interface IslRoutingWorkerConfigureRequest {
@@ -56,8 +56,8 @@ export interface IslRoutingWorkerConfigureRequest {
  * Builds the settings payload shared by "configure" and "sweep" requests.
  * Previously hand-assembled independently in `visualization.ts` and
  * `IslRoutingAnalysis.tsx` — a forgotten field on one side silently made the
- * live scene and the sweep analysis diverge (isl-routing-review.md SP-1, the
- * same drift class S-4 fixed for the `cost`/`linkModel` sub-objects).
+ * live scene and the sweep analysis diverge (the same drift class the
+ * `cost`/`linkModel` sub-object bundling fixed).
  */
 export function buildIslWorkerSettingsPayload(
   islSettings: IslSettings,
@@ -79,7 +79,7 @@ export function buildIslWorkerSettingsPayload(
 
 /**
  * Sent per recompute; the worker re-propagates from its cached satrecs at
- * simDateIso (§2.3, §2.7) using the settings from the last "configure".
+ * simDateIso using the settings from the last "configure".
  */
 export interface IslRoutingWorkerComputePayload {
   simDateIso: string;
@@ -93,7 +93,7 @@ export interface IslRoutingWorkerComputeRequest {
   payload: IslRoutingWorkerComputePayload;
 }
 
-/** Sweeps a time window, threading hysteresis across steps internally (§2.5.4, Phase 4). */
+/** Sweeps a time window, threading hysteresis across steps internally. */
 export interface IslRoutingWorkerSweepPayload extends IslRoutingWorkerSettingsPayload {
   startIso: string;
   durationS: number;

@@ -1,6 +1,6 @@
 /**
- * ISL routing regression check — isl-routing.md §3.2 scenario 2 (Iridium-like
- * Walker order-of-magnitude check). Run with: bun run scripts/verify-isl-routing.ts
+ * ISL routing regression check — Iridium-like Walker order-of-magnitude check
+ * (documented in docs/isl-routing.md). Run with: bun run scripts/verify-isl-routing.ts
  *
  * 66 satellites (6 planes x 11), 780 km altitude, 86.4 deg inclination, routing
  * Tokyo <-> New York. Checks that the resulting path delay sits between the
@@ -64,7 +64,7 @@ function computeAt(satRecs: satellite.SatRec[], simDate: Date) {
   // Matches the routing worker's actual behavior (a satellite whose
   // propagation fails must never be treated as a real position) rather than
   // silently substituting {0,0,0}, which would verify a different code path
-  // than what ships (D-3).
+  // than what ships.
   const participantIndices = satRecs.map((_, i) => i).filter((i) => valid[i]);
 
   const linkModel: IslLinkModel = { mode: "dynamic", maxRangeKm: 5000, losMarginKm: 80 };
@@ -144,7 +144,7 @@ function main() {
     failures.forEach((f) => console.error(`  - ${f}`));
     process.exit(1);
   }
-  console.log("\nOK: scenario 2 (isl-routing.md §3.2) checks passed.");
+  console.log("\nOK: Iridium-like Walker routing checks passed.");
 }
 
 main();

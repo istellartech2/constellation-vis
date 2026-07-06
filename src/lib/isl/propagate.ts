@@ -1,4 +1,4 @@
-/** Shared satellite propagation for one instant, used by the routing worker and the verification/bench scripts (D-3). */
+/** Shared satellite propagation for one instant, used by the routing worker and the verification/bench scripts. */
 import * as satellite from "satellite.js";
 import type { Vec3 } from "./geometry";
 
@@ -17,13 +17,13 @@ export interface PropagateAllResult {
  * Previously reimplemented independently in the routing worker and in
  * `scripts/verify-isl-routing.ts`/`scripts/bench-isl.ts` — the scripts'
  * copies used the `{0,0,0}` fallback the worker had already moved away from,
- * so they were verifying different behavior than what ships (D-3).
+ * so they were verifying different behavior than what ships.
  *
  * `out`, if given, is reused and mutated in place (both arrays and each
  * `Vec3`/boolean slot) instead of allocating a fresh result — the routing
  * worker calls this on every compute (up to 5/s) with a satellite count fixed
  * since the last "init", so allocating N objects + 2 arrays every call was
- * pure GC churn (isl-routing-review.md SP-17). One-shot callers (scripts) can
+ * pure GC churn. One-shot callers (scripts) can
  * simply omit it.
  */
 export function propagateAll(

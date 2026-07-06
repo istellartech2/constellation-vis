@@ -1,4 +1,4 @@
-/** Stability penalty (c_stab, §1.5.2, Phase 4) applied on top of a built snapshot graph. */
+/** Stability penalty (c_stab, §1.5.2) applied on top of a built snapshot graph. */
 import * as satellite from "satellite.js";
 import {
   DEFAULT_REMAINING_LINK_TIME_HORIZON_S,
@@ -21,7 +21,7 @@ import type { IslEndpoint } from "./types";
  * constant — previously triple-managed: an unused default on
  * `stabilityPenaltyMs` in cost.ts, a re-declared local constant in the
  * routing worker, and every call site of `applyStabilityPenalties` passing
- * the same value explicitly (isl-routing-review.md SP-3). No UI has ever
+ * the same value explicitly. No UI has ever
  * wired up a way to override this.
  */
 export const DEFAULT_STABILITY_THRESHOLD_S = 60;

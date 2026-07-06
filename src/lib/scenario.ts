@@ -7,10 +7,9 @@ import type { IslShellRange } from "./isl/types";
  * start time and the ISL shell ranges derived from the same satellite array.
  * Previously threaded as 4 parallel state values / positional `onUpdate`
  * arguments across App.tsx and SatelliteEditor.tsx — the same multi-file
- * fan-out pattern flagged for `IslSettings.cost`/`linkModel` (S-4). Bundling
+ * fan-out pattern as `IslSettings.cost`/`linkModel` once had. Bundling
  * them means adding a 5th piece of committed scenario data in the future
- * touches this one type instead of every call site's signature
- * (isl-routing-review.md SP-11).
+ * touches this one type instead of every call site's signature.
  */
 export interface CommittedScenario {
   satellites: SatelliteSpec[];

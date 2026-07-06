@@ -1,4 +1,4 @@
-/** Equivalent-delay [ms] cost model (§1.4). Phase 1: propagation delay + hop penalty. Phase 4: + stability. */
+/** Equivalent-delay [ms] cost model (§1.4): propagation delay + hop penalty + stability. */
 
 export const SPEED_OF_LIGHT_KM_PER_S = 299792.458;
 

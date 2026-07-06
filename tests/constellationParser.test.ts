@@ -34,11 +34,11 @@ planes = 1
     expect(Number.isFinite(satellites[0].elements.inclinationDeg)).toBe(true);
   });
 
-  // isl-routing-review.md H-1: the inner generation loop must stop once *that
+  // The inner generation loop must stop once *that
   // shell* has produced `count` satellites, not once the whole accumulated
   // array reaches `count` — otherwise every shell after the first is
   // truncated (a pre-existing bug independent of the ISL feature).
-  it("generates every shell's full satellite count in a multi-shell constellation (H-1)", () => {
+  it("generates every shell's full satellite count in a multi-shell constellation", () => {
     const toml = `
 [constellation]
 epoch = 2025-05-20T00:00:00Z

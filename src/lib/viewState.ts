@@ -12,7 +12,7 @@ import { createDefaultIslSettings, DEFAULT_GSL_COLOR, DEFAULT_ISL_COLOR, type Is
  */
 
 // Bumped to 2 when IslSettings dropped `participantSatnums`/`shellRanges` in
-// favor of stable-key participation (Phase 5, H-4). `migrateViewSettings`
+// favor of stable-key participation. `migrateViewSettings`
 // below is the one place old-shaped `display.isl` data gets defaulted away.
 const STORAGE_VERSION = 2 as const;
 const MIGRATABLE_VERSIONS = new Set<number>([1, STORAGE_VERSION]);
@@ -104,15 +104,15 @@ function isValidViewSettings(v: unknown): v is ViewSettings {
  * (not the version it upgrades to). `migrateViewSettings` below applies every
  * step from the stored version up to {@link STORAGE_VERSION} in order, so
  * adding a v3 migration later means adding one new entry here rather than
- * editing a monolithic shape-sniffing function (isl-routing-review.md SP-12).
+ * editing a monolithic shape-sniffing function.
  *
  * Only one step exists today: v1 -> v2, when `IslSettings` dropped
- * `participantSatnums`/`shellRanges` for stable-key participation (Phase 5,
- * H-4) and — in the same pre-release branch — folded the ISL display colors
+ * `participantSatnums`/`shellRanges` for stable-key participation
+ * and — in the same pre-release branch — folded the ISL display colors
  * from top-level `display.islGslColor`/`islIslColor` into `isl.gslColor`/
- * `islColor` (S-3). `display.isl` may be absent (pre-ISL saves) or in the
- * pre-Phase-5 shape; in both cases it's discarded rather than trusted, since
- * a stale participation snapshot is worse than losing it (M-3). There is
+ * `islColor`. `display.isl` may be absent (pre-ISL saves) or in the
+ * old v1 shape; in both cases it's discarded rather than trusted, since
+ * a stale participation snapshot is worse than losing it. There is
  * deliberately no "v2 record missing isl colors" step: every v2 record this
  * app has ever written already has `isl.gslColor`/`islColor`, since both
  * changes shipped in the same release.

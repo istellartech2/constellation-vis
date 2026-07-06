@@ -154,7 +154,7 @@ interface Props {
   islResult: IslPathResult | null;
   /** User-facing message from the last ISL routing worker error, or null */
   islError: string | null;
-  /** Cumulative count of path switches since ISL was enabled (§2.5.2, Phase 2) */
+  /** Cumulative count of path switches since ISL was enabled */
   islSwitchCount: number;
   /** Sim-time (ms) of the last path switch, or null if none yet */
   islLastSwitchSimMs: number | null;
@@ -334,7 +334,7 @@ export default function SatelliteEditor({
   const handleUpdate = () => {
     try {
       const base = parseSatellitesToml(satText);
-      // Parsed and generated in a single pass (SP-9) — `con` and `shellRanges`
+      // Parsed and generated in a single pass — `con` and `shellRanges`
       // are guaranteed to describe the same generated array, rather than
       // relying on two independent parses of the same text happening to agree.
       const { satellites: con, ranges: shellRanges } = constText

@@ -86,7 +86,7 @@ describe("isl graph", () => {
     const islEdge = sat0Edges.find((e) => e.to === 1 && e.kind === "isl");
     expect(islEdge).toBeDefined();
 
-    // Expected ISL chord length: 2 * R_geo * sin(45 deg) (isl-routing.md §3.2 scenario 1).
+    // Expected ISL chord length: 2 * R_geo * sin(45 deg).
     const expectedChordKm = 2 * GEO_R_KM * Math.sin(Math.PI / 4);
     expect(islEdge!.distanceKm).toBeCloseTo(expectedChordKm, 0);
 
@@ -94,7 +94,7 @@ describe("isl graph", () => {
     expect(islEdge!.costMs).toBeCloseTo(expectedDelayMs, 3);
   });
 
-  it("scenario 1 (isl-routing.md §3.2): GEO 2-satellite relay total delay matches the hand-calculated ~437.6 ms within 0.5%", () => {
+  it("GEO 2-satellite relay total delay matches the hand-calculated ~437.6 ms within 0.5%", () => {
     const simDate = new Date("2024-01-01T00:00:00.000Z");
     const gmst = satellite.gstime(simDate);
 
@@ -148,7 +148,7 @@ describe("isl graph", () => {
     expect(result.hopCount).toBe(2);
     expect(result.edges).toHaveLength(3);
 
-    // isl-routing.md §3.2: GSL x2 (~119.4 ms each) + ISL (~198.9 ms) ~= 437.6 ms,
+    // GSL x2 (~119.4 ms each) + ISL (~198.9 ms) ~= 437.6 ms,
     // excluding the 3 hop-penalty edges added on top by the cost model.
     const totalWithoutHopPenalty = result.totalDelayMs - result.edges.length * hopPenaltyMs;
     const expectedMs = 437.6;
@@ -210,7 +210,7 @@ describe("isl graph", () => {
     expect((withCap.adjacency.get(nodeA) ?? []).some((e) => e.to === 0)).toBe(false);
   });
 
-  describe("shell-aware ISL candidate resolution (Phase 3, §2.4)", () => {
+  describe("shell-aware ISL candidate resolution", () => {
     // Positions far along a line, spaced 100 km apart: LoS is always clear and
     // distances are simply |i-j|*100 km — isolates the shell/mode/range-merge
     // logic in resolveIslEdges from LoS/orbital geometry (already covered

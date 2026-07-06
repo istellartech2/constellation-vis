@@ -1,4 +1,4 @@
-/** Candidate link generation (§1.7). Phase 1: naive all-pairs; later phases add uniform grid / gridPattern. */
+/** Candidate link generation (§1.7): naive all-pairs, uniform grid, and gridPattern. */
 import * as satellite from "satellite.js";
 import type { Vec3 } from "./geometry";
 import { elevationRad, hasLineOfSight, linkDistanceKm, linkDistanceSqKm2 } from "./geometry";
@@ -44,13 +44,13 @@ export function naiveIslCandidates(
 }
 
 /**
- * Uniform-grid ISL candidate generation (§1.7.2, Phase 3). Hashes participant
+ * Uniform-grid ISL candidate generation (§1.7.2). Hashes participant
  * satellites into cells of side `maxRangeKm` and only pair-checks each satellite
  * against occupants of its own cell + the 26 neighboring cells. Any pair with
  * |r_j - r_i| <= maxRangeKm is guaranteed to fall within that 27-cell
  * neighborhood, so this produces exactly the same edge set as
  * {@link naiveIslCandidates} — verified by the naive/grid equivalence test
- * (§3.1) — at O(N + neighbor pairs) instead of O(N^2).
+ * — at O(N + neighbor pairs) instead of O(N^2).
  */
 export function uniformGridIslCandidates(
   satEciPositions: Vec3[],
@@ -58,7 +58,7 @@ export function uniformGridIslCandidates(
   maxRangeKm: number,
   losMarginKm: number,
   /**
-   * Optional early-reject before the distance/LoS check (P-5): return true to
+   * Optional early-reject before the distance/LoS check: return true to
    * skip a pair entirely. Used by the shell-aware resolver to avoid
    * re-checking same-shell pairs a second time during the cross-shell pass.
    */
@@ -68,7 +68,7 @@ export function uniformGridIslCandidates(
 
   const cellSize = Math.max(maxRangeKm, 1e-6);
   const cellCoord = (v: number) => Math.floor(v / cellSize);
-  // Numeric cell key instead of a template-string join (P-3): packs each axis
+  // Numeric cell key instead of a template-string join: packs each axis
   // into AXIS_MOD via wraparound (safe — see below) rather than a
   // 3-component string, avoiding ~28 string allocations per satellite (27
   // neighbor lookups + 1 insert) at scan time.
@@ -109,7 +109,7 @@ export function uniformGridIslCandidates(
   for (const i of participantIndices) {
     const pi = satEciPositions[i];
     // Recomputed inline (3 divisions) rather than fetched from a per-satellite
-    // Map built above (SP-16) — a Map<number, [number,number,number]> lookup
+    // Map built above — a Map<number, [number,number,number]> lookup
     // plus the tuple allocation that built it is more expensive than 3
     // divisions for this small a computation, and this coordinate was already
     // computed once during the grid-build loop above.

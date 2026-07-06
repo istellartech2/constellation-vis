@@ -6,7 +6,7 @@ const SHELL_A: IslShellRange = { key: "0", name: "A", startIndex: 3, count: 4, p
 const SHELL_B: IslShellRange = { key: "1", name: "B", startIndex: 7, count: 3, planes: 1 }; // indices 7-9
 const SAT_COUNT = 10; // indices 0-2 are "base" (satellites.toml) satellites
 
-describe("resolveIslParticipantIndices (Phase 5, H-2/H-4/H-5)", () => {
+describe("resolveIslParticipantIndices", () => {
   it("includes everything by default (no filter)", () => {
     const indices = resolveIslParticipantIndices(SAT_COUNT, [SHELL_A, SHELL_B], [], true);
     expect(indices).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
@@ -22,14 +22,14 @@ describe("resolveIslParticipantIndices (Phase 5, H-2/H-4/H-5)", () => {
     expect(indices).toEqual([3, 4, 5, 6, 7, 8, 9]);
   });
 
-  // H-2: excluding everything must yield an empty set, not "no filter" (which
+  // Excluding everything must yield an empty set, not "no filter" (which
   // would be the exact opposite of user intent).
-  it("returns an empty array when every shell is excluded and base is excluded (H-2)", () => {
+  it("returns an empty array when every shell is excluded and base is excluded", () => {
     const indices = resolveIslParticipantIndices(SAT_COUNT, [SHELL_A, SHELL_B], ["0", "1"], false);
     expect(indices).toEqual([]);
   });
 
-  // H-4/H-5: a stale exclusion key referring to a shell that no longer exists
+  // A stale exclusion key referring to a shell that no longer exists
   // (e.g. the constellation was edited and that shell removed) must not
   // silently exclude anything — it's simply not resolvable, so it's a no-op
   // and the satellites it used to refer to fall back to "included".

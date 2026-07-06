@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { edgeCostMs, propagationDelayMs, stabilityPenaltyMs } from "../src/lib/isl/cost";
 
 describe("isl cost", () => {
-  describe("stabilityPenaltyMs (§1.5.2, Phase 4)", () => {
+  describe("stabilityPenaltyMs (§1.5.2)", () => {
     it("is at its cap (w_tau) when the link is about to expire (remaining = 0)", () => {
       expect(stabilityPenaltyMs(0, 60, 20)).toBeCloseTo(20, 6);
     });
@@ -25,7 +25,7 @@ describe("isl cost", () => {
   });
 
   describe("edgeCostMs with the optional stability component", () => {
-    it("defaults stabilityMs to 0 (Phase 1-3 call sites unaffected)", () => {
+    it("defaults stabilityMs to 0 (existing call sites unaffected)", () => {
       const withoutStability = edgeCostMs(1000, 2, 0);
       const explicitZero = edgeCostMs(1000, 2, 0, 0);
       expect(withoutStability).toBeCloseTo(explicitZero, 9);

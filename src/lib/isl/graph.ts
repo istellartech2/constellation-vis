@@ -1,4 +1,4 @@
-/** Snapshot graph construction: node positions + settings -> adjacency list (§1.8, §2.2). */
+/** Snapshot graph construction: node positions + settings -> adjacency list (§1.8). */
 import * as satellite from "satellite.js";
 import { endpointEci, endpointObserver, type Vec3 } from "./geometry";
 import {
@@ -41,7 +41,7 @@ export interface BuildGraphInput {
   linkModel: IslLinkModel;
   hopPenaltyMs: number;
   kindPenaltyMs?: Record<string, number>;
-  /** Shell index ranges for gridPattern topology + per-shell link-model overrides (Phase 3, §2.4). */
+  /** Shell index ranges for gridPattern topology + per-shell link-model overrides. */
   shellRanges?: IslShellRange[];
   shellLinkModels?: Record<string, Partial<IslLinkModel>>;
 }
@@ -111,7 +111,7 @@ export function buildSnapshotGraph(input: BuildGraphInput): IslGraph {
 
 /**
  * Resolve ISL candidates using the uniform-grid scan by default (§1.7.2), with
- * per-shell overrides when `shellRanges` is provided (Phase 3, §2.4):
+ * per-shell overrides when `shellRanges` is provided:
  * gridPattern-mode shells use the structural "+Grid" generator restricted to
  * that shell only (cross-shell links are always dynamic, per design); dynamic
  * shells and cross-shell / unassigned-satellite pairs use the uniform grid,
@@ -176,7 +176,7 @@ function resolveIslEdges(
     ...shellRanges.map((s) => resolvedShellModel(s).maxRangeKm),
   );
   // Same-shell pairs are fully handled by step 1 above — reject them before
-  // the distance/LoS check runs a second time (P-5), rather than computing
+  // the distance/LoS check runs a second time, rather than computing
   // it and discarding the result afterward.
   const candidatePairs = uniformGridIslCandidates(
     satEciPositions,

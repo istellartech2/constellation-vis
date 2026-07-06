@@ -20,6 +20,7 @@ import {
   X,
 } from "lucide-react";
 import PanelSection from "./PanelSection";
+import { ColorChip, HelpTip, InlineSlider } from "./compactControls";
 import type SatelliteScene from "../../lib/visualization";
 import type { EarthTextureMode } from "../../lib/earthTextures";
 import {
@@ -100,88 +101,6 @@ function CheckboxItem({
       <Label htmlFor={id} className="text-sm font-normal cursor-pointer text-gray-200">
         {label}
       </Label>
-    </div>
-  );
-}
-
-function SliderControl({
-  label,
-  valueText,
-  min,
-  max,
-  step,
-  value,
-  onChange,
-  unit,
-  hint,
-}: {
-  label: string;
-  valueText: string;
-  min: number;
-  max: number;
-  step: number;
-  value: number;
-  onChange: (v: number) => void;
-  unit?: string;
-  hint?: string;
-}) {
-  const clamped = (v: number) => Math.min(Math.max(v, min), max);
-  const handle = (v: number) => onChange(clamped(v));
-  return (
-    <div className="option-control">
-      <div className="option-control-label">
-        <span>{label}</span>
-        <span>{valueText}</span>
-      </div>
-      <div className="option-control-inputs">
-        <input
-          className="option-slider"
-          type="range"
-          min={min}
-          max={max}
-          step={step}
-          value={value}
-          onChange={(e) => handle(Number(e.target.value))}
-        />
-        <input
-          className="option-number-input"
-          type="number"
-          min={min}
-          max={max}
-          step={step}
-          value={value}
-          onChange={(e) => handle(Number(e.target.value))}
-        />
-        {unit && <span className="option-control-unit">{unit}</span>}
-      </div>
-      {hint && <div className="option-control-hint">{hint}</div>}
-    </div>
-  );
-}
-
-function ColorControl({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (color: string) => void;
-}) {
-  return (
-    <div className="option-control">
-      <div className="option-control-label">
-        <span>{label}</span>
-      </div>
-      <div className="option-control-inputs">
-        <input
-          className="option-color-input"
-          type="color"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-        />
-        <span className="option-color-value">{value.toUpperCase()}</span>
-      </div>
     </div>
   );
 }
@@ -319,12 +238,10 @@ export default function OptionTab(props: Props) {
 
   return (
     <div>
-      {/* 0. ビュー（画角・表示設定）の保存と呼び出し */}
+      {/* 0. ビュー(画角・表示設定)の保存と呼び出し */}
       <PanelSection
-        title="ビュー（画角・表示設定）"
+        title="ビュー保存"
         icon={<Bookmark />}
-        collapsible
-        defaultOpen
         action={
           savedViews.length > 0 ? (
             <span className="rounded-full bg-gray-700 px-1.5 py-0.5 text-[10px] text-gray-300">
@@ -365,14 +282,14 @@ export default function OptionTab(props: Props) {
             </button>
           </div>
         ) : (
-          <button
-            type="button"
+          <Button
             onClick={() => setAddingView(true)}
-            className="flex w-fit items-center gap-1 rounded-md border border-gray-600 px-2 py-1 text-xs text-gray-300 hover:text-white hover:border-gray-400 transition-colors"
+            variant="secondary"
+            className="w-full h-8 justify-center gap-1.5 text-xs bg-gray-700 text-gray-200 border border-gray-600 hover:bg-gray-600 hover:text-white"
           >
             <Plus className="w-3.5 h-3.5" />
             現在のビューを保存
-          </button>
+          </Button>
         )}
 
         {savedViews.length > 0 ? (
@@ -405,7 +322,7 @@ export default function OptionTab(props: Props) {
         ) : (
           !addingView && (
             <p className="text-[11px] text-gray-400 leading-snug">
-              現在のカメラ画角と表示設定を保存して、機数を変えても同じ条件で比較できます。
+              画角と表示設定に名前を付けて保存できます。
             </p>
           )
         )}
@@ -451,8 +368,8 @@ export default function OptionTab(props: Props) {
         />
       </PanelSection>
 
-      {/* C. 座標と太陽 */}
-      <PanelSection title="座標と太陽" icon={<Sun />}>
+      {/* C. 座標系と補助表示(ECI/ECEF・太陽・黄道面・GEO) */}
+      <PanelSection title="座標系・補助表示" icon={<Sun />}>
         <div className="space-y-1">
           <div className="text-sm text-gray-200">表示する座標系</div>
           <div
@@ -514,116 +431,118 @@ export default function OptionTab(props: Props) {
 
       {/* D. 衛星の視野コーン(地上局の通信範囲コーンは通信タブへ移設) */}
       <PanelSection title="衛星の視野（コーン）" icon={<Radio />}>
-        <CheckboxItem
-          id="satelliteFovCones"
-          checked={showSatelliteFovCones}
-          onChange={onShowSatelliteFovConesChange}
-          label="衛星の視野を表示"
-        />
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id="satelliteFovCones"
+            checked={showSatelliteFovCones}
+            onCheckedChange={(v) => onShowSatelliteFovConesChange(!!v)}
+          />
+          <Label
+            htmlFor="satelliteFovCones"
+            className="text-sm font-normal cursor-pointer text-gray-200 flex-1"
+          >
+            衛星の視野を表示
+          </Label>
+          {showSatelliteFovCones && (
+            <input
+              type="color"
+              className="option-color-input"
+              value={fovConeColor}
+              onChange={(e) => onFovConeColorChange(e.target.value)}
+              title="表示カラー"
+              aria-label="表示カラー"
+            />
+          )}
+        </div>
         {showSatelliteFovCones && (
-          <div className="option-subsection">
-            <SliderControl
+          <>
+            <InlineSlider
               label="視野半角"
-              valueText={`${fovConeHalfAngleDeg.toFixed(0)}°`}
+              labelW="w-24"
+              value={fovConeHalfAngleDeg}
               min={1}
               max={80}
               step={1}
-              value={fovConeHalfAngleDeg}
+              format={(v) => `${v.toFixed(0)}°`}
               onChange={onFovConeHalfAngleDegChange}
-              unit="°"
             />
-            <SliderControl
-              label="Along-track オフセット"
-              valueText={`${fovConeAlongTrackDeg.toFixed(0)}°`}
-              min={-60}
-              max={60}
-              step={1}
+            <InlineSlider
+              label="Along-track"
+              labelW="w-24"
               value={fovConeAlongTrackDeg}
-              onChange={onFovConeAlongTrackDegChange}
-              unit="°"
-              hint="正: 進行方向へ傾斜"
-            />
-            <SliderControl
-              label="Cross-track オフセット"
-              valueText={`${fovConeCrossTrackDeg.toFixed(0)}°`}
               min={-60}
               max={60}
               step={1}
-              value={fovConeCrossTrackDeg}
-              onChange={onFovConeCrossTrackDegChange}
-              unit="°"
-              hint="正: 軌道面左方向へ傾斜"
+              format={(v) => `${v.toFixed(0)}°`}
+              help="視野の傾き(進行方向)。正で進行方向へ傾斜します。"
+              onChange={onFovConeAlongTrackDegChange}
             />
-            <div className="option-control">
-              <div className="option-control-label">
-                <span>円錐最小高さ</span>
-                <span>
-                  {fovConeMinHeight.toFixed(2)}R<sub>⊕</sub>
-                  （約 {Math.round(fovConeMinHeight * EARTH_RADIUS_KM).toLocaleString()} km）
-                </span>
-              </div>
-              <div className="option-control-hint">※衛星高度に応じて自動的に変化する固定スケールです</div>
-            </div>
-            <ColorControl label="表示カラー" value={fovConeColor} onChange={onFovConeColorChange} />
-          </div>
+            <InlineSlider
+              label="Cross-track"
+              labelW="w-24"
+              value={fovConeCrossTrackDeg}
+              min={-60}
+              max={60}
+              step={1}
+              format={(v) => `${v.toFixed(0)}°`}
+              help="視野の傾き(直交方向)。正で軌道面左方向へ傾斜します。"
+              onChange={onFovConeCrossTrackDegChange}
+            />
+            <p className="text-[11px] text-gray-500">
+              円錐最小高さ {fovConeMinHeight.toFixed(2)}R<sub>⊕</sub>(約{" "}
+              {Math.round(fovConeMinHeight * EARTH_RADIUS_KM).toLocaleString()} km)—
+              衛星高度に応じた固定スケール
+            </p>
+          </>
         )}
       </PanelSection>
 
       {/* E. 衛星ポイントカラー */}
-      <PanelSection title="衛星ポイントカラー" icon={<Palette />} collapsible defaultOpen={false}>
-        <div className="option-color-grid">
-          <div className="option-color-row">
-            <span className="option-color-label">リンク可視</span>
-            <input
-              className="option-color-input"
-              type="color"
-              value={satelliteVisibleColor}
-              onChange={(e) => onSatelliteVisibleColorChange(e.target.value)}
-            />
-            <span className="option-color-value">{satelliteVisibleColor.toUpperCase()}</span>
-          </div>
-          <div className="option-color-row">
-            <span className="option-color-label">リンク不可</span>
-            <input
-              className="option-color-input"
-              type="color"
-              value={satelliteHiddenColor}
-              onChange={(e) => onSatelliteHiddenColorChange(e.target.value)}
-            />
-            <span className="option-color-value">{satelliteHiddenColor.toUpperCase()}</span>
-          </div>
-          <div className="option-color-row">
-            <span className="option-color-label">選択中</span>
-            <input
-              className="option-color-input"
-              type="color"
-              value={satelliteSelectedColor}
-              onChange={(e) => onSatelliteSelectedColorChange(e.target.value)}
-            />
-            <span className="option-color-value">{satelliteSelectedColor.toUpperCase()}</span>
-          </div>
+      <PanelSection title="衛星ポイントカラー" icon={<Palette />}>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+          <ColorChip
+            label="リンク可視"
+            value={satelliteVisibleColor}
+            onChange={onSatelliteVisibleColorChange}
+          />
+          <ColorChip
+            label="リンク不可"
+            value={satelliteHiddenColor}
+            onChange={onSatelliteHiddenColorChange}
+          />
+          <ColorChip
+            label="選択中"
+            value={satelliteSelectedColor}
+            onChange={onSatelliteSelectedColorChange}
+          />
         </div>
       </PanelSection>
 
       {/* F. KML */}
-      <PanelSection title="KML 重ね合わせ" icon={<FolderOpen />} collapsible defaultOpen={false}>
-        <div className="flex gap-2 flex-wrap">
+      <PanelSection
+        title="KML 重ね合わせ"
+        icon={<FolderOpen />}
+        action={<HelpTip text="KML ファイルのポイント・ライン・ポリゴンを地球上に重ねて表示します。" />}
+      >
+        <div className="flex gap-2 flex-wrap items-center">
           <Button
             onClick={handleKMLLoad}
             disabled={loading}
-            className="flex items-center gap-2 h-9"
             variant="secondary"
+            size="sm"
+            className="h-8 gap-1.5 text-xs bg-gray-700 text-gray-200 border border-gray-600 hover:bg-gray-600 hover:text-white"
           >
-            <FileInput className="w-4 h-4" />
+            <FileInput className="w-3.5 h-3.5" />
             {loading ? "読み込み中..." : "KMLを読み込む"}
           </Button>
           {loadedKMLs.length > 0 && (
             <Button
               onClick={handleClearKML}
               variant="ghost"
-              className="flex items-center gap-2 h-9"
+              size="sm"
+              className="h-8 gap-1.5 text-xs text-gray-400 hover:text-gray-200"
             >
-              <Trash2 className="w-4 h-4" />
+              <Trash2 className="w-3.5 h-3.5" />
               クリア
             </Button>
           )}
@@ -640,10 +559,6 @@ export default function OptionTab(props: Props) {
             ))}
           </ul>
         )}
-
-        <p className="text-[11px] text-gray-400">
-          ポイント・ライン・ポリゴンを地球上に重ねて表示します。
-        </p>
       </PanelSection>
     </div>
   );

@@ -19,6 +19,7 @@ import {
 } from "./lib/viewState";
 import {
   createDefaultIslSettings,
+  reconcileIslEndpoints,
   type IslPathResult,
   type IslSettings,
   type IslShellRange,
@@ -113,8 +114,8 @@ function App() {
   const [islLastSwitchSimMs, setIslLastSwitchSimMs] = useState<number | null>(null);
   const [islError, setIslError] = useState<string | null>(null);
   // Derived from the same [...base, ...shells] array as `satellites`, computed
-  // at the same moment (Update click) — never a stale localStorage snapshot
-  // (Phase 5, H-1/H-4). Not part of DisplaySettings: it's not persisted.
+  // at the same moment (Update click) — never a stale localStorage snapshot.
+  // Not part of DisplaySettings: it's not persisted.
   const [islShellRanges, setIslShellRanges] = useState<IslShellRange[]>(INITIAL_SHELL_RANGES);
   // External "open the panel on this tab" request (e.g. clicking the ISL HUD card)
   const [openTabRequest, setOpenTabRequest] = useState<{
@@ -123,7 +124,7 @@ function App() {
   } | null>(null);
 
   // Track cumulative path switches and time-since-last-switch for the ISL result
-  // card (§2.5.2, Phase 2). switchedFromPrevious is only meaningful once a path
+  // card. switchedFromPrevious is only meaningful once a path
   // has actually been established, so the very first reachable result is not
   // counted as a switch.
   const handleIslResult = useCallback((result: IslPathResult | null) => {
@@ -485,6 +486,9 @@ function App() {
           setGroundStations(scenario.groundStations);
           setStartTime(scenario.startTime);
           setIslShellRanges(scenario.islShellRanges);
+          // 地点 A/B の地上局参照を新しい局リストへ整合(同名局は座標を最新化、
+          // 消えた局は未設定へ初期化)。過去の局が endpoint に残る不整合を防ぐ
+          setIslSettings((prev) => reconcileIslEndpoints(prev, scenario.groundStations));
         }}
         onAnalysisStart={handleAnalysisStart}
         onAnalysisEnd={handleAnalysisEnd}

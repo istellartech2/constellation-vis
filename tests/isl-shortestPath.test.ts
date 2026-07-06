@@ -66,7 +66,7 @@ describe("isl shortestPath", () => {
     expect(result.edges).toHaveLength(2);
   });
 
-  describe("hysteresis (§1.5.1, Phase 2)", () => {
+  describe("hysteresis (§1.5.1)", () => {
     // Old path A-P-B: edge costs 10 + 90 = 100 total. A-P is kept tiny (10) so
     // that P is always settled by Dijkstra long before Q, regardless of Q's
     // cost — this removes ordering ambiguity and lets the tie case below

@@ -72,11 +72,11 @@ export interface GeodeticObserver {
 /**
  * Convert an {@link IslEndpoint}-shaped lat/lon/height (degrees, degrees, km)
  * into the radians-based observer shape `satellite.js` expects. Shared by
- * `graph.ts`, `stability.ts` and `visualization.ts` (isl-routing-review.md
- * D-2) — previously reimplemented independently in all three.
+ * `graph.ts`, `stability.ts` and `visualization.ts` — previously
+ * reimplemented independently in all three.
  *
  * Accepts an optional `target` to mutate in place (avoids an allocation in
- * visualization.ts's per-frame call, P-1); defaults to allocating a fresh
+ * visualization.ts's per-frame call); defaults to allocating a fresh
  * object for the (non-hot-path) graph/stability call sites.
  */
 export function endpointObserver(
@@ -89,7 +89,7 @@ export function endpointObserver(
   return target;
 }
 
-/** ECI position [km] of a geodetic observer at the given GMST (D-2). */
+/** ECI position [km] of a geodetic observer at the given GMST. */
 export function endpointEci(observer: GeodeticObserver, gmst: number): Vec3 {
   const ecf = satellite.geodeticToEcf(observer);
   return satellite.ecfToEci(ecf, gmst) as Vec3;
@@ -102,7 +102,7 @@ const REMAINING_LINK_TIME_REFINEMENT_ITERATIONS = 20;
 
 /**
  * Predict how much longer (seconds) an edge's existence condition will keep
- * holding, starting from t=0 (§1.5.2, Phase 4). `existsAt(dtSeconds)` must
+ * holding, starting from t=0 (§1.5.2). `existsAt(dtSeconds)` must
  * evaluate the edge's existence condition (LoS+range for ISL, elevation+range
  * for GSL) at time t+dtSeconds — the caller supplies it via a closure so this
  * function stays position/propagation-agnostic.

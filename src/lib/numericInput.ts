@@ -1,7 +1,7 @@
 /**
  * Shared numeric <input type="number"> parsing so a field can be cleared
  * (or hold a bare "-") while typing without the value being coerced to 0
- * mid-edit (isl-routing-review.md M-1). `parseNumericInput` returns NaN for
+ * mid-edit. `parseNumericInput` returns NaN for
  * those in-progress states instead of 0 — callers should only commit the
  * value once it is finite.
  */

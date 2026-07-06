@@ -4,7 +4,7 @@ import type { IslShellRange } from "./types";
 /**
  * Find the shell (if any) a satellite index falls within. Previously
  * reimplemented identically in `graph.ts` for its cross-shell candidate pass
- * (isl-routing-review.md SP-6) — a linear scan is fine here since
+ * — a linear scan is fine here since
  * `shellRanges` is at most a handful of entries.
  */
 export function shellOfIndex(idx: number, shellRanges: IslShellRange[]): IslShellRange | null {
@@ -15,12 +15,12 @@ export function shellOfIndex(idx: number, shellRanges: IslShellRange[]): IslShel
 }
 
 /**
- * Resolve participant satellite indices from stable exclusion state (§2.4,
- * Phase 5 H-4/H-5): a satellite belonging to a shell in `excludedShellKeys`
+ * Resolve participant satellite indices from stable exclusion state:
+ * a satellite belonging to a shell in `excludedShellKeys`
  * is excluded; a satellite not covered by any shell range (a
  * satellites.toml-defined satellite) is included iff `includeBaseSatellites`.
  * Resolution is index-based (no satnum lookup), so it is immune to the
- * Alpha-5 catalog-number issue (L-2) and always matches the actual satellite
+ * Alpha-5 catalog-number issue and always matches the actual satellite
  * array — there is no snapshot to go stale.
  */
 export function resolveIslParticipantIndices(

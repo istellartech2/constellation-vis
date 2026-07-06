@@ -80,6 +80,6 @@ export function toSatrec(spec: SatelliteSpec): satellite.SatRec {
 import satellites, { SHELL_RANGES } from "./satellites.generated";
 
 export const SATELLITES: SatelliteSpec[] = satellites;
-/** Shell ranges matching `SATELLITES`, generated at build time from public/constellation.toml (SP-10). */
+/** Shell ranges matching `SATELLITES`, generated at build time from public/constellation.toml. */
 export const INITIAL_SHELL_RANGES = SHELL_RANGES;
 

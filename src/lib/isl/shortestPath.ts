@@ -59,7 +59,7 @@ class MinHeap {
 export interface ShortestPathOptions {
   /** Edges (by undirected key, see {@link edgeKey}) belonging to the previously adopted path (§1.5.1). */
   previousPathEdgeKeys?: Set<number>;
-  /** beta in [0, 0.5], default 0 (no hysteresis in Phase 1). */
+  /** beta in [0, 0.5], default 0 (no hysteresis). */
   switchDiscount?: number;
 }
 
@@ -71,12 +71,12 @@ export function findShortestPath(
 ): IslPathResult {
   const { previousPathEdgeKeys, switchDiscount = 0 } = options;
   // Always graph.candidateEdgeCount at every call site — read it from the
-  // graph rather than threading it as a separate positional argument (S-6).
+  // graph rather than threading it as a separate positional argument.
   const candidateEdgeCount = graph.candidateEdgeCount;
 
   // Node ids are dense (0..satCount-1 = satellites, satCount/satCount+1 = the
   // two endpoints), so typed arrays indexed directly by node id outperform
-  // Map/Set here (P-4) — no hashing, no boxed entries, one allocation instead
+  // Map/Set here — no hashing, no boxed entries, one allocation instead
   // of per-relaxation Map writes.
   const nodeCount = graph.nodeBId + 1;
   const dist = new Float64Array(nodeCount).fill(Infinity);

@@ -5,7 +5,7 @@ import { applyStabilityPenalties } from "../src/lib/isl/stability";
 import type { IslEndpoint, IslLinkModel } from "../src/lib/isl/types";
 import type { Vec3 } from "../src/lib/isl/geometry";
 
-describe("applyStabilityPenalties (§1.5.2, Phase 4)", () => {
+describe("applyStabilityPenalties (§1.5.2)", () => {
   const simDate = new Date("2024-01-01T00:00:00.000Z");
   const endpointA: IslEndpoint = {
     kind: "adhoc",
