@@ -6,6 +6,8 @@ export interface CelestrakGroupNode {
   id: string;
   label: string;
   urlGroup?: string;
+  /** "gp" (default) uses gp.php?GROUP=; "supplemental" uses supplemental/sup-gp.php?FILE=. */
+  source?: "gp" | "supplemental";
   children?: CelestrakGroupNode[];
 }
 
@@ -38,9 +40,22 @@ export const CELESTRAK_GROUP_TREE: CelestrakGroupNode[] = [
       { id: "oneweb", label: "OneWeb" },
       { id: "intelsat", label: "Intelsat" },
       { id: "ses", label: "SES" },
-      { id: "iridium", label: "Iridium" },
+      { id: "eutelsat", label: "Eutelsat" },
+      { id: "telesat", label: "Telesat" },
+      { id: "hulianwang", label: "Hulianwang Digui" },
+      { id: "qianfan", label: "Qianfan" },
+      { id: "kuiper", label: "Kuiper" },
+      { id: "iridium", label: "Iridium NEXT", urlGroup: "iridium-NEXT" },
+      { id: "orbcomm", label: "Orbcomm" },
+      { id: "kineis", label: "Kineis (ARGOS DCS)", urlGroup: "argos" },
       { id: "globalstar", label: "Globalstar" },
       { id: "amateur", label: "Amateur Radio" },
+      {
+        id: "ast-spacemobile",
+        label: "AST SpaceMobile",
+        urlGroup: "ast",
+        source: "supplemental",
+      },
     ],
   },
   {
@@ -70,6 +85,7 @@ export const CELESTRAK_GROUP_TREE: CelestrakGroupNode[] = [
 type CelestrakGroupEntry = {
   label: string;
   urlGroup: string;
+  source: "gp" | "supplemental";
 };
 
 const CELESTRAK_GROUP_INDEX = new Map<string, CelestrakGroupEntry>();
@@ -82,6 +98,7 @@ function indexGroups(nodes: readonly CelestrakGroupNode[]) {
       CELESTRAK_GROUP_INDEX.set(node.id, {
         label: node.label,
         urlGroup: node.urlGroup ?? node.id,
+        source: node.source ?? "gp",
       });
     }
   }
@@ -133,6 +150,9 @@ export function celestrakEntryToSat(entry: CelestrakEntry): SatelliteSpec {
 export function getCelestrakUrl(group: string): string {
   const entry = CELESTRAK_GROUP_INDEX.get(group);
   const urlGroup = entry?.urlGroup ?? group;
+  if (entry?.source === "supplemental") {
+    return `https://celestrak.org/NORAD/elements/supplemental/sup-gp.php?FILE=${urlGroup}&FORMAT=json`;
+  }
   return `https://celestrak.org/NORAD/elements/gp.php?GROUP=${urlGroup}&FORMAT=json`;
 }
 
