@@ -242,6 +242,7 @@ export default function SatelliteEditor({
   const [importOpen, setImportOpen] = useState(false);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
+  const [updateFeedback, setUpdateFeedback] = useState<"idle" | "success">("idle");
   // Analysis-modal open request forwarded to AnalysisTab (e.g. 「タイムライン解析を開く」 from IslTab)
   const [analysisRequest, setAnalysisRequest] = useState<{ type: AnalysisType; nonce: number } | null>(
     null,
@@ -252,6 +253,13 @@ export default function SatelliteEditor({
     setOpen(true);
     setTab(openTabRequest.tab);
   }, [openTabRequest]);
+
+  // Reset the transient "更新しました" badge after it's had a moment to be seen.
+  useEffect(() => {
+    if (updateFeedback !== "success") return;
+    const timer = window.setTimeout(() => setUpdateFeedback("idle"), 1400);
+    return () => window.clearTimeout(timer);
+  }, [updateFeedback]);
 
 
   function toggleGroup(g: string) {
@@ -350,6 +358,7 @@ export default function SatelliteEditor({
         startTime: new Date(startText),
         islShellRanges: shellRanges,
       });
+      setUpdateFeedback("success");
     } catch (e) {
       alert("ファイルの解析に失敗しました: " + (e as Error).message);
     }
@@ -458,6 +467,7 @@ export default function SatelliteEditor({
                 onStartTextChange={setStartText}
                 onImportClick={() => setImportOpen(true)}
                 onUpdate={handleUpdate}
+                updateFeedback={updateFeedback}
                 onSaveBundle={handleSaveBundle}
                 onLoadBundle={handleBundleFile}
               />

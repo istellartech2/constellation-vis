@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { Button } from "./button";
+import { cn } from "../../lib/utils";
 import {
   Save,
   FolderOpen,
@@ -12,6 +13,7 @@ import {
   Pencil,
   Clock,
   FileCog,
+  Check,
 } from "lucide-react";
 import ConstellationEditorDialog from "./ConstellationEditorDialog";
 import SatelliteTomlEditorDialog from "./SatelliteTomlEditorDialog";
@@ -30,6 +32,7 @@ interface Props {
   onStartTextChange: (text: string) => void;
   onImportClick: () => void;
   onUpdate: () => void;
+  updateFeedback: "idle" | "success";
   onSaveBundle: () => void;
   onLoadBundle: (file: File) => void;
 }
@@ -73,6 +76,7 @@ export default function EditorTab({
   onStartTextChange,
   onImportClick,
   onUpdate,
+  updateFeedback,
   onSaveBundle,
   onLoadBundle,
 }: Props) {
@@ -193,10 +197,24 @@ export default function EditorTab({
 
       <Button
         onClick={onUpdate}
-        className="w-full font-semibold bg-amber-600 border border-amber-500 hover:bg-amber-700 hover:border-amber-600 text-amber-50 shadow-sm transition-all duration-200 text-sm h-9 rounded-md gap-2"
+        className={cn(
+          "w-full font-semibold shadow-sm transition-all duration-150 text-sm h-9 rounded-md gap-2 border active:scale-[0.97]",
+          updateFeedback === "success"
+            ? "bg-emerald-600 border-emerald-500 text-emerald-50"
+            : "bg-amber-600 border-amber-500 hover:bg-amber-700 hover:border-amber-600 text-amber-50",
+        )}
       >
-        <RefreshCw className="h-4 w-4" />
-        この内容で 3D ビューを更新
+        {updateFeedback === "success" ? (
+          <>
+            <Check className="h-4 w-4" />
+            更新しました
+          </>
+        ) : (
+          <>
+            <RefreshCw className="h-4 w-4" />
+            この内容で 3D ビューを更新
+          </>
+        )}
       </Button>
 
       <ConstellationEditorDialog
