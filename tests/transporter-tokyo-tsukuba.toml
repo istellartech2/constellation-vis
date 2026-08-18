@@ -1,0 +1,45 @@
+# Representative Transporter-like sun-synchronous orbit validation scenario.
+# This is an engineering fixture, not the trajectory of a specific mission.
+
+[analysis]
+startTime = "2026-08-18T00:00:00Z"
+durationHours = 24
+stepSeconds = 10
+eventToleranceSeconds = 0.1
+
+[[satellites]]
+id = "transporter-demo-1"
+name = "Transporter-like SSO"
+type = "elements"
+satnum = 90001
+epoch = "2026-08-18T00:00:00Z"
+semiMajorAxisKm = 6903.137
+eccentricity = 0
+inclinationDeg = 97.5
+raanDeg = 0
+argPerigeeDeg = 0
+meanAnomalyDeg = 0
+
+[[groundstations]]
+id = "tokyo-ue"
+name = "Tokyo UE"
+kind = "service"
+latitudeDeg = 35.6812
+longitudeDeg = 139.7671
+heightKm = 0
+minElevationDeg = 20
+visibilityMode = "elevation_only"
+uplinkFrequencyHz = 1980000000
+downlinkFrequencyHz = 2170000000
+
+[[groundstations]]
+id = "tsukuba-gateway"
+name = "Tsukuba Gateway"
+kind = "feeder"
+latitudeDeg = 36.0835
+longitudeDeg = 140.0764
+heightKm = 0
+minElevationDeg = 10
+visibilityMode = "elevation_only"
+uplinkFrequencyHz = 30000000000
+downlinkFrequencyHz = 20000000000

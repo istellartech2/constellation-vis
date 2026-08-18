@@ -8,6 +8,8 @@
     "dev": "vite",
     "prebuild": "bun scripts/generate-satellites.ts",
     "build": "tsc -b && vite build",
+    "build:cli": "bun scripts/build-cli.ts",
+    "cli": "bun src/cli/main.ts",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "bun test"

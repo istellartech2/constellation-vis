@@ -26,6 +26,7 @@ These notes collect the essentials an autonomous coding assistant needs before t
 - `scripts/` ─ build-time Bun scripts (currently `generate-satellites.ts`).
 - `tests/` ─ Bun test specs plus Python helpers for reference data generation.
 - `docs/` ─ deeper explanations (`docs/perturbation.md` covers drag and harmonics modeling).
+- `docs/constelation-cli-SKILLS.md` ─ tracked source for the copy-ready CLI agent guide distributed as `dist/SKILLS.md`.
 
 ## Implementation Guidelines
 - Stay inside the existing stack: React function components, hooks, and Three.js helpers. Reach for `clsx`/`tailwind-merge` rather than bespoke string building.
