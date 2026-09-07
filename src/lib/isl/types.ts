@@ -78,6 +78,20 @@ export interface IslShellRange {
   startIndex: number;
   count: number;
   planes: number;
+  /**
+   * Satellites in each plane, when the shell is not a greedy
+   * `ceil(count/planes)` fill (uneven flower constellations, thinned
+   * necklaces). Omitted for the common uniform case so that
+   * `src/lib/satellites.generated.ts` — which serializes this object
+   * key-by-key — stays unchanged for existing constellations.
+   */
+  planeSizes?: number[];
+  /**
+   * False when the last plane is *not* a RAAN neighbour of plane 0 (walker-star
+   * and streets-of-coverage span 180° with a counter-rotating seam), so the
+   * +Grid topology must not close the ring across it. Omitted when true.
+   */
+  wrapPlanes?: boolean;
 }
 
 export interface IslCostSettings {

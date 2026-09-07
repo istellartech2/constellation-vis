@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { ChevronLeft } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -10,7 +11,9 @@ import { Button } from "./button";
 import { Label } from "./label";
 import type { ConstellationConfig, ConstellationShell } from "../../lib/constellationTypes";
 import { createNewShell, createDefaultConfig } from "../../lib/constellationTypes";
+import { syncDerivedFields } from "../../lib/constellationPatterns/migrate";
 import {
+  isBlockingError,
   parseConstellationConfig,
   serializeConstellationConfig,
   validateConfig,
@@ -18,6 +21,8 @@ import {
 } from "../../lib/constellationSerializer";
 import ConstellationShellList from "./ConstellationShellList";
 import ConstellationShellForm from "./ConstellationShellForm";
+import MissionDesignPane from "./MissionDesignPane";
+import { constraintsFromShell, type MissionDesignForm } from "../../lib/missionDesignForm";
 
 interface Props {
   open: boolean;
@@ -25,6 +30,9 @@ interface Props {
   onConstTextChange: (text: string) => void;
   onClose: () => void;
 }
+
+/** Which pane fills the dialog body. */
+type Mode = "shells" | "mission";
 
 export default function ConstellationEditorDialog({
   open,
@@ -35,6 +43,9 @@ export default function ConstellationEditorDialog({
   const [config, setConfig] = useState<ConstellationConfig>(createDefaultConfig());
   const [selectedShellId, setSelectedShellId] = useState<string | null>(null);
   const [errors, setErrors] = useState<ValidationError[]>([]);
+  const [mode, setMode] = useState<Mode>("shells");
+  /** Constraints handed to the wizard by 「設計をやり直す」; null = wizard defaults. */
+  const [missionPrefill, setMissionPrefill] = useState<MissionDesignForm | null>(null);
 
   // Initialize config when dialog opens
   useEffect(() => {
@@ -43,8 +54,20 @@ export default function ConstellationEditorDialog({
       setConfig(parsed);
       setSelectedShellId(parsed.shells[0]?.id ?? null);
       setErrors([]);
+      setMode("shells");
+      setMissionPrefill(null);
     }
   }, [open, constText]);
+
+  const openMission = useCallback((prefill: MissionDesignForm | null) => {
+    setMissionPrefill(prefill);
+    setMode("mission");
+  }, []);
+
+  const backToShells = useCallback(() => {
+    setMode("shells");
+    setMissionPrefill(null);
+  }, []);
 
   // Validate on config changes
   useEffect(() => {
@@ -60,12 +83,25 @@ export default function ConstellationEditorDialog({
   }, []);
 
   const handleAddShell = useCallback(() => {
-    const newShell = createNewShell();
+    const newShell = createNewShell("walker_delta");
     setConfig((prev) => ({
       ...prev,
       shells: [...prev.shells, newShell],
     }));
     setSelectedShellId(newShell.id);
+  }, []);
+
+  /**
+   * Appends a template/preset/design-candidate shell and selects it. The id is
+   * always minted here: adding the same preset twice must not produce two
+   * shells sharing a React key (and an ambiguous `handleShellChange` target).
+   */
+  const handleSelectPreset = useCallback((shell: ConstellationShell) => {
+    const added: ConstellationShell = { ...shell, id: crypto.randomUUID() };
+    setConfig((prev) => ({ ...prev, shells: [...prev.shells, added] }));
+    setSelectedShellId(added.id);
+    setMode("shells");
+    setMissionPrefill(null);
   }, []);
 
   const handleDeleteShell = useCallback((id: string) => {
@@ -100,9 +136,15 @@ export default function ConstellationEditorDialog({
   const handleShellChange = useCallback((updates: Partial<ConstellationShell>) => {
     setConfig((prev) => ({
       ...prev,
-      shells: prev.shells.map((s) =>
-        s.id === selectedShellId ? { ...s, ...updates } : s
-      ),
+      shells: prev.shells.map((s) => {
+        if (s.id !== selectedShellId) return s;
+        const next = { ...s, ...updates };
+        // Patterns whose count/planes/altitude are *computed* still have to
+        // store them (EditorTab counts `count =`, IslShellRange needs
+        // `planes`, validateConfig checks the stored values), so the write-back
+        // happens in the same state update as the edit — no effect loop.
+        return { ...next, ...syncDerivedFields(next) };
+      }),
     }));
   }, [selectedShellId]);
 
@@ -121,7 +163,9 @@ export default function ConstellationEditorDialog({
   }, [onClose]);
 
   const selectedShell = config.shells.find((s) => s.id === selectedShellId);
-  const isValid = errors.length === 0;
+  const selectedShellIndex = config.shells.findIndex((s) => s.id === selectedShellId);
+  // Warnings are advisory; only blocking errors disable OK.
+  const isValid = errors.filter(isBlockingError).length === 0;
 
   // Format date for datetime-local input
   const formatDateForInput = (date: Date): string => {
@@ -131,70 +175,110 @@ export default function ConstellationEditorDialog({
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="!w-[90vw] !max-w-6xl max-h-[85vh] overflow-hidden flex flex-col bg-gray-900 text-gray-100">
+      <DialogContent
+        className={`!w-[90vw] !max-w-6xl max-h-[85vh] overflow-hidden flex flex-col bg-gray-900 text-gray-100 max-md:!w-screen max-md:!max-w-none max-md:h-[100dvh] max-md:!max-h-none max-md:rounded-none${
+          // The wizard's results column has to fill the dialog, and `flex-1`
+          // cannot grow inside a box whose height is only bounded by `max-h`.
+          mode === "mission" ? " md:h-[85vh]" : ""
+        }`}
+        onEscapeKeyDown={(event) => {
+          // In the wizard, Escape steps back to the shell list rather than
+          // discarding the whole editing session.
+          if (mode === "mission") {
+            event.preventDefault();
+            backToShells();
+          }
+        }}
+      >
         <DialogHeader>
-          <DialogTitle className="text-gray-100">コンステレーション編集</DialogTitle>
+          <DialogTitle className="text-gray-100 flex items-center gap-2">
+            {mode === "mission" && (
+              <button
+                type="button"
+                onClick={backToShells}
+                aria-label="シェル一覧へ戻る"
+                className="p-1 -ml-1 rounded text-gray-400 hover:text-gray-100 hover:bg-gray-800"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+            )}
+            <span>{mode === "mission" ? "ミッションから設計" : "コンステレーション編集"}</span>
+          </DialogTitle>
         </DialogHeader>
 
-        {/* Constellation Meta Section - Compact */}
-        <div className="flex items-center gap-4 px-1">
-          <div className="flex items-center gap-2">
-            <Label className="text-xs text-gray-400 whitespace-nowrap">エポック:</Label>
-            <input
-              type="datetime-local"
-              value={formatDateForInput(config.epoch)}
-              onChange={(e) => handleEpochChange(e.target.value + ":00Z")}
-              className="w-48 px-2 py-1 text-sm bg-gray-800 border border-gray-600 rounded focus:border-amber-500 focus:outline-none text-gray-100"
-            />
-          </div>
-        </div>
-
-        {/* Shells Section */}
-        <div className="flex-1 border border-gray-600 rounded-md overflow-hidden flex min-h-0">
-          {/* Left panel: Shell list */}
-          <div className="w-56 flex-shrink-0 bg-gray-900">
-            <ConstellationShellList
-              shells={config.shells}
-              selectedId={selectedShellId}
-              errors={errors}
-              onSelect={setSelectedShellId}
-              onAdd={handleAddShell}
-              onDelete={handleDeleteShell}
-              onMoveUp={(id) => handleMoveShell(id, "up")}
-              onMoveDown={(id) => handleMoveShell(id, "down")}
-            />
-          </div>
-
-          {/* Right panel: Shell form */}
-          <div className="flex-1 overflow-y-auto bg-gray-850">
-            {selectedShell ? (
-              <ConstellationShellForm
-                shell={selectedShell}
-                errors={errors}
-                onChange={handleShellChange}
+        {mode === "shells" && (
+          <div className="flex items-center gap-4 px-1">
+            <div className="flex items-center gap-2">
+              <Label className="text-xs text-gray-400 whitespace-nowrap">エポック:</Label>
+              <input
+                type="datetime-local"
+                value={formatDateForInput(config.epoch)}
+                onChange={(e) => handleEpochChange(e.target.value + ":00Z")}
+                className="w-48 px-2 py-1 text-sm bg-gray-800 border border-gray-600 rounded focus:border-amber-500 focus:outline-none text-gray-100"
               />
-            ) : (
-              <div className="h-full flex items-center justify-center text-gray-400 text-sm">
-                {config.shells.length === 0
-                  ? "「シェル追加」をクリックして最初のシェルを作成してください"
-                  : "シェルを選択してください"}
-              </div>
-            )}
+            </div>
           </div>
-        </div>
+        )}
 
-        <DialogFooter className="border-t border-gray-700 pt-3">
-          <Button variant="outline" onClick={handleCancel} className="bg-gray-700 hover:bg-gray-600 text-gray-100 border-gray-500">
-            キャンセル
-          </Button>
-          <Button
-            onClick={handleOK}
-            disabled={!isValid}
-            className="bg-amber-600 hover:bg-amber-700 text-amber-50 disabled:opacity-50"
-          >
-            OK
-          </Button>
-        </DialogFooter>
+        {mode === "mission" ? (
+          <MissionDesignPane
+            epochIso={config.epoch.toISOString()}
+            initialForm={missionPrefill}
+            onAddCandidate={handleSelectPreset}
+          />
+        ) : (
+          <div className="flex-1 border border-gray-600 rounded-md overflow-hidden flex flex-col md:flex-row min-h-0">
+            {/* Shell list: sidebar on desktop, compact select on mobile */}
+            <div className="md:w-56 md:flex-shrink-0 bg-gray-900">
+              <ConstellationShellList
+                shells={config.shells}
+                selectedId={selectedShellId}
+                errors={errors}
+                onSelect={setSelectedShellId}
+                onAdd={handleAddShell}
+                onDelete={handleDeleteShell}
+                onMoveUp={(id) => handleMoveShell(id, "up")}
+                onMoveDown={(id) => handleMoveShell(id, "down")}
+                onSelectPreset={handleSelectPreset}
+                onOpenMission={() => openMission(null)}
+              />
+            </div>
+
+            {/* Shell form */}
+            <div className="flex-1 min-h-0 overflow-y-auto bg-gray-850">
+              {selectedShell ? (
+                <ConstellationShellForm
+                  shell={selectedShell}
+                  shellIndex={selectedShellIndex}
+                  errors={errors}
+                  onChange={handleShellChange}
+                  onRedesign={(shell) => openMission(constraintsFromShell(shell))}
+                />
+              ) : (
+                <div className="h-full flex items-center justify-center text-gray-400 text-sm p-6 text-center">
+                  {config.shells.length === 0
+                    ? "「シェル追加」をクリックして最初のシェルを作成してください"
+                    : "シェルを選択してください"}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {mode === "shells" && (
+          <DialogFooter className="border-t border-gray-700 pt-3">
+            <Button variant="outline" onClick={handleCancel} className="bg-gray-700 hover:bg-gray-600 text-gray-100 border-gray-500">
+              キャンセル
+            </Button>
+            <Button
+              onClick={handleOK}
+              disabled={!isValid}
+              className="bg-amber-600 hover:bg-amber-700 text-amber-50 disabled:opacity-50"
+            >
+              OK
+            </Button>
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   );
