@@ -10,6 +10,10 @@
       "meanAnomalyDeg": 0.0
     },
     "expected": {
+      "drag": {
+        "da_dt_km_per_year": -22.037943428394083,
+        "de_dt_per_year": -0.00018364952856995072
+      },
       "j2": {
         "dOmega_dt_deg_per_day": -5.002347679308267,
         "domega_dt_deg_per_day": 3.7412959955880063
@@ -33,6 +37,10 @@
       "meanAnomalyDeg": 0.0
     },
     "expected": {
+      "drag": {
+        "da_dt_km_per_year": 0.0,
+        "de_dt_per_year": 0.0
+      },
       "j2": {
         "dOmega_dt_deg_per_day": -0.013414278636485342,
         "domega_dt_deg_per_day": 0.026828495979626492
@@ -56,6 +64,10 @@
       "meanAnomalyDeg": 0.0
     },
     "expected": {
+      "drag": {
+        "da_dt_km_per_year": 0.0,
+        "de_dt_per_year": 0.0
+      },
       "j2": {
         "dOmega_dt_deg_per_day": -0.12985240290080297,
         "domega_dt_deg_per_day": 0.00035395171865494905
@@ -79,6 +91,10 @@
       "meanAnomalyDeg": 0.0
     },
     "expected": {
+      "drag": {
+        "da_dt_km_per_year": -0.15250161315673494,
+        "de_dt_per_year": -1.2708467763061245e-06
+      },
       "j2": {
         "dOmega_dt_deg_per_day": 0.9870891882966879,
         "domega_dt_deg_per_day": -3.1083712317157355

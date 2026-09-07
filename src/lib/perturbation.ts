@@ -87,7 +87,6 @@ const HP_DENSITY_TABLE: Array<{ altitudeKm: number; densityKgPerM3: number }> = 
   { altitudeKm: 1200, densityKgPerM3: 8.43e-15 },
   { altitudeKm: 1500, densityKgPerM3: 2.05e-15 },
 ];
-const HP_BASE_SCALE = 0.0003;
 
 function normalizeAtmosphereModel(input?: AtmosphereModelInput): Required<AtmosphereModelInput> {
   return {
@@ -106,12 +105,24 @@ function normalizeAtmosphereModel(input?: AtmosphereModelInput): Required<Atmosp
   };
 }
 
+/**
+ * Index of the table interval bracketing `altitudeKm`, clamped to the first /
+ * last interval outside the table so that both the density interpolation and
+ * the scale-height derivation stay on a real log-linear segment.
+ */
+function hpIntervalIndex(altitudeKm: number): number {
+  const lastIndex = HP_DENSITY_TABLE.length - 1;
+  if (altitudeKm <= HP_DENSITY_TABLE[0].altitudeKm) return 1;
+  if (altitudeKm >= HP_DENSITY_TABLE[lastIndex].altitudeKm) return lastIndex;
+  return HP_DENSITY_TABLE.findIndex((entry) => entry.altitudeKm >= altitudeKm);
+}
+
 function interpolateLogDensity(altitudeKm: number): number {
   if (altitudeKm <= HP_DENSITY_TABLE[0].altitudeKm) return HP_DENSITY_TABLE[0].densityKgPerM3;
   const last = HP_DENSITY_TABLE[HP_DENSITY_TABLE.length - 1];
   if (altitudeKm >= last.altitudeKm) return last.densityKgPerM3;
 
-  const upperIndex = HP_DENSITY_TABLE.findIndex((entry) => entry.altitudeKm >= altitudeKm);
+  const upperIndex = hpIntervalIndex(altitudeKm);
   const lower = HP_DENSITY_TABLE[Math.max(upperIndex - 1, 0)];
   const upper = HP_DENSITY_TABLE[upperIndex];
   const ratio = (altitudeKm - lower.altitudeKm) / Math.max(upper.altitudeKm - lower.altitudeKm, 1);
@@ -120,8 +131,50 @@ function interpolateLogDensity(altitudeKm: number): number {
   return Math.exp(logLower + (logUpper - logLower) * ratio);
 }
 
+/**
+ * Local density scale height H [km], i.e. -(d h / d ln rho). Needed by the
+ * King-Hele de/dt term, which is the only place drag cares about the *shape*
+ * of the density profile rather than its value.
+ *
+ * For the exponential model this is just `scaleHeightKm`. For Harris-Priester
+ * it is read off the log-linear table segment around `altitudeKm`, which gives
+ * ~30 km at 200 km rising to ~120 km at 700 km. Clamped to 1 km like
+ * `normalizeAtmosphereModel` does, so a degenerate table segment can never
+ * divide by zero.
+ */
+export function atmosphericScaleHeightKm(
+  altitudeKm: number,
+  atmosphereModel?: AtmosphereModelInput,
+): number {
+  const normalized = normalizeAtmosphereModel(atmosphereModel);
+  if (normalized.model !== "harris-priester") return normalized.scaleHeightKm;
+
+  const upperIndex = hpIntervalIndex(altitudeKm);
+  const lower = HP_DENSITY_TABLE[upperIndex - 1];
+  const upper = HP_DENSITY_TABLE[upperIndex];
+  const logDrop = Math.log(lower.densityKgPerM3) - Math.log(upper.densityKgPerM3);
+  return Math.max((upper.altitudeKm - lower.altitudeKm) / Math.max(logDrop, 1e-9), 1);
+}
+
+/**
+ * Harris-Priester style density.
+ *
+ * The table is used as-is. It previously carried a `HP_BASE_SCALE = 0.0003`
+ * factor, which existed only to offset the factor-of-v_rel error in the drag
+ * rate (see `calculateDetailedPerturbationRates`); with that fixed, the factor
+ * would make drag ~3300x too small, so it is gone.
+ *
+ * Caveat on absolute level: `HP_DENSITY_TABLE` is a single high-side curve
+ * (roughly 2-3x above a nominal orbit-mean density across 400-700 km), and
+ * `diurnalFactor` spans only 0.85-1.15, so it cannot represent the real
+ * Harris-Priester swing between minimum- and maximum-density profiles. Drag
+ * output is therefore conservative by a factor of ~2-3. Fixing that properly
+ * means carrying the min/max table pair and interpolating with
+ * `rho = rho_min + (rho_max - rho_min) * cos^n(psi/2)`; a blanket scale factor
+ * is what got us here and is not the answer.
+ */
 function calculateHarrisPriesterDensity(altitudeKm: number, input: Required<AtmosphereModelInput>): number {
-  const baseDensity = interpolateLogDensity(altitudeKm) * HP_BASE_SCALE;
+  const baseDensity = interpolateLogDensity(altitudeKm);
   const solarFactor = Math.max(0.35, 1 + 0.004 * (input.f107 - 150));
   const geomagneticFactor = 1 + 0.02 * Math.sqrt(input.ap);
   const diurnalFactor = 0.85 + 0.3 * input.diurnalBulgeFactor;
@@ -182,22 +235,45 @@ export function calculateDetailedPerturbationRates(
   let da_dt_m = 0;
   let de_dt_drag = 0;
   const normalizedAtmosphere = normalizeAtmosphereModel(atmosphereModel);
-  
+
   // Only apply drag for low orbits
   const perigeeAltitude = a * (1 - e) - RE;
   if (perigeeAltitude < normalizedAtmosphere.lowOrbitLimitKm * 1000) {
     const hKm = perigeeAltitude / 1000;
     const rho = calculateAtmosphericDensity(hKm, normalizedAtmosphere);
-    
+
     // Orbital velocity approximation
     const v_rel = Math.sqrt(MU / a);
-    
-    // Drag force parameter
-    const F = 0.5 * rho * v_rel * v_rel * ballisticCoefficient;
-    
+
+    /**
+     * Drag rate parameter F [1/s]. NOTE the single power of v_rel: F is a
+     * *rate*, not the drag acceleration. With this definition `da/dt = -2aF`
+     * reduces exactly to the textbook circular-orbit secular decay
+     *   da/dt = -rho * B * sqrt(mu * a)
+     * (derive by equating drag power to d/dt of -mu/2a).
+     *
+     * This used to read `0.5 * rho * v_rel * v_rel * B`, i.e. the drag
+     * acceleration [m/s^2], which made `-2aF` come out a factor of v_rel
+     * (~7.6e3) too large and dimensionally wrong. `HP_BASE_SCALE` in the
+     * Harris-Priester path had been shrinking the density table by ~3300x to
+     * partly hide it. See docs/perturbation.md section 3.
+     */
+    const F = 0.5 * rho * v_rel * ballisticCoefficient;
+
     // Secular rates due to drag
     da_dt_m = -2 * a * F;
-    de_dt_drag = -F * (2 / Math.PI) * a * e;
+    /**
+     * King-Hele small-eccentricity limit: an exponential atmosphere drags
+     * apogee down faster than perigee, so
+     *   de/dt = (da/dt) * e / (2H)
+     * with H the local density scale height. Zero for a circular orbit, and
+     * linear in e for small e.
+     *
+     * This used to read `-F * (2 / Math.PI) * a * e`, whose `2/pi` sat where
+     * `1/H` belongs — dimensionally a length^-1 short, and ~4e4 too large.
+     */
+    const scaleHeightM = atmosphericScaleHeightKm(hKm, normalizedAtmosphere) * 1000;
+    de_dt_drag = da_dt_m * e / (2 * scaleHeightM);
   }
   
   // Convert to practical units and organize by source
