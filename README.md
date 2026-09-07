@@ -10,7 +10,7 @@ A web application that visualizes satellite constellations in Earth orbit.
 
 - 3D Earth with selectable textures and day/night lighting
 - Plot satellites from TLE strings or Keplerian elements
-- Generate constellations from Walker-pattern shell definitions
+- Generate constellations from six design patterns (Walker Delta/Star, Streets of Coverage, Flower, Lattice Flower, Necklace Flower) or from a mission-driven design wizard (see `docs/constellation-patterns.md` / `docs/constellation-design.md`)
 - Import live orbital data from CelesTrak (cached in IndexedDB so subsequent loads work offline and gracefully fall back when CelesTrak rate-limits a group)
 - Define ground stations on a map and visualize their visibility cones (elevation, off-nadir, or both)
 - Analysis tab for access and coverage statistics
@@ -70,7 +70,7 @@ Live build: https://istellartech2.github.io/constellation-vis/
 
 - 3D の地球を複数のテクスチャ・昼夜ライティングで描画
 - TLE / Keplerian 軌道要素から衛星をプロット
-- Walker パターンのシェル定義からコンステレーションを生成
+- 6 種類の設計方式(Walker Delta/Star, Streets of Coverage, Flower, Lattice Flower, Necklace Flower)またはミッションから設計するウィザードでコンステレーションを生成(`docs/constellation-patterns.md` / `docs/constellation-design.md` 参照)
 - CelesTrak から軌道データをインポート（IndexedDB にキャッシュし、レート制限時は前回データへ自動フォールバック）
 - 地図上で地上局を定義し、可視範囲（仰角・オフナディア・両方）を可視化
 - アクセス・カバレッジを集計する解析タブ

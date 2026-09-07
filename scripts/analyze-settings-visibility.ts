@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import {
   type ConstellationConfig,
+  type BaseConstellationShellFields,
   type ConstellationShellConfig,
   generateFromShells,
   parseConstellationConfig,
@@ -65,7 +66,15 @@ function uniqueSorted(values: number[]): number[] {
   return [...new Set(values.filter((value) => Number.isFinite(value)))].sort((a, b) => a - b);
 }
 
-function applyShellDefaults(shell: ConstellationShellConfig): Required<ConstellationShellConfig> {
+/**
+ * The eleven pre-multi-pattern shell fields with every default applied.
+ * `Required<ConstellationShellConfig>` no longer works: the config type now
+ * also carries the optional pattern-specific keys (`soc_*`, `flower_*`, ...),
+ * and this sweep only ever varies the Walker-Delta parameters.
+ */
+type ResolvedShell = Required<Pick<ConstellationShellConfig, BaseConstellationShellFields>>;
+
+function applyShellDefaults(shell: ConstellationShellConfig): ResolvedShell {
   return {
     name: shell.name ?? "SweepTarget",
     count: shell.count,
@@ -157,7 +166,7 @@ function deriveOffNadirValues(baseMaxOffNadir: number): number[] {
 
 function replaceSweepShell(
   config: ConstellationConfig,
-  nextShell: Required<ConstellationShellConfig>,
+  nextShell: ResolvedShell,
 ): ConstellationConfig {
   return {
     ...config,
@@ -607,7 +616,7 @@ function describeGroundStations(stations: GroundStation[]): string {
 }
 
 function buildChartContextSubtitle(params: {
-  shell: Required<ConstellationShellConfig>;
+  shell: ResolvedShell;
   stations: GroundStation[];
   extra: string;
 }) {
@@ -619,7 +628,7 @@ function buildMarkdownSummary(params: {
   settingsPath: string;
   outputDir: string;
   stations: GroundStation[];
-  baselineShell: Required<ConstellationShellConfig>;
+  baselineShell: ResolvedShell;
   startTime: Date;
   baselineMetrics: StationMetric[];
   notes: string[];
@@ -759,7 +768,7 @@ async function main() {
     key: LineSweepKey,
     values: number[],
     update: (value: number) => {
-      constellation?: Required<ConstellationShellConfig>;
+      constellation?: ResolvedShell;
       stations?: GroundStation[];
     },
   ) {

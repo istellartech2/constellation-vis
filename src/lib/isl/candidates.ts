@@ -147,6 +147,17 @@ export interface ShellIndexRange {
   count: number;
   /** Number of orbital planes. */
   planes: number;
+  /**
+   * Satellites per plane, when the shell is not a greedy `ceil(count/planes)`
+   * fill (uneven flower constellations, thinned necklaces).
+   */
+  planeSizes?: number[];
+  /**
+   * False when the last plane is not a RAAN neighbour of plane 0 (walker-star /
+   * streets-of-coverage seam). The in-plane ring still wraps; only the
+   * cross-plane link from the last plane back to plane 0 is dropped.
+   */
+  wrapPlanes?: boolean;
 }
 
 /**
@@ -168,12 +179,19 @@ export function gridPatternIslCandidates(
   const { startIndex, count, planes } = shell;
   if (planes <= 0 || count <= 0) return [];
 
+  // A pattern that fills planes unevenly (flower constellations) or thins them
+  // (necklace flower) reports its real layout; otherwise fall back to the
+  // greedy ceil fill that Walker shells produce.
+  const explicitSizes =
+    shell.planeSizes && shell.planeSizes.length === planes ? shell.planeSizes : null;
   const perPlane = Math.ceil(count / planes);
   const planeSize: number[] = [];
   const planeOffset: number[] = [];
   let offset = 0;
   for (let p = 0; p < planes; p++) {
-    const size = Math.max(0, Math.min(perPlane, count - offset));
+    const size = explicitSizes
+      ? Math.max(0, Math.min(explicitSizes[p], count - offset))
+      : Math.max(0, Math.min(perPlane, count - offset));
     planeOffset.push(offset);
     planeSize.push(size);
     offset += size;
@@ -207,12 +225,20 @@ export function gridPatternIslCandidates(
     edges.push({ i, j, kind: "isl", distanceKm: Math.sqrt(d2) });
   };
 
+  const wrapPlanes = shell.wrapPlanes !== false;
+
   for (let p = 0; p < planes; p++) {
     const size = planeSize[p];
+    // The seam of a walker-star shell separates counter-rotating planes: their
+    // relative geometry changes too fast for a structural link, so the ring is
+    // left open there. The *in-plane* ring still closes.
+    const linkToNextPlane = wrapPlanes || p + 1 < planes;
     for (let slot = 0; slot < size; slot++) {
       const self = globalIndex(p, slot);
       tryAddEdge(self, globalIndex(p, slot + 1)); // same-plane, next satellite
-      tryAddEdge(self, globalIndex(p + 1, slot)); // adjacent plane, same slot
+      if (linkToNextPlane) {
+        tryAddEdge(self, globalIndex(p + 1, slot)); // adjacent plane, same slot
+      }
     }
   }
 
