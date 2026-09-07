@@ -25,7 +25,7 @@ These notes collect the essentials an autonomous coding assistant needs before t
 - `public/` ─ user-editable TOML describing satellites/constellations/ground stations plus static assets.
 - `scripts/` ─ build-time Bun scripts (currently `generate-satellites.ts`).
 - `tests/` ─ Bun test specs plus Python helpers for reference data generation.
-- `docs/` ─ deeper explanations (`docs/perturbation.md` covers drag and harmonics modeling; `docs/constellation-patterns.md` documents the six constellation design patterns and their TOML schema; `docs/constellation-design.md` documents the mission-driven design optimizer).
+- `docs/` ─ deeper explanations (`docs/analysis-implementation.md` is the cross-cutting index of how the propagator, coordinate frames, visibility/availability, link geometry, duty, ISL, perturbation and power analyses are actually implemented, with a defaults table and an explicit list of what is *not* modelled; `docs/perturbation.md` covers drag and harmonics modeling; `docs/constellation-patterns.md` documents the six constellation design patterns and their TOML schema; `docs/constellation-design.md` documents the mission-driven design optimizer).
 - `docs/constelation-cli-SKILLS.md` ─ tracked source for the copy-ready CLI agent guide distributed as `dist/SKILLS.md`.
 
 ## Implementation Guidelines

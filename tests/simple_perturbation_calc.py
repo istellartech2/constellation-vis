@@ -1,6 +1,15 @@
 """
 Simple perturbation calculation without poliastro dependencies.
-Calculate J2 and J3 perturbations using direct formulas.
+Calculate J2, J3 and atmospheric-drag perturbations using direct formulas.
+
+Reference generator for `tests/perturbation_test_data.json`, consumed by
+`src/lib/perturbation.test.ts`. Run from this directory:
+
+    python3 simple_perturbation_calc.py
+
+The drag term mirrors the *default* (exponential) atmosphere of
+`src/lib/perturbation.ts`, i.e. what `calculateDetailedPerturbationRates` uses
+when no `atmosphereModel` argument is supplied.
 """
 
 # /// script
@@ -19,8 +28,54 @@ RE = 6378137.0  # m
 J2 = 1.08263e-3
 J3 = -2.532e-6
 
+# Defaults of DEFAULT_ATMOSPHERE_MODEL / calculateDetailedPerturbationRates
+BALLISTIC_COEFFICIENT = 0.012  # m^2/kg
+REFERENCE_ALTITUDE_KM = 400.0
+SCALE_HEIGHT_KM = 60.0
+REFERENCE_DENSITY = 1e-12  # kg/m^3
+LOW_ORBIT_LIMIT_KM = 1000.0
+
+
+def exponential_density(altitude_km):
+    """DEFAULT_ATMOSPHERE_MODEL exponential profile, kg/m^3."""
+    return REFERENCE_DENSITY * np.exp(
+        -(altitude_km - REFERENCE_ALTITUDE_KM) / SCALE_HEIGHT_KM
+    )
+
+
+def calculate_drag_rates(a_km, e, ballistic_coefficient=BALLISTIC_COEFFICIENT):
+    """
+    Secular drag rates for a near-circular orbit.
+
+    da/dt = -rho * B * sqrt(mu * a)          (textbook circular-orbit decay)
+    de/dt = (da/dt) * e / (2H)               (King-Hele small-e limit)
+
+    Written here in the same `F = 0.5 * rho * v_rel * B` [1/s] form the
+    TypeScript uses so the two stay easy to diff. Note the single power of
+    v_rel: F is a rate, not the drag acceleration.
+    """
+    a = a_km * 1000.0
+    perigee_altitude = a * (1 - e) - RE
+
+    if perigee_altitude >= LOW_ORBIT_LIMIT_KM * 1000.0:
+        return 0.0, 0.0  # drag gate: high orbits get nothing
+
+    rho = exponential_density(perigee_altitude / 1000.0)
+    v_rel = np.sqrt(MU / a)
+    F = 0.5 * rho * v_rel * ballistic_coefficient
+    da_dt = -2 * a * F                                     # m/s
+    de_dt = da_dt * e / (2 * SCALE_HEIGHT_KM * 1000.0)     # 1/s
+
+    # Cross-check against the closed form the docstring advertises.
+    closed_form = -rho * ballistic_coefficient * np.sqrt(MU * a)
+    assert abs(da_dt - closed_form) <= 1e-12 * abs(closed_form), (
+        f"da/dt {da_dt} != closed form {closed_form}"
+    )
+
+    return da_dt, de_dt
+
 def calculate_j2_j3_rates(a_km, e, i_deg, raan_deg, argp_deg, nu_deg):
-    """Calculate J2 and J3 perturbation rates for given orbital elements."""
+    """Calculate J2, J3 and drag perturbation rates for given orbital elements."""
     
     # Convert to SI units and radians
     a = a_km * 1000  # m
@@ -55,7 +110,13 @@ def calculate_j2_j3_rates(a_km, e, i_deg, raan_deg, argp_deg, nu_deg):
     DAYS_PER_YEAR = 365.25
     RAD_TO_DEG = 180 / np.pi
     
+    da_dt_drag, de_dt_drag = calculate_drag_rates(a_km, e)
+
     return {
+        "drag": {
+            "da_dt_km_per_year": da_dt_drag * SECONDS_PER_YEAR / 1000,
+            "de_dt_per_year": de_dt_drag * SECONDS_PER_YEAR,
+        },
         "j2": {
             "dOmega_dt_deg_per_day": (j2_dOmega_dt * RAD_TO_DEG * SECONDS_PER_YEAR) / DAYS_PER_YEAR,
             "domega_dt_deg_per_day": (j2_domega_dt * RAD_TO_DEG * SECONDS_PER_YEAR) / DAYS_PER_YEAR,
