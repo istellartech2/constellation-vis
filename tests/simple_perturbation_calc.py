@@ -3,9 +3,11 @@ Simple perturbation calculation without poliastro dependencies.
 Calculate J2, J3 and atmospheric-drag perturbations using direct formulas.
 
 Reference generator for `tests/perturbation_test_data.json`, consumed by
-`src/lib/perturbation.test.ts`. Run from this directory:
+`src/lib/perturbation.test.ts`. numpy is not part of the project's toolchain,
+so use the inline PEP-723 dependency block below via uv. Run from this
+directory (it writes the JSON to the working directory):
 
-    python3 simple_perturbation_calc.py
+    uv run simple_perturbation_calc.py
 
 The drag term mirrors the *default* (exponential) atmosphere of
 `src/lib/perturbation.ts`, i.e. what `calculateDetailedPerturbationRates` uses
