@@ -1,5 +1,5 @@
 import type { GroundStation } from "../lib/groundStations";
-import type { StationVisibilitySample } from "../lib/visibility";
+import type { SatelliteFovCriteria, StationVisibilitySample } from "../lib/visibility";
 
 export interface StationAccessWorkerPayload {
   satText: string;
@@ -9,6 +9,12 @@ export interface StationAccessWorkerPayload {
   durationHours: number;
   stepSeconds: number;
   averagePoints: number;
+  /**
+   * Satellite sensor FOV to AND onto each station's own criteria. Omitted when
+   * the user leaves the option off; the values themselves come from the shared
+   * display settings (`fovCone*`), never from an analysis-only copy.
+   */
+  satelliteFov?: SatelliteFovCriteria;
 }
 
 export interface StationAccessWorkerRequest {

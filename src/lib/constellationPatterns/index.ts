@@ -46,6 +46,15 @@ export {
 export type { TomlScalar, TomlTableScan } from "./tomlTable";
 export { parseTomlScalar, scanArrayTable } from "./tomlTable";
 
+export type { AppliedShellFailures, ShellFailurePlan } from "./failure";
+export {
+  applyShellFailures,
+  mulberry32,
+  planShellFailures,
+  resolveFailedCount,
+  selectFailedIndices,
+} from "./failure";
+
 export type { EmittedShell } from "./emit";
 export { emitShell, greedyPlaneSizes, normalizeAngleDeg, planGeometry, sameSizes } from "./emit";
 

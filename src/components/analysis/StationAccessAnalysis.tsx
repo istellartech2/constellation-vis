@@ -16,9 +16,27 @@ interface Props {
   constText: string;
   gsText: string;
   startTime: Date;
+  /**
+   * The satellite sensor FOV, read straight from the shared display settings
+   * (表示オプション › 衛星の視野). Shown here read-only on purpose: the
+   * definition has exactly one editable home, and this panel only decides
+   * whether to *apply* it as a visibility condition.
+   */
+  fovHalfAngleDeg: number;
+  fovAlongTrackDeg: number;
+  fovCrossTrackDeg: number;
 }
 
-export default function StationAccessAnalysis({ satText, constText, gsText, startTime }: Props) {
+export default function StationAccessAnalysis({
+  satText,
+  constText,
+  gsText,
+  startTime,
+  fovHalfAngleDeg,
+  fovAlongTrackDeg,
+  fovCrossTrackDeg,
+}: Props) {
+  const [useSatelliteFov, setUseSatelliteFov] = useState(false);
   const [data, setData] = useState<StationVisibilitySample[]>([]);
   const [stations, setStations] = useState<GroundStation[]>([]);
   const [stats, setStats] = useState<Array<{ name: string; averageVisible: number; nonZeroRate: number }>>([]);
@@ -112,6 +130,13 @@ export default function StationAccessAnalysis({ satText, constText, gsText, star
         durationHours: 24,
         stepSeconds: 10,
         averagePoints: 1,
+        satelliteFov: useSatelliteFov
+          ? {
+              halfAngleDeg: fovHalfAngleDeg,
+              alongTrackDeg: fovAlongTrackDeg,
+              crossTrackDeg: fovCrossTrackDeg,
+            }
+          : undefined,
       },
     };
 
@@ -191,6 +216,28 @@ export default function StationAccessAnalysis({ satText, constText, gsText, star
         
         {error && (
           <span className="analysis-error">{error}</span>
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 pb-2 text-xs text-gray-300">
+        <label className="inline-flex items-center gap-1.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={useSatelliteFov}
+            onChange={(e) => setUseSatelliteFov(e.target.checked)}
+            className="accent-amber-500"
+          />
+          <span>衛星の視野も可視条件に加える</span>
+        </label>
+        <span className="text-gray-500">
+          半角 {fovHalfAngleDeg}° / Along-track {fovAlongTrackDeg}° / Cross-track{" "}
+          {fovCrossTrackDeg}°（変更は 表示オプション › 衛星の視野）
+        </span>
+        {useSatelliteFov && (
+          <span className="text-gray-500">
+            地上局側の最低仰角・可視判定モードとの AND 条件です。傾きが 0° のときは
+            最大オフナディア {fovHalfAngleDeg}° と同じ意味になります。
+          </span>
         )}
       </div>
       

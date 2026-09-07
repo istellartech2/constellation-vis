@@ -24,8 +24,16 @@ ctx.addEventListener("message", (event: MessageEvent<StationAccessWorkerRequest>
   const { id, payload } = message;
 
   try {
-    const { satText, constText, gsText, startTimeIso, durationHours, stepSeconds, averagePoints } =
-      payload;
+    const {
+      satText,
+      constText,
+      gsText,
+      startTimeIso,
+      durationHours,
+      stepSeconds,
+      averagePoints,
+      satelliteFov,
+    } = payload;
 
     const baseSats = satText ? parseSatellitesToml(satText) : [];
     const constSats = constText ? parseConstellationToml(constText) : [];
@@ -48,6 +56,7 @@ ctx.addEventListener("message", (event: MessageEvent<StationAccessWorkerRequest>
       start,
       durationHours,
       stepSeconds,
+      satelliteFov,
     );
 
     const averagedData = averageVisibilityData(visibilityData, averagePoints);

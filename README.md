@@ -13,6 +13,8 @@ A web application that visualizes satellite constellations in Earth orbit.
 - Generate constellations from six design patterns (Walker Delta/Star, Streets of Coverage, Flower, Lattice Flower, Necklace Flower) or from a mission-driven design wizard (see `docs/constellation-patterns.md` / `docs/constellation-design.md`)
 - Import live orbital data from CelesTrak (cached in IndexedDB so subsequent loads work offline and gracefully fall back when CelesTrak rate-limits a group)
 - Define ground stations on a map and visualize their visibility cones (elevation, off-nadir, or both)
+- Define the satellite sensor FOV (half-angle plus along-track / cross-track tilt) in one place (Display options › Satellite FOV) and reuse it for both the 3D cone and the station-access analysis
+- Apply a per-shell failure model (fixed count or percentage, deterministic draw)
 - Analysis tab for access and coverage statistics
 - Save / load the entire configuration as a single `settings.toml` bundle
 
@@ -73,6 +75,8 @@ Live build: https://istellartech2.github.io/constellation-vis/
 - 6 種類の設計方式(Walker Delta/Star, Streets of Coverage, Flower, Lattice Flower, Necklace Flower)またはミッションから設計するウィザードでコンステレーションを生成(`docs/constellation-patterns.md` / `docs/constellation-design.md` 参照)
 - CelesTrak から軌道データをインポート（IndexedDB にキャッシュし、レート制限時は前回データへ自動フォールバック）
 - 地図上で地上局を定義し、可視範囲（仰角・オフナディア・両方）を可視化
+- 衛星のセンサ視野（視野半角・Along-track / Cross-track 傾き）を「表示オプション › 衛星の視野」で 1 か所だけ定義し、3D のコーン表示と地上局アクセス解析の可視条件で共通利用
+- コンステレーションのシェル単位で故障モデル（機数指定／割合指定、決定論的な抽選）を適用
 - アクセス・カバレッジを集計する解析タブ
 - 設定一式を `settings.toml` 1 ファイルにまとめて保存／読み込み
 

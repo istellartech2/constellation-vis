@@ -479,6 +479,9 @@ export default function SatelliteEditor({
                 constText={constText}
                 gsText={gsText}
                 startTime={new Date(startText)}
+                fovConeHalfAngleDeg={fovConeHalfAngleDeg}
+                fovConeAlongTrackDeg={fovConeAlongTrackDeg}
+                fovConeCrossTrackDeg={fovConeCrossTrackDeg}
                 satellites={satellites}
                 islSettings={islSettings}
                 islShellRanges={islShellRanges}

@@ -3,6 +3,7 @@ import * as THREE from "three";
 import type { SatelliteSpec } from "./satellites";
 import { toSatrec } from "./satellites";
 import type { GroundStation, VisibilityMode } from "./groundStations";
+import { computeSensorDirectionEci } from "./orbitalCoordinates";
 
 /** Convert a list of satellite specs to satrec objects. */
 function toSatrecs(sats: SatelliteSpec[]): satellite.SatRec[] {
@@ -13,6 +14,83 @@ export interface VisibilityCriteria {
   minElevationDeg?: number;
   visibilityMode?: VisibilityMode;
   maxOffNadirDeg?: number;
+}
+
+/**
+ * The satellite-side sensor field of view, as an extra AND condition on top of
+ * each station's own criteria.
+ *
+ * These are the *same three numbers* the 3D scene draws its FOV cone from
+ * (`fovConeHalfAngleDeg` / `fovConeAlongTrackDeg` / `fovConeCrossTrackDeg` in
+ * `DisplaySettings`) — there is deliberately no second, analysis-only copy of
+ * the definition. `alongTrackDeg` / `crossTrackDeg` tilt the *boresight*
+ * (pitch/roll); the cone itself is circular with half-angle `halfAngleDeg`.
+ * With both tilts at 0 this reduces to a nadir-centred off-nadir limit, i.e.
+ * the same thing a station's `maxOffNadirDeg = halfAngleDeg` expresses.
+ */
+export interface SatelliteFovCriteria {
+  halfAngleDeg: number;
+  alongTrackDeg: number;
+  crossTrackDeg: number;
+}
+
+/**
+ * Boresight of one satellite in **ECF**, or null when the state is degenerate.
+ *
+ * Station-independent, so callers compute it once per satellite per time step
+ * and reuse it for every ground station. `eciToEcf` is a rotation about the
+ * Z axis, which is valid for a direction vector (no origin shift involved).
+ */
+export function computeFovBoresightEcf(
+  positionEci: satellite.EciVec3<number>,
+  velocityEci: satellite.EciVec3<number> | undefined,
+  gmst: number,
+  fov: SatelliteFovCriteria,
+): satellite.EcfVec3<number> | null {
+  if (velocityEci) {
+    const boresight = computeSensorDirectionEci(
+      positionEci,
+      velocityEci,
+      fov.alongTrackDeg,
+      fov.crossTrackDeg,
+    );
+    if (boresight) {
+      return satellite.eciToEcf(
+        { x: boresight.x, y: boresight.y, z: boresight.z },
+        gmst,
+      );
+    }
+  }
+
+  // No usable velocity: fall back to pure nadir (the tilt is undefined without
+  // an along-track direction), matching the scene's own fallback.
+  const ecf = satellite.eciToEcf(positionEci, gmst);
+  const norm = Math.hypot(ecf.x, ecf.y, ecf.z);
+  if (norm === 0) return null;
+  return { x: -ecf.x / norm, y: -ecf.y / norm, z: -ecf.z / norm };
+}
+
+/** True when the station lies inside the satellite's (possibly tilted) FOV cone. */
+export function withinSatelliteFov(
+  satelliteEcf: { x: number; y: number; z: number },
+  stationEcf: { x: number; y: number; z: number },
+  boresightEcf: { x: number; y: number; z: number },
+  halfAngleDeg: number,
+): boolean {
+  const dx = stationEcf.x - satelliteEcf.x;
+  const dy = stationEcf.y - satelliteEcf.y;
+  const dz = stationEcf.z - satelliteEcf.z;
+  const range = Math.hypot(dx, dy, dz);
+  const boresightNorm = Math.hypot(boresightEcf.x, boresightEcf.y, boresightEcf.z);
+  if (range === 0 || boresightNorm === 0) return false;
+
+  const cos = THREE.MathUtils.clamp(
+    (dx * boresightEcf.x + dy * boresightEcf.y + dz * boresightEcf.z) /
+      (range * boresightNorm),
+    -1,
+    1,
+  );
+  return Math.acos(cos) <= THREE.MathUtils.degToRad(halfAngleDeg);
 }
 
 interface PreparedObserver {
@@ -110,6 +188,7 @@ function countVisibleSatellitesForObserver(
   satRecs: satellite.SatRec[],
   prepared: PreparedObserver,
   date: Date,
+  fov?: SatelliteFovCriteria,
 ): number {
   const gmst = satellite.gstime(date);
   let count = 0;
@@ -119,7 +198,10 @@ function countVisibleSatellitesForObserver(
     if (!pv?.position) continue;
 
     const ecf = satellite.eciToEcf(pv.position, gmst);
-    if (isVisibleFromPreparedObserver(ecf, prepared)) {
+    const boresightEcf = fov
+      ? computeFovBoresightEcf(pv.position, pv.velocity || undefined, gmst, fov)
+      : null;
+    if (isVisibleFromPreparedObserver(ecf, prepared, fov, boresightEcf)) {
       count++;
     }
   }
@@ -130,10 +212,20 @@ function countVisibleSatellitesForObserver(
 function isVisibleFromPreparedObserver(
   satelliteEcf: satellite.EcfVec3<number>,
   prepared: PreparedObserver,
+  fov?: SatelliteFovCriteria,
+  boresightEcf?: satellite.EcfVec3<number> | null,
 ): boolean {
   const look = satellite.ecfToLookAngles(prepared.observer, satelliteEcf);
   const offNadirRad = computeOffNadirAngleRad(satelliteEcf, prepared.stationEcf);
-  return passesVisibilityCriteria(look.elevation, offNadirRad, prepared.criteria);
+  if (!passesVisibilityCriteria(look.elevation, offNadirRad, prepared.criteria)) {
+    return false;
+  }
+  // The satellite's own FOV is an additional AND on top of the station's
+  // criteria: a satellite the station can see is still useless if the station
+  // falls outside the sensor cone.
+  if (!fov) return true;
+  if (!boresightEcf) return false;
+  return withinSatelliteFov(satelliteEcf, prepared.stationEcf, boresightEcf, fov.halfAngleDeg);
 }
 
 /** Count visible satellites for a single ground station at a given time. */
@@ -141,8 +233,9 @@ export function countVisibleSatellites(
   satRecs: satellite.SatRec[],
   station: GroundStation,
   date: Date,
+  fov?: SatelliteFovCriteria,
 ): number {
-  return countVisibleSatellitesForObserver(satRecs, prepareObserver(station), date);
+  return countVisibleSatellitesForObserver(satRecs, prepareObserver(station), date, fov);
 }
 
 /**
@@ -167,6 +260,7 @@ export function visibilityStats(
   start: Date,
   durationHours = 12,
   stepSec = 10,
+  fov?: SatelliteFovCriteria,
 ): VisibilityStats {
   const satRecs = toSatrecs(sats);
   const prepared = prepareObserver(station);
@@ -174,7 +268,7 @@ export function visibilityStats(
   const endMs = startMs + durationHours * 3600 * 1000;
   const counts: number[] = [];
   for (let ms = startMs; ms <= endMs; ms += stepSec * 1000) {
-    counts.push(countVisibleSatellitesForObserver(satRecs, prepared, new Date(ms)));
+    counts.push(countVisibleSatellitesForObserver(satRecs, prepared, new Date(ms), fov));
   }
   const steps = counts.length;
   const total = counts.reduce((a, b) => a + b, 0);
@@ -203,8 +297,9 @@ export function averageVisibility(
   start: Date,
   durationHours = 12,
   stepSec = 10,
+  fov?: SatelliteFovCriteria,
 ): number {
-  return visibilityStats(sats, station, start, durationHours, stepSec).avg;
+  return visibilityStats(sats, station, start, durationHours, stepSec, fov).avg;
 }
 
 /**
@@ -232,6 +327,7 @@ export function calculateStationAccessData(
   start: Date,
   durationHours = 24,
   stepSeconds = 10,
+  fov?: SatelliteFovCriteria,
 ): StationVisibilitySample[] {
   const satRecs = toSatrecs(sats);
   const observers = stations.map((gs) => prepareObserver(gs));
@@ -252,8 +348,13 @@ export function calculateStationAccessData(
       if (!pv?.position) return;
 
       const ecf = satellite.eciToEcf(pv.position, gmst);
+      // Station-independent, so the boresight is computed once per satellite
+      // per step and reused for every observer.
+      const boresightEcf = fov
+        ? computeFovBoresightEcf(pv.position, pv.velocity || undefined, gmst, fov)
+        : null;
       observers.forEach((obs, gi) => {
-        if (isVisibleFromPreparedObserver(ecf, obs)) counts[gi]++;
+        if (isVisibleFromPreparedObserver(ecf, obs, fov, boresightEcf)) counts[gi]++;
       });
     });
 
@@ -340,6 +441,7 @@ export function generateVisibilityReport(
   start: Date,
   durationHours = 24,
   stepSec = 10,
+  fov?: SatelliteFovCriteria,
 ): string {
   const satRecs = toSatrecs(sats);
   const observers = stations.map((gs) => prepareObserver(gs));
@@ -354,7 +456,7 @@ export function generateVisibilityReport(
     const current = new Date(ms);
     const counts = observers.map(() => 0);
     observers.forEach((obs, gi) => {
-      counts[gi] = countVisibleSatellitesForObserver(satRecs, obs, current);
+      counts[gi] = countVisibleSatellitesForObserver(satRecs, obs, current, fov);
     });
     lines.push([String(t), ...counts.map(String)].join(","));
   }
