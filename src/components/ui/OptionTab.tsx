@@ -429,8 +429,14 @@ export default function OptionTab(props: Props) {
         />
       </PanelSection>
 
-      {/* D. 衛星の視野コーン(地上局の通信範囲コーンは通信タブへ移設) */}
-      <PanelSection title="衛星の視野（コーン）" icon={<Radio />}>
+      {/* D. 衛星の視野(センサ)定義。地上局の通信範囲コーンは通信タブへ移設。
+          半角・傾きは 3D コーンと地上局アクセス解析の共通定義なので、
+          コーン表示の ON/OFF とは独立に常に編集できるようにしてある。 */}
+      <PanelSection title="衛星の視野（センサ定義）" icon={<Radio />}>
+        <p className="text-[11px] text-gray-500">
+          ここで決めた視野半角と傾きは、3D のコーン表示と「地上局アクセス設計」解析の
+          視野条件で共通に使われます。
+        </p>
         <div className="flex items-center gap-2">
           <Checkbox
             id="satelliteFovCones"
@@ -441,7 +447,7 @@ export default function OptionTab(props: Props) {
             htmlFor="satelliteFovCones"
             className="text-sm font-normal cursor-pointer text-gray-200 flex-1"
           >
-            衛星の視野を表示
+            3D にコーンを表示
           </Label>
           {showSatelliteFovCones && (
             <input
@@ -454,46 +460,45 @@ export default function OptionTab(props: Props) {
             />
           )}
         </div>
+        <InlineSlider
+          label="視野半角"
+          labelW="w-24"
+          value={fovConeHalfAngleDeg}
+          min={1}
+          max={80}
+          step={1}
+          format={(v) => `${v.toFixed(0)}°`}
+          help="センサ視野の半頂角。地上局アクセス解析の視野条件でもこの値を使います。"
+          onChange={onFovConeHalfAngleDegChange}
+        />
+        <InlineSlider
+          label="Along-track"
+          labelW="w-24"
+          value={fovConeAlongTrackDeg}
+          min={-60}
+          max={60}
+          step={1}
+          format={(v) => `${v.toFixed(0)}°`}
+          help="視野の傾き(進行方向)。正で進行方向へ傾斜します。"
+          onChange={onFovConeAlongTrackDegChange}
+        />
+        <InlineSlider
+          label="Cross-track"
+          labelW="w-24"
+          value={fovConeCrossTrackDeg}
+          min={-60}
+          max={60}
+          step={1}
+          format={(v) => `${v.toFixed(0)}°`}
+          help="視野の傾き(直交方向)。正で軌道面左方向へ傾斜します。"
+          onChange={onFovConeCrossTrackDegChange}
+        />
         {showSatelliteFovCones && (
-          <>
-            <InlineSlider
-              label="視野半角"
-              labelW="w-24"
-              value={fovConeHalfAngleDeg}
-              min={1}
-              max={80}
-              step={1}
-              format={(v) => `${v.toFixed(0)}°`}
-              onChange={onFovConeHalfAngleDegChange}
-            />
-            <InlineSlider
-              label="Along-track"
-              labelW="w-24"
-              value={fovConeAlongTrackDeg}
-              min={-60}
-              max={60}
-              step={1}
-              format={(v) => `${v.toFixed(0)}°`}
-              help="視野の傾き(進行方向)。正で進行方向へ傾斜します。"
-              onChange={onFovConeAlongTrackDegChange}
-            />
-            <InlineSlider
-              label="Cross-track"
-              labelW="w-24"
-              value={fovConeCrossTrackDeg}
-              min={-60}
-              max={60}
-              step={1}
-              format={(v) => `${v.toFixed(0)}°`}
-              help="視野の傾き(直交方向)。正で軌道面左方向へ傾斜します。"
-              onChange={onFovConeCrossTrackDegChange}
-            />
-            <p className="text-[11px] text-gray-500">
-              円錐最小高さ {fovConeMinHeight.toFixed(2)}R<sub>⊕</sub>(約{" "}
-              {Math.round(fovConeMinHeight * EARTH_RADIUS_KM).toLocaleString()} km)—
-              衛星高度に応じた固定スケール
-            </p>
-          </>
+          <p className="text-[11px] text-gray-500">
+            円錐最小高さ {fovConeMinHeight.toFixed(2)}R<sub>⊕</sub>(約{" "}
+            {Math.round(fovConeMinHeight * EARTH_RADIUS_KM).toLocaleString()} km)—
+            衛星高度に応じた固定スケール
+          </p>
         )}
       </PanelSection>
 

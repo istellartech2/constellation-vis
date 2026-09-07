@@ -115,6 +115,14 @@ export const FIELD_REGISTRY: readonly FieldSpec[] = [
   { key: "nec_necklace", kind: "intArray", patterns: ["necklace_flower"] },
   { key: "nec_shift", kind: "int", default: 1, patterns: ["necklace_flower"] },
 
+  // --- failure (attrition) model, every pattern ---
+  // `failure_percent` wins over `failed_count` when positive; the draw is a
+  // pure function of (count, k, failure_seed) so every parser removes the same
+  // satellites. See `failure.ts`.
+  { key: "failed_count", kind: "int", default: 0, patterns: "all" },
+  { key: "failure_percent", kind: "number", default: 0, patterns: "all", decimals: 2 },
+  { key: "failure_seed", kind: "int", default: 0, patterns: "all" },
+
   // --- repeat-ground-track memo (informational, every pattern) ---
   { key: "rgt_repeat_orbits", kind: "int", patterns: "all" },
   { key: "rgt_repeat_days", kind: "int", patterns: "all" },

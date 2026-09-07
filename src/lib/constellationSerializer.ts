@@ -11,6 +11,7 @@
 
 import type { ConstellationConfig, ConstellationShell } from "./constellationTypes";
 import { createDefaultConfig } from "./constellationTypes";
+import { safeDerived } from "./constellationPatterns/migrate";
 import {
   DEFAULT_PATTERN_ID,
   FIELD_REGISTRY,
@@ -223,6 +224,34 @@ export function validateConfig(config: ConstellationConfig): ValidationResult {
       errors.push({
         field: `shell.${index}.apogee_altitude`,
         message: "高度は0以上である必要があります",
+      });
+    }
+
+    if (
+      shell.failed_count !== undefined &&
+      (shell.failed_count < 0 || !Number.isInteger(shell.failed_count))
+    ) {
+      errors.push({
+        field: `shell.${index}.failed_count`,
+        message: "故障機数は0以上の整数が必要です",
+      });
+    }
+    if (
+      shell.failed_count !== undefined &&
+      shell.failed_count > (safeDerived(shell)?.totalSats ?? Number.POSITIVE_INFINITY)
+    ) {
+      errors.push({
+        field: `shell.${index}.failed_count`,
+        message: "故障機数は総衛星数以下である必要があります",
+      });
+    }
+    if (
+      shell.failure_percent !== undefined &&
+      (shell.failure_percent < 0 || shell.failure_percent > 100)
+    ) {
+      errors.push({
+        field: `shell.${index}.failure_percent`,
+        message: "故障率は0〜100%の範囲で入力してください",
       });
     }
 

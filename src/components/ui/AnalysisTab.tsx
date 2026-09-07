@@ -16,6 +16,10 @@ interface Props {
   constText: string;
   gsText: string;
   startTime: Date;
+  /** Shared satellite sensor FOV (表示オプション › 衛星の視野), used by 地上局アクセス設計. */
+  fovConeHalfAngleDeg: number;
+  fovConeAlongTrackDeg: number;
+  fovConeCrossTrackDeg: number;
   /** The currently active (committed) satellite array — matches islShellRanges exactly. */
   satellites: SatelliteSpec[];
   islSettings: IslSettings;
@@ -41,6 +45,9 @@ export default function AnalysisTab({
   constText,
   gsText,
   startTime,
+  fovConeHalfAngleDeg,
+  fovConeAlongTrackDeg,
+  fovConeCrossTrackDeg,
   satellites,
   islSettings,
   islShellRanges,
@@ -81,6 +88,9 @@ export default function AnalysisTab({
           constText={constText}
           gsText={gsText}
           startTime={startTime}
+          fovHalfAngleDeg={fovConeHalfAngleDeg}
+          fovAlongTrackDeg={fovConeAlongTrackDeg}
+          fovCrossTrackDeg={fovConeCrossTrackDeg}
         />;
       case "全球アクセス設計":
         return <GlobalAccessAnalysis

@@ -57,21 +57,37 @@ export function computeLVLHFrame(
 ): LVLHFrame | null {
   // Convert from ECI to visualization coordinate system
   // Note: This matches the coordinate transform in visualization.ts
-  const radial = new THREE.Vector3(
-    positionECI.x,
-    positionECI.z, // Z_eci -> Y_scene (north pole direction)
-    -positionECI.y, // -Y_eci -> Z_scene
+  return buildLVLHFrame(
+    new THREE.Vector3(
+      positionECI.x,
+      positionECI.z, // Z_eci -> Y_scene (north pole direction)
+      -positionECI.y, // -Y_eci -> Z_scene
+    ),
+    new THREE.Vector3(velocityECI.x, velocityECI.z, -velocityECI.y),
   );
+}
 
-  if (radial.lengthSq() < 1e-10) return null;
-  radial.normalize();
+/**
+ * Frame-agnostic core of {@link computeLVLHFrame}.
+ *
+ * Only cross products and normalizations are involved, so the construction is
+ * rotation-equivariant: fed a position/velocity pair expressed in *any*
+ * right-handed frame it returns the LVLH axes in that same frame. That is what
+ * lets the scene use it after the ECI→scene axis swap while
+ * {@link computeSensorDirectionEci} uses it directly on satellite.js ECI
+ * vectors — one implementation, one set of sign conventions.
+ *
+ * @param radial - Earth-center-to-satellite vector (any length)
+ * @param velocityVec - Satellite velocity vector in the same frame
+ */
+export function buildLVLHFrame(
+  radialVec: THREE.Vector3,
+  velocityVec: THREE.Vector3,
+): LVLHFrame | null {
+  if (radialVec.lengthSq() < 1e-10) return null;
+  const radial = radialVec.clone().normalize();
 
-  const velocity = new THREE.Vector3(
-    velocityECI.x,
-    velocityECI.z,
-    -velocityECI.y,
-  );
-
+  const velocity = velocityVec.clone();
   if (velocity.lengthSq() < 1e-10) return null;
 
   // Along-track is velocity direction
@@ -187,6 +203,37 @@ export function computeFovConeQuaternion(
 
   const sensorDir = computeSensorDirection(frame, pointing);
   return computeConeQuaternion(sensorDir);
+}
+
+/**
+ * Sensor boresight direction in the **ECI frame** of satellite.js.
+ *
+ * Same sensor model as the 3D cone (`computeFovConeQuaternion`) — nadir tilted
+ * by `alongTrackDeg` (pitch, positive = forward) then `crossTrackDeg` (roll,
+ * positive = toward the orbit normal) — but returned in ECI instead of the
+ * scene frame, so the visibility/access math can rotate it into ECF with
+ * `satellite.eciToEcf` and compare it against a ground station.
+ *
+ * @param positionECI - Satellite position in ECI (km)
+ * @param velocityECI - Satellite velocity in ECI (km/s)
+ * @returns Unit boresight vector in ECI, or null when the state is degenerate
+ */
+export function computeSensorDirectionEci(
+  positionECI: { x: number; y: number; z: number },
+  velocityECI: { x: number; y: number; z: number },
+  alongTrackDeg: number,
+  crossTrackDeg: number,
+): THREE.Vector3 | null {
+  const frame = buildLVLHFrame(
+    new THREE.Vector3(positionECI.x, positionECI.y, positionECI.z),
+    new THREE.Vector3(velocityECI.x, velocityECI.y, velocityECI.z),
+  );
+  if (!frame) return null;
+
+  return computeSensorDirection(frame, {
+    alongTrackAngleRad: THREE.MathUtils.degToRad(alongTrackDeg),
+    crossTrackAngleRad: THREE.MathUtils.degToRad(crossTrackDeg),
+  });
 }
 
 // Reusable vectors for computeTiltedConeHeight to avoid allocations

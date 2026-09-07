@@ -8,6 +8,7 @@
 
 import type { SatelliteSpec } from "../satellites";
 import { emitShell, greedyPlaneSizes, planGeometry, sameSizes } from "./emit";
+import { applyShellFailures } from "./failure";
 import { FIELD_REGISTRY, numberField } from "./fields";
 import { flowerGenerator } from "./flower";
 import { latticeFlowerGenerator } from "./latticeFlower";
@@ -45,12 +46,21 @@ export interface GeneratedShellSpecs extends GeneratedShell {
   specs: SatelliteSpec[];
   /** First unused satellite number, for the next shell. */
   nextSatnum: number;
+  /** Nominal satellite count, before the failure model removed any. */
+  nominalCount: number;
+  /** How many satellites the failure model removed (0 for a healthy shell). */
+  failedCount: number;
 }
 
 /**
  * Plans + emits one shell. `planes` in the result is the *actual* number of
  * planes the pattern produced (derived for streets-of-coverage), not the stored
  * `planes` field.
+ *
+ * The failure model (`failure.ts`) is applied here, after emission, so *every*
+ * consumer of a shell — editor, workers, CLI, prebuild generator — sees the
+ * same survivors. `nextSatnum` stays the nominal one: survivors keep the
+ * catalog numbers of the healthy shell and the gaps mark the failures.
  */
 export function generateShell(
   shell: PatternShellInput,
@@ -60,16 +70,21 @@ export function generateShell(
   const generator = resolvePattern(shell);
   const plan = generator.plan(shell);
   const emitted = emitShell(plan.plans, plan.orbit, epoch, satnumStart);
+  const failures = applyShellFailures(shell, emitted.satellites, emitted.planeSizes);
+  const geometry = planGeometry(plan.plans, plan.orbit);
 
   return {
-    satellites: planGeometry(plan.plans, plan.orbit),
+    satellites:
+      failures.failedCount === 0 ? geometry : geometry.filter((_, i) => failures.keep(i)),
     planes: plan.plans.length,
-    planeSizes: emitted.planeSizes,
+    planeSizes: failures.planeSizes,
     wrapPlanes: plan.wrapPlanes,
     derived: generator.derive(shell),
     warnings: plan.warnings,
-    specs: emitted.satellites,
+    specs: failures.specs,
     nextSatnum: emitted.nextSatnum,
+    nominalCount: failures.nominalCount,
+    failedCount: failures.failedCount,
   };
 }
 

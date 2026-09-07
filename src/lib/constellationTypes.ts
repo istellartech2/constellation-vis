@@ -51,6 +51,14 @@ export interface ConstellationShell {
   nec_necklace?: number[];       // Occupied pearls, 1-based
   nec_shift?: number;            // Shift k (default: 1)
 
+  // --- failure (attrition) model ---
+  /** Number of satellites removed as failed (default: 0). */
+  failed_count?: number;
+  /** Percentage of the shell removed as failed; wins over `failed_count` when > 0. */
+  failure_percent?: number;
+  /** Seed of the deterministic failure draw (default: 0). */
+  failure_seed?: number;
+
   // --- repeat-ground-track memo (informational) ---
   rgt_repeat_orbits?: number;
   rgt_repeat_days?: number;

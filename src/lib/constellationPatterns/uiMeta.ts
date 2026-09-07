@@ -151,6 +151,11 @@ export const HIDDEN_FIELDS: Record<PatternId, readonly (keyof ConstellationShell
 export const UI_EXEMPT_KEYS: readonly string[] = [
   "pattern",
   "name",
+  // `ShellFailureSection` — a mode radio plus a re-roll button, which the
+  // number-field renderer cannot express.
+  "failed_count",
+  "failure_percent",
+  "failure_seed",
   "rgt_repeat_orbits",
   "rgt_repeat_days",
   "mission_objective",

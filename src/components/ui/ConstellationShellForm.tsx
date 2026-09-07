@@ -2,13 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ConstellationShell } from "../../lib/constellationTypes";
 import type { ValidationError } from "../../lib/constellationSerializer";
 import type { PatternId, ShellDerived } from "../../lib/constellationPatterns";
-import { patternIdOf } from "../../lib/constellationPatterns";
+import { patternIdOf, planShellFailures } from "../../lib/constellationPatterns";
 import { migrateShellPattern, safeDerived } from "../../lib/constellationPatterns/migrate";
 import CollapsibleSubsection from "./CollapsibleSubsection";
 import DerivedInfoStrip, { type DerivedInfoItem } from "./DerivedInfoStrip";
 import PatternFieldGroup from "./PatternFieldGroup";
 import PatternSelect from "./PatternSelect";
 import RgtConstraintSection from "./RgtConstraintSection";
+import ShellFailureSection from "./ShellFailureSection";
 import ShellFormBanner, { type ShellFormBannerItem } from "./ShellFormBanner";
 import { Label } from "./label";
 
@@ -137,7 +138,7 @@ export default function ConstellationShellForm({
       )}
 
       {derived ? (
-        <DerivedInfoStrip title="派生情報" columns={2} items={derivedItems(derived)} />
+        <DerivedInfoStrip title="派生情報" columns={2} items={derivedItems(derived, shell)} />
       ) : (
         <p className="text-xs text-gray-500">
           入力が未完成のため派生情報を計算できません
@@ -170,6 +171,15 @@ export default function ConstellationShellForm({
           derived={derived}
           onChange={onChange}
         />
+        <div className="pt-1">
+          <ShellFailureSection
+            shell={shell}
+            totalSats={derived?.totalSats ?? null}
+            shellIndex={shellIndex}
+            errors={errors}
+            onChange={onChange}
+          />
+        </div>
         {!rgtInBasic && <div className="pt-1">{rgtSection}</div>}
       </CollapsibleSubsection>
     </div>
@@ -258,9 +268,18 @@ function num(value: number, digits = 2, unit = ""): string {
 }
 
 /** Common derived readout plus the pattern-specific extras. */
-function derivedItems(derived: ShellDerived): DerivedInfoItem[] {
+function derivedItems(derived: ShellDerived, shell: ConstellationShell): DerivedInfoItem[] {
+  // With the failure model active the nominal total is no longer what flies,
+  // so the strip shows both (the breakdown lives in `ShellFailureSection`).
+  const failure = planShellFailures(shell, derived.totalSats);
   const items: DerivedInfoItem[] = [
-    { label: "総衛星数", value: num(derived.totalSats, 0, " 機") },
+    failure.failedCount > 0
+      ? {
+          label: "総衛星数",
+          value: `${derived.totalSats} 機 (稼働 ${failure.activeCount})`,
+          help: "公称機数と、故障モデル適用後に実際に配置される機数。",
+        }
+      : { label: "総衛星数", value: num(derived.totalSats, 0, " 機") },
     { label: "軌道面数", value: num(derived.planes, 0, " 面") },
     {
       label: "1面あたり",

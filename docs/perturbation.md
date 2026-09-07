@@ -4,6 +4,24 @@
 
 ---
 
+## 位置づけ（重要）
+
+本アプリの**軌道伝播はすべて SGP4**（satellite.js の `twoline2satrec` / `propagate`）で行う。
+3D 表示、地上局・全球アクセス解析、ISL 経路解析、コンステレーション設計の検証（ステージ 2）は
+いずれも SGP4 の出力を使う。数値積分（ルンゲ–クッタ等）による伝播は実装していない。
+
+本ドキュメントが説明するのは伝播器ではなく、**周回平均した長周期（セキュラ）摂動レートの
+解析モデル**である。実装は `src/lib/perturbation.ts` で、以下の用途に限って使われる。
+
+- 衛星情報パネルの摂動レート表示（`showPerturbation`）
+- 「軌道寿命・推進剤設計」解析（`src/lib/orbitMaintenanceAnalysis.ts`）の
+  年あたりドリフト量・軌道維持 ΔV 見積り
+
+つまり「1 年あたり RAAN が何度ずれるか」「高度が何 km 落ちるか」を閉形式で見積もるための
+モデルであり、可視性判定や表示位置の計算には一切関与しない。
+
+---
+
 ## 0. 対象範囲と記号
 
 | 記号      | 意味（単位：SI 系）                                                  |
@@ -129,7 +147,9 @@ for step in range(N):
 **メモ**
 
 * ρ₀, h₀, H は大気モデルに応じて設定。
-* 高精度には Runge–Kutta 4 などで積分し、**a\_J2**, **a\_J3**, **a\_drag** をデカルト座標で加える完全数値積分を推奨。
+* さらに高精度が必要な場合は、Runge–Kutta 4 などで **a\_J2**, **a\_J3**, **a\_drag** を
+  デカルト座標で加える完全数値積分という選択肢もある（一般論としての参考情報であり、
+  **本アプリでは採用していない**。上記「位置づけ」のとおり伝播は SGP4）。
 
 ---
 
@@ -138,7 +158,8 @@ for step in range(N):
 1. Vallado, *Fundamentals of Astrodynamics and Applications*, 4th ed.
 2. Montenbruck & Gill, *Satellite Orbits*.
 3. Wertz et al., *Space Mission Engineering*.
-4. “SPG4/8 Theory” (NASA TD546) ― 公式ドラッグモデル解説。
+4. Hoots & Roehrich, *Spacetrack Report No. 3 — Models for Propagation of NORAD Element Sets*, 1980
+   ― SGP4/SDP4 の公式仕様（本アプリの伝播器）。
 
 ---
 

@@ -505,10 +505,22 @@ RGT(Repeat Ground Track、反復地上軌跡)は独立した設計方式では�
 | `nec_pearls` | int | – | necklace |
 | `nec_necklace` | int[] | – | necklace |
 | `nec_shift` | int | 1 | necklace |
+| `failed_count` | int | 0 | 全(故障モデル) |
+| `failure_percent` | number | 0 | 全(故障モデル。> 0 のとき `failed_count` より優先) |
+| `failure_seed` | int | 0 | 全(故障モデルの抽選シード) |
 | `rgt_repeat_orbits`, `rgt_repeat_days` | int | – | 全(任意メモ) |
 | `mission_objective`, `mission_min_elevation`, `mission_fold`, `mission_region`, `mission_lat_min`, `mission_lat_max`, `mission_alt_min`, `mission_alt_max` | string/number | – | 全(ミッション設計ウィザード由来、任意) |
 
 `mission_*` はミッション設計ウィザード(`docs/constellation-design.md`)が候補をシェル化する際の由来情報で、生成される衛星要素には影響しない。
+
+### 故障モデル(`failed_count` / `failure_percent` / `failure_seed`)
+
+指定した機数(`failed_count`)または割合(`failure_percent`、`k = round(割合 × 公称機数)`)の衛星を「故障」として取り除く。実装は `src/lib/constellationPatterns/failure.ts`、適用箇所は `registry.ts::generateShell` の `emitShell` 直後 — つまり**生成経路が 1 本しかない**ので、エディタ・解析 Worker・CLI・`scripts/generate-satellites.ts` のどこから読んでも同じ衛星が欠ける。
+
+- **抽選は決定論的**。`(公称機数, k, failure_seed)` の純関数(mulberry32 + 部分 Fisher–Yates)であり、`Math.random` は使わない。TOML が独立に何度も再パースされるため、非決定論だと読み込むたびに違うコンステレーションになってしまう。ユーザーはシードを変えて引き直す(エディタの「再抽選」)。
+- **衛星番号は公称のまま**。故障は要素生成の後に適用されるので、生き残った衛星は健全なシェルと同じ `satnum` を保ち、欠番が故障機を示す。次のシェルの開始番号も変わらない。
+- **`planeSizes` は生存機から再計算**される(§9)。ISL の +Grid トポロジがこの配列から面境界を導くため。
+- `count` は常に**公称**機数として書き出される。エディタの派生情報と故障モデル欄が「公称 N 機 / 稼働 M 機」を併記する。
 
 ---
 
