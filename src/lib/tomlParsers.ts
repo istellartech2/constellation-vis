@@ -86,6 +86,8 @@ export interface ConstellationShellConfig {
   mission_objective?: string;
   mission_min_elevation?: number;
   mission_fold?: number;
+  mission_availability_target?: number;
+  mission_availability_basis?: string;
   mission_region?: string;
   mission_lat_min?: number;
   mission_lat_max?: number;

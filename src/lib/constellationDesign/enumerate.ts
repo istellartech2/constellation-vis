@@ -1,3 +1,4 @@
+import { evaluatedAvailability, scoreAvailability } from "./availability";
 /**
  * Orchestration: analytic sizing → coarse screening → ranking → SGP4 verification
  * → re-ranking.
@@ -60,7 +61,13 @@ export interface DesignHooks {
  * optimized for inter-satellite connectivity, and it is not.
  */
 export function assertSupportedRequest(request: DesignRequest): void {
-  const { altitudeMinKm, altitudeMaxKm } = request.constraints;
+  const { altitudeMinKm, altitudeMaxKm, continuousThreshold, availabilityBasis } = request.constraints;
+  if (continuousThreshold !== undefined && (!Number.isFinite(continuousThreshold) || continuousThreshold <= 0 || continuousThreshold > 1)) {
+    throw new Error("目標可用率は 0 より大きく 1 以下で指定してください。");
+  }
+  if (availabilityBasis !== undefined && availabilityBasis !== "areaAverage" && availabilityBasis !== "worstLatitude") {
+    throw new Error("可用率の評価基準が不正です。");
+  }
   if (!(altitudeMinKm > 0) || !(altitudeMaxKm >= altitudeMinKm)) {
     throw new Error(
       `高度範囲が不正です(下限 ${altitudeMinKm} km, 上限 ${altitudeMaxKm} km)。下限は 0 より大きく、上限は下限以上にしてください。`,
@@ -114,7 +121,7 @@ export function enumerateAnalytic(request: DesignRequest): {
 /* -------------------------------------------------------------------------- */
 
 function availabilityOf(candidate: DesignCandidate): number {
-  return candidate.verified?.foldAvailability ?? candidate.screen?.foldAvailability ?? 0;
+  return evaluatedAvailability(candidate.verified ?? candidate.screen);
 }
 
 function minFoldOf(candidate: DesignCandidate): number {
@@ -275,7 +282,7 @@ export async function runDesign(
     });
     screenMs += performance.now() - started;
     screenedCount++;
-    return metrics;
+    return { ...metrics, evaluationAvailability: scoreAvailability(metrics, constraints.availabilityBasis) };
   };
 
   // --- stage 1a: analytic Star sizing ---------------------------------------
@@ -303,7 +310,7 @@ export async function runDesign(
         const metrics = screen(candidate.parameters, candidate.analytic);
         budget.used++;
         candidate.screen = metrics;
-        candidate.feasible = metrics.foldAvailability >= screenThreshold;
+        candidate.feasible = evaluatedAvailability(metrics) >= screenThreshold;
         if (!candidate.feasible) candidate.rejectionReason = "belowThreshold";
         screened.push(candidate);
         hooks.onPartial?.(candidate);
@@ -353,9 +360,10 @@ export async function runDesign(
       latMaxDeg,
       fidelity: request.fidelity,
     });
+    candidate.verified.evaluationAvailability = scoreAvailability(candidate.verified, constraints.availabilityBasis);
     verifyMs += performance.now() - started;
     verifiedCount++;
-    candidate.feasible = candidate.verified.foldAvailability >= threshold;
+    candidate.feasible = evaluatedAvailability(candidate.verified) >= threshold;
     candidate.rejectionReason = candidate.feasible ? undefined : "belowThreshold";
     hooks.onPartial?.(candidate);
     hooks.onProgress?.({ phase: "verify", done: i + 1, total: shortlist.length });

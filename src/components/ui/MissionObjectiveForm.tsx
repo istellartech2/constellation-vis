@@ -164,6 +164,20 @@ export default function MissionObjectiveForm({ form, onChange, disabled, section
 
       <div hidden={section !== "constraints"} className="space-y-4">
         <SectionHeading>カバレッジの条件</SectionHeading>
+        <NumberField id="mission-availability-target" label="目標可用率" unit="%"
+          value={form.targetAvailabilityPercent} min={0.0001} max={100} step={0.01}
+          disabled={disabled} help="必要な同時可視衛星数を満たす地点・時刻の割合。100% を指定しても、検証した格子と時間内での判定です。"
+          onChange={(v) => onChange({ targetAvailabilityPercent: v })} />
+        <label htmlFor="mission-availability-basis" className="block text-sm text-gray-300">可用率の評価基準</label>
+        <select id="mission-availability-basis" value={form.availabilityBasis} disabled={disabled}
+          className="w-full rounded border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-gray-100"
+          onChange={(e) => onChange({ availabilityBasis: e.target.value as MissionDesignForm["availabilityBasis"] })}>
+          <option value="worstLatitude">最も条件の悪い緯度</option>
+          <option value="areaAverage">領域全体の平均</option>
+        </select>
+        <p className="text-xs text-gray-400">{form.availabilityBasis === "worstLatitude"
+          ? "各緯度の経度・時間平均のうち、最も低い可用率で判定します。個々の地点の最低値ではありません。"
+          : "対象領域の地点・時刻全体で平均します。一部の緯度での不足は平均に埋もれることがあります。"}</p>
 
         <NumberField
           id="mission-min-elevation"

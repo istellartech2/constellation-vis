@@ -9,6 +9,8 @@ import PatternBadge from "./PatternBadge";
 interface Props {
   /** Already ordered by `sortCandidatesForDisplay`. */
   candidates: DesignCandidate[];
+  targetAvailability: number;
+  availabilityBasis: "areaAverage" | "worstLatitude";
   phase: MissionRunPhase;
   /** Keys dominated in the (count, altitude) plane; only rendered for pareto. */
   dominatedKeys: Set<string>;
@@ -28,22 +30,22 @@ const STATUS_META: Record<CandidateStatus, { label: string; cls: string }> = {
     label: "検証中",
     cls: "border-amber-700 text-amber-300 bg-amber-900/30 animate-pulse",
   },
-  verifiedOk: { label: "検証OK", cls: "border-emerald-700 text-emerald-300 bg-emerald-900/30" },
+  verifiedOk: { label: "達成", cls: "border-emerald-700 text-emerald-300 bg-emerald-900/30" },
   attention: { label: "要注意", cls: "border-amber-700 text-amber-300 bg-amber-900/30" },
-  verifiedNg: { label: "NG", cls: "border-red-700 text-red-300 bg-red-900/30" },
+  verifiedNg: { label: "未達", cls: "border-red-700 text-red-300 bg-red-900/30" },
   cancelled: { label: "中止", cls: "border-gray-600 text-gray-500 bg-gray-800/60" },
 };
 
 function pct(value: number | undefined, placeholder: string): string {
   if (value === undefined || !Number.isFinite(value)) return placeholder;
-  return `${(value * 100).toFixed(2)}`;
+  return `${(value * 100).toFixed(4)}`;
 }
 
 /** `F` for Delta, `S` (sats per plane) for Star — the number that sizes the shell. */
 function phasingCell(candidate: DesignCandidate): string {
   const { family, phasingF, satsPerPlane } = candidate.parameters;
   if (family === "walkerStar") return `S${satsPerPlane}`;
-  return `F${Number(phasingF.toFixed(2))}`;
+  return `F${Number(phasingF.toFixed(4))}`;
 }
 
 const HEADER_CLS =
@@ -55,6 +57,8 @@ const HEADER_CLS =
  */
 export default function DesignCandidateTable({
   candidates,
+  targetAvailability,
+  availabilityBasis,
   phase,
   dominatedKeys,
   showDominance,
@@ -70,6 +74,7 @@ export default function DesignCandidateTable({
 
   return (
     <div className="flex flex-col min-h-0">
+      <p className="mb-2 text-xs text-gray-300">目標 {Number((targetAvailability * 100).toFixed(4))}% ・ {availabilityBasis === "worstLatitude" ? "最も条件の悪い緯度" : "領域全体の平均"}</p>
       {/* Capped so the selected candidate's preview stays reachable; on a phone
           the inner table keeps its own horizontal scroll. */}
       <div className="overflow-auto max-h-[32vh] md:max-h-[38vh] border border-gray-700 rounded">
@@ -83,7 +88,7 @@ export default function DesignCandidateTable({
               <th className={`${HEADER_CLS} hidden sm:table-cell`}>F・S</th>
               <th className={HEADER_CLS}>高度 km</th>
               <th className={HEADER_CLS}>傾斜角 °</th>
-              <th className={HEADER_CLS}>解析カバレッジ %</th>
+              <th className={HEADER_CLS}>粗選別可用率 %</th>
               <th className={HEADER_CLS}>検証可用率 %</th>
               <th className={`${HEADER_CLS} hidden sm:table-cell`}>遅延 ms</th>
               <th className={HEADER_CLS}>状態</th>
@@ -125,9 +130,9 @@ export default function DesignCandidateTable({
                   <td className="px-2 py-1 hidden sm:table-cell">{phasingCell(candidate)}</td>
                   <td className="px-2 py-1">{Math.round(candidate.parameters.altitudeKm)}</td>
                   <td className="px-2 py-1">{candidate.parameters.inclinationDeg.toFixed(1)}</td>
-                  <td className="px-2 py-1">{pct(candidate.screen?.foldAvailability, "—")}</td>
+                  <td className="px-2 py-1">{pct(candidate.screen?.evaluationAvailability ?? candidate.screen?.foldAvailability, "—")}</td>
                   <td className="px-2 py-1">
-                    {pct(candidate.verified?.foldAvailability, verifying ? "…" : "—")}
+                    {pct(candidate.verified?.evaluationAvailability ?? candidate.verified?.foldAvailability, verifying ? "…" : "—")}
                   </td>
                   <td className="px-2 py-1 hidden sm:table-cell">
                     {candidate.analytic.latencyAtEpsilonMs.toFixed(1)}
@@ -136,7 +141,7 @@ export default function DesignCandidateTable({
                     <span
                       className={`inline-flex items-center text-[10px] px-1.5 py-0.5 rounded border leading-none whitespace-nowrap ${meta.cls}`}
                     >
-                      {meta.label}
+                      {status === "attention" ? (candidate.feasible ? "達成・要注意" : "未達・要注意") : meta.label}
                     </span>
                   </td>
                 </tr>

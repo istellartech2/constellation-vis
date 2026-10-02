@@ -34,6 +34,8 @@ function missionFields(request?: DesignRequest): Partial<ConstellationShell> {
     mission_objective: objective.kind,
     mission_min_elevation: constraints.minElevationDeg,
     mission_fold: constraints.fold,
+    mission_availability_target: constraints.continuousThreshold ?? 0.9999,
+    mission_availability_basis: constraints.availabilityBasis ?? "areaAverage",
     mission_region: constraints.region.kind,
     mission_lat_min: latMinDeg,
     mission_lat_max: latMaxDeg,

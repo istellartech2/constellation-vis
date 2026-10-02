@@ -30,7 +30,7 @@ function form(overrides: Partial<MissionDesignForm> = {}): MissionDesignForm {
 describe("formToRequest", () => {
   it("maps the default form onto DEFAULT_DESIGN_CONSTRAINTS", () => {
     const request = formToRequest(DEFAULT_MISSION_FORM, EPOCH_ISO);
-    expect(request.constraints).toEqual(DEFAULT_DESIGN_CONSTRAINTS);
+    expect(request.constraints).toEqual({ ...DEFAULT_DESIGN_CONSTRAINTS, availabilityBasis: "worstLatitude" });
     expect(request.objective).toEqual({ kind: "minSatellites" });
     expect(request.epochIso).toBe(EPOCH_ISO);
     expect(request.topK).toBe(DEFAULT_DESIGN_TOP_K);

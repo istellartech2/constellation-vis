@@ -121,7 +121,13 @@ RGT が有効な場合は、傾斜角ごとに `suggestRgtRatioFromAltitudeIncli
 foldAvailability = fold 条件を満たした (地点, 時刻) の割合
 ```
 
-**フィージビリティの判定には常に `foldAvailability` を使い、閾値は既定 0.9999**(`continuousThreshold`)。
+**可用率の目標は `continuousThreshold` (0 < 値 ≤ 1、既定 0.9999)、評価基準は `availabilityBasis` で指定する。** フォームでは百分率で入力し、リクエストには割合に変換する。`areaAverage` は領域全体の地点・時刻平均、`worstLatitude` は各緯度の経度・時間平均可用率の最小値である。後者は個々の地点の最低可用率を保証しない。新規フォームは `worstLatitude`、評価基準を持たない既存リクエストと設計済みシェルは従来の `areaAverage` を使う。
+
+機数探索の面積下界にも目標可用率を掛け、低い目標を指定した際に完全被覆の下界で候補を排除しない。Star の解析候補は引き続き連続被覆の寸法式から生成するため、低い可用率に対する最小機数の保証はない。
+
+粗選別・詳細検証・固定機数目的の順位付けは、共通の評価関数から得る `evaluationAvailability` を使う。粗選別の閾値には従来どおり 0.002 の余裕を設け、最終判定は詳細検証値と目標で行う。生の `foldAvailability` は領域平均のまま保持する。候補表は目標と評価基準、粗選別値、検証値、達成／未達を表示する。有限の格子・時間窓の評価なので、目標 100% も連続時間・全地点の厳密な保証ではない。
+
+シェルの `mission_availability_target` (割合、小数点以下 8 桁) と `mission_availability_basis` に設計条件を保存し、「設計をやり直す」で復元する。これらは軌道の生成値を変更しない由来情報である。
 
 `minFold`(サンプルした (地点, 時刻) 全体での最小同時被覆数)は**分解能に依存する**値であり、格子を細かくするほど悪化する一方の下界にすぎない。実例: Iridium を仰角 8.2° で検証すると、2° グリッド・32 ステップでは `foldAvailability ≥ 0.999` を確認できるが、`minFold` はグリッドを 1°・96 ステップに細かくした途端に 0 へ落ちる(`tests/constellationDesign-kernel.test.ts` のコメント)。したがって **`minFold` はフィージビリティ判定に使ってはならない**。UI・診断の両方でこの区別を明示している(`VerifiedMetrics.minFoldIsResolutionSensitive` は常に `true`)。
 

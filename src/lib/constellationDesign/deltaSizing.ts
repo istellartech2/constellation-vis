@@ -1,3 +1,4 @@
+import { evaluatedAvailability } from "./availability";
 /**
  * Walker Delta candidate generation.
  *
@@ -243,7 +244,7 @@ function makeAnalytic(
     centralAngleDeg: thetaDeg,
     footprintRadiusKm: footprintRadiusKm(altitudeKm, epsRad),
     capAreaLowerBoundCount: capAreaLowerBoundCount(
-      bandAreaFraction(latMinDeg, latMaxDeg),
+      bandAreaFraction(latMinDeg, latMaxDeg) * (constraints.continuousThreshold ?? 0.9999),
       degToRad(thetaDeg),
       constraints.fold,
     ),
@@ -312,11 +313,11 @@ function probeT(
         screen,
         feasible: false,
       };
-      if (screen.foldAvailability > bestAvailability) {
-        bestAvailability = screen.foldAvailability;
+      if (evaluatedAvailability(screen) > bestAvailability) {
+        bestAvailability = evaluatedAvailability(screen);
         best = candidate;
       }
-      if (screen.foldAvailability >= hooks.screenThreshold) {
+      if (evaluatedAvailability(screen) >= hooks.screenThreshold) {
         return { feasible: true, candidate, budgetStop: false };
       }
     }
@@ -339,7 +340,7 @@ function searchMinimumT(
   let t = snapToComposite(startT, capT, cell.maxPlanes, cell.maxSatsPerPlane);
   while (t <= capT) {
     const probe = probeT(cell, t, hooks, cellUsed);
-    if (probe.candidate && (!nearMiss || (probe.candidate.screen?.foldAvailability ?? 0) > (nearMiss.screen?.foldAvailability ?? 0))) {
+    if (probe.candidate && (!nearMiss || evaluatedAvailability(probe.candidate.screen) > evaluatedAvailability(nearMiss.screen))) {
       nearMiss = probe.candidate;
     }
     if (probe.feasible) {
@@ -382,7 +383,7 @@ function searchMinimumT(
       feasible = probe.candidate;
       hiT = mid;
     } else {
-      if (probe.candidate && (!nearMiss || (probe.candidate.screen?.foldAvailability ?? 0) > (nearMiss.screen?.foldAvailability ?? 0))) {
+      if (probe.candidate && (!nearMiss || evaluatedAvailability(probe.candidate.screen) > evaluatedAvailability(nearMiss.screen))) {
         nearMiss = probe.candidate;
       }
       if (probe.budgetStop) break;
@@ -422,8 +423,8 @@ function searchFixedBudget(
     const probe = probeT(cell, t, hooks, cellUsed);
     const candidate = probe.candidate;
     if (!candidate) continue;
-    const availability = candidate.screen?.foldAvailability ?? 0;
-    const bestAvailability = best?.screen?.foldAvailability ?? -1;
+    const availability = evaluatedAvailability(candidate.screen);
+    const bestAvailability = best ? evaluatedAvailability(best.screen) : -1;
     if (
       availability > bestAvailability + 1e-12 ||
       (Math.abs(availability - bestAvailability) <= 1e-12 &&
@@ -486,7 +487,7 @@ export async function enumerateDeltaCandidates(
   }
 
   const { latMinDeg, latMaxDeg } = regionLatitudeBounds(constraints.region);
-  const regionFraction = bandAreaFraction(latMinDeg, latMaxDeg);
+  const regionFraction = bandAreaFraction(latMinDeg, latMaxDeg) * (constraints.continuousThreshold ?? 0.9999);
   let crossInclinationWarm = 0;
 
   for (const inclinationDeg of inclinations) {
@@ -569,7 +570,7 @@ export async function enumerateDeltaCandidates(
         }
         const best = searchFixedBudget(cell, budgetT, hooks);
         if (best) {
-          best.feasible = (best.screen?.foldAvailability ?? 0) >= hooks.screenThreshold;
+          best.feasible = evaluatedAvailability(best.screen) >= hooks.screenThreshold;
           if (!best.feasible) best.rejectionReason = "belowThreshold";
           candidates.push(best);
           hooks.onCandidate?.(best);

@@ -155,6 +155,7 @@ export function screenCandidate(
     minFold: stats.minFold,
     meanFold: stats.meanFold,
     foldAvailability: stats.foldAvailability,
+    worstLatitudeAvailability: Math.min(...stats.perLatitude.map((row) => row.foldAvailability)),
     testCount: stats.testCount,
   };
 }

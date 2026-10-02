@@ -161,6 +161,8 @@ export const UI_EXEMPT_KEYS: readonly string[] = [
   "mission_objective",
   "mission_min_elevation",
   "mission_fold",
+  "mission_availability_target",
+  "mission_availability_basis",
   "mission_region",
   "mission_lat_min",
   "mission_lat_max",

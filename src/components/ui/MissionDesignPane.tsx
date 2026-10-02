@@ -393,6 +393,7 @@ export default function MissionDesignPane({ epochIso, initialForm, onAddCandidat
               <h4 className="text-sm font-semibold text-gray-200">設計条件の確認</h4>
               <p className="text-sm text-amber-200">{objectiveLabel}</p>
               <dl className="space-y-2 text-sm text-gray-300">
+                <div><dt className="text-xs text-gray-400">目標可用率 / 評価基準</dt><dd>{form.targetAvailabilityPercent}% / {form.availabilityBasis === "worstLatitude" ? "最も条件の悪い緯度" : "領域全体の平均"}</dd></div>
                 <div><dt className="text-xs text-gray-400">対象地域</dt><dd>{form.region === "global" ? "全球" : `緯度 ${form.latMinDeg}〜${form.latMaxDeg}°`}</dd></div>
                 <div><dt className="text-xs text-gray-400">高度の範囲</dt><dd>{form.altitudeMinKm}〜{form.altitudeMaxKm} km</dd></div>
                 <div><dt className="text-xs text-gray-400">最低仰角 / 同時に見える衛星数</dt><dd>{form.minElevationDeg}° / {form.fold} 機以上</dd></div>
@@ -471,6 +472,8 @@ export default function MissionDesignPane({ epochIso, initialForm, onAddCandidat
         {rows.length > 0 ? (
           <div className={resultsStale ? "opacity-60" : undefined}>
             <DesignCandidateTable
+              targetAvailability={runRequest?.constraints.continuousThreshold ?? 0.9999}
+              availabilityBasis={runRequest?.constraints.availabilityBasis ?? "areaAverage"}
               candidates={rows}
               phase={phase}
               dominatedKeys={dominated}
@@ -549,9 +552,9 @@ function verifiedItems(candidate: DesignCandidate): DerivedInfoItem[] {
   return [
     {
       label: "可用率",
-      value: verified ? `${(verified.foldAvailability * 100).toFixed(3)} %` : "未検証",
+      value: verified ? `${((verified.evaluationAvailability ?? verified.foldAvailability) * 100).toFixed(4)} %` : "未検証",
       tone: verified ? (candidate.feasible ? "ok" : "warn") : "normal",
-      help: "多重度の条件を満たした (地点, 時刻) の割合。成立判定はこの値で行います(既定閾値 99.99%)。",
+      help: "選択した評価基準に基づく可用率です。目標可用率との比較で達成を判定します。格子・時間分解能に依存します。",
     },
     {
       label: "最小同時可視数",
@@ -573,8 +576,8 @@ function verifiedItems(candidate: DesignCandidate): DerivedInfoItem[] {
       value: verified ? num(verified.worstLatitudeDeg, 1, "°") : "-",
     },
     {
-      label: "解析カバレッジ",
-      value: candidate.screen ? `${(candidate.screen.foldAvailability * 100).toFixed(2)} %` : "-",
+      label: "粗選別可用率",
+      value: candidate.screen ? `${((candidate.screen.evaluationAvailability ?? candidate.screen.foldAvailability) * 100).toFixed(4)} %` : "-",
       help: "粗い格子・球面判定によるスクリーニング値。検証値より悲観的になります。",
     },
   ];

@@ -1,3 +1,4 @@
+import { evaluatedAvailability } from "./constellationDesign/availability";
 /**
  * Pure form-state helpers for the mission-design wizard
  * (`src/components/ui/MissionDesignPane.tsx`).
@@ -46,6 +47,8 @@ export const MISSION_OBJECTIVE_KINDS: readonly MissionObjectiveKind[] = [
 
 export interface MissionDesignForm {
   objective: MissionObjectiveKind;
+  targetAvailabilityPercent: number;
+  availabilityBasis: "areaAverage" | "worstLatitude";
   minElevationDeg: number;
   /** N-fold coverage, 1..4. Kept as `number` because the input can be mid-edit. */
   fold: number;
@@ -80,6 +83,8 @@ export const MISSION_FORM_LIMITS = {
 /** Comm-payload defaults, mirroring `DEFAULT_DESIGN_CONSTRAINTS`. */
 export const DEFAULT_MISSION_FORM: MissionDesignForm = {
   objective: "minSatellites",
+  targetAvailabilityPercent: Number((DEFAULT_CONTINUOUS_THRESHOLD * 100).toFixed(8)),
+  availabilityBasis: "worstLatitude",
   minElevationDeg: 25,
   fold: 1,
   region: "global",
@@ -141,7 +146,8 @@ export function formToRequest(form: MissionDesignForm, epochIso: string): Design
     altitudeMinKm,
     altitudeMaxKm,
     altitudeStepKm: form.altitudeStepKm,
-    continuousThreshold: DEFAULT_CONTINUOUS_THRESHOLD,
+    continuousThreshold: Number((form.targetAvailabilityPercent / 100).toFixed(12)),
+    availabilityBasis: form.availabilityBasis,
     spacingSafetyFactor: DEFAULT_SPACING_SAFETY_FACTOR,
   };
 
@@ -184,6 +190,14 @@ export function validateMissionForm(form: MissionDesignForm): string[] {
     errors.push(`${label}を入力してください`);
     return false;
   };
+
+  if (requireNumber(form.targetAvailabilityPercent, "目標可用率") &&
+      (form.targetAvailabilityPercent <= 0 || form.targetAvailabilityPercent > 100)) {
+    errors.push("目標可用率は 0 より大きく 100% 以下で指定してください");
+  }
+  if (form.availabilityBasis !== "areaAverage" && form.availabilityBasis !== "worstLatitude") {
+    errors.push("可用率の評価基準を選択してください");
+  }
 
   if (requireNumber(form.minElevationDeg, "最低仰角")) {
     if (form.minElevationDeg < L.minElevationDeg.min || form.minElevationDeg > L.minElevationDeg.max) {
@@ -298,6 +312,10 @@ export function constraintsFromShell(shell: Partial<ConstellationShell>): Missio
   if (isFiniteNumber(shell.mission_min_elevation)) {
     form.minElevationDeg = shell.mission_min_elevation;
   }
+  form.targetAvailabilityPercent = isFiniteNumber(shell.mission_availability_target)
+    ? shell.mission_availability_target * 100 : DEFAULT_CONTINUOUS_THRESHOLD * 100;
+  form.availabilityBasis = shell.mission_availability_basis === "worstLatitude"
+    ? "worstLatitude" : shell.mission_objective ? "areaAverage" : DEFAULT_MISSION_FORM.availabilityBasis;
   if (isFiniteNumber(shell.mission_fold)) {
     form.fold = clampFold(shell.mission_fold);
   }
@@ -354,8 +372,8 @@ export function designShellName(shell: ConstellationShell): string {
 
 /** Availability actually measured for a candidate (verified beats screened). */
 export function candidateAvailability(candidate: DesignCandidate): number | null {
-  if (candidate.verified) return candidate.verified.foldAvailability;
-  if (candidate.screen) return candidate.screen.foldAvailability;
+  if (candidate.verified) return candidate.verified.evaluationAvailability ?? candidate.verified.foldAvailability;
+  if (candidate.screen) return candidate.screen.evaluationAvailability ?? candidate.screen.foldAvailability;
   return null;
 }
 
@@ -388,7 +406,7 @@ export function candidateStatus(candidate: DesignCandidate, phase: MissionRunPha
   const { verified, screen } = candidate;
   if (verified) {
     if (!candidate.feasible) return "verifiedNg";
-    if (screen && Math.abs(screen.foldAvailability - verified.foldAvailability) > SCREEN_VERIFY_GAP_WARN) {
+    if (screen && Math.abs(evaluatedAvailability(screen) - evaluatedAvailability(verified)) > SCREEN_VERIFY_GAP_WARN) {
       return "attention";
     }
     return "verifiedOk";
@@ -489,7 +507,7 @@ export function budgetSuggestion(
       constraints.altitudeMaxKm,
       (Math.max(0, constraints.minElevationDeg) * Math.PI) / 180,
     );
-    target = capAreaLowerBoundCount(bandAreaFraction(latMinDeg, latMaxDeg), theta, constraints.fold);
+    target = capAreaLowerBoundCount(bandAreaFraction(latMinDeg, latMaxDeg) * (constraints.continuousThreshold ?? 0.9999), theta, constraints.fold);
   }
   if (!Number.isFinite(target) || target <= budget) return null;
   return {

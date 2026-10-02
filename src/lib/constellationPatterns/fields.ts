@@ -131,6 +131,8 @@ export const FIELD_REGISTRY: readonly FieldSpec[] = [
   { key: "mission_objective", kind: "string", patterns: "all" },
   { key: "mission_min_elevation", kind: "number", patterns: "all", decimals: 2 },
   { key: "mission_fold", kind: "int", patterns: "all" },
+  { key: "mission_availability_target", kind: "number", patterns: "all", decimals: 8 },
+  { key: "mission_availability_basis", kind: "string", patterns: "all" },
   { key: "mission_region", kind: "string", patterns: "all" },
   { key: "mission_lat_min", kind: "number", patterns: "all", decimals: 2 },
   { key: "mission_lat_max", kind: "number", patterns: "all", decimals: 2 },

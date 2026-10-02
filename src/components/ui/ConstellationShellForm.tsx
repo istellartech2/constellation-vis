@@ -204,7 +204,7 @@ function MissionProvenance({
   return (
     <p className="text-xs text-gray-400 bg-gray-900/50 border border-gray-800 rounded px-2 py-1">
       ミッション設計で作成（仰角 {shell.mission_min_elevation ?? "-"}° / 多重度{" "}
-      {shell.mission_fold ?? "-"} / {region}
+      {shell.mission_fold ?? "-"} / 目標 {Number(((shell.mission_availability_target ?? 0.9999) * 100).toFixed(4))}%・{shell.mission_availability_basis === "worstLatitude" ? "最悪緯度" : "領域平均"} / {region}
       {band ? ` ${band}` : ""}{objective ? ` / ${objective}` : ""}）
       {onRedesign && (
         <>

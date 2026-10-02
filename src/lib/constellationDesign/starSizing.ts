@@ -78,7 +78,7 @@ function analyticFor(
     footprintRadiusKm: footprintRadiusKm(altitudeKm, epsRad),
     streetHalfWidthDeg: design.feasible ? design.cnDeg : undefined,
     capAreaLowerBoundCount: capAreaLowerBoundCount(
-      bandAreaFraction(latMinDeg, latMaxDeg),
+      bandAreaFraction(latMinDeg, latMaxDeg) * (constraints.continuousThreshold ?? 0.9999),
       degToRad(thetaDeg),
       constraints.fold,
     ),

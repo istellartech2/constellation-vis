@@ -21,6 +21,8 @@ export interface TargetRegion {
   latMaxDeg?: number;
 }
 
+export type AvailabilityBasis = "areaAverage" | "worstLatitude";
+
 export interface DesignConstraints {
   /** Minimum elevation angle at the ground point, degrees. */
   minElevationDeg: number;
@@ -44,6 +46,8 @@ export interface DesignConstraints {
   };
   /** Availability a candidate must reach to count as "continuous". Default 0.9999. */
   continuousThreshold?: number;
+  /** Legacy requests default to areaAverage; the wizard defaults to worstLatitude. */
+  availabilityBasis?: AvailabilityBasis;
   /** Multiplies the Streets-of-Coverage plane spacing. Default 0.98. */
   spacingSafetyFactor?: number;
   /**
@@ -129,9 +133,12 @@ export interface AnalyticMetrics {
 
 /** Stage-1b coarse numeric screening (5° grid, 8 steps, spherical predicate). */
 export interface ScreenMetrics {
+  worstLatitudeAvailability?: number;
   minFold: number;
   meanFold: number;
   foldAvailability: number;
+  /** Score under the requested availability basis, populated by the optimizer. */
+  evaluationAvailability?: number;
   /** Number of predicate evaluations, for cost accounting. */
   testCount: number;
 }
@@ -148,6 +155,8 @@ export interface VerifiedMetrics {
   minFold: number;
   meanFold: number;
   foldAvailability: number;
+  /** Score under the requested availability basis, populated by the optimizer. */
+  evaluationAvailability?: number;
   worstLatitudeDeg: number;
   maxGapSec: number;
   meanGapSec: number;
