@@ -36,6 +36,7 @@ interface Props {
   initialForm?: MissionDesignForm | null;
   /** Appends the candidate as a shell; the dialog selects it and returns to the list. */
   onAddCandidate: (shell: ConstellationShell) => void;
+  active?: boolean;
 }
 
 /** Rows rendered before the 「残り N 件を表示」 button; analytic Star sizing alone yields ~550. */
@@ -50,12 +51,15 @@ const PARTIAL_FLUSH_MS = 200;
  *
  * Cancellation is `terminate()` + a fresh Worker on the next run, matching
  * `StationAccessAnalysis.tsx`; there is no cancel message in the protocol. The
- * pane is conditionally rendered by `ConstellationEditorDialog`, so leaving the
- * wizard unmounts it and terminates any run in flight (and discards its
- * results — a new run starts from scratch).
+ * pane stays mounted within the editing session so switching to the shell
+ * list preserves the draft and results. Leaving the wizard cancels a run;
+ * closing the dialog unmounts it and disposes the Worker.
  */
-export default function MissionDesignPane({ epochIso, initialForm, onAddCandidate }: Props) {
+export default function MissionDesignPane({ epochIso, initialForm, onAddCandidate, active = true }: Props) {
   const [form, setForm] = useState<MissionDesignForm>(initialForm ?? DEFAULT_MISSION_FORM);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const stepTitleRef = useRef<HTMLHeadingElement | null>(null);
+  const stepBodyRef = useRef<HTMLDivElement | null>(null);
   const [phase, setPhase] = useState<MissionRunPhase>("idle");
   const [stale, setStale] = useState(false);
   const [progress, setProgress] = useState<DesignProgress | null>(null);
@@ -133,6 +137,7 @@ export default function MissionDesignPane({ epochIso, initialForm, onAddCandidat
       setStale(false);
       setRunRequest(request);
       setPhase("enumerating");
+      setStep(3);
 
       // Stage 1a runs on the main thread: closed-form Star sizing is fast
       // enough to fill the table before the Worker has even started.
@@ -239,6 +244,15 @@ export default function MissionDesignPane({ epochIso, initialForm, onAddCandidat
     [start],
   );
 
+  useEffect(() => {
+    stepTitleRef.current?.focus();
+    if (stepBodyRef.current) stepBodyRef.current.scrollTop = 0;
+  }, [step]);
+
+  useEffect(() => {
+    if (!active && running) handleCancel();
+  }, [active, running, handleCancel]);
+
   /* --- derived view state -------------------------------------------------- */
 
   const budget =
@@ -342,57 +356,66 @@ export default function MissionDesignPane({ epochIso, initialForm, onAddCandidat
           ? `候補列挙中 ${progress.done}/${progress.total}${progress.message ? ` … ${progress.message}` : " …"}`
           : null;
 
+  const resultsStale = stale || (runRequest !== null && runRequest.epochIso !== epochIso);
+  const stepLabels = ["目的と対象地域", "条件を設定", "候補を比較"];
+  const objectiveLabel = form.objective === "minSatellites" ? "最小機数で連続カバレッジ"
+    : form.objective === "fixedBudget" ? `衛星 ${form.satelliteBudget} 機以内でカバレッジ最大`
+    : "機数と高度のトレードオフ";
+
   return (
-    <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-3">
-      {/* Inputs */}
-      <div className="md:w-72 shrink-0 overflow-y-auto max-md:max-h-[38dvh] border border-gray-600 rounded-md bg-gray-850 p-3">
-        <MissionObjectiveForm form={form} onChange={handleFormChange} disabled={running} />
-      </div>
+    <div className="flex-1 min-h-0 flex flex-col gap-3">
+      <nav aria-label="ミッション設計の手順" className="grid grid-cols-3 gap-2 shrink-0">
+        {stepLabels.map((label, index) => {
+          const target = (index + 1) as 1 | 2 | 3;
+          return (
+            <button key={label} type="button" disabled={running || (target === 3 && !runRequest)}
+              aria-current={step === target ? "step" : undefined}
+              onClick={() => setStep(target)}
+              className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs sm:text-sm disabled:opacity-40 ${step === target ? "border-amber-500 bg-amber-900/20 text-amber-100" : "border-gray-700 bg-gray-800/50 text-gray-300 hover:border-gray-500"}`}>
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-current text-xs">{target}</span>
+              <span>{label}</span>
+            </button>
+          );
+        })}
+      </nav>
 
-      {/* Results */}
-      <div className="flex-1 min-h-0 flex flex-col gap-2 overflow-y-auto">
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button
-            onClick={() => start(form)}
-            disabled={running || formErrors.length > 0}
-            className="bg-amber-600 hover:bg-amber-700 text-amber-50 disabled:opacity-50"
-            size="sm"
-          >
-            候補を計算
-          </Button>
-          {running && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleCancel}
-              className="bg-gray-700 hover:bg-gray-600 text-gray-100 border-gray-500"
-            >
-              中止
-            </Button>
-          )}
-          {phase === "cancelled" && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => start(form)}
-              className="bg-gray-700 hover:bg-gray-600 text-gray-100 border-gray-500"
-            >
-              検証を再開
-            </Button>
-          )}
-          {phase === "error" && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => start(form)}
-              className="bg-gray-700 hover:bg-gray-600 text-gray-100 border-gray-500"
-            >
-              再試行
-            </Button>
-          )}
-          <span className="text-[11px] text-gray-400">候補 {rows.length} 件</span>
-        </div>
-
+      <div ref={stepBodyRef} className="flex-1 min-h-0 overflow-y-auto rounded-lg border border-gray-700 bg-gray-800/30 p-4">
+        <h3 ref={stepTitleRef} tabIndex={-1} className="text-base font-semibold text-gray-100 outline-none mb-1">{stepLabels[step - 1]}</h3>
+        <p className="text-xs text-gray-400 mb-4">{step === 1 ? "設計の目的と、カバーしたい地域を選びます。" : step === 2 ? "必要なカバレッジと高度の範囲を設定します。細かな探索条件は詳細設定から変更できます。" : "候補を選んで、検証結果を確認してからシェルに追加します。"}</p>
+        {step !== 3 ? (
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
+            <div className="space-y-4">
+              <MissionObjectiveForm form={form} onChange={handleFormChange} disabled={running}
+                section={step === 1 ? "objective" : "constraints"} />
+              <ShellFormBanner items={formErrors.map((message) => ({message, severity: "error" as const}))} />
+            </div>
+            <aside aria-label="設計条件の確認" className="space-y-3 rounded-lg border border-gray-700 bg-gray-900/70 p-4 self-start">
+              <h4 className="text-sm font-semibold text-gray-200">設計条件の確認</h4>
+              <p className="text-sm text-amber-200">{objectiveLabel}</p>
+              <dl className="space-y-2 text-sm text-gray-300">
+                <div><dt className="text-xs text-gray-400">対象地域</dt><dd>{form.region === "global" ? "全球" : `緯度 ${form.latMinDeg}〜${form.latMaxDeg}°`}</dd></div>
+                <div><dt className="text-xs text-gray-400">高度の範囲</dt><dd>{form.altitudeMinKm}〜{form.altitudeMaxKm} km</dd></div>
+                <div><dt className="text-xs text-gray-400">最低仰角 / 同時に見える衛星数</dt><dd>{form.minElevationDeg}° / {form.fold} 機以上</dd></div>
+              </dl>
+              <p className="text-xs text-gray-400">候補を追加した後も、シェルの設定画面で調整できます。</p>
+            </aside>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-sm text-gray-300">候補 {rows.length} 件 <span className="text-gray-400">・{objectiveLabel}</span></p>
+              {running ? (
+                <Button variant="outline" size="sm" onClick={handleCancel} className="bg-gray-700 hover:bg-gray-600 text-gray-100 border-gray-500">計算を中止</Button>
+              ) : (
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setStep(2)} className="bg-gray-800 hover:bg-gray-700 text-gray-100 border-gray-600">条件を変更</Button>
+                  {(resultsStale || phase === "error" || phase === "cancelled") && (
+                    <Button size="sm" onClick={() => start(form)} disabled={formErrors.length > 0}
+                      className="bg-amber-600 hover:bg-amber-700 text-amber-50">再計算</Button>
+                  )}
+                </div>
+              )}
+            </div>
         {running && (
           <div className="space-y-1">
             <div className="h-1 bg-gray-700 rounded overflow-hidden">
@@ -407,7 +430,7 @@ export default function MissionDesignPane({ epochIso, initialForm, onAddCandidat
 
         <ShellFormBanner items={banner} />
 
-        {stale && rows.length > 0 && (
+        {resultsStale && rows.length > 0 && (
           <p className="text-[11px] text-amber-300">
             制約が変更されました。再計算してください
           </p>
@@ -444,8 +467,9 @@ export default function MissionDesignPane({ epochIso, initialForm, onAddCandidat
           </div>
         )}
 
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_18rem] items-start">
         {rows.length > 0 ? (
-          <div className={stale ? "opacity-60" : undefined}>
+          <div className={resultsStale ? "opacity-60" : undefined}>
             <DesignCandidateTable
               candidates={rows}
               phase={phase}
@@ -460,7 +484,7 @@ export default function MissionDesignPane({ epochIso, initialForm, onAddCandidat
           </div>
         ) : (
           phase !== "empty" && (
-            <p className="text-xs text-gray-500 border border-gray-700 rounded p-4 text-center">
+            <p className="text-xs text-gray-300 border border-gray-600 bg-gray-800/50 rounded p-4 text-center">
               目的と制約を入力して「候補を計算」を押してください。
             </p>
           )
@@ -470,15 +494,35 @@ export default function MissionDesignPane({ epochIso, initialForm, onAddCandidat
           <CandidatePreview
             candidate={selected}
             derived={selectedDerived}
-            canAdd={selectedShell !== null}
-            onAdd={() => selectedShell && onAddCandidate(selectedShell)}
-            shellName={selectedShell?.name ?? ""}
           />
         )}
+        </div>
+          </div>
+        )}
       </div>
+      {step === 3 && (
+        <div className="shrink-0 border-t border-gray-700 pt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <p className="text-xs text-gray-300 min-w-0 break-words">{selectedShell ? `選択中: ${selectedShell.name}` : "比較表から候補を選択してください。"}</p>
+          <Button onClick={() => selectedShell && onAddCandidate(selectedShell)}
+            disabled={!selectedShell || resultsStale || running} className="bg-amber-600 hover:bg-amber-700 text-amber-50 shrink-0">
+            この候補をシェルとして追加
+          </Button>
+        </div>
+      )}
+      {step !== 3 && (
+        <div className="flex items-center justify-end gap-3 border-t border-gray-700 pt-3 shrink-0">
+          {(step === 2 || runRequest) && (
+            <Button variant="outline" onClick={() => setStep(step === 2 ? 1 : 3)}
+              className="mr-auto bg-gray-800 hover:bg-gray-700 text-gray-100 border-gray-600">{step === 2 ? "目的に戻る" : "前の候補を見る"}</Button>
+          )}
+          <Button onClick={() => step === 1 ? setStep(2) : start(form)} disabled={step === 2 && formErrors.length > 0}
+            className="bg-amber-600 hover:bg-amber-700 text-amber-50">{step === 1 ? "条件を設定する" : "この条件で候補を計算"}</Button>
+        </div>
+      )}
     </div>
   );
 }
+
 
 /* -------------------------------------------------------------------------- */
 /* Preview                                                                    */
@@ -536,41 +580,16 @@ function verifiedItems(candidate: DesignCandidate): DerivedInfoItem[] {
   ];
 }
 
-function CandidatePreview({
-  candidate,
-  derived,
-  canAdd,
-  onAdd,
-  shellName,
-}: {
-  candidate: DesignCandidate;
-  derived: ShellDerived | null;
-  canAdd: boolean;
-  onAdd: () => void;
-  shellName: string;
-}) {
+function CandidatePreview({ candidate, derived }: { candidate: DesignCandidate; derived: ShellDerived | null }) {
   return (
-    <div className="space-y-2">
+    <aside aria-label="選択した候補の詳細" className="space-y-3 rounded-lg border border-gray-700 bg-gray-900/70 p-3">
+      <h4 className="text-sm font-semibold text-gray-100">選択した候補</h4>
       {derived ? (
-        <DerivedInfoStrip title="候補の派生情報" columns={3} items={geometryItems(derived)} />
+        <DerivedInfoStrip title="配置と軌道" columns={1} items={geometryItems(derived)} />
       ) : (
-        <p className="text-xs text-gray-500">この候補の派生情報を計算できませんでした</p>
+        <p className="text-xs text-gray-400">この候補の計算結果を表示できませんでした。</p>
       )}
-      <DerivedInfoStrip title="検証結果" columns={3} items={verifiedItems(candidate)} />
-      {/* Sticky so the action stays reachable while the table scrolls on a phone.
-          The shell name is a separate line: inside the button it would overflow
-          the 375 px viewport instead of wrapping. */}
-      <div className="sticky bottom-0 bg-gray-850/95 pt-1 space-y-1 md:static md:bg-transparent">
-        {shellName && <p className="text-[11px] text-gray-400 truncate">追加名: {shellName}</p>}
-        <Button
-          onClick={onAdd}
-          disabled={!canAdd}
-          size="sm"
-          className="w-full md:w-auto bg-amber-600 hover:bg-amber-700 text-amber-50 disabled:opacity-50"
-        >
-          この候補をシェルとして追加
-        </Button>
-      </div>
-    </div>
+      <DerivedInfoStrip title="検証結果" columns={1} items={verifiedItems(candidate)} />
+    </aside>
   );
 }

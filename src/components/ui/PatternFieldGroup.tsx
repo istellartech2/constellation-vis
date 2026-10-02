@@ -138,6 +138,7 @@ function FieldCell({
 
   return (
     <NumberField
+      id={`shell-field-${shell.id}-${spec.key}`}
       label={readOnly ? (spec.labelOverride ?? spec.label) : spec.label}
       value={value}
       onChange={commit}

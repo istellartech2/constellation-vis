@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Info } from "lucide-react";
 
 /**
@@ -13,6 +14,7 @@ const HELP_BUBBLE_EST_H = 120;
 
 /** ⓘ button that shows an explanation in an overlay bubble on hover/click. */
 export function HelpTip({ text }: { text: string }) {
+  const tipId = useId();
   // position: fixed + ビューポート内へのクランプで、パネルの overflow に
   // クリップされて右側が見切れる問題を避ける。
   const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number } | null>(null);
@@ -37,13 +39,18 @@ export function HelpTip({ text }: { text: string }) {
         type="button"
         data-slot="icon-button"
         aria-label="説明を表示"
+        aria-describedby={pos ? tipId : undefined}
+        onFocus={open}
+        onBlur={close}
         onClick={() => (pos ? close() : open())}
         className="p-0.5 bg-transparent border-0 text-gray-500 hover:text-gray-300 transition-colors"
       >
         <Info className="h-3 w-3" />
       </button>
-      {pos && (
+      {pos && createPortal(
         <span
+          id={tipId}
+          role="tooltip"
           style={{
             position: "fixed",
             left: pos.left,
@@ -56,10 +63,10 @@ export function HelpTip({ text }: { text: string }) {
             whiteSpace: "normal",
             textAlign: "left",
           }}
-          className="z-50 rounded-md border border-gray-600 bg-gray-800 p-2 text-gray-200 shadow-lg"
+          className="pointer-events-none z-[400] rounded-md border border-gray-600 bg-gray-800 p-2 text-gray-200 shadow-lg"
         >
           {text}
-        </span>
+        </span>, document.body
       )}
     </span>
   );

@@ -103,7 +103,13 @@ export default function DesignCandidateTable({
                     selected ? "bg-amber-900/40 text-amber-50" : "hover:bg-gray-800 text-gray-200"
                   } ${dominated ? "opacity-50" : ""}`}
                 >
-                  <td className="px-2 py-1 text-gray-500">{index + 1}</td>
+                  <td className="px-2 py-1">
+                    <button type="button" onClick={() => onSelect(candidate.key)}
+                      aria-label={`候補 ${index + 1} を選択`} aria-pressed={selected}
+                      className="min-w-8 min-h-8 rounded text-gray-200 hover:bg-gray-700 focus-visible:outline-2 focus-visible:outline-amber-500">
+                      {index + 1}
+                    </button>
+                  </td>
                   <td className="px-2 py-1">
                     <span className="inline-flex items-center gap-1">
                       <PatternBadge pattern={patternOf(candidate)} />

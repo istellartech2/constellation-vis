@@ -10,12 +10,14 @@ import { Checkbox } from "./checkbox";
 import { HelpTip } from "./compactControls";
 import { Label } from "./label";
 import NumberField from "./NumberField";
+import CollapsibleSubsection from "./CollapsibleSubsection";
 
 interface Props {
   form: MissionDesignForm;
   onChange: (patch: Partial<MissionDesignForm>) => void;
   /** Locked while a run is in flight. */
   disabled: boolean;
+  section: "objective" | "constraints";
 }
 
 const OBJECTIVES: Array<{ kind: MissionObjectiveKind; label: string; help: string }> = [
@@ -52,7 +54,7 @@ const SELECT_CLS =
 
 function SectionHeading({ children }: { children: ReactNode }) {
   return (
-    <div className="text-xs font-medium text-gray-400 border-b border-gray-700 pb-1">
+    <div className="text-xs font-medium text-gray-200 border-b border-gray-600 pb-1">
       {children}
     </div>
   );
@@ -64,18 +66,18 @@ function SectionHeading({ children }: { children: ReactNode }) {
  * a patch on the parent's form state, and validation lives in
  * `missionDesignForm.ts::validateMissionForm`.
  */
-export default function MissionObjectiveForm({ form, onChange, disabled }: Props) {
+export default function MissionObjectiveForm({ form, onChange, disabled, section }: Props) {
   const L = MISSION_FORM_LIMITS;
 
   return (
     <div className="space-y-4">
-      <div className="space-y-2">
-        <SectionHeading>設計目的</SectionHeading>
-        <div className="space-y-1.5">
+      <div hidden={section !== "objective"} className="space-y-4">
+        <SectionHeading>何を優先して設計しますか？</SectionHeading>
+        <div className="grid gap-2">
           {OBJECTIVES.map((objective) => (
             <label
               key={objective.kind}
-              className={`flex items-start gap-2 text-xs ${
+              className={`flex items-start gap-3 rounded-lg border p-3 text-sm ${form.objective === objective.kind ? "border-amber-500 bg-amber-900/20" : "border-gray-600 bg-gray-800/50 hover:border-gray-400"} ${
                 disabled ? "opacity-50" : "cursor-pointer"
               }`}
             >
@@ -88,46 +90,15 @@ export default function MissionObjectiveForm({ form, onChange, disabled }: Props
                 onChange={() => onChange({ objective: objective.kind })}
                 className="mt-0.5 accent-amber-500"
               />
-              <span className="text-gray-200 inline-flex items-start gap-1">
-                <span>{objective.label}</span>
-                <HelpTip text={objective.help} />
+              <span className="space-y-1 text-gray-100">
+                <span className="block font-medium">{objective.label}</span>
+                <span className="block text-sm text-gray-300">{objective.kind === "minSatellites" ? "必要なカバレッジを、できるだけ少ない衛星で実現" : objective.kind === "fixedBudget" ? "用意できる衛星数の範囲で、カバレッジを広げる" : "衛星数を減らす案と、低高度で遅延を減らす案を比較"}</span>
               </span>
             </label>
           ))}
         </div>
-      </div>
-
-      <div className="space-y-2">
-        <SectionHeading>制約</SectionHeading>
-
-        <NumberField
-          id="mission-min-elevation"
-          label="最低仰角 ε"
-          unit="°"
-          value={form.minElevationDeg}
-          min={L.minElevationDeg.min}
-          max={L.minElevationDeg.max}
-          step={1}
-          disabled={disabled}
-          help="地上局から見た衛星の最低仰角。通信では 20–30° が一般的で、低くすると必要機数が減る代わりに大気・地形の影響を受けます。"
-          onChange={(v) => onChange({ minElevationDeg: v })}
-        />
-
-        <NumberField
-          id="mission-fold"
-          label="多重度 N"
-          value={form.fold}
-          min={L.fold.min}
-          max={L.fold.max}
-          step={1}
-          integer
-          disabled={disabled}
-          help="同時に見えていなければならない衛星数。ハンドオーバやダイバーシティが必要なら 2 以上にします。2 以上の設計式は近似のため、検証結果で判断してください。"
-          onChange={(v) => onChange({ fold: v })}
-        />
-
         <div className="space-y-1">
-          <Label htmlFor="mission-region" className="text-xs text-gray-400">
+          <Label htmlFor="mission-region" className="text-sm text-gray-300">
             対象領域
           </Label>
           <select
@@ -173,6 +144,53 @@ export default function MissionObjectiveForm({ form, onChange, disabled }: Props
           </div>
         )}
 
+        {form.objective === "fixedBudget" && (
+          <NumberField
+            id="mission-budget"
+            label="衛星数上限"
+            unit="機"
+            value={form.satelliteBudget}
+            min={L.satelliteBudget.min}
+            max={L.satelliteBudget.max}
+            step={1}
+            integer
+            disabled={disabled}
+            help="この機数以下(T ≤ 上限)の配置だけを候補にし、可用率の高い順に並べます。"
+            onChange={(v) => onChange({ satelliteBudget: v })}
+          />
+        )}
+
+      </div>
+
+      <div hidden={section !== "constraints"} className="space-y-4">
+        <SectionHeading>カバレッジの条件</SectionHeading>
+
+        <NumberField
+          id="mission-min-elevation"
+          label="最低仰角 ε"
+          unit="°"
+          value={form.minElevationDeg}
+          min={L.minElevationDeg.min}
+          max={L.minElevationDeg.max}
+          step={1}
+          disabled={disabled}
+          help="地上局から見た衛星の最低仰角。通信では 20–30° が一般的で、低くすると必要機数が減る代わりに大気・地形の影響を受けます。"
+          onChange={(v) => onChange({ minElevationDeg: v })}
+        />
+
+        <NumberField
+          id="mission-fold"
+          label="多重度 N"
+          value={form.fold}
+          min={L.fold.min}
+          max={L.fold.max}
+          step={1}
+          integer
+          disabled={disabled}
+          help="同時に見えていなければならない衛星数。ハンドオーバやダイバーシティが必要なら 2 以上にします。2 以上の設計式は近似のため、検証結果で判断してください。"
+          onChange={(v) => onChange({ fold: v })}
+        />
+
         <div className="grid grid-cols-2 gap-2">
           <NumberField
             id="mission-alt-min"
@@ -199,6 +217,7 @@ export default function MissionObjectiveForm({ form, onChange, disabled }: Props
           />
         </div>
 
+        <CollapsibleSubsection title="探索の詳細設定">
         <NumberField
           id="mission-alt-step"
           label="高度刻み"
@@ -272,7 +291,7 @@ export default function MissionObjectiveForm({ form, onChange, disabled }: Props
         </div>
 
         <div className="space-y-1">
-          <Label htmlFor="mission-family" className="text-xs text-gray-400 inline-flex items-center gap-1">
+          <Label htmlFor="mission-family" className="text-sm text-gray-300 inline-flex items-center gap-1">
             <span>設計方式</span>
             <HelpTip text="最適化の対象は Walker Delta と Walker Star (Streets of Coverage) のみです。Flower 系は列挙・検証カーネルの対象外です。" />
           </Label>
@@ -291,22 +310,6 @@ export default function MissionObjectiveForm({ form, onChange, disabled }: Props
           </select>
         </div>
 
-        {form.objective === "fixedBudget" && (
-          <NumberField
-            id="mission-budget"
-            label="衛星数上限"
-            unit="機"
-            value={form.satelliteBudget}
-            min={L.satelliteBudget.min}
-            max={L.satelliteBudget.max}
-            step={1}
-            integer
-            disabled={disabled}
-            help="この機数以下(T ≤ 上限)の配置だけを候補にし、可用率の高い順に並べます。"
-            onChange={(v) => onChange({ satelliteBudget: v })}
-          />
-        )}
-
         <NumberField
           id="mission-topk"
           label="数値検証する上位件数 K"
@@ -319,6 +322,7 @@ export default function MissionObjectiveForm({ form, onChange, disabled }: Props
           help="解析・粗スクリーニングで上位に来た K 件だけを SGP4 で数値検証します。増やすと計算時間が伸びます。"
           onChange={(v) => onChange({ topK: v })}
         />
+        </CollapsibleSubsection>
       </div>
     </div>
   );

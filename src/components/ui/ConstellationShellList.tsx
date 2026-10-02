@@ -88,10 +88,10 @@ export default function ConstellationShellList({
               variant="outline"
               size="sm"
               onClick={onOpenMission}
-              className="w-full flex items-center justify-center gap-1 border-amber-700/60 text-amber-200 hover:bg-amber-900/30"
+              className="w-full flex items-center justify-center gap-1 bg-gray-800 border-amber-600 text-amber-200 hover:bg-gray-700 hover:text-amber-100"
             >
               <Wand2 className="h-4 w-4" />
-              <span>✨ ミッションから設計</span>
+              <span>ミッションから設計</span>
             </Button>
           )}
         </>
@@ -137,7 +137,10 @@ export default function ConstellationShellList({
     <>
       {/* Desktop / tablet: full vertical list */}
       <div className="hidden md:flex md:flex-col h-full border-r border-gray-600">
-        <div className="p-2 border-b border-gray-600 space-y-1.5">{addTools}</div>
+        <div className="p-3 border-b border-gray-700 space-y-2">
+          <h3 className="text-sm font-semibold text-gray-200">シェル一覧 <span className="text-gray-400 font-normal">{shells.length} 件</span></h3>
+          {addTools}
+        </div>
 
         <div className="flex-1 overflow-y-auto">
           {shells.length === 0 ? (
@@ -151,10 +154,10 @@ export default function ConstellationShellList({
                 const hasError = errs.length > 0;
                 const isBlocking = errs.some(isBlockingError);
                 return (
-                  <li
-                    key={shell.id}
+                  <li key={shell.id}>
+                    <button type="button" aria-pressed={shell.id === selectedId}
                     onClick={() => onSelect(shell.id)}
-                    className={`px-3 py-2 cursor-pointer text-sm transition-colors ${
+                    className={`w-full text-left px-3 py-3 cursor-pointer text-sm transition-colors focus-visible:outline-2 focus-visible:outline-amber-500 ${
                       shell.id === selectedId
                         ? "bg-amber-900/40 text-amber-50"
                         : "hover:bg-gray-800 text-gray-200"
@@ -176,6 +179,7 @@ export default function ConstellationShellList({
                     <div className="text-[11px] text-gray-400 truncate mt-0.5">
                       {shellSummary(shell)}
                     </div>
+                    </button>
                   </li>
                 );
               })}
@@ -197,6 +201,7 @@ export default function ConstellationShellList({
           onChange={(e) => {
             if (e.target.value) onSelect(e.target.value);
           }}
+          aria-label="編集するシェル"
           className="w-full px-2 py-1 text-sm bg-gray-800 border border-gray-600 rounded text-gray-100 focus:border-amber-500 focus:outline-none"
         >
           {shells.length === 0 ? (
@@ -260,10 +265,10 @@ export default function ConstellationShellList({
                 variant="outline"
                 size="sm"
                 onClick={onOpenMission}
-                className="w-full flex items-center justify-center gap-1 border-amber-700/60 text-amber-200 hover:bg-amber-900/30"
+                className="w-full flex items-center justify-center gap-1 bg-gray-800 border-amber-600 text-amber-200 hover:bg-gray-700 hover:text-amber-100"
               >
                 <Wand2 className="h-4 w-4" />
-                <span>✨ ミッションから設計</span>
+                <span>ミッションから設計</span>
               </Button>
             )}
           </div>

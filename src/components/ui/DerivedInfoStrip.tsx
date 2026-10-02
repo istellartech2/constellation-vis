@@ -9,7 +9,7 @@ export interface DerivedInfoItem {
 
 interface Props {
   items: DerivedInfoItem[];
-  columns?: 2 | 3;
+  columns?: 1 | 2 | 3;
   className?: string;
   title?: string;
 }
@@ -22,7 +22,7 @@ const TONE_CLS: Record<NonNullable<DerivedInfoItem["tone"]>, string> = {
 
 /** Compact read-only grid of derived/computed values (e.g. orbital period, RGT ratio). */
 export default function DerivedInfoStrip({ items, columns = 2, className, title }: Props) {
-  const gridCls = columns === 3 ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2";
+  const gridCls = columns === 1 ? "grid-cols-1" : columns === 3 ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2";
 
   return (
     <div className={`rounded border border-gray-800 bg-gray-900/40 p-2 ${className ?? ""}`}>
@@ -30,7 +30,7 @@ export default function DerivedInfoStrip({ items, columns = 2, className, title 
       <div className={`grid ${gridCls} gap-x-3 gap-y-1 text-[11px]`}>
         {items.map((item, i) => (
           <div key={i} className="flex items-center justify-between gap-2">
-            <span className="text-gray-500 inline-flex items-center gap-0.5">
+            <span className="text-gray-400 inline-flex items-center gap-0.5">
               {item.label}
               {item.help && <HelpTip text={item.help} />}
             </span>

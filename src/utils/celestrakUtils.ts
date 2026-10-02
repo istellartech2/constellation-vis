@@ -123,15 +123,42 @@ export interface CelestrakEntry {
   OBJECT_ID?: string;
 }
 
-export function celestrakEntryToSat(entry: CelestrakEntry): SatelliteSpec {
+const ORBIT_NUMERIC_FIELDS = [
+  "MEAN_MOTION", "ECCENTRICITY", "INCLINATION", "RA_OF_ASC_NODE",
+  "ARG_OF_PERICENTER", "MEAN_ANOMALY", "NORAD_CAT_ID",
+] as const;
+
+export function celestrakEntryToSat(entry: CelestrakEntry): Extract<SatelliteSpec, { type: "elements" }> {
+  if (!entry || typeof entry !== "object") throw new Error("衛星データが不正です");
+  for (const field of ORBIT_NUMERIC_FIELDS) {
+    const value = entry[field];
+    if (
+      (typeof value !== "number" && typeof value !== "string") ||
+      String(value).trim() === "" || !Number.isFinite(Number(value))
+    ) {
+      throw new Error(`${field} が不正です`);
+    }
+  }
   const mm = Number(entry.MEAN_MOTION);
+  if (
+    mm <= 0 || Number(entry.ECCENTRICITY) < 0 || Number(entry.ECCENTRICITY) >= 1 ||
+    Number(entry.INCLINATION) < 0 || Number(entry.INCLINATION) > 180 ||
+    !Number.isInteger(Number(entry.NORAD_CAT_ID)) ||
+    Number(entry.NORAD_CAT_ID) < 1 || Number(entry.NORAD_CAT_ID) > 999999999
+  ) {
+    throw new Error("軌道要素または衛星番号が範囲外です");
+  }
+  // CelesTrak omits the zone suffix, but its OMM epochs are always UTC.
+  const epochText = typeof entry.EPOCH === "string" ? entry.EPOCH.trim() : "";
+  const epoch = new Date(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(epochText) ? epochText : `${epochText}Z`);
+  if (!epochText || !Number.isFinite(epoch.getTime())) throw new Error("EPOCH が不正です");
   const n = (mm * 2 * Math.PI) / 86400; // rad/s
   const a = Math.pow(MU / (n * n), 1 / 3);
   return {
     type: "elements",
     elements: {
       satnum: Number(entry.NORAD_CAT_ID),
-      epoch: new Date(String(entry.EPOCH)),
+      epoch,
       semiMajorAxisKm: a,
       eccentricity: Number(entry.ECCENTRICITY),
       inclinationDeg: Number(entry.INCLINATION),
@@ -149,7 +176,7 @@ export function celestrakEntryToSat(entry: CelestrakEntry): SatelliteSpec {
 
 export function getCelestrakUrl(group: string): string {
   const entry = CELESTRAK_GROUP_INDEX.get(group);
-  const urlGroup = entry?.urlGroup ?? group;
+  const urlGroup = encodeURIComponent(entry?.urlGroup ?? group);
   if (entry?.source === "supplemental") {
     return `https://celestrak.org/NORAD/elements/supplemental/sup-gp.php?FILE=${urlGroup}&FORMAT=json`;
   }
@@ -165,6 +192,9 @@ export interface CelestrakFetchResult {
   note?: string;
 }
 
+const CACHE_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+const pendingGroups = new Map<string, Promise<CelestrakFetchResult>>();
+
 /**
  * Fetch orbital data for a single CelesTrak group. On HTTP / network failure
  * we transparently fall back to the IndexedDB cache populated by previous
@@ -172,45 +202,66 @@ export interface CelestrakFetchResult {
  * exception.
  */
 export async function fetchCelestrakGroup(group: string): Promise<CelestrakFetchResult> {
-  const url = getCelestrakUrl(group);
+  const pending = pendingGroups.get(group);
+  if (pending) return pending;
+  const request = fetchGroup(group);
+  pendingGroups.set(group, request);
   try {
-    const resp = await fetch(url);
-    const text = await resp.text();
+    return await request;
+  } finally {
+    pendingGroups.delete(group);
+  }
+}
+
+async function fetchGroup(group: string): Promise<CelestrakFetchResult> {
+  const url = getCelestrakUrl(group);
+  const cached = await readCachedGroup(group);
+  const age = cached ? Date.now() - Date.parse(cached.fetchedAt) : Infinity;
+  if (cached && age >= 0 && age < CACHE_MAX_AGE_MS) {
+    return { data: cached.data, note: `「${group}」: 保存済みデータ（${new Date(cached.fetchedAt).toLocaleString()}）を使用しました。CelesTrak の更新間隔に合わせ、2 時間以内の再取得を省略します。` };
+  }
+  const failure = (reason: string): CelestrakFetchResult => cached
+    ? { data: cached.data, note: `「${group}」: ${reason}。前回保存（${new Date(cached.fetchedAt).toLocaleString()}）のキャッシュを使用しました。` }
+    : { note: `「${group}」: ${reason}` };
+  try {
+    const resp = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+    const text = (await resp.text()).trim();
 
     if (resp.ok && !text.startsWith("Invalid query:") && !text.startsWith("Error:")) {
       let parsed: unknown;
       try {
         parsed = JSON.parse(text);
       } catch {
-        return { note: `「${group}」: JSON 応答が不正です` };
+        return failure(text === "No GP data found" || text === "No SupGP data found"
+          ? "現在配信されている軌道データがありません"
+          : "JSON 応答が不正です");
       }
       if (!Array.isArray(parsed)) {
-        return { note: `「${group}」: 応答が配列ではありません (${typeof parsed})` };
+        return failure(`応答が配列ではありません (${typeof parsed})`);
       }
-      const data = parsed as CelestrakEntry[];
+      if (parsed.length === 0) return failure("現在配信されている軌道データがありません");
+      const data = parsed.filter((entry) => {
+        try {
+          celestrakEntryToSat(entry);
+          return true;
+        } catch {
+          return false;
+        }
+      }) as CelestrakEntry[];
+      if (data.length === 0) return failure("有効な軌道データがありません");
       await writeCachedGroup(group, data);
-      return { data };
+      return {
+        data,
+        ...(data.length < parsed.length
+          ? { note: `「${group}」: 不正な衛星データ ${parsed.length - data.length} 件を除外しました。` }
+          : {}),
+      };
     }
 
     // Either non-OK status or an error body. Try cache as fallback.
-    const reason = describeFailure(resp.status, text);
-    const cached = await readCachedGroup(group);
-    if (cached) {
-      return {
-        data: cached.data,
-        note: `「${group}」: ${reason}。前回保存（${new Date(cached.fetchedAt).toLocaleString()}）のキャッシュを使用しました。`,
-      };
-    }
-    return { note: `「${group}」: ${reason}` };
+    return failure(describeFailure(resp.status, text));
   } catch (e) {
-    const cached = await readCachedGroup(group);
-    if (cached) {
-      return {
-        data: cached.data,
-        note: `「${group}」: 通信に失敗しました（${(e as Error).message}）。前回保存（${new Date(cached.fetchedAt).toLocaleString()}）のキャッシュを使用しました。`,
-      };
-    }
-    return { note: `「${group}」: 通信に失敗しました（${(e as Error).message}）` };
+    return failure(`通信に失敗しました（${(e as Error).message}）`);
   }
 }
 
@@ -224,6 +275,7 @@ function describeFailure(status: number, body: string): string {
   if (status === 429) {
     return "CelesTrak のレート制限に達しました（HTTP 429）";
   }
+  if (status === 404) return "指定したデータの配信先が見つかりません（HTTP 404）";
   if (status === 200) {
     return body.trim().slice(0, 200);
   }
@@ -263,4 +315,29 @@ export function satellitesToToml(list: SatelliteSpec[]): string {
       );
     })
     .join("\n\n");
+}
+
+/** Update known catalog IDs in place; overlapping groups must not add duplicates. */
+export function mergeImportedSatellites(base: SatelliteSpec[], imported: SatelliteSpec[]): SatelliteSpec[] {
+  const merged = [...base];
+  const catalogId = (sat: SatelliteSpec): number => sat.meta?.noradCatId ??
+    (sat.type === "elements" ? sat.elements.satnum : Number(sat.lines[0].slice(2, 7)));
+  const indices = new Map<number, number>();
+  merged.forEach((sat, index) => {
+    const id = catalogId(sat);
+    if (Number.isInteger(id) && id > 0) indices.set(id, index);
+  });
+  for (const sat of imported) {
+    const id = catalogId(sat);
+    const index = indices.get(id);
+    if (index === undefined) {
+      indices.set(id, merged.length);
+      merged.push(sat);
+    } else {
+      const previous = merged[index];
+      if (sat.type === "elements" && previous.type === "elements" && previous.elements.epoch > sat.elements.epoch) continue;
+      merged[index] = sat;
+    }
+  }
+  return merged;
 }

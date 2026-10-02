@@ -100,7 +100,7 @@ type SatelliteSpec =
   | { type: "elements"; elements: OrbitalElements; meta?: SatelliteMetadata }
 ```
 
-`toSatrec(spec)` が両者を `satrec` に落とす。`elements` の場合は **一度 TLE 文字列を組み立ててから `twoline2satrec` に通す**（`elementsToTle`）。
+`toSatrec(spec)` が両者を `satrec` に落とす。`elements` の場合、衛星番号が 5 桁以内なら **一度 TLE 文字列を組み立ててから `twoline2satrec` に通す**（`elementsToTle`）。6〜9 桁の衛星番号は固定列の TLE に収まらないため、UTC エポックと軌道要素を OMM JSON として `json2satrec` に直接渡す。どちらの経路でも平均運動は次式で求め、BSTAR と平均運動の時間微分は 0 とする。
 
 ```
 n_rad      = sqrt(mu / a^3),  mu = 398600.4418 km^3/s^2

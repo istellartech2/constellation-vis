@@ -20,6 +20,7 @@ import {
   celestrakEntryToSat,
   satellitesToToml,
   fetchCelestrakGroup,
+  mergeImportedSatellites,
 } from "../../utils/celestrakUtils";
 import { validateSatellites, validateGroundStations } from "../../utils/validators";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./tabs";
@@ -275,26 +276,31 @@ export default function SatelliteEditor({
     const notes: string[] = [];
     try {
       const base = parseSatellitesToml(satText);
+      const imported: SatelliteSpec[] = [];
       for (const g of selectedGroups) {
         const result = await fetchCelestrakGroup(g);
         if (result.note) notes.push(result.note);
         if (!result.data) continue;
         for (const entry of result.data) {
           try {
-            base.push(celestrakEntryToSat(entry));
+            imported.push(celestrakEntryToSat(entry));
           } catch (e) {
             console.warn(`「${g}」のデータ変換に失敗しました:`, e);
           }
         }
       }
-      setSatText(satellitesToToml(base));
+      if (imported.length === 0) {
+        alert(notes.join("\n\n") || "インポートできる衛星データがありませんでした。");
+        return;
+      }
+      setSatText(satellitesToToml(mergeImportedSatellites(base, imported)));
       if (notes.length > 0) alert(notes.join("\n\n"));
+      setImportOpen(false);
+      setSelectedGroups([]);
     } catch (e) {
       alert("衛星のインポートに失敗しました: " + (e as Error).message);
     } finally {
       setImporting(false);
-      setImportOpen(false);
-      setSelectedGroups([]);
     }
   }
 

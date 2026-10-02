@@ -3,6 +3,7 @@ import { ChevronLeft } from "lucide-react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -46,6 +47,8 @@ export default function ConstellationEditorDialog({
   const [mode, setMode] = useState<Mode>("shells");
   /** Constraints handed to the wizard by 「設計をやり直す」; null = wizard defaults. */
   const [missionPrefill, setMissionPrefill] = useState<MissionDesignForm | null>(null);
+  const [missionOpened, setMissionOpened] = useState(false);
+  const [missionSession, setMissionSession] = useState(0);
 
   // Initialize config when dialog opens
   useEffect(() => {
@@ -56,17 +59,21 @@ export default function ConstellationEditorDialog({
       setErrors([]);
       setMode("shells");
       setMissionPrefill(null);
+      setMissionOpened(false);
     }
   }, [open, constText]);
 
   const openMission = useCallback((prefill: MissionDesignForm | null) => {
-    setMissionPrefill(prefill);
+    if (prefill) {
+      setMissionPrefill(prefill);
+      setMissionSession((previous) => previous + 1);
+    }
+    setMissionOpened(true);
     setMode("mission");
   }, []);
 
   const backToShells = useCallback(() => {
     setMode("shells");
-    setMissionPrefill(null);
   }, []);
 
   // Validate on config changes
@@ -101,7 +108,6 @@ export default function ConstellationEditorDialog({
     setConfig((prev) => ({ ...prev, shells: [...prev.shells, added] }));
     setSelectedShellId(added.id);
     setMode("shells");
-    setMissionPrefill(null);
   }, []);
 
   const handleDeleteShell = useCallback((id: string) => {
@@ -176,11 +182,7 @@ export default function ConstellationEditorDialog({
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent
-        className={`!w-[90vw] !max-w-6xl max-h-[85vh] overflow-hidden flex flex-col bg-gray-900 text-gray-100 max-md:!w-screen max-md:!max-w-none max-md:h-[100dvh] max-md:!max-h-none max-md:rounded-none${
-          // The wizard's results column has to fill the dialog, and `flex-1`
-          // cannot grow inside a box whose height is only bounded by `max-h`.
-          mode === "mission" ? " md:h-[85vh]" : ""
-        }`}
+        className="dark !w-[94vw] !max-w-7xl h-[90dvh] max-h-[90dvh] overflow-hidden flex flex-col bg-gray-900 text-gray-100 max-md:!w-screen max-md:!max-w-none max-md:h-[100dvh] max-md:!max-h-none max-md:rounded-none"
         onEscapeKeyDown={(event) => {
           // In the wizard, Escape steps back to the shell list rather than
           // discarding the whole editing session.
@@ -204,13 +206,17 @@ export default function ConstellationEditorDialog({
             )}
             <span>{mode === "mission" ? "ミッションから設計" : "コンステレーション編集"}</span>
           </DialogTitle>
+          <DialogDescription className="text-xs text-gray-400 text-left">
+            {mode === "mission" ? "目的に合う配置を探し、候補からシェルを作成します。" : "シェルを選んで設定を調整し、自動計算の結果を確認します。"}
+          </DialogDescription>
         </DialogHeader>
 
         {mode === "shells" && (
           <div className="flex items-center gap-4 px-1">
             <div className="flex items-center gap-2">
-              <Label className="text-xs text-gray-400 whitespace-nowrap">エポック:</Label>
+              <Label htmlFor="constellation-epoch" className="text-xs text-gray-300 whitespace-nowrap">基準時刻 (UTC)</Label>
               <input
+                id="constellation-epoch"
                 type="datetime-local"
                 value={formatDateForInput(config.epoch)}
                 onChange={(e) => handleEpochChange(e.target.value + ":00Z")}
@@ -220,16 +226,21 @@ export default function ConstellationEditorDialog({
           </div>
         )}
 
-        {mode === "mission" ? (
-          <MissionDesignPane
-            epochIso={config.epoch.toISOString()}
-            initialForm={missionPrefill}
-            onAddCandidate={handleSelectPreset}
-          />
-        ) : (
+        {missionOpened && (
+          <div className={mode === "mission" ? "flex flex-1 min-h-0" : "hidden"}>
+            <MissionDesignPane
+              key={missionSession}
+              active={mode === "mission"}
+              epochIso={config.epoch.toISOString()}
+              initialForm={missionPrefill}
+              onAddCandidate={handleSelectPreset}
+            />
+          </div>
+        )}
+        {mode === "shells" && (
           <div className="flex-1 border border-gray-600 rounded-md overflow-hidden flex flex-col md:flex-row min-h-0">
             {/* Shell list: sidebar on desktop, compact select on mobile */}
-            <div className="md:w-56 md:flex-shrink-0 bg-gray-900">
+            <div className="md:w-52 md:flex-shrink-0 bg-gray-900">
               <ConstellationShellList
                 shells={config.shells}
                 selectedId={selectedShellId}
@@ -245,7 +256,7 @@ export default function ConstellationEditorDialog({
             </div>
 
             {/* Shell form */}
-            <div className="flex-1 min-h-0 overflow-y-auto bg-gray-850">
+            <div className="flex-1 min-w-0 min-h-0 overflow-hidden bg-gray-800/30">
               {selectedShell ? (
                 <ConstellationShellForm
                   shell={selectedShell}
@@ -266,7 +277,10 @@ export default function ConstellationEditorDialog({
         )}
 
         {mode === "shells" && (
-          <DialogFooter className="border-t border-gray-700 pt-3">
+          <DialogFooter className="border-t border-gray-700 pt-3 shrink-0 sm:items-center">
+            <p className="text-xs text-gray-400 sm:mr-auto">
+              {isValid ? "保存後、シナリオの「この内容で 3D ビューを更新」で反映します。" : "入力エラーを修正すると保存できます。"}
+            </p>
             <Button variant="outline" onClick={handleCancel} className="bg-gray-700 hover:bg-gray-600 text-gray-100 border-gray-500">
               キャンセル
             </Button>
@@ -275,7 +289,7 @@ export default function ConstellationEditorDialog({
               disabled={!isValid}
               className="bg-amber-600 hover:bg-amber-700 text-amber-50 disabled:opacity-50"
             >
-              OK
+              編集内容を保存
             </Button>
           </DialogFooter>
         )}

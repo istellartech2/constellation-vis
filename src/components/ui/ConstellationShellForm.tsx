@@ -100,88 +100,75 @@ export default function ConstellationShellForm({
     />
   );
 
+  const details = derived ? derivedItems(derived, shell) : [];
+  const summary = details.slice(0, 4);
+
   return (
-    <div className="space-y-4 p-4 h-full overflow-y-auto">
-      <div className="text-sm font-medium text-gray-100 border-b border-gray-600 pb-2">
-        シェル詳細
-      </div>
-
-      <ShellFormBanner items={banner} />
-
-      <div className="space-y-1">
-        <Label htmlFor={`shell-name-${shell.id}`} className="text-xs text-gray-400">
-          名前
-        </Label>
-        <input
-          id={`shell-name-${shell.id}`}
-          type="text"
-          value={shell.name ?? ""}
-          onChange={(e) => onChange({ name: e.target.value })}
-          placeholder="例: LEO-550km-53deg"
-          className="w-full px-2 py-1.5 text-sm bg-gray-800 border border-gray-600 rounded focus:border-amber-500 focus:outline-none text-gray-100"
-        />
-      </div>
-
-      <PatternSelect
-        id={`shell-pattern-${shell.id}`}
-        value={pattern}
-        onChange={handlePatternChange}
-      />
-      {migrationNote && (
-        <p className="text-xs text-amber-300 bg-amber-900/20 border border-amber-800 rounded px-2 py-1">
-          {migrationNote}
-        </p>
-      )}
-
-      {shell.mission_objective && (
-        <MissionProvenance shell={shell} onRedesign={onRedesign} />
-      )}
-
-      {derived ? (
-        <DerivedInfoStrip title="派生情報" columns={2} items={derivedItems(derived, shell)} />
-      ) : (
-        <p className="text-xs text-gray-500">
-          入力が未完成のため派生情報を計算できません
-        </p>
-      )}
-
-      <SocFeasibilityBadge derived={derived} />
-
-      <PatternFieldGroup
-        pattern={pattern}
-        group="basic"
-        shell={shell}
-        shellIndex={shellIndex}
-        errors={errors}
-        derived={derived}
-        onChange={onChange}
-      />
-
-      {rgtInBasic && (
-        <div className="rounded border border-gray-800 bg-gray-900/40 p-3">{rgtSection}</div>
-      )}
-
-      <CollapsibleSubsection title="詳細パラメータ">
-        <PatternFieldGroup
-          pattern={pattern}
-          group="advanced"
-          shell={shell}
-          shellIndex={shellIndex}
-          errors={errors}
-          derived={derived}
-          onChange={onChange}
-        />
-        <div className="pt-1">
-          <ShellFailureSection
-            shell={shell}
-            totalSats={derived?.totalSats ?? null}
-            shellIndex={shellIndex}
-            errors={errors}
-            onChange={onChange}
+    <div className="h-full min-h-0 overflow-y-auto xl:overflow-hidden xl:grid xl:grid-cols-[minmax(0,1fr)_18rem]">
+      <section aria-label="シェルの設定" className="min-w-0 space-y-5 p-4 xl:overflow-y-auto">
+        <div>
+          <h3 className="text-base font-semibold text-gray-100">シェルの設定</h3>
+          <p className="mt-1 text-xs text-gray-400">数値を変更すると、右側の計算結果が更新されます。</p>
+        </div>
+        <ShellFormBanner items={banner} />
+        <div className="space-y-1">
+          <Label htmlFor={`shell-name-${shell.id}`} className="text-xs text-gray-300">名前</Label>
+          <input
+            id={`shell-name-${shell.id}`}
+            type="text"
+            value={shell.name ?? ""}
+            onChange={(e) => onChange({ name: e.target.value })}
+            placeholder="例: LEO-550km-53deg"
+            className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-600 rounded-md focus:border-amber-500 focus:outline-none text-gray-100"
           />
         </div>
-        {!rgtInBasic && <div className="pt-1">{rgtSection}</div>}
-      </CollapsibleSubsection>
+        <PatternSelect id={`shell-pattern-${shell.id}`} value={pattern} onChange={handlePatternChange} />
+        {migrationNote && (
+          <p role="status" className="text-xs text-amber-300 bg-amber-900/20 border border-amber-800 rounded px-2 py-1">{migrationNote}</p>
+        )}
+        {shell.mission_objective && <MissionProvenance shell={shell} onRedesign={onRedesign} />}
+        <section className="space-y-3" aria-label="基本設定">
+          <h4 className="text-sm font-medium text-gray-200">基本設定</h4>
+          <PatternFieldGroup pattern={pattern} group="basic" shell={shell} shellIndex={shellIndex}
+            errors={errors} derived={derived} onChange={onChange} />
+          {rgtInBasic && <div className="rounded border border-gray-700 bg-gray-900/40 p-3">{rgtSection}</div>}
+        </section>
+        <CollapsibleSubsection title="詳細設定・故障モデル">
+          <PatternFieldGroup pattern={pattern} group="advanced" shell={shell} shellIndex={shellIndex}
+            errors={errors} derived={derived} onChange={onChange} />
+          <div className="pt-1">
+            <ShellFailureSection shell={shell} totalSats={derived?.totalSats ?? null}
+              shellIndex={shellIndex} errors={errors} onChange={onChange} />
+          </div>
+          {!rgtInBasic && <div className="pt-1">{rgtSection}</div>}
+        </CollapsibleSubsection>
+      </section>
+
+      <aside aria-label="シェルの計算結果" className="min-w-0 border-t xl:border-t-0 xl:border-l border-gray-700 bg-gray-900/70 p-4 space-y-4 xl:overflow-y-auto">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-100">計算結果</h3>
+          <p className="mt-1 text-xs text-gray-400">入力から自動計算・3D ビューへの反映前</p>
+        </div>
+        {derived ? (
+          <>
+            <dl className="grid grid-cols-2 gap-2">
+              {summary.map((item) => (
+                <div key={item.label} className="rounded-lg border border-gray-700 bg-gray-800 p-3">
+                  <dt className="text-xs text-gray-400">{item.label}</dt>
+                  <dd className="mt-1 text-base font-semibold text-gray-100 tabular-nums">{item.value}</dd>
+                </div>
+              ))}
+            </dl>
+            <SocFeasibilityBadge derived={derived} />
+            <DerivedInfoStrip title="軌道の概要" columns={1} items={details.slice(4, 9)} />
+            <CollapsibleSubsection title="方式ごとの計算詳細">
+              <DerivedInfoStrip columns={1} items={details.slice(9)} />
+            </CollapsibleSubsection>
+          </>
+        ) : (
+          <p role="status" className="rounded border border-gray-700 p-3 text-sm text-gray-300">基本設定を入力すると計算結果が表示されます。</p>
+        )}
+      </aside>
     </div>
   );
 }

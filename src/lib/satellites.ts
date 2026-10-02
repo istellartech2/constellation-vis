@@ -2,7 +2,7 @@ import * as satellite from "satellite.js";
 
 /** Classical orbital elements used for defining a satellite. */
 export interface OrbitalElements {
-  /** Satellite catalog number for TLE generation */
+  /** Satellite catalog number (GP/OMM supports up to 9 digits). */
   satnum: number;
   /** Epoch of the elements */
   epoch: Date;
@@ -72,6 +72,32 @@ export function toSatrec(spec: SatelliteSpec): satellite.SatRec {
   if (spec.type === "tle") {
     return satellite.twoline2satrec(spec.lines[0], spec.lines[1]);
   }
+  // TLE columns only have room for five digits. Keep the legacy conversion
+  // for existing scenarios, but initialize larger catalog IDs through OMM.
+  if (spec.elements.satnum > 99999) {
+    const el = spec.elements;
+    const meanMotion = (Math.sqrt(398600.4418 / el.semiMajorAxisKm ** 3) * 86400) / (2 * Math.PI);
+    return satellite.json2satrec({
+      OBJECT_NAME: spec.meta?.objectName ?? "",
+      OBJECT_ID: spec.meta?.objectId ?? "",
+      NORAD_CAT_ID: el.satnum,
+      // satellite.js 6 appends Z itself, so give it UTC without a suffix.
+      EPOCH: el.epoch.toISOString().slice(0, -1),
+      MEAN_MOTION: meanMotion,
+      ECCENTRICITY: el.eccentricity,
+      INCLINATION: el.inclinationDeg,
+      RA_OF_ASC_NODE: el.raanDeg,
+      ARG_OF_PERICENTER: el.argPerigeeDeg,
+      MEAN_ANOMALY: el.meanAnomalyDeg,
+      MEAN_MOTION_DOT: 0,
+      MEAN_MOTION_DDOT: 0,
+      BSTAR: 0,
+      EPHEMERIS_TYPE: 0,
+      CLASSIFICATION_TYPE: "U",
+      ELEMENT_SET_NO: 0,
+      REV_AT_EPOCH: 0,
+    });
+  }
   const [l1, l2] = elementsToTle(spec.elements);
   return satellite.twoline2satrec(l1, l2);
 }
@@ -82,4 +108,3 @@ import satellites, { SHELL_RANGES } from "./satellites.generated";
 export const SATELLITES: SatelliteSpec[] = satellites;
 /** Shell ranges matching `SATELLITES`, generated at build time from public/constellation.toml. */
 export const INITIAL_SHELL_RANGES = SHELL_RANGES;
-

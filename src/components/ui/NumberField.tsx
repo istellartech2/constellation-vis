@@ -42,16 +42,16 @@ export default function NumberField({
   className,
   id,
 }: Props) {
-  const inputCls = `w-full px-2 py-1.5 text-sm bg-gray-800 border rounded focus:outline-none text-gray-100 ${
+  const inputCls = `w-full px-3 py-2 text-sm bg-gray-800 border rounded focus:outline-none text-gray-100 ${
     error ? "border-red-500" : "border-gray-600 focus:border-amber-500"
   }`;
 
   return (
     <div className={`space-y-1 ${className ?? ""}`}>
-      <Label htmlFor={id} className="text-xs text-gray-400 inline-flex items-center gap-1">
+      <Label htmlFor={id} className="text-sm text-gray-300 inline-flex items-center gap-1">
         <span>{label}</span>
         {help && <HelpTip text={help} />}
-        {unit && <span className="text-gray-500">({unit})</span>}
+        {unit && <span className="text-gray-400">({unit})</span>}
       </Label>
       {readOnly ? (
         <div className="w-full px-2 py-1.5 text-sm text-gray-300 tabular-nums">{value}</div>
@@ -76,7 +76,7 @@ export default function NumberField({
         />
       )}
       {error && <p className="text-xs text-red-400">{error}</p>}
-      {hint && <p className="text-xs text-gray-500">{hint}</p>}
+      {hint && <p className="text-xs text-gray-400">{hint}</p>}
     </div>
   );
 }
