@@ -1,3 +1,4 @@
+import { remoteDisplaySnapshot, type RemoteDisplaySettings } from "../../lib/remoteDisplay";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import type { SatelliteSpec } from "../../lib/satellites";
 import type { CommittedScenario } from "../../lib/scenario";
@@ -144,6 +145,7 @@ interface Props {
   getCurrentView: () => ViewSettings;
   /** Apply a previously saved view */
   onApplyView: (settings: ViewSettings) => void;
+  onApplyDisplay: (settings: RemoteDisplaySettings) => void;
   /** The currently active (committed) satellite array, for analyses that must match islShellRanges exactly */
   satellites: SatelliteSpec[];
   /** Current ISL routing settings */
@@ -220,6 +222,7 @@ export default function SatelliteEditor({
   sceneRef,
   getCurrentView,
   onApplyView,
+  onApplyDisplay,
   satellites,
   islSettings,
   onIslSettingsChange,
@@ -232,6 +235,7 @@ export default function SatelliteEditor({
   openTabRequest,
 }: Props) {
   const remoteAppliedRef = useRef(false);
+  const remoteStartTimeRef = useRef<string | null>(null);
   const [satText, setSatText] = useState("");
   const [constText, setConstText] = useState("");
   const [gsText, setGsText] = useState("");
@@ -580,14 +584,21 @@ export default function SatelliteEditor({
           </Tabs>
           <div hidden={tab !== "editor"} className="mt-4">
               <AiSessionPanel
-                getScenario={() => ({ satText, constText, gsText, startTime: new Date(startText + "Z").toISOString() })}
+                getScenario={() => ({ satText, constText, gsText, startTime: new Date(startText + "Z").toISOString(), display: remoteDisplaySnapshot(getCurrentView().display) })}
                 onApply={(remote, committed) => {
                   remoteAppliedRef.current = true;
                   setSatText(remote.satText);
                   setConstText(remote.constText);
                   setGsText(remote.gsText);
                   setStartText(remote.startTime.slice(0, 16));
-                  onUpdate(committed);
+                  const domainChanged = remote.satText !== satText || remote.constText !== constText || remote.gsText !== gsText
+                    || remote.startTime.slice(0, 16) !== startText
+                    || remote.startTime !== (remoteStartTimeRef.current ?? new Date(startText + "Z").toISOString());
+                  if (domainChanged) {
+                    onUpdate(committed);
+                  }
+                  remoteStartTimeRef.current = remote.startTime;
+                  if (remote.display) onApplyDisplay(remote.display);
                   setUpdateFeedback("success");
                 }}
               />

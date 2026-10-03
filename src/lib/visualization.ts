@@ -666,6 +666,10 @@ export default class SatelliteScene {
   }
 
   /** Capture the current camera framing for persistence. */
+  getSimulationTime(): Date {
+    return new Date(this.currentSimDate.getTime());
+  }
+
   getCameraSnapshot(): CameraSnapshot {
     return {
       mode: this.cameraMode,

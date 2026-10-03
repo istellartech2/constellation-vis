@@ -93,6 +93,7 @@ export default function AiSessionPanel({ getScenario, onApply }: Props) {
     `有効期限: ${session.expiresAt}`,
     `仕様: ${window.location.origin}/ai-api.md`,
     'まずGETでscenarioとrevisionを取得。PUTに {"expectedRevision":取得したrevision,"operation":...} を送る。',
+    '表示だけの変更: operation={"type":"display","settings":{"whiteBackground":true,"showGraticule":false}}。省略した設定と衛星データは保持されます。対応フィールドは仕様を参照。',
     'operation: {"type":"replace","scenario":{"satText":"...","constText":"...","gsText":"...","startTime":"ISO UTC Z"}}',
     'または {"type":"append","section":"satellites|constellation|groundstations","text":"TOML"}、{"type":"remove","section":"...","index":0}、{"type":"clear","section":"..."}。',
     "GETでapplicationStatusがappliedになったことを確認してください。409の場合はGETし直してください。",

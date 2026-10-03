@@ -4,7 +4,7 @@ This public application provides private, temporary browser sessions. No account
 
 ## Connect to a browser
 
-Open the application, open the menu, select シナリオ, then click **AI連携を開始**. This uploads the current editor configuration to an encrypted temporary session. Click **AI向け接続情報をコピー** and give that text to your AI. The browser polls every two seconds while connected. Keep the page open; reloading loses the browser's credentials and requires a new session.
+Open the application, open the menu, select シナリオ, then click **AI連携を開始**. This uploads the current editor configuration and display options to an encrypted temporary session. Click **AI向け接続情報をコピー** and give that text to your AI. The browser polls every two seconds while connected. Keep the page open; reloading loses the browser's credentials and requires a new session.
 
 Each session expires **one hour after creation**, without extending its lifetime on use. **連携を終了** immediately deletes the active Redis record. Closing the page leaves it until expiry. Tokens remain only in browser memory. The current scenario remains visible in that browser after expiry/end. The AI integration does not persist credentials or the full scenario in browser storage. The existing application separately saves view preferences, including ISL endpoint selections, locally in the browser. Explicitly saving settings.toml downloads a local file.
 
@@ -63,7 +63,8 @@ Send `PUT /api/sessions/{sessionId}` with `Content-Type: application/json`:
 
 Supported operations:
 
-- `replace`: replace the whole scenario with the four fields above. Blank TOML sections are supported.
+- `replace`: replace the whole scenario with the four fields above and optional `display`. Omitting `display` preserves the existing display settings. Blank TOML sections are supported.
+- `display`: `{ "type": "display", "settings": { "whiteBackground": true, "showGraticule": false } }`. Merge the supplied display fields into the session. Other fields and satellite data/startTime are preserved.
 - `bundle`: `{ "type": "bundle", "text": "contents of settings.toml" }`. Use the application's exported format with `# === satellites ===`, `# === constellation ===`, `# === groundstations ===` section markers and `startTime`.
 - `append`: `{ "type": "append", "section": "groundstations", "text": "TOML array-table entries" }`. Valid sections: `satellites`, `constellation`, `groundstations`. Constellation input uses `[[constellation.shells]]`; if an epoch is provided it must match the existing constellation epoch.
 - `remove`: `{ "type": "remove", "section": "groundstations", "index": 0 }`. Indices are zero-based TOML entries in the current section, not generated satellite indices. Removing a constellation entry removes its whole shell. Use GET and its revision before removal. To change an individual generated satellite, edit/replace the constellation definition or represent that satellite separately.
@@ -72,6 +73,24 @@ Supported operations:
 A successful update returns `{ "revision": 1, "applicationStatus": "pending" }`. Every write must include the current `expectedRevision`. On `409`, GET again, reconcile the desired change and retry. This prevents two agents silently overwriting each other. Retrying an accepted request with its old revision returns 409 rather than appending twice.
 
 Limits: 256 KiB JSON request/scenario, 2,000 expanded satellites, 500 ground stations. UTC startTime must end in `Z`. Malformed TOML, invalid domain values and excessive generated counts are rejected before commit. Unknown root tables are rejected. TOML is the application's existing schema; use single-line scalar values as in exported settings.
+
+## Display options
+
+Browser-created sessions include `scenario.display`, a snapshot of the current display options. GET returns the session state; manual changes in the browser after connection are not automatically uploaded. AI updates reapply the stored display state. `replace` may supply a partial `display`; `display` merges a partial `settings` object. Bundle, append, remove and clear preserve display settings. A display-only update does not reset satellite selection or simulation time. Camera position, named views, KML files and ISL link configuration are not part of this API.
+
+| Fields | Accepted values |
+| --- | --- |
+| `showGraticule`, `showEcliptic`, `showGeoOrbit`, `showSunDirection`, `ecef`, `showPerturbation`, `showDerivedSatelliteInfo`, `brightEarth`, `whiteBackground`, `showGroundStationCones`, `showSatelliteFovCones` | Boolean |
+| `earthTexture` | `./assets/earth01.webp`, `./assets/earth02.webp`, `blue-marble`, `high-resolution` |
+| `satRadius` | 0.01–0.05 Earth radii (UI sizes: 0.01, 0.02, 0.03, 0.05) |
+| `groundConeMinElevationDeg` | 0–85 degrees |
+| `groundConeDistanceKm` | 100–20000 km |
+| `fovConeHalfAngleDeg` | 1–80 degrees |
+| `fovConeAlongTrackDeg`, `fovConeCrossTrackDeg` | −60–60 degrees |
+| `groundConeColor`, `fovConeColor`, `satelliteVisibleColor`, `satelliteHiddenColor`, `satelliteSelectedColor` | `#RRGGBB` |
+| `speedExp` | 0–log10(600); speed multiplier = 10^speedExp |
+
+Unknown fields, wrong types, nonfinite numbers, out-of-range values and arbitrary texture URLs are rejected. Display settings use the same authenticated, encrypted temporary session as scenario data.
 
 ## Browser acknowledgements and ending a session
 

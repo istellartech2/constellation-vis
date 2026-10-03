@@ -1,3 +1,4 @@
+import type { RemoteDisplaySettings } from "./lib/remoteDisplay";
 import { useRef, useEffect, useState, useCallback } from "react";
 import SpeedControl from "./components/ui/SpeedControl";
 import SatelliteEditor from "./components/ui/SatelliteEditor";
@@ -311,43 +312,47 @@ function App() {
     onIslError: setIslError,
   }, { cameraSnapshotRef });
 
+  const applyDisplay = useCallback((d: RemoteDisplaySettings) => {
+    if (d.satRadius !== undefined) setSatRadius(d.satRadius);
+    if (d.earthTexture !== undefined) setEarthTexture(d.earthTexture);
+    if (d.showGraticule !== undefined) setShowGraticule(d.showGraticule);
+    if (d.showEcliptic !== undefined) setShowEcliptic(d.showEcliptic);
+    if (d.showGeoOrbit !== undefined) setShowGeoOrbit(d.showGeoOrbit);
+    if (d.showSunDirection !== undefined) setShowSunDirection(d.showSunDirection);
+    if (d.ecef !== undefined) setEcef(d.ecef);
+    if (d.showPerturbation !== undefined) setShowPerturbation(d.showPerturbation);
+    if (d.showDerivedSatelliteInfo !== undefined) setShowDerivedSatelliteInfo(d.showDerivedSatelliteInfo);
+    if (d.brightEarth !== undefined) setBrightEarth(d.brightEarth);
+    if (d.whiteBackground !== undefined) setWhiteBackground(d.whiteBackground);
+    if (d.showGroundStationCones !== undefined) setShowGroundStationCones(d.showGroundStationCones);
+    if (d.showSatelliteFovCones !== undefined) setShowSatelliteFovCones(d.showSatelliteFovCones);
+    if (d.groundConeMinElevationDeg !== undefined) setGroundConeMinElevationDeg(d.groundConeMinElevationDeg);
+    if (d.groundConeDistanceKm !== undefined) setGroundConeDistanceKm(d.groundConeDistanceKm);
+    if (d.groundConeColor !== undefined) setGroundConeColor(d.groundConeColor);
+    if (d.fovConeHalfAngleDeg !== undefined) setFovConeHalfAngleDeg(d.fovConeHalfAngleDeg);
+    if (d.fovConeColor !== undefined) setFovConeColor(d.fovConeColor);
+    if (d.fovConeAlongTrackDeg !== undefined) setFovConeAlongTrackDeg(d.fovConeAlongTrackDeg);
+    if (d.fovConeCrossTrackDeg !== undefined) setFovConeCrossTrackDeg(d.fovConeCrossTrackDeg);
+    if (d.satelliteVisibleColor !== undefined) setSatelliteVisibleColor(d.satelliteVisibleColor);
+    if (d.satelliteHiddenColor !== undefined) setSatelliteHiddenColor(d.satelliteHiddenColor);
+    if (d.satelliteSelectedColor !== undefined) setSatelliteSelectedColor(d.satelliteSelectedColor);
+    if (d.speedExp !== undefined) setSpeedExp(d.speedExp);
+  }, []);
+
   // Apply a saved named view: restore all display settings, camera mode and
   // framing. Display changes rebuild the scene, which re-applies the camera via
   // cameraSnapshotRef; applyCameraSnapshot also runs immediately for snappiness.
   const applyView = useCallback(
     (settings: ViewSettings) => {
       const d = settings.display;
-      setSatRadius(d.satRadius);
-      setEarthTexture(d.earthTexture);
-      setShowGraticule(d.showGraticule);
-      setShowEcliptic(d.showEcliptic);
-      setShowGeoOrbit(d.showGeoOrbit ?? false);
-      setShowSunDirection(d.showSunDirection);
-      setEcef(d.ecef);
-      setShowPerturbation(d.showPerturbation);
-      setShowDerivedSatelliteInfo(d.showDerivedSatelliteInfo);
-      setBrightEarth(d.brightEarth);
-      setWhiteBackground(d.whiteBackground);
-      setShowGroundStationCones(d.showGroundStationCones);
-      setShowSatelliteFovCones(d.showSatelliteFovCones);
-      setGroundConeMinElevationDeg(d.groundConeMinElevationDeg);
-      setGroundConeDistanceKm(d.groundConeDistanceKm);
-      setGroundConeColor(d.groundConeColor);
-      setFovConeHalfAngleDeg(d.fovConeHalfAngleDeg);
-      setFovConeColor(d.fovConeColor);
-      setFovConeAlongTrackDeg(d.fovConeAlongTrackDeg);
-      setFovConeCrossTrackDeg(d.fovConeCrossTrackDeg);
-      setSatelliteVisibleColor(d.satelliteVisibleColor);
-      setSatelliteHiddenColor(d.satelliteHiddenColor);
-      setSatelliteSelectedColor(d.satelliteSelectedColor);
-      setSpeedExp(d.speedExp);
+      applyDisplay(d);
       setIslSettings(d.isl ?? createDefaultIslSettings());
       setCameraMode(settings.camera.mode);
       cameraSnapshotRef.current = settings.camera;
       sceneRef.current?.applyCameraSnapshot(settings.camera);
       saveLastView(settings);
     },
-    [sceneRef],
+    [sceneRef, applyDisplay],
   );
 
   // Snapshot the live view (current display + latest camera framing) on demand,
@@ -497,6 +502,7 @@ function App() {
         onAnalysisStart={handleAnalysisStart}
         onAnalysisEnd={handleAnalysisEnd}
         getCurrentView={getCurrentView}
+        onApplyDisplay={applyDisplay}
         onApplyView={applyView}
         satellites={satellites}
         islSettings={islSettings}
