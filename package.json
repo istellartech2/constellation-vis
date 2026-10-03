@@ -6,7 +6,7 @@
   "scripts": {
     "predev": "bun scripts/generate-satellites.ts",
     "dev": "vite",
-    "prebuild": "bun scripts/generate-satellites.ts",
+    "prebuild": "bun scripts/generate-satellites.ts && bun scripts/build-session-api.ts",
     "build": "tsc -b && vite build",
     "build:cli": "bun scripts/build-cli.ts",
     "cli": "bun src/cli/main.ts",
@@ -35,6 +35,7 @@
     "react-dom": "^19.1.0",
     "react-leaflet": "^5.0.0",
     "satellite.js": "^6.0.0",
+    "smol-toml": "^1.9.0",
     "tailwind-merge": "^3.3.1",
     "three": "^0.176.0"
   },
@@ -46,6 +47,7 @@
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@types/three": "^0.176.0",
+    "@vercel/node": "^20.0.0",
     "@vitejs/plugin-react": "^4.4.1",
     "eslint": "^9.25.0",
     "eslint-plugin-react-hooks": "^5.2.0",

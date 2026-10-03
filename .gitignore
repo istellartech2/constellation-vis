@@ -32,3 +32,8 @@ public/assets/satellites.toml
 public/assets/constellation.toml
 
 local
+.vercel
+.env*
+
+# Bundled Vercel session handler (built from server/vercelHandler.ts)
+server/generated/

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "installCommand": "bun install --frozen-lockfile",
+  "buildCommand": "bun run lint && bun run test && bun run build",
+  "outputDirectory": "dist",
+  "regions": ["hnd1"],
+  "headers": [
+    { "source": "/api/(.*)", "headers": [
+      { "key": "Cache-Control", "value": "no-store, private" },
+      { "key": "Referrer-Policy", "value": "no-referrer" },
+      { "key": "X-Content-Type-Options", "value": "nosniff" }
+    ] },
+    { "source": "/(.*)", "headers": [{ "key": "Referrer-Policy", "value": "no-referrer" }] }
+  ]
+}

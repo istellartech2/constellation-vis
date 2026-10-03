@@ -1,4 +1,4 @@
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import type { SatelliteSpec } from "../../lib/satellites";
 import type { CommittedScenario } from "../../lib/scenario";
 import type SatelliteScene from "../../lib/visualization";
@@ -11,6 +11,7 @@ import {
 } from "../../lib/config";
 import { buildConstellation } from "../../lib/tomlParsers";
 import EditorTab from "./EditorTab";
+import AiSessionPanel from "./AiSessionPanel";
 import AnalysisTab, { type AnalysisType } from "./AnalysisTab";
 import OptionTab from "./OptionTab";
 import IslTab from "./IslTab";
@@ -230,6 +231,7 @@ export default function SatelliteEditor({
   currentSimMs,
   openTabRequest,
 }: Props) {
+  const remoteAppliedRef = useRef(false);
   const [satText, setSatText] = useState("");
   const [constText, setConstText] = useState("");
   const [gsText, setGsText] = useState("");
@@ -308,16 +310,17 @@ export default function SatelliteEditor({
 
 
   useEffect(() => {
+    let cancelled = false;
     // Load satellites.toml
     fetch(import.meta.env.BASE_URL + 'satellites.toml')
       .then((r) => {
         if (!r.ok) throw new Error(`satellites.toml の読み込みに失敗しました: ${r.status}`);
         return r.text();
       })
-      .then(setSatText)
+      .then((text) => { if (!cancelled && !remoteAppliedRef.current) setSatText((prev) => prev || text); })
       .catch((error) => {
         console.error("satellites.toml の読み込みでエラー:", error);
-        setSatText("# デフォルトの satellites.toml を読み込めませんでした\n# 衛星データを手動で入力してください");
+        if (!cancelled && !remoteAppliedRef.current) setSatText("# デフォルトの satellites.toml を読み込めませんでした\n# 衛星データを手動で入力してください");
       });
 
     // Load constellation.toml
@@ -326,10 +329,10 @@ export default function SatelliteEditor({
         if (!r.ok) throw new Error(`constellation.toml の読み込みに失敗しました: ${r.status}`);
         return r.text();
       })
-      .then(setConstText)
+      .then((text) => { if (!cancelled && !remoteAppliedRef.current) setConstText((prev) => prev || text); })
       .catch((error) => {
         console.error("constellation.toml の読み込みでエラー:", error);
-        setConstText("# デフォルトの constellation.toml を読み込めませんでした\n# このファイルは任意です");
+        if (!cancelled && !remoteAppliedRef.current) setConstText("# デフォルトの constellation.toml を読み込めませんでした\n# このファイルは任意です");
       });
 
     // Load groundstations.toml
@@ -338,11 +341,12 @@ export default function SatelliteEditor({
         if (!r.ok) throw new Error(`groundstations.toml の読み込みに失敗しました: ${r.status}`);
         return r.text();
       })
-      .then(setGsText)
+      .then((text) => { if (!cancelled && !remoteAppliedRef.current) setGsText((prev) => prev || text); })
       .catch((error) => {
         console.error("groundstations.toml の読み込みでエラー:", error);
-        setGsText("# デフォルトの groundstations.toml を読み込めませんでした\n# 地上局データを手動で入力してください");
+        if (!cancelled && !remoteAppliedRef.current) setGsText("# デフォルトの groundstations.toml を読み込めませんでした\n# 地上局データを手動で入力してください");
       });
+    return () => { cancelled = true; };
   }, []);
 
   const handleUpdate = () => {
@@ -460,6 +464,20 @@ export default function SatelliteEditor({
           </Button>
         </div>
         <div className="side-panel-content">
+          <div hidden={tab !== "editor"}>
+              <AiSessionPanel
+                getScenario={() => ({ satText, constText, gsText, startTime: new Date(startText + "Z").toISOString() })}
+                onApply={(remote, committed) => {
+                  remoteAppliedRef.current = true;
+                  setSatText(remote.satText);
+                  setConstText(remote.constText);
+                  setGsText(remote.gsText);
+                  setStartText(remote.startTime.slice(0, 16));
+                  onUpdate(committed);
+                  setUpdateFeedback("success");
+                }}
+              />
+          </div>
           <Tabs value={tab} onValueChange={(value) => setTab(value as "editor" | "analysis" | "option" | "isl")} className="w-full">
             <TabsContent value="editor" className="mt-0 bg-gray-800/40 border-2 border-gray-600 rounded-lg p-6 shadow-inner">
               <EditorTab
