@@ -46,6 +46,7 @@ function App() {
   const timeRef = useRef<HTMLDivElement | null>(null);
   const gsInfoRef = useRef<HTMLPreElement | null>(null);
 
+  const scenarioCommittedRef = useRef(false);
   const [satellites, setSatellites] = useState(INITIAL_SATS);
   const [groundStations, setGroundStations] = useState<GroundStation[]>([]);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
@@ -162,7 +163,7 @@ function App() {
   }, [speedExp, isPaused]);
 
   useEffect(() => {
-    loadGroundStations().then(setGroundStations);
+    loadGroundStations().then((stations) => { if (!scenarioCommittedRef.current) setGroundStations(stations); });
   }, []);
 
   // Latest camera framing, seeded from the saved view. Kept in a ref so it can
@@ -482,6 +483,9 @@ function App() {
         onWhiteBackgroundChange={setWhiteBackground}
         sceneRef={sceneRef}
         onUpdate={(scenario) => {
+          scenarioCommittedRef.current = true;
+          setSelectedIdx(null);
+          setSelectedGsIdx(null);
           setSatellites(scenario.satellites);
           setGroundStations(scenario.groundStations);
           setStartTime(scenario.startTime);

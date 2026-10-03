@@ -1,0 +1,10 @@
+.git
+.env*
+runs
+local
+dist
+node_modules
+scripts/gpu
+
+.agents
+skills-lock.json

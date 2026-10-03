@@ -1,6 +1,6 @@
 # Constellation Visualizer
 
-[![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-Live%20Demo-blue)](https://istellartech2.github.io/constellation-vis/)
+[![Vercel](https://img.shields.io/badge/Vercel-Live%20Demo-black)](https://constellation-vis-rho.vercel.app/)
 
 A web application that visualizes satellite constellations in Earth orbit.
 
@@ -60,7 +60,22 @@ bun run build
 
 ## Deployment
 
-Live build: https://istellartech2.github.io/constellation-vis/
+Live build: https://constellation-vis-rho.vercel.app/
+
+Hosted in the Interstellar Technologies Inc Vercel team. The GitHub repository is connected to Vercel: pushes to `main` deploy production; other branches receive preview deployments. `vercel.json` runs lint, the Bun test suite, TypeScript and Vite before publishing, so a failed check prevents release. GitHub Actions independently runs CI (including the native CLI build). The previous GitHub Pages workflow is retained for manual legacy deployments only.
+
+The root Vite base path is `/`; manual GitHub Pages builds explicitly set `BASE_URL=/constellation-vis/`.
+
+### Private AI sessions
+
+In the scenario menu, start **AI連携**, copy the connection instructions, and give them to an external AI. HTTP updates are automatically reflected in the connected browser. Sessions use independent browser/controller Bearer tokens, encrypted Redis data, a fixed one-hour TTL and optimistic revisions. Ending a session deletes the live record. See [`public/ai-api.md`](public/ai-api.md) for the protocol, privacy boundaries, limits and curl examples.
+
+Server-only environment variables:
+
+- `KV_REST_API_URL` and `KV_REST_API_TOKEN` (or `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`): supplied by the project's Upstash integration.
+- `SESSION_ENCRYPTION_KEY`: 32 random bytes encoded as 64 hexadecimal characters. Set as a sensitive production/preview variable; never use a `VITE_` prefix. Changing it invalidates existing encrypted sessions.
+
+For local API development use `vercel dev` with development Redis credentials and a separate local encryption key. Plain `bun run dev` runs only the Vite frontend. Production and preview Redis keys are namespaced separately. Secrets, local environments, simulation run outputs and local datasets are excluded from deploy uploads.
 
 ---
 
@@ -122,4 +137,4 @@ bun run build
 
 ## アプリケーション URL
 
-https://istellartech2.github.io/constellation-vis/
+https://constellation-vis-rho.vercel.app/

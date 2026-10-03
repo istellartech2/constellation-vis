@@ -1,8 +1,6 @@
-name: Deploy to GitHub Pages
+name: Legacy GitHub Pages (manual only)
 
 on:
-  push:
-    branches: ["main"]
   workflow_dispatch:
 
 concurrency:
