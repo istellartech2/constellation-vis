@@ -464,20 +464,6 @@ export default function SatelliteEditor({
           </Button>
         </div>
         <div className="side-panel-content">
-          <div hidden={tab !== "editor"}>
-              <AiSessionPanel
-                getScenario={() => ({ satText, constText, gsText, startTime: new Date(startText + "Z").toISOString() })}
-                onApply={(remote, committed) => {
-                  remoteAppliedRef.current = true;
-                  setSatText(remote.satText);
-                  setConstText(remote.constText);
-                  setGsText(remote.gsText);
-                  setStartText(remote.startTime.slice(0, 16));
-                  onUpdate(committed);
-                  setUpdateFeedback("success");
-                }}
-              />
-          </div>
           <Tabs value={tab} onValueChange={(value) => setTab(value as "editor" | "analysis" | "option" | "isl")} className="w-full">
             <TabsContent value="editor" className="mt-0 bg-gray-800/40 border-2 border-gray-600 rounded-lg p-6 shadow-inner">
               <EditorTab
@@ -592,6 +578,20 @@ export default function SatelliteEditor({
               />
             </TabsContent>
           </Tabs>
+          <div hidden={tab !== "editor"} className="mt-4">
+              <AiSessionPanel
+                getScenario={() => ({ satText, constText, gsText, startTime: new Date(startText + "Z").toISOString() })}
+                onApply={(remote, committed) => {
+                  remoteAppliedRef.current = true;
+                  setSatText(remote.satText);
+                  setConstText(remote.constText);
+                  setGsText(remote.gsText);
+                  setStartText(remote.startTime.slice(0, 16));
+                  onUpdate(committed);
+                  setUpdateFeedback("success");
+                }}
+              />
+          </div>
         </div>
       </div>
     </>
