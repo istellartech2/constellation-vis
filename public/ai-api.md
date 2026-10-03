@@ -4,7 +4,7 @@ This public application provides private, temporary browser sessions. No account
 
 ## Connect to a browser
 
-Open the application, open the menu, select シナリオ, then click **AI連携を開始**. This uploads the current editor configuration and display options to an encrypted temporary session. Click **AI向け接続情報をコピー** and give that text to your AI. The browser polls every two seconds while connected. Keep the page open; reloading loses the browser's credentials and requires a new session.
+Open the application, open the menu, select シナリオ, then click **AI連携を開始**. This uploads the current editor configuration and display options to an encrypted temporary session. Click **AI用の接続情報をコピー** and give that text to your AI. The browser polls every two seconds while connected. Keep the page open; reloading loses the browser's credentials and requires a new session.
 
 Each session expires **one hour after creation**, without extending its lifetime on use. **連携を終了** immediately deletes the active Redis record. Closing the page leaves it until expiry. Tokens remain only in browser memory. The current scenario remains visible in that browser after expiry/end. The AI integration does not persist credentials or the full scenario in browser storage. The existing application separately saves view preferences, including ISL endpoint selections, locally in the browser. Explicitly saving settings.toml downloads a local file.
 
