@@ -103,3 +103,34 @@ describe("remote scenario operations", () => {
     expect(() => applyScenarioOperation(s, { type: "bundle", text: 'junk = "x"' })).toThrow();
   });
 });
+
+
+describe("remote display options", () => {
+  it("merges validated display patches without changing scenario data and preserves them across operations", () => {
+    const original = { ...emptyScenario(), gsText: station, display: { whiteBackground: false, fovConeHalfAngleDeg: 30 } };
+    const updated = applyScenarioOperation(original, { type: "display", settings: { whiteBackground: true, earthTexture: "blue-marble", satelliteVisibleColor: "#abcdef" } });
+    expect(updated.gsText).toBe(station);
+    expect(updated.startTime).toBe(original.startTime);
+    expect(updated.display).toEqual({ whiteBackground: true, fovConeHalfAngleDeg: 30, earthTexture: "blue-marble", satelliteVisibleColor: "#abcdef" });
+    expect(original.display.whiteBackground).toBe(false);
+    expect(applyScenarioOperation(updated, { type: "clear" }).display).toEqual(updated.display);
+    expect(applyScenarioOperation(updated, { type: "replace", scenario: emptyScenario() }).display).toEqual(updated.display);
+    expect(applyScenarioOperation(updated, { type: "bundle", text: '# === satellites ===\n' }).display).toEqual(updated.display);
+    expect(applyScenarioOperation(emptyScenario(), { type: "clear" }).display).toBeUndefined();
+  });
+  it("rejects invalid settings before committing a revision", async () => {
+    const store = new MemoryStore(); const session = await create(store);
+    const path = `/${session.sessionId}`;
+    for (const settings of [null, [], { whiteBackground: 1 }, { satRadius: -1 }, { fovConeHalfAngleDeg: 90 }, { earthTexture: "https://example.com/secret" }, { satelliteVisibleColor: "red" }, { isl: {} }, { speedExp: Infinity }, JSON.parse('{"__proto__":{}}')]) {
+      expect(() => applyScenarioOperation(emptyScenario(), { type: "display", settings })).toThrow();
+    }
+    const invalid = await handleSessionRequest(request(path, "PUT", session.controllerToken, { expectedRevision: 0, operation: { type: "display", settings: { whiteBackground: "yes" } } }), store, now);
+    expect(invalid.status).toBe(400);
+    const accepted = await handleSessionRequest(request(path, "PUT", session.controllerToken, { expectedRevision: 0, operation: { type: "display", settings: { whiteBackground: true, fovConeHalfAngleDeg: 45 } } }), store, now);
+    expect(accepted.status).toBe(200);
+    const read = await (await handleSessionRequest(request(path, "GET", session.controllerToken), store, now)).json();
+    expect(read.revision).toBe(1);
+    expect(read.scenario.display).toEqual({ whiteBackground: true, fovConeHalfAngleDeg: 45 });
+    expect(decryptScenario(encryptScenario(read.scenario, Buffer.alloc(32, 1)), Buffer.alloc(32, 1)).display).toEqual(read.scenario.display);
+  });
+});

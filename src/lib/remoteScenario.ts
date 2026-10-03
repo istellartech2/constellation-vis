@@ -1,3 +1,4 @@
+import { validateRemoteDisplay, type RemoteDisplaySettings } from "./remoteDisplay";
 import { parse, stringify } from "smol-toml";
 import { parseTomlValue } from "./tomlParsers";
 import { buildConstellation, parseSatellitesToml, parseGroundStationsToml } from "./tomlParsers";
@@ -17,10 +18,12 @@ export interface RemoteScenario {
   constText: string;
   gsText: string;
   startTime: string;
+  display?: RemoteDisplaySettings;
 }
 export type ScenarioSection = "satellites" | "constellation" | "groundstations";
 export type ScenarioOperation =
   | { type: "replace"; scenario: RemoteScenario }
+  | { type: "display"; settings: RemoteDisplaySettings }
   | { type: "bundle"; text: string }
   | { type: "append"; section: ScenarioSection; text: string }
   | { type: "remove"; section: ScenarioSection; index: number }
@@ -47,6 +50,7 @@ function document(text: string, section: ScenarioSection) {
 export function commitRemoteScenario(value: unknown): CommittedScenario {
   if (!value || typeof value !== "object") throw new Error("scenario must be an object");
   const s = value as RemoteScenario;
+  if (s.display !== undefined) validateRemoteDisplay(s.display);
   if ([s.satText, s.constText, s.gsText, s.startTime].some((v) => typeof v !== "string")) {
     throw new Error("scenario requires satText, constText, gsText and startTime strings");
   }
@@ -101,7 +105,11 @@ export function applyScenarioOperation(current: RemoteScenario, value: unknown):
   if (!value || typeof value !== "object") throw new Error("operation must be an object");
   const operation = value as ScenarioOperation;
   let next = { ...current };
-  if (operation.type === "replace") next = operation.scenario;
+  if (operation.type === "replace") {
+    next = { ...operation.scenario, display: operation.scenario?.display ?? current.display };
+  } else if (operation.type === "display") {
+    next.display = { ...current.display, ...validateRemoteDisplay(operation.settings) };
+  }
   else if (operation.type === "bundle") {
     if (typeof operation.text !== "string") throw new Error("text is required");
     if (new TextEncoder().encode(operation.text).length > MAX_SCENARIO_BYTES) throw new Error("Bundle exceeds 256 KiB");
@@ -118,7 +126,7 @@ export function applyScenarioOperation(current: RemoteScenario, value: unknown):
       } else if (section) sections[section].push(line);
       else if (line.trim() && !line.trim().startsWith("#")) throw new Error("Use the application's settings.toml bundle format");
     }
-    next = { satText: sections.satellites.join("\n"), constText: sections.constellation.join("\n"), gsText: sections.groundstations.join("\n"), startTime };
+    next = { display: current.display, satText: sections.satellites.join("\n"), constText: sections.constellation.join("\n"), gsText: sections.groundstations.join("\n"), startTime };
   } else if (operation.type === "clear" && operation.section === undefined) {
     next = { ...next, satText: "", constText: "", gsText: "" };
   } else {
@@ -150,5 +158,5 @@ export function applyScenarioOperation(current: RemoteScenario, value: unknown):
     } else throw new Error("Unknown operation type");
   }
   commitRemoteScenario(next);
-  return { satText: next.satText, constText: next.constText, gsText: next.gsText, startTime: next.startTime };
+  return { satText: next.satText, constText: next.constText, gsText: next.gsText, startTime: next.startTime, ...(next.display === undefined ? {} : { display: validateRemoteDisplay(next.display) }) };
 }
