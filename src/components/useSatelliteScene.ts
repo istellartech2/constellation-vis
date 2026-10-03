@@ -26,6 +26,8 @@ export function useSatelliteScene(
 ) {
   const sceneRef = useRef<SatelliteScene | null>(null);
   const { cameraSnapshotRef } = options;
+  const previousDomain = useRef<Pick<SatelliteSceneParams, "startTime" | "satellites" | "groundStations"> | null>(null);
+  const preservedTime = useRef<Date | null>(null);
 
   useEffect(() => {
     sceneRef.current?.setCameraMode(params.cameraMode);
@@ -37,7 +39,11 @@ export function useSatelliteScene(
     // Use a small delay to ensure proper cleanup timing
     let scene: SatelliteScene | null = null;
     const timeout = setTimeout(() => {
-      scene = new SatelliteScene(params);
+      const previous = previousDomain.current;
+      const sameDomain = previous?.startTime === params.startTime
+        && previous.satellites === params.satellites && previous.groundStations === params.groundStations;
+      scene = new SatelliteScene(sameDomain && preservedTime.current ? { ...params, startTime: preservedTime.current } : params);
+      previousDomain.current = { startTime: params.startTime, satellites: params.satellites, groundStations: params.groundStations };
       sceneRef.current = scene;
       // Restore the saved camera framing on (re)build so reloads and
       // setting-driven rebuilds keep the user's viewpoint.
@@ -48,6 +54,7 @@ export function useSatelliteScene(
     return () => {
       clearTimeout(timeout);
       if (scene) {
+        preservedTime.current = scene.getSimulationTime();
         scene.dispose();
         sceneRef.current = null;
       }
