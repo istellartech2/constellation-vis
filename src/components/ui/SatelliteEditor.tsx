@@ -235,6 +235,7 @@ export default function SatelliteEditor({
   openTabRequest,
 }: Props) {
   const remoteAppliedRef = useRef(false);
+  const remoteStartTimeRef = useRef<string | null>(null);
   const [satText, setSatText] = useState("");
   const [constText, setConstText] = useState("");
   const [gsText, setGsText] = useState("");
@@ -590,9 +591,13 @@ export default function SatelliteEditor({
                   setConstText(remote.constText);
                   setGsText(remote.gsText);
                   setStartText(remote.startTime.slice(0, 16));
-                  if (remote.satText !== satText || remote.constText !== constText || remote.gsText !== gsText || remote.startTime.slice(0, 16) !== startText) {
+                  const domainChanged = remote.satText !== satText || remote.constText !== constText || remote.gsText !== gsText
+                    || remote.startTime.slice(0, 16) !== startText
+                    || remote.startTime !== (remoteStartTimeRef.current ?? new Date(startText + "Z").toISOString());
+                  if (domainChanged) {
                     onUpdate(committed);
                   }
+                  remoteStartTimeRef.current = remote.startTime;
                   if (remote.display) onApplyDisplay(remote.display);
                   setUpdateFeedback("success");
                 }}
