@@ -42,19 +42,19 @@ export default function NumberField({
   className,
   id,
 }: Props) {
-  const inputCls = `w-full px-3 py-2 text-sm bg-gray-800 border rounded focus:outline-none text-gray-100 ${
-    error ? "border-red-500" : "border-gray-600 focus:border-amber-500"
+  const inputCls = `w-full px-3 py-2 text-sm bg-sunken border rounded focus:outline-none text-fg ${
+    error ? "border-danger" : "border-line-strong focus:border-brand"
   }`;
 
   return (
     <div className={`space-y-1 ${className ?? ""}`}>
-      <Label htmlFor={id} className="text-sm text-gray-300 inline-flex items-center gap-1">
+      <Label htmlFor={id} className="text-sm text-fg-muted inline-flex items-center gap-1">
         <span>{label}</span>
         {help && <HelpTip text={help} />}
-        {unit && <span className="text-gray-400">({unit})</span>}
+        {unit && <span className="text-fg-muted">({unit})</span>}
       </Label>
       {readOnly ? (
-        <div className="w-full px-2 py-1.5 text-sm text-gray-300 tabular-nums">{value}</div>
+        <div className="w-full px-2 py-1.5 text-sm text-fg-muted tabular-nums">{value}</div>
       ) : (
         <input
           id={id}
@@ -75,8 +75,8 @@ export default function NumberField({
           className={inputCls}
         />
       )}
-      {error && <p className="text-xs text-red-400">{error}</p>}
-      {hint && <p className="text-xs text-gray-400">{hint}</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
+      {hint && <p className="text-xs text-fg-muted">{hint}</p>}
     </div>
   );
 }

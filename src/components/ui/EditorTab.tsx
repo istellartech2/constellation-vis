@@ -59,7 +59,7 @@ function countConstellationSatellites(text: string): number {
 
 function CountBadge({ value }: { value: number }) {
   return (
-    <span className="text-[11px] font-medium text-orange-200 bg-orange-900/50 border border-orange-700 rounded-full px-2 py-0.5 leading-none">
+    <span className="text-[11px] font-medium text-brand-text bg-brand-soft border border-brand/40 rounded-full px-2 py-0.5 leading-none">
       {value} 件
     </span>
   );
@@ -114,7 +114,7 @@ export default function EditorTab({
     <button
       type="button"
       onClick={handleClearAll}
-      className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-red-300 transition-colors px-1.5 py-0.5 rounded"
+      className="flex items-center gap-1 text-[11px] text-fg-muted hover:text-danger transition-colors px-1.5 py-0.5 rounded"
       title="衛星・コンステレーション・地上局をすべて削除"
     >
       <Trash2 className="h-3 w-3" />
@@ -145,7 +145,7 @@ export default function EditorTab({
         />
         <Button
           variant="outline"
-          className="w-full h-9 gap-2 bg-gray-700 hover:bg-gray-600 border-2 border-gray-500 hover:border-orange-400 text-white"
+          className="w-full h-9 gap-2 bg-raised hover:bg-raised-hover border-2 border-line-strong hover:border-brand text-fg"
           onClick={onImportClick}
         >
           <Globe className="h-4 w-4" />
@@ -158,16 +158,16 @@ export default function EditorTab({
           type="datetime-local"
           value={startText}
           onChange={(e) => onStartTextChange(e.target.value)}
-          className="w-full text-sm bg-gray-800 border-2 border-gray-500 text-gray-100 rounded px-2 py-1 focus:border-orange-500 focus:ring-1 focus:ring-orange-500/20 outline-none"
+          className="w-full text-sm bg-sunken border-2 border-line-strong text-fg rounded px-2 py-1 focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none"
         />
-        <p className="text-[11px] text-gray-400">UTC で指定します</p>
+        <p className="text-[11px] text-fg-muted">UTC で指定します</p>
       </PanelSection>
 
       <PanelSection title="設定ファイル" icon={<FileCog />}>
         <div className="grid grid-cols-2 gap-2">
           <Button
             variant="outline"
-            className="w-full h-9 gap-2 bg-gray-700 border-2 border-gray-500 text-white hover:bg-gray-600 hover:border-orange-400 font-medium"
+            className="w-full h-9 gap-2 bg-raised border-2 border-line-strong text-fg hover:bg-raised-hover hover:border-brand font-medium"
             onClick={onSaveBundle}
           >
             <Save className="h-4 w-4" />
@@ -175,7 +175,7 @@ export default function EditorTab({
           </Button>
           <Button
             variant="outline"
-            className="w-full h-9 gap-2 bg-gray-700 border-2 border-gray-500 text-white hover:bg-gray-600 hover:border-orange-400 font-medium"
+            className="w-full h-9 gap-2 bg-raised border-2 border-line-strong text-fg hover:bg-raised-hover hover:border-brand font-medium"
             onClick={() => bundleInputRef.current?.click()}
           >
             <FolderOpen className="h-4 w-4" />
@@ -200,8 +200,8 @@ export default function EditorTab({
         className={cn(
           "w-full font-semibold shadow-sm transition-all duration-150 text-sm h-9 rounded-md gap-2 border active:scale-[0.97]",
           updateFeedback === "success"
-            ? "bg-emerald-600 border-emerald-500 text-emerald-50"
-            : "bg-amber-600 border-amber-500 hover:bg-amber-700 hover:border-amber-600 text-amber-50",
+            ? "bg-success border-success text-emerald-50"
+            : "bg-brand border-brand hover:bg-brand-hover hover:border-brand text-brand-fg",
         )}
       >
         {updateFeedback === "success" ? (

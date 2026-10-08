@@ -43,7 +43,7 @@ export function HelpTip({ text }: { text: string }) {
         onFocus={open}
         onBlur={close}
         onClick={() => (pos ? close() : open())}
-        className="p-0.5 bg-transparent border-0 text-gray-500 hover:text-gray-300 transition-colors"
+        className="p-0.5 bg-transparent border-0 text-fg-subtle hover:text-fg-muted transition-colors"
       >
         <Info className="h-3 w-3" />
       </button>
@@ -63,7 +63,7 @@ export function HelpTip({ text }: { text: string }) {
             whiteSpace: "normal",
             textAlign: "left",
           }}
-          className="pointer-events-none z-[400] rounded-md border border-gray-600 bg-gray-800 p-2 text-gray-200 shadow-lg"
+          className="pointer-events-none z-[400] rounded-md border border-line-strong bg-sunken p-2 text-fg shadow-lg"
         >
           {text}
         </span>, document.body
@@ -98,7 +98,7 @@ export function InlineSlider({
   return (
     <div className="flex items-center gap-2">
       <span
-        className={`text-xs text-gray-300 ${labelW} shrink-0 inline-flex items-center gap-0.5 whitespace-nowrap`}
+        className={`text-xs text-fg-muted ${labelW} shrink-0 inline-flex items-center gap-0.5 whitespace-nowrap`}
       >
         {label}
         {help && <HelpTip text={help} />}
@@ -112,7 +112,7 @@ export function InlineSlider({
         onChange={(e) => onChange(Number(e.target.value))}
         className="flex-1 min-w-0"
       />
-      <span className="text-xs text-gray-300 tabular-nums w-[72px] text-right shrink-0">
+      <span className="text-xs text-fg-muted tabular-nums w-[72px] text-right shrink-0">
         {format(value)}
       </span>
     </div>
@@ -130,7 +130,7 @@ export function ColorChip({
   onChange: (color: string) => void;
 }) {
   return (
-    <label className="inline-flex items-center gap-1.5 text-xs text-gray-300">
+    <label className="inline-flex items-center gap-1.5 text-xs text-fg-muted">
       {label}
       <input
         type="color"

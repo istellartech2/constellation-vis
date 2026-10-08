@@ -107,31 +107,31 @@ export default function ConstellationShellForm({
     <div className="h-full min-h-0 overflow-y-auto xl:overflow-hidden xl:grid xl:grid-cols-[minmax(0,1fr)_18rem]">
       <section aria-label="シェルの設定" className="min-w-0 space-y-5 p-4 xl:overflow-y-auto">
         <div>
-          <h3 className="text-base font-semibold text-gray-100">シェルの設定</h3>
-          <p className="mt-1 text-xs text-gray-400">数値を変更すると、右側の計算結果が更新されます。</p>
+          <h3 className="text-base font-semibold text-fg">シェルの設定</h3>
+          <p className="mt-1 text-xs text-fg-muted">数値を変更すると、右側の計算結果が更新されます。</p>
         </div>
         <ShellFormBanner items={banner} />
         <div className="space-y-1">
-          <Label htmlFor={`shell-name-${shell.id}`} className="text-xs text-gray-300">名前</Label>
+          <Label htmlFor={`shell-name-${shell.id}`} className="text-xs text-fg-muted">名前</Label>
           <input
             id={`shell-name-${shell.id}`}
             type="text"
             value={shell.name ?? ""}
             onChange={(e) => onChange({ name: e.target.value })}
             placeholder="例: LEO-550km-53deg"
-            className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-600 rounded-md focus:border-amber-500 focus:outline-none text-gray-100"
+            className="w-full px-3 py-2 text-sm bg-sunken border border-line-strong rounded-md focus:border-brand focus:outline-none text-fg"
           />
         </div>
         <PatternSelect id={`shell-pattern-${shell.id}`} value={pattern} onChange={handlePatternChange} />
         {migrationNote && (
-          <p role="status" className="text-xs text-amber-300 bg-amber-900/20 border border-amber-800 rounded px-2 py-1">{migrationNote}</p>
+          <p role="status" className="text-xs text-brand-text bg-brand-soft border border-brand/40 rounded px-2 py-1">{migrationNote}</p>
         )}
         {shell.mission_objective && <MissionProvenance shell={shell} onRedesign={onRedesign} />}
         <section className="space-y-3" aria-label="基本設定">
-          <h4 className="text-sm font-medium text-gray-200">基本設定</h4>
+          <h4 className="text-sm font-medium text-fg">基本設定</h4>
           <PatternFieldGroup pattern={pattern} group="basic" shell={shell} shellIndex={shellIndex}
             errors={errors} derived={derived} onChange={onChange} />
-          {rgtInBasic && <div className="rounded border border-gray-700 bg-gray-900/40 p-3">{rgtSection}</div>}
+          {rgtInBasic && <div className="rounded border border-line bg-sunken p-3">{rgtSection}</div>}
         </section>
         <CollapsibleSubsection title="詳細設定・故障モデル">
           <PatternFieldGroup pattern={pattern} group="advanced" shell={shell} shellIndex={shellIndex}
@@ -144,18 +144,18 @@ export default function ConstellationShellForm({
         </CollapsibleSubsection>
       </section>
 
-      <aside aria-label="シェルの計算結果" className="min-w-0 border-t xl:border-t-0 xl:border-l border-gray-700 bg-gray-900/70 p-4 space-y-4 xl:overflow-y-auto">
+      <aside aria-label="シェルの計算結果" className="min-w-0 border-t xl:border-t-0 xl:border-l border-line bg-sunken p-4 space-y-4 xl:overflow-y-auto">
         <div>
-          <h3 className="text-sm font-semibold text-gray-100">計算結果</h3>
-          <p className="mt-1 text-xs text-gray-400">入力から自動計算・3D ビューへの反映前</p>
+          <h3 className="text-sm font-semibold text-fg">計算結果</h3>
+          <p className="mt-1 text-xs text-fg-muted">入力から自動計算・3D ビューへの反映前</p>
         </div>
         {derived ? (
           <>
             <dl className="grid grid-cols-2 gap-2">
               {summary.map((item) => (
-                <div key={item.label} className="rounded-lg border border-gray-700 bg-gray-800 p-3">
-                  <dt className="text-xs text-gray-400">{item.label}</dt>
-                  <dd className="mt-1 text-base font-semibold text-gray-100 tabular-nums">{item.value}</dd>
+                <div key={item.label} className="rounded-lg border border-line bg-sunken p-3">
+                  <dt className="text-xs text-fg-muted">{item.label}</dt>
+                  <dd className="mt-1 text-base font-semibold text-fg tabular-nums">{item.value}</dd>
                 </div>
               ))}
             </dl>
@@ -166,7 +166,7 @@ export default function ConstellationShellForm({
             </CollapsibleSubsection>
           </>
         ) : (
-          <p role="status" className="rounded border border-gray-700 p-3 text-sm text-gray-300">基本設定を入力すると計算結果が表示されます。</p>
+          <p role="status" className="rounded border border-line p-3 text-sm text-fg-muted">基本設定を入力すると計算結果が表示されます。</p>
         )}
       </aside>
     </div>
@@ -202,7 +202,7 @@ function MissionProvenance({
       : null;
 
   return (
-    <p className="text-xs text-gray-400 bg-gray-900/50 border border-gray-800 rounded px-2 py-1">
+    <p className="text-xs text-fg-muted bg-sunken border border-line rounded px-2 py-1">
       ミッション設計で作成（仰角 {shell.mission_min_elevation ?? "-"}° / 多重度{" "}
       {shell.mission_fold ?? "-"} / 目標 {Number(((shell.mission_availability_target ?? 0.9999) * 100).toFixed(4))}%・{shell.mission_availability_basis === "worstLatitude" ? "最悪緯度" : "領域平均"} / {region}
       {band ? ` ${band}` : ""}{objective ? ` / ${objective}` : ""}）
@@ -212,7 +212,7 @@ function MissionProvenance({
           <button
             type="button"
             onClick={() => onRedesign(shell)}
-            className="text-amber-300 hover:text-amber-200 underline"
+            className="text-brand-text hover:text-brand-text underline"
           >
             設計をやり直す
           </button>
@@ -228,9 +228,9 @@ function SocFeasibilityBadge({ derived }: { derived: ShellDerived | null }) {
 
   if (design.feasible) {
     return (
-      <p className="text-xs inline-flex items-center gap-2 rounded border border-emerald-700 bg-emerald-900/25 text-emerald-300 px-2 py-1">
+      <p className="text-xs inline-flex items-center gap-2 rounded border border-success/40 bg-success-soft text-success px-2 py-1">
         <span>成立</span>
-        <span className="text-emerald-400/80">
+        <span className="text-success">
           {design.planes} 面 × {design.satsPerPlane} 機 = {design.count} 機
         </span>
       </p>
@@ -238,9 +238,9 @@ function SocFeasibilityBadge({ derived }: { derived: ShellDerived | null }) {
   }
 
   return (
-    <p className="text-xs inline-flex items-center gap-2 rounded border border-amber-700 bg-amber-900/25 text-amber-300 px-2 py-1">
+    <p className="text-xs inline-flex items-center gap-2 rounded border border-brand/40 bg-brand-soft text-brand-text px-2 py-1">
       <span>不成立</span>
-      <span className="text-amber-400/80">
+      <span className="text-brand-text">
         {Number.isFinite(design.requiredSpanDeg)
           ? `必要 RAAN 範囲 ${design.requiredSpanDeg.toFixed(1)}° を満たす面数が見つかりません`
           : "被覆円が面内でつながりません"}

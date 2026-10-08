@@ -128,8 +128,8 @@ function FieldCell({
           help={spec.help}
           onChange={commit}
         />
-        {error && <p className="text-xs text-red-400">{error}</p>}
-        {hint && <p className="text-xs text-gray-500">{hint}</p>}
+        {error && <p className="text-xs text-danger">{error}</p>}
+        {hint && <p className="text-xs text-fg-subtle">{hint}</p>}
       </div>
     );
   }
@@ -191,13 +191,13 @@ function PearlSelector({
 
   return (
     <div className="space-y-1">
-      <Label className="text-xs text-gray-400 inline-flex items-center gap-1">
+      <Label className="text-xs text-fg-muted inline-flex items-center gap-1">
         <span>{spec.label}</span>
         <HelpTip text={spec.help} />
-        <span className="text-gray-500">({selected.size}/{count || "-"})</span>
+        <span className="text-fg-subtle">({selected.size}/{count || "-"})</span>
       </Label>
       {count === 0 ? (
-        <p className="text-xs text-gray-500">パール数 (N_so) を入力してください</p>
+        <p className="text-xs text-fg-subtle">パール数 (N_so) を入力してください</p>
       ) : (
         <div className="flex flex-wrap gap-1">
           {Array.from({ length: count }, (_, i) => i + 1).map((g) => {
@@ -210,8 +210,8 @@ function PearlSelector({
                 onClick={() => toggle(g)}
                 className={`min-w-7 px-1.5 py-0.5 text-xs rounded border tabular-nums transition-colors ${
                   on
-                    ? "bg-amber-600/80 border-amber-500 text-amber-50"
-                    : "bg-gray-800 border-gray-600 text-gray-400 hover:bg-gray-700"
+                    ? "bg-brand-soft border-brand text-fg"
+                    : "bg-sunken border-line-strong text-fg-muted hover:bg-raised-hover"
                 }`}
               >
                 {g}
@@ -220,8 +220,8 @@ function PearlSelector({
           })}
         </div>
       )}
-      {error && <p className="text-xs text-red-400">{error}</p>}
-      {hint && <p className="text-xs text-gray-500">{hint}</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
+      {hint && <p className="text-xs text-fg-subtle">{hint}</p>}
     </div>
   );
 }

@@ -25,15 +25,15 @@ interface Props {
 }
 
 const STATUS_META: Record<CandidateStatus, { label: string; cls: string }> = {
-  unverified: { label: "未検証", cls: "border-gray-600 text-gray-400 bg-gray-800/60" },
+  unverified: { label: "未検証", cls: "border-line-strong text-fg-muted bg-raised" },
   verifying: {
     label: "検証中",
-    cls: "border-amber-700 text-amber-300 bg-amber-900/30 animate-pulse",
+    cls: "border-brand/40 text-brand-text bg-brand-soft animate-pulse",
   },
-  verifiedOk: { label: "達成", cls: "border-emerald-700 text-emerald-300 bg-emerald-900/30" },
-  attention: { label: "要注意", cls: "border-amber-700 text-amber-300 bg-amber-900/30" },
-  verifiedNg: { label: "未達", cls: "border-red-700 text-red-300 bg-red-900/30" },
-  cancelled: { label: "中止", cls: "border-gray-600 text-gray-500 bg-gray-800/60" },
+  verifiedOk: { label: "達成", cls: "border-success/40 text-success bg-success-soft" },
+  attention: { label: "要注意", cls: "border-brand/40 text-brand-text bg-brand-soft" },
+  verifiedNg: { label: "未達", cls: "border-danger/40 text-danger bg-danger-soft" },
+  cancelled: { label: "中止", cls: "border-line-strong text-fg-subtle bg-raised" },
 };
 
 function pct(value: number | undefined, placeholder: string): string {
@@ -49,7 +49,7 @@ function phasingCell(candidate: DesignCandidate): string {
 }
 
 const HEADER_CLS =
-  "sticky top-0 z-10 bg-gray-900 text-gray-400 font-medium text-left px-2 py-1.5 border-b border-gray-700 whitespace-nowrap";
+  "sticky top-0 z-10 bg-surface-solid text-fg-muted font-medium text-left px-2 py-1.5 border-b border-line whitespace-nowrap";
 
 /**
  * Ranked candidate list. No header sorting: the order *is* the objective's
@@ -74,10 +74,10 @@ export default function DesignCandidateTable({
 
   return (
     <div className="flex flex-col min-h-0">
-      <p className="mb-2 text-xs text-gray-300">目標 {Number((targetAvailability * 100).toFixed(4))}% ・ {availabilityBasis === "worstLatitude" ? "最も条件の悪い緯度" : "領域全体の平均"}</p>
+      <p className="mb-2 text-xs text-fg-muted">目標 {Number((targetAvailability * 100).toFixed(4))}% ・ {availabilityBasis === "worstLatitude" ? "最も条件の悪い緯度" : "領域全体の平均"}</p>
       {/* Capped so the selected candidate's preview stays reachable; on a phone
           the inner table keeps its own horizontal scroll. */}
-      <div className="overflow-auto max-h-[32vh] md:max-h-[38vh] border border-gray-700 rounded">
+      <div className="overflow-auto max-h-[32vh] md:max-h-[38vh] border border-line rounded">
         <table className="w-full min-w-[560px] text-xs tabular-nums border-collapse">
           <thead>
             <tr>
@@ -104,14 +104,14 @@ export default function DesignCandidateTable({
                 <tr
                   key={candidate.key}
                   onClick={() => onSelect(candidate.key)}
-                  className={`cursor-pointer border-b border-gray-800 ${
-                    selected ? "bg-amber-900/40 text-amber-50" : "hover:bg-gray-800 text-gray-200"
+                  className={`cursor-pointer border-b border-line ${
+                    selected ? "bg-brand-soft text-fg" : "hover:bg-sunken text-fg"
                   } ${dominated ? "opacity-50" : ""}`}
                 >
                   <td className="px-2 py-1">
                     <button type="button" onClick={() => onSelect(candidate.key)}
                       aria-label={`候補 ${index + 1} を選択`} aria-pressed={selected}
-                      className="min-w-8 min-h-8 rounded text-gray-200 hover:bg-gray-700 focus-visible:outline-2 focus-visible:outline-amber-500">
+                      className="min-w-8 min-h-8 rounded text-fg hover:bg-raised-hover focus-visible:outline-2 focus-visible:outline-brand">
                       {index + 1}
                     </button>
                   </td>
@@ -119,7 +119,7 @@ export default function DesignCandidateTable({
                     <span className="inline-flex items-center gap-1">
                       <PatternBadge pattern={patternOf(candidate)} />
                       {dominated && (
-                        <span className="text-[10px] px-1 py-0.5 rounded border border-gray-600 text-gray-400 leading-none">
+                        <span className="text-[10px] px-1 py-0.5 rounded border border-line-strong text-fg-muted leading-none">
                           支配
                         </span>
                       )}
@@ -155,7 +155,7 @@ export default function DesignCandidateTable({
         <button
           type="button"
           onClick={onShowMore}
-          className="mt-1 self-start text-[11px] text-amber-300 hover:text-amber-200 underline"
+          className="mt-1 self-start text-[11px] text-brand-text hover:text-brand-text underline"
         >
           残り {hidden} 件を表示
         </button>

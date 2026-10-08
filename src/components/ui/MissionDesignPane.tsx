@@ -371,7 +371,7 @@ export default function MissionDesignPane({ epochIso, initialForm, onAddCandidat
             <button key={label} type="button" disabled={running || (target === 3 && !runRequest)}
               aria-current={step === target ? "step" : undefined}
               onClick={() => setStep(target)}
-              className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs sm:text-sm disabled:opacity-40 ${step === target ? "border-amber-500 bg-amber-900/20 text-amber-100" : "border-gray-700 bg-gray-800/50 text-gray-300 hover:border-gray-500"}`}>
+              className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs sm:text-sm disabled:opacity-40 ${step === target ? "border-brand bg-brand-soft text-fg" : "border-line bg-raised text-fg-muted hover:border-line-strong"}`}>
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-current text-xs">{target}</span>
               <span>{label}</span>
             </button>
@@ -379,9 +379,9 @@ export default function MissionDesignPane({ epochIso, initialForm, onAddCandidat
         })}
       </nav>
 
-      <div ref={stepBodyRef} className="flex-1 min-h-0 overflow-y-auto rounded-lg border border-gray-700 bg-gray-800/30 p-4">
-        <h3 ref={stepTitleRef} tabIndex={-1} className="text-base font-semibold text-gray-100 outline-none mb-1">{stepLabels[step - 1]}</h3>
-        <p className="text-xs text-gray-400 mb-4">{step === 1 ? "設計の目的と、カバーしたい地域を選びます。" : step === 2 ? "必要なカバレッジと高度の範囲を設定します。細かな探索条件は詳細設定から変更できます。" : "候補を選んで、検証結果を確認してからシェルに追加します。"}</p>
+      <div ref={stepBodyRef} className="flex-1 min-h-0 overflow-y-auto rounded-lg border border-line bg-raised p-4">
+        <h3 ref={stepTitleRef} tabIndex={-1} className="text-base font-semibold text-fg outline-none mb-1">{stepLabels[step - 1]}</h3>
+        <p className="text-xs text-fg-muted mb-4">{step === 1 ? "設計の目的と、カバーしたい地域を選びます。" : step === 2 ? "必要なカバレッジと高度の範囲を設定します。細かな探索条件は詳細設定から変更できます。" : "候補を選んで、検証結果を確認してからシェルに追加します。"}</p>
         {step !== 3 ? (
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
             <div className="space-y-4">
@@ -389,63 +389,63 @@ export default function MissionDesignPane({ epochIso, initialForm, onAddCandidat
                 section={step === 1 ? "objective" : "constraints"} />
               <ShellFormBanner items={formErrors.map((message) => ({message, severity: "error" as const}))} />
             </div>
-            <aside aria-label="設計条件の確認" className="space-y-3 rounded-lg border border-gray-700 bg-gray-900/70 p-4 self-start">
-              <h4 className="text-sm font-semibold text-gray-200">設計条件の確認</h4>
-              <p className="text-sm text-amber-200">{objectiveLabel}</p>
-              <dl className="space-y-2 text-sm text-gray-300">
-                <div><dt className="text-xs text-gray-400">目標可用率 / 評価基準</dt><dd>{form.targetAvailabilityPercent}% / {form.availabilityBasis === "worstLatitude" ? "最も条件の悪い緯度" : "領域全体の平均"}</dd></div>
-                <div><dt className="text-xs text-gray-400">対象地域</dt><dd>{form.region === "global" ? "全球" : `緯度 ${form.latMinDeg}〜${form.latMaxDeg}°`}</dd></div>
-                <div><dt className="text-xs text-gray-400">高度の範囲</dt><dd>{form.altitudeMinKm}〜{form.altitudeMaxKm} km</dd></div>
-                <div><dt className="text-xs text-gray-400">最低仰角 / 同時に見える衛星数</dt><dd>{form.minElevationDeg}° / {form.fold} 機以上</dd></div>
+            <aside aria-label="設計条件の確認" className="space-y-3 rounded-lg border border-line bg-sunken p-4 self-start">
+              <h4 className="text-sm font-semibold text-fg">設計条件の確認</h4>
+              <p className="text-sm text-brand-text">{objectiveLabel}</p>
+              <dl className="space-y-2 text-sm text-fg-muted">
+                <div><dt className="text-xs text-fg-muted">目標可用率 / 評価基準</dt><dd>{form.targetAvailabilityPercent}% / {form.availabilityBasis === "worstLatitude" ? "最も条件の悪い緯度" : "領域全体の平均"}</dd></div>
+                <div><dt className="text-xs text-fg-muted">対象地域</dt><dd>{form.region === "global" ? "全球" : `緯度 ${form.latMinDeg}〜${form.latMaxDeg}°`}</dd></div>
+                <div><dt className="text-xs text-fg-muted">高度の範囲</dt><dd>{form.altitudeMinKm}〜{form.altitudeMaxKm} km</dd></div>
+                <div><dt className="text-xs text-fg-muted">最低仰角 / 同時に見える衛星数</dt><dd>{form.minElevationDeg}° / {form.fold} 機以上</dd></div>
               </dl>
-              <p className="text-xs text-gray-400">候補を追加した後も、シェルの設定画面で調整できます。</p>
+              <p className="text-xs text-fg-muted">候補を追加した後も、シェルの設定画面で調整できます。</p>
             </aside>
           </div>
         ) : (
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <p className="text-sm text-gray-300">候補 {rows.length} 件 <span className="text-gray-400">・{objectiveLabel}</span></p>
+              <p className="text-sm text-fg-muted">候補 {rows.length} 件 <span className="text-fg-muted">・{objectiveLabel}</span></p>
               {running ? (
-                <Button variant="outline" size="sm" onClick={handleCancel} className="bg-gray-700 hover:bg-gray-600 text-gray-100 border-gray-500">計算を中止</Button>
+                <Button variant="outline" size="sm" onClick={handleCancel} className="bg-raised hover:bg-raised-hover text-fg border-line-strong">計算を中止</Button>
               ) : (
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setStep(2)} className="bg-gray-800 hover:bg-gray-700 text-gray-100 border-gray-600">条件を変更</Button>
+                  <Button variant="outline" size="sm" onClick={() => setStep(2)} className="bg-sunken hover:bg-raised-hover text-fg border-line-strong">条件を変更</Button>
                   {(resultsStale || phase === "error" || phase === "cancelled") && (
                     <Button size="sm" onClick={() => start(form)} disabled={formErrors.length > 0}
-                      className="bg-amber-600 hover:bg-amber-700 text-amber-50">再計算</Button>
+                      className="bg-brand hover:bg-brand-hover text-brand-fg">再計算</Button>
                   )}
                 </div>
               )}
             </div>
         {running && (
           <div className="space-y-1">
-            <div className="h-1 bg-gray-700 rounded overflow-hidden">
+            <div className="h-1 bg-raised rounded overflow-hidden">
               <div
-                className={`h-full bg-amber-500 transition-all ${indeterminate ? "animate-pulse" : ""}`}
+                className={`h-full bg-brand transition-all ${indeterminate ? "animate-pulse" : ""}`}
                 style={{ width: indeterminate ? "100%" : `${Math.round(progressRatio * 100)}%` }}
               />
             </div>
-            <p className="text-[11px] text-gray-400">{progressLabel}</p>
+            <p className="text-[11px] text-fg-muted">{progressLabel}</p>
           </div>
         )}
 
         <ShellFormBanner items={banner} />
 
         {resultsStale && rows.length > 0 && (
-          <p className="text-[11px] text-amber-300">
+          <p className="text-[11px] text-brand-text">
             制約が変更されました。再計算してください
           </p>
         )}
 
         {phase === "cancelled" && (
-          <p className="text-[11px] text-gray-400">
+          <p className="text-[11px] text-fg-muted">
             計算を中止しました。未検証の候補は解析値のみです。
           </p>
         )}
 
         {phase === "empty" && (
-          <div className="space-y-2 rounded border border-amber-800 bg-amber-900/20 p-2">
-            <p className="text-xs text-amber-200">
+          <div className="space-y-2 rounded border border-brand/40 bg-brand-soft p-2">
+            <p className="text-xs text-brand-text">
               この制約を満たす候補が見つかりませんでした。制約を緩和して再計算できます。
             </p>
             <div className="flex flex-wrap gap-1.5">
@@ -454,13 +454,13 @@ export default function MissionDesignPane({ epochIso, initialForm, onAddCandidat
                   key={suggestion.label}
                   type="button"
                   onClick={() => handleRelax(suggestion.form)}
-                  className="text-[11px] px-2 py-1 rounded-full border border-amber-700 text-amber-200 hover:bg-amber-900/40"
+                  className="text-[11px] px-2 py-1 rounded-full border border-brand/40 text-brand-text hover:bg-brand-soft"
                 >
                   {suggestion.label}
                 </button>
               ))}
               {relaxations.length === 0 && (
-                <span className="text-[11px] text-amber-300/80">
+                <span className="text-[11px] text-brand-text">
                   これ以上の自動緩和案はありません
                 </span>
               )}
@@ -487,7 +487,7 @@ export default function MissionDesignPane({ epochIso, initialForm, onAddCandidat
           </div>
         ) : (
           phase !== "empty" && (
-            <p className="text-xs text-gray-300 border border-gray-600 bg-gray-800/50 rounded p-4 text-center">
+            <p className="text-xs text-fg-muted border border-line-strong bg-raised rounded p-4 text-center">
               目的と制約を入力して「候補を計算」を押してください。
             </p>
           )
@@ -504,22 +504,22 @@ export default function MissionDesignPane({ epochIso, initialForm, onAddCandidat
         )}
       </div>
       {step === 3 && (
-        <div className="shrink-0 border-t border-gray-700 pt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <p className="text-xs text-gray-300 min-w-0 break-words">{selectedShell ? `選択中: ${selectedShell.name}` : "比較表から候補を選択してください。"}</p>
+        <div className="shrink-0 border-t border-line pt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <p className="text-xs text-fg-muted min-w-0 break-words">{selectedShell ? `選択中: ${selectedShell.name}` : "比較表から候補を選択してください。"}</p>
           <Button onClick={() => selectedShell && onAddCandidate(selectedShell)}
-            disabled={!selectedShell || resultsStale || running} className="bg-amber-600 hover:bg-amber-700 text-amber-50 shrink-0">
+            disabled={!selectedShell || resultsStale || running} className="bg-brand hover:bg-brand-hover text-brand-fg shrink-0">
             この候補をシェルとして追加
           </Button>
         </div>
       )}
       {step !== 3 && (
-        <div className="flex items-center justify-end gap-3 border-t border-gray-700 pt-3 shrink-0">
+        <div className="flex items-center justify-end gap-3 border-t border-line pt-3 shrink-0">
           {(step === 2 || runRequest) && (
             <Button variant="outline" onClick={() => setStep(step === 2 ? 1 : 3)}
-              className="mr-auto bg-gray-800 hover:bg-gray-700 text-gray-100 border-gray-600">{step === 2 ? "目的に戻る" : "前の候補を見る"}</Button>
+              className="mr-auto bg-sunken hover:bg-raised-hover text-fg border-line-strong">{step === 2 ? "目的に戻る" : "前の候補を見る"}</Button>
           )}
           <Button onClick={() => step === 1 ? setStep(2) : start(form)} disabled={step === 2 && formErrors.length > 0}
-            className="bg-amber-600 hover:bg-amber-700 text-amber-50">{step === 1 ? "条件を設定する" : "この条件で候補を計算"}</Button>
+            className="bg-brand hover:bg-brand-hover text-brand-fg">{step === 1 ? "条件を設定する" : "この条件で候補を計算"}</Button>
         </div>
       )}
     </div>
@@ -585,12 +585,12 @@ function verifiedItems(candidate: DesignCandidate): DerivedInfoItem[] {
 
 function CandidatePreview({ candidate, derived }: { candidate: DesignCandidate; derived: ShellDerived | null }) {
   return (
-    <aside aria-label="選択した候補の詳細" className="space-y-3 rounded-lg border border-gray-700 bg-gray-900/70 p-3">
-      <h4 className="text-sm font-semibold text-gray-100">選択した候補</h4>
+    <aside aria-label="選択した候補の詳細" className="space-y-3 rounded-lg border border-line bg-sunken p-3">
+      <h4 className="text-sm font-semibold text-fg">選択した候補</h4>
       {derived ? (
         <DerivedInfoStrip title="配置と軌道" columns={1} items={geometryItems(derived)} />
       ) : (
-        <p className="text-xs text-gray-400">この候補の計算結果を表示できませんでした。</p>
+        <p className="text-xs text-fg-muted">この候補の計算結果を表示できませんでした。</p>
       )}
       <DerivedInfoStrip title="検証結果" columns={1} items={verifiedItems(candidate)} />
     </aside>

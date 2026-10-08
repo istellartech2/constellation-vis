@@ -304,8 +304,8 @@ export default function SatelliteInfo({
                 disabled={selected}
                 className={
                   selected
-                    ? "bg-cyan-400/90 text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.4),0_0_0_1px_rgba(34,211,238,0.4)] hover:bg-cyan-400/90"
-                    : "bg-transparent text-slate-100 hover:bg-white/14 hover:text-white"
+                    ? "bg-info-soft text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.4),0_0_0_1px_rgba(34,211,238,0.4)] hover:bg-info-soft"
+                    : "bg-transparent text-fg hover:bg-raised-hover hover:text-fg"
                 }
                 onClick={() => onCameraModeChange(option.mode)}
               >

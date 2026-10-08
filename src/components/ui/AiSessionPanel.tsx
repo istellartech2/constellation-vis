@@ -102,44 +102,44 @@ export default function AiSessionPanel({ getScenario, onApply }: Props) {
     "GETでapplicationStatusがappliedになったことを確認してください。409の場合はGETし直してください。",
   ].join("\n") : "";
   return (
-    <section className="mb-5 rounded-xl border border-slate-700 bg-slate-900 p-4 text-slate-100" aria-label="AI連携">
+    <section className="mb-5 rounded-xl border border-line bg-surface-solid p-4 text-fg" aria-label="AI連携">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="flex items-center gap-2 text-sm font-semibold"><PlugZap aria-hidden="true" className="size-4 text-blue-400" />AI連携</h3>
-        {session && <span className="flex items-center gap-1.5 rounded-full bg-emerald-400/10 px-2 py-1 text-xs font-medium text-emerald-300"><span className="size-1.5 rounded-full bg-emerald-400" aria-hidden="true" />連携中</span>}
+        <h3 className="flex items-center gap-2 text-sm font-semibold"><PlugZap aria-hidden="true" className="size-4 text-info" />AI連携</h3>
+        {session && <span className="flex items-center gap-1.5 rounded-full bg-success-soft px-2 py-1 text-xs font-medium text-success"><span className="size-1.5 rounded-full bg-success" aria-hidden="true" />連携中</span>}
       </div>
-      <p className="mt-2 text-sm leading-relaxed text-slate-300">
+      <p className="mt-2 text-sm leading-relaxed text-fg-muted">
         {session ? "接続情報をコピーして、AIのチャットに貼り付けてください。" : "AIから、この画面のシナリオと表示設定を操作できます。"}
       </p>
-      {!session && <p className="mt-2 text-xs text-slate-400">連携を開始 → 接続情報をAIに渡す</p>}
+      {!session && <p className="mt-2 text-xs text-fg-muted">連携を開始 → 接続情報をAIに渡す</p>}
       <div className="mt-4">
         {session ? <>
-          <Button className="h-11 w-full cursor-pointer bg-blue-600 text-white shadow-sm hover:bg-blue-500 focus-visible:ring-blue-400" disabled={busy} onClick={async () => {
+          <Button className="h-11 w-full cursor-pointer bg-info text-white shadow-sm hover:bg-info focus-visible:ring-info" disabled={busy} onClick={async () => {
             try { await navigator.clipboard.writeText(instructions); setCopyFeedback("copied"); }
             catch { setShowCredentials(true); setCopyFeedback("manual"); }
           }}>
             {copyFeedback === "copied" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
             {copyFeedback === "copied" ? "コピー済み・AIに貼り付け" : "AI用の接続情報をコピー"}
           </Button>
-          <p role="status" className="mt-2 text-xs text-blue-200">
+          <p role="status" className="mt-2 text-xs text-info">
             {copyFeedback === "copied" ? "AIに貼り付けて、変更したい内容を伝えてください。" : copyFeedback === "manual" ? "下の接続情報を選択してコピーしてください。" : "接続情報は秘密として扱ってください。"}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" className="h-9 cursor-pointer border-slate-600 bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white" disabled={busy} aria-expanded={showCredentials} aria-controls="ai-session-credentials" onClick={() => setShowCredentials((v) => !v)}>
+            <Button size="sm" variant="outline" className="h-9 cursor-pointer border-line-strong bg-sunken text-fg hover:bg-raised-hover hover:text-fg" disabled={busy} aria-expanded={showCredentials} aria-controls="ai-session-credentials" onClick={() => setShowCredentials((v) => !v)}>
               {showCredentials ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}{showCredentials ? "接続情報を隠す" : "接続情報を表示"}
             </Button>
-            <Button size="sm" variant="outline" className="h-9 cursor-pointer border-slate-600 bg-slate-800 text-slate-200 hover:border-red-400 hover:bg-red-950 hover:text-red-200" disabled={busy} onClick={() => void end()}>
+            <Button size="sm" variant="outline" className="h-9 cursor-pointer border-line-strong bg-sunken text-fg hover:border-danger hover:bg-danger-soft hover:text-danger" disabled={busy} onClick={() => void end()}>
               {busy ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Unplug aria-hidden="true" />}{busy ? "終了中…" : "連携を終了"}
             </Button>
           </div>
-        </> : <Button className="h-11 w-full cursor-pointer bg-blue-600 text-white shadow-sm hover:bg-blue-500 focus-visible:ring-blue-400" disabled={busy} onClick={() => void start()}>
+        </> : <Button className="h-11 w-full cursor-pointer bg-info text-white shadow-sm hover:bg-info focus-visible:ring-info" disabled={busy} onClick={() => void start()}>
           {busy ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <PlugZap aria-hidden="true" />}{busy ? "開始中…" : "AI連携を開始"}
         </Button>}
       </div>
-      {showCredentials && session && <textarea id="ai-session-credentials" aria-label="AI用の接続情報（秘密）" readOnly value={instructions} onFocus={(e) => e.target.select()} className="mt-3 h-40 w-full rounded-md border border-slate-600 bg-slate-950 p-3 font-mono text-xs text-slate-200 focus-visible:outline-2 focus-visible:outline-blue-400" />}
-      {status && <p role="status" className="mt-3 text-xs leading-relaxed text-slate-300">{status}</p>}
-      {session && <p className="mt-2 text-xs text-slate-400">{new Date(session.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}まで有効 · この画面を開いたままお使いください</p>}
-      <details className="mt-3 border-t border-slate-700 pt-3 text-xs text-slate-400">
-        <summary className="w-fit cursor-pointer rounded hover:text-slate-200 focus-visible:outline-2 focus-visible:outline-blue-400">データの保存と連携の終了について</summary>
+      {showCredentials && session && <textarea id="ai-session-credentials" aria-label="AI用の接続情報（秘密）" readOnly value={instructions} onFocus={(e) => e.target.select()} className="mt-3 h-40 w-full rounded-md border border-line-strong bg-sunken p-3 font-mono text-xs text-fg focus-visible:outline-2 focus-visible:outline-info" />}
+      {status && <p role="status" className="mt-3 text-xs leading-relaxed text-fg-muted">{status}</p>}
+      {session && <p className="mt-2 text-xs text-fg-muted">{new Date(session.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}まで有効 · この画面を開いたままお使いください</p>}
+      <details className="mt-3 border-t border-line pt-3 text-xs text-fg-muted">
+        <summary className="w-fit cursor-pointer rounded hover:text-fg focus-visible:outline-2 focus-visible:outline-info">データの保存と連携の終了について</summary>
         <p className="mt-2 leading-relaxed">設定は非公開の一時データとして保存され、1時間で自動削除されます。「連携を終了」でも削除できます。終了後も画面の表示は残ります。再読み込みした場合は、もう一度連携を開始してください。</p>
       </details>
     </section>

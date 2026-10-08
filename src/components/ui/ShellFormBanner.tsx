@@ -18,14 +18,14 @@ export default function ShellFormBanner({ items, className }: Props) {
   return (
     <div className={`space-y-2 ${className ?? ""}`}>
       {errors.length > 0 && (
-        <ul className="text-xs bg-red-900/30 border border-red-700 text-red-300 rounded px-2 py-1.5 space-y-0.5">
+        <ul className="text-xs bg-danger-soft border border-danger/40 text-danger rounded px-2 py-1.5 space-y-0.5">
           {errors.map((item, i) => (
             <li key={i}>{item.message}</li>
           ))}
         </ul>
       )}
       {warnings.length > 0 && (
-        <ul className="text-xs bg-amber-900/25 border border-amber-700 text-amber-300 rounded px-2 py-1.5 space-y-0.5">
+        <ul className="text-xs bg-brand-soft border border-brand/40 text-brand-text rounded px-2 py-1.5 space-y-0.5">
           {warnings.map((item, i) => (
             <li key={i}>{item.message}</li>
           ))}

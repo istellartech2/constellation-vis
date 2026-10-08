@@ -14,8 +14,8 @@ export default function PatternBadge({ pattern, className }: Props) {
   const label = PATTERN_SHORT_LABELS[resolvedPattern];
   const isFlowerFamily = FLOWER_FAMILY_PATTERNS.has(resolvedPattern);
   const familyCls = isFlowerFamily
-    ? "border-violet-700 text-violet-300 bg-violet-900/30"
-    : "border-sky-700 text-sky-300 bg-sky-900/30";
+    ? "border-info/40 text-info bg-info-soft"
+    : "border-info/40 text-info bg-info-soft";
 
   return (
     <span

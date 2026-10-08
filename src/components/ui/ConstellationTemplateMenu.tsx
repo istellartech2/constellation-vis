@@ -48,7 +48,7 @@ export default function ConstellationTemplateMenu({ onSelect, className }: Props
     <select
       value=""
       onChange={handleChange}
-      className={`w-full px-2 py-1 text-xs bg-gray-800 border border-gray-600 rounded text-gray-100 focus:border-amber-500 focus:outline-none ${className ?? ""}`}
+      className={`w-full px-2 py-1 text-xs bg-sunken border border-line-strong rounded text-fg focus:border-brand focus:outline-none ${className ?? ""}`}
     >
       <option value="">テンプレートから追加...</option>
       {CONSTELLATION_PRESETS.map((group, gi) => (

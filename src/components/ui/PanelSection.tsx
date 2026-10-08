@@ -25,17 +25,17 @@ export default function PanelSection({
     <>
       <div className="flex items-center gap-1.5 min-w-0">
         {icon && (
-          <span className="text-orange-300 shrink-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+          <span className="text-brand-text shrink-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
             {icon}
           </span>
         )}
-        <span className="text-xs font-semibold uppercase tracking-wide text-gray-200 truncate">
+        <span className="text-xs font-semibold uppercase tracking-wide text-fg truncate">
           {title}
         </span>
       </div>
       {collapsible && (
         <ChevronDown
-          className={`h-3.5 w-3.5 text-gray-400 transition-transform ${
+          className={`h-3.5 w-3.5 text-fg-muted transition-transform ${
             open ? "rotate-180" : ""
           }`}
         />

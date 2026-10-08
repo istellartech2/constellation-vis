@@ -430,37 +430,17 @@ export default function SatelliteEditor({
             onValueChange={(value) => setTab(value as "editor" | "analysis" | "option" | "isl")}
             className="flex-1 min-w-0"
           >
-            <TabsList className="grid w-full grid-cols-4 h-10 bg-gray-700/80 rounded-lg p-1 shadow-inner border border-gray-600">
-              <TabsTrigger
-                value="editor"
-                className="data-[state=active]:!bg-orange-600 data-[state=active]:!text-orange-50 data-[state=active]:!shadow-sm data-[state=active]:!border-transparent hover:bg-gray-600/60 text-gray-200 transition-colors rounded-md font-medium"
-              >
-                シナリオ
-              </TabsTrigger>
-              <TabsTrigger
-                value="isl"
-                className="data-[state=active]:!bg-orange-600 data-[state=active]:!text-orange-50 data-[state=active]:!shadow-sm data-[state=active]:!border-transparent hover:bg-gray-600/60 text-gray-200 transition-colors rounded-md font-medium"
-              >
-                通信
-              </TabsTrigger>
-              <TabsTrigger
-                value="analysis"
-                className="data-[state=active]:!bg-orange-600 data-[state=active]:!text-orange-50 data-[state=active]:!shadow-sm data-[state=active]:!border-transparent hover:bg-gray-600/60 text-gray-200 transition-colors rounded-md font-medium"
-              >
-                解析
-              </TabsTrigger>
-              <TabsTrigger
-                value="option"
-                className="data-[state=active]:!bg-orange-600 data-[state=active]:!text-orange-50 data-[state=active]:!shadow-sm data-[state=active]:!border-transparent hover:bg-gray-600/60 text-gray-200 transition-colors rounded-md font-medium"
-              >
-                表示
-              </TabsTrigger>
+            <TabsList className="grid w-full grid-cols-4 h-9">
+              <TabsTrigger value="editor" className="text-[13px]">シナリオ</TabsTrigger>
+              <TabsTrigger value="isl" className="text-[13px]">通信</TabsTrigger>
+              <TabsTrigger value="analysis" className="text-[13px]">解析</TabsTrigger>
+              <TabsTrigger value="option" className="text-[13px]">表示</TabsTrigger>
             </TabsList>
           </Tabs>
           <Button
             variant="ghost"
             size="icon"
-            className="side-panel-close"
+            className="size-9 shrink-0"
             onClick={() => setOpen(false)}
             aria-label="閉じる"
           >
@@ -469,7 +449,7 @@ export default function SatelliteEditor({
         </div>
         <div className="side-panel-content">
           <Tabs value={tab} onValueChange={(value) => setTab(value as "editor" | "analysis" | "option" | "isl")} className="w-full">
-            <TabsContent value="editor" className="mt-0 bg-gray-800/40 border-2 border-gray-600 rounded-lg p-6 shadow-inner">
+            <TabsContent value="editor" className="mt-0">
               <EditorTab
                 satText={satText}
                 constText={constText}
@@ -487,7 +467,7 @@ export default function SatelliteEditor({
               />
             </TabsContent>
             
-            <TabsContent value="analysis" className="mt-0 bg-gray-800/40 border-2 border-gray-600 rounded-lg p-6 shadow-inner">
+            <TabsContent value="analysis" className="mt-0">
               <AnalysisTab
                 satText={satText}
                 constText={constText}
@@ -506,7 +486,7 @@ export default function SatelliteEditor({
               />
             </TabsContent>
 
-            <TabsContent value="isl" className="mt-0 bg-gray-800/40 border-2 border-gray-600 rounded-lg p-6 shadow-inner">
+            <TabsContent value="isl" className="mt-0">
               <IslTab
                 gsText={gsText}
                 islSettings={islSettings}
@@ -535,7 +515,7 @@ export default function SatelliteEditor({
               />
             </TabsContent>
 
-            <TabsContent value="option" className="mt-0 bg-gray-800/40 border-2 border-gray-600 rounded-lg p-6 shadow-inner">
+            <TabsContent value="option" className="mt-0">
               <OptionTab
                 satRadius={satRadius}
                 onSatRadiusChange={onSatRadiusChange}

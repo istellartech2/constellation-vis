@@ -1,94 +1,183 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@theme {
-  --color-background: oklch(0.09 0.05 240);
-  --color-foreground: oklch(0.98 0.02 240);
-  --color-card: oklch(0.09 0.05 240);
-  --color-card-foreground: oklch(0.98 0.02 240);
-  --color-popover: oklch(0.09 0.05 240);
-  --color-popover-foreground: oklch(0.98 0.02 240);
-  --color-primary: oklch(0.98 0.02 240);
-  --color-primary-foreground: oklch(0.09 0.05 240);
-  --color-secondary: oklch(0.18 0.05 240);
-  --color-secondary-foreground: oklch(0.98 0.02 240);
-  --color-muted: oklch(0.18 0.05 240);
-  --color-muted-foreground: oklch(0.65 0.02 240);
-  --color-accent: oklch(0.18 0.05 240);
-  --color-accent-foreground: oklch(0.98 0.02 240);
-  --color-destructive: oklch(0.59 0.22 27);
-  --color-border: oklch(0.18 0.05 240);
-  --color-input: oklch(0.18 0.05 240);
-  --color-ring: oklch(0.84 0.05 240);
-  --color-bg-primary: oklch(0.08 0.01 240);
-  --color-bg-panel: oklch(0.12 0.01 240 / 0.9);
-  --color-accent-custom: oklch(0.60 0.15 35);
-  --color-accent-hover: oklch(0.55 0.15 35);
-  --color-text-primary: oklch(0.95 0.01 240);
-  --color-text-secondary: oklch(0.65 0.01 240);
-  --color-border-primary: oklch(0.28 0.01 240);
-  --color-border-secondary: oklch(0.33 0.01 240);
-  --color-dark-gray: oklch(0.28 0.01 240);
-  --color-light-gray: oklch(0.95 0.01 240);
-  --font-ui: Inter, system-ui, sans-serif;
-  --font-system: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  --radius: 0.5rem;
+/*
+ * Design tokens
+ * ------------------------------------------------------------------
+ * Semantic colours live on :root and are switched by <html data-theme>.
+ * Components should use the Tailwind aliases below (bg-surface, text-fg,
+ * border-line, bg-brand …) instead of raw gray/orange/hex values so both
+ * themes stay consistent.
+ */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --app-bg: #07090d;
+  --surface: oklch(0.19 0.008 260 / 0.94);      /* floating panels */
+  --surface-solid: oklch(0.19 0.008 260);
+  --raised: oklch(0.235 0.009 260);            /* cards / buttons */
+  --raised-hover: oklch(0.275 0.01 260);
+  --sunken: oklch(0.155 0.008 260);            /* inputs, wells */
+  --line: oklch(1 0 0 / 0.08);
+  --line-strong: oklch(1 0 0 / 0.15);
+  --fg: oklch(0.95 0.005 260);
+  --fg-muted: oklch(0.74 0.012 260);
+  --fg-subtle: oklch(0.56 0.012 260);
+  --brand: #f07214;
+  --brand-hover: #ff8a33;
+  --brand-fg: #ffffff;
+  --brand-soft: oklch(0.7 0.18 50 / 0.16);
+  --brand-text: #ff9a4d;                       /* brand coloured text on surface */
+  --danger: oklch(0.66 0.2 25);
+  --danger-soft: oklch(0.66 0.2 25 / 0.15);
+  --success: oklch(0.74 0.15 155);
+  --success-soft: oklch(0.74 0.15 155 / 0.15);
+  --warning: oklch(0.8 0.15 85);
+  --warning-soft: oklch(0.8 0.15 85 / 0.15);
+  --info: oklch(0.72 0.12 235);
+  --info-soft: oklch(0.72 0.12 235 / 0.15);
+  --hud-fg: #ffffff;
+  --hud-shadow: 0 1px 3px rgb(0 0 0 / 0.7);
+  --shadow-panel: 0 12px 40px rgb(0 0 0 / 0.45), 0 0 0 1px var(--line);
+  --overlay: rgb(0 0 0 / 0.6);
 }
 
-/* Global base styles */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --app-bg: #eef0f3;
+  --surface: oklch(0.99 0.002 260 / 0.97);
+  --surface-solid: oklch(0.995 0 0);
+  --raised: oklch(0.965 0.003 260);
+  --raised-hover: oklch(0.93 0.005 260);
+  --sunken: oklch(0.975 0.003 260);
+  --line: oklch(0.2 0.02 260 / 0.09);
+  --line-strong: oklch(0.2 0.02 260 / 0.17);
+  --fg: oklch(0.22 0.02 260);
+  --fg-muted: oklch(0.45 0.02 260);
+  --fg-subtle: oklch(0.62 0.015 260);
+  --brand: #e5620a;
+  --brand-hover: #c95407;
+  --brand-fg: #ffffff;
+  --brand-soft: oklch(0.7 0.18 50 / 0.12);
+  --brand-text: #c4520a;
+  --danger: oklch(0.55 0.21 25);
+  --danger-soft: oklch(0.55 0.21 25 / 0.1);
+  --success: oklch(0.55 0.14 155);
+  --success-soft: oklch(0.55 0.14 155 / 0.1);
+  --warning: oklch(0.6 0.14 75);
+  --warning-soft: oklch(0.75 0.15 85 / 0.18);
+  --info: oklch(0.52 0.14 245);
+  --info-soft: oklch(0.52 0.14 245 / 0.1);
+  --hud-fg: #ffffff;
+  --hud-shadow: 0 1px 3px rgb(0 0 0 / 0.7);
+  --shadow-panel: 0 10px 32px rgb(15 23 42 / 0.16), 0 0 0 1px var(--line);
+  --overlay: rgb(15 23 42 / 0.35);
+}
+
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  --radius: 0.625rem;
+  /* shadcn/ui variables mapped onto the semantic tokens */
+  --background: var(--surface-solid);
+  --foreground: var(--fg);
+  --card: var(--raised);
+  --card-foreground: var(--fg);
+  --popover: var(--surface-solid);
+  --popover-foreground: var(--fg);
+  --primary: var(--brand);
+  --primary-foreground: var(--brand-fg);
+  --secondary: var(--raised);
+  --secondary-foreground: var(--fg);
+  --muted: var(--raised);
+  --muted-foreground: var(--fg-muted);
+  --accent: var(--raised-hover);
+  --accent-foreground: var(--fg);
+  --destructive: var(--danger);
+  --border: var(--line);
+  --input: var(--line-strong);
+  --ring: var(--brand);
+  /* legacy aliases still referenced by analysis styles */
+  --text-primary: var(--fg);
+  --text-secondary: var(--fg-muted);
+  --border-secondary: var(--line-strong);
+
+  --app-font-sans: "Inter", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", system-ui, sans-serif;
+  --app-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  font-family: var(--app-font-sans);
   line-height: 1.5;
   font-weight: 400;
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  color: var(--fg);
+  background-color: var(--app-bg);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+}
+
+@theme inline {
+  --font-sans: var(--app-font-sans);
+  --font-mono: var(--app-font-mono);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --color-surface: var(--surface);
+  --color-surface-solid: var(--surface-solid);
+  --color-raised: var(--raised);
+  --color-raised-hover: var(--raised-hover);
+  --color-sunken: var(--sunken);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-fg: var(--brand-fg);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-text: var(--brand-text);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+@layer base {
+  * {
+    border-color: var(--line);
+  }
 }
 
 body {
   margin: 0;
-  display: flex;
-  align-items: center;
   min-width: 20rem;
   min-height: 100vh;
-  font-family: var(--font-system);
-  background-color: #141518;
+  background-color: var(--app-bg);
+  color: var(--fg);
 }
 
 html, body, #root, .container {
@@ -96,91 +185,86 @@ html, body, #root, .container {
   height: 100%;
   margin: 0;
   overflow: hidden;
-  font-family: var(--font-system);
 }
 
 a {
   font-weight: 500;
-  color: rgb(59 130 246);
+  color: var(--info);
   text-decoration: none;
 }
 a:hover {
-  color: rgb(96 165 250);
-}
-
-h1 {
-  font-size: 3rem;
-  line-height: 1.2;
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
+  text-decoration: underline;
 }
 
 /* Component styles - simplified for Tailwind v4 */
 
 /* Analysis component styles */
-.analysis-secondary-button {
-  background: transparent;
-  color: #999faa;
-  border: 1px solid #555;
-  padding: 0.25rem 0.75rem;
-  border-radius: 0.25rem;
+.analysis-secondary-button,
+.analysis-primary-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 2rem;
+  padding: 0 0.75rem;
+  border-radius: 0.5rem;
   cursor: pointer;
-  font-size: 0.875rem;
-  font-weight: 400;
-  transition: all 0.2s;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.analysis-secondary-button {
+  background: var(--raised);
+  color: var(--fg);
+  border: 1px solid var(--line);
 }
 
 .analysis-secondary-button:hover {
-  background: rgba(237, 109, 0, 0.1);
-  border-color: #da5800;
-  color: #f1f1f1;
-}
-
-.analysis-secondary-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+  background: var(--raised-hover);
 }
 
 .analysis-primary-button {
-  background: #ed6d00;
-  color: white;
-  border: none;
-  padding: 0.125rem 0.5rem;
-  border-radius: 0.25rem;
-  cursor: pointer;
-  transition: all 0.2s;
+  background: var(--brand);
+  color: var(--brand-fg);
+  border: 1px solid transparent;
 }
 
 .analysis-primary-button:hover {
-  background: #da5800;
+  background: var(--brand-hover);
 }
 
+.analysis-secondary-button:disabled,
 .analysis-primary-button:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
 .analysis-close-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
   background: transparent;
   border: none;
-  color: #999faa;
+  border-radius: 0.5rem;
+  color: var(--fg-muted);
   font-size: 1.25rem;
   cursor: pointer;
-  padding: 0 0.375rem;
+  padding: 0;
+}
+
+.analysis-close-button:hover {
+  background: var(--raised);
+  color: var(--fg);
 }
 
 .analysis-popup-overlay {
   position: fixed;
   inset: 0;
-  background-color: rgb(0 0 0 / 0.7);
+  background-color: var(--overlay);
+  backdrop-filter: blur(2px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -188,11 +272,12 @@ h1 {
 }
 
 .analysis-popup-container {
-  background-color: rgb(31 41 55);
-  border: 1px solid rgb(75 85 99);
-  border-radius: 0.5rem;
-  padding: 1rem;
-  color: var(--text-primary);
+  background-color: var(--surface-solid);
+  border: 1px solid var(--line);
+  border-radius: 0.875rem;
+  padding: 1rem 1.25rem;
+  color: var(--fg);
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.4);
 }
 
 .analysis-popup-header {
@@ -200,13 +285,13 @@ h1 {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 0.75rem;
-  border-bottom: 1px solid rgb(75 85 99);
+  border-bottom: 1px solid var(--line);
   padding-bottom: 0.5rem;
 }
 
 .analysis-popup-title {
   margin: 0;
-  color: var(--accent);
+  color: var(--fg);
   font-size: 1.25rem;
   line-height: 1.75rem;
 }
@@ -214,7 +299,7 @@ h1 {
 .analysis-loading-overlay {
   position: absolute;
   inset: 0;
-  background-color: rgb(17 24 39 / 0.8);
+  background-color: var(--surface);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -226,15 +311,15 @@ h1 {
 .analysis-loading-spinner {
   width: 2.5rem;
   height: 2.5rem;
-  border: 4px solid rgb(55 65 81);
-  border-top-color: var(--accent);
+  border: 4px solid var(--raised);
+  border-top-color: var(--brand);
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 1rem;
 }
 
 .analysis-loading-text {
-  color: var(--accent);
+  color: var(--brand-text);
   font-size: 1rem;
   line-height: 1.5rem;
   font-weight: 500;
@@ -261,7 +346,7 @@ h1 {
   padding-right: 0.25rem;
   padding-top: 0.125rem;
   padding-bottom: 0.125rem;
-  background-color: rgb(55 65 81);
+  background-color: var(--raised);
   color: var(--text-primary);
   border: 1px solid var(--border-secondary);
   border-radius: 0.25rem;
@@ -272,14 +357,14 @@ h1 {
 }
 
 .analysis-error {
-  color: rgb(239 68 68);
+  color: var(--danger);
   font-size: 0.875rem;
   line-height: 1.25rem;
 }
 
 .analysis-toolbar {
   padding: 0.375rem;
-  border-bottom: 1px solid rgb(75 85 99);
+  border-bottom: 1px solid var(--line);
   display: flex;
   gap: 0.375rem;
   align-items: center;
@@ -287,8 +372,8 @@ h1 {
 }
 
 .solar-panel {
-  background: rgba(31, 41, 55, 0.55);
-  border: 1px solid rgb(75 85 99);
+  background: var(--raised);
+  border: 1px solid var(--line);
   border-radius: 8px;
   padding: 12px;
 }
@@ -304,31 +389,31 @@ h1 {
 
 .solar-panel-title {
   margin: 0;
-  color: #ed6d00;
+  color: var(--brand);
   font-size: 1rem;
 }
 
 .solar-panel-subtitle {
   margin-top: 3px;
-  color: #9ca3af;
+  color: var(--fg-muted);
   font-size: 0.78rem;
 }
 
 .solar-section-block + .solar-section-block {
   margin-top: 14px;
   padding-top: 12px;
-  border-top: 1px solid rgb(75 85 99);
+  border-top: 1px solid var(--line);
 }
 
 .solar-section-title {
-  color: #f1f5f9;
+  color: var(--fg);
   font-size: 0.84rem;
   font-weight: 600;
   margin-bottom: 8px;
 }
 
 .solar-section-note {
-  color: #94a3b8;
+  color: var(--fg-muted);
   font-size: 0.76rem;
   margin-bottom: 8px;
 }
@@ -350,7 +435,7 @@ h1 {
   align-items: center;
   gap: 6px;
   min-width: 0;
-  color: #cbd5e1;
+  color: var(--fg-muted);
   font-size: 0.84rem;
 }
 
@@ -368,9 +453,9 @@ h1 {
   width: 18px;
   height: 18px;
   border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.45);
-  background: rgba(15, 23, 42, 0.7);
-  color: #cbd5e1;
+  border: 1px solid var(--line-strong);
+  background: var(--sunken);
+  color: var(--fg-muted);
   font-size: 0.72rem;
   line-height: 1;
   cursor: help;
@@ -379,8 +464,8 @@ h1 {
 
 .solar-help-button:hover,
 .solar-help-button:focus-visible {
-  border-color: #ed6d00;
-  color: #fff;
+  border-color: var(--brand);
+  color: var(--fg);
   outline: none;
 }
 
@@ -392,9 +477,9 @@ h1 {
   width: 250px;
   padding: 8px 10px;
   border-radius: 8px;
-  border: 1px solid rgba(237, 109, 0, 0.4);
-  background: rgba(15, 23, 42, 0.96);
-  color: #e2e8f0;
+  border: 1px solid var(--brand-soft);
+  background: var(--surface-solid);
+  color: var(--fg);
   font-size: 0.76rem;
   line-height: 1.35;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
@@ -420,8 +505,8 @@ h1 {
 }
 
 .solar-kpi-card {
-  background: rgba(17, 24, 39, 0.72);
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: var(--sunken);
+  border: 1px solid var(--line);
   border-radius: 8px;
   padding: 8px 10px;
   min-height: 58px;
@@ -432,14 +517,14 @@ h1 {
 }
 
 .solar-kpi-label {
-  color: #94a3b8;
+  color: var(--fg-muted);
   font-size: 0.7rem;
   margin-bottom: 3px;
   letter-spacing: 0.01em;
 }
 
 .solar-kpi-value {
-  color: #fff;
+  color: var(--fg);
   font-weight: 700;
   font-size: 1rem;
   line-height: 1.15;
@@ -462,21 +547,21 @@ h1 {
 }
 
 .solar-status-nominal {
-  background: rgba(56, 161, 105, 0.18);
-  color: #68d391;
-  border: 1px solid rgba(104, 211, 145, 0.28);
+  background: var(--success-soft);
+  color: var(--success);
+  border: 1px solid var(--success-soft);
 }
 
 .solar-status-warning {
-  background: rgba(237, 137, 54, 0.18);
-  color: #f6ad55;
-  border: 1px solid rgba(246, 173, 85, 0.28);
+  background: var(--warning-soft);
+  color: var(--warning);
+  border: 1px solid var(--warning-soft);
 }
 
 .solar-status-critical {
-  background: rgba(229, 62, 62, 0.18);
-  color: #fc8181;
-  border: 1px solid rgba(252, 129, 129, 0.28);
+  background: var(--danger-soft);
+  color: var(--danger);
+  border: 1px solid var(--danger-soft);
 }
 
 .solar-segmented-control {
@@ -484,14 +569,14 @@ h1 {
   gap: 4px;
   padding: 4px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.72);
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: var(--sunken);
+  border: 1px solid var(--line);
 }
 
 .solar-segment-button {
   border: none;
   background: transparent;
-  color: #94a3b8;
+  color: var(--fg-muted);
   border-radius: 999px;
   padding: 5px 10px;
   font-size: 0.78rem;
@@ -500,17 +585,17 @@ h1 {
 }
 
 .solar-segment-button:hover {
-  color: #fff;
+  color: var(--fg);
 }
 
 .solar-segment-button.is-active {
-  background: rgba(237, 109, 0, 0.18);
-  color: #fff;
+  background: var(--brand-soft);
+  color: var(--brand-text);
 }
 
 .availability-card {
-  background-color: rgb(55 65 81);
-  border: 1px solid rgb(75 85 99);
+  background-color: var(--raised);
+  border: 1px solid var(--line);
   border-radius: 0.375rem;
   padding: 0.75rem;
 }
@@ -518,7 +603,7 @@ h1 {
 .availability-card-title {
   margin: 0;
   margin-bottom: 0.5rem;
-  color: var(--accent);
+  color: var(--fg);
   font-size: 1.125rem;
   line-height: 1.75rem;
 }
@@ -553,7 +638,7 @@ h1 {
 .panel-section {
   padding-top: 8px;
   padding-bottom: 8px;
-  border-top: 1px solid rgba(75, 85, 99, 0.4);
+  border-top: 1px solid var(--line);
 }
 
 .panel-section:first-child {
@@ -567,11 +652,11 @@ h1 {
 
 /* Option tab styles */
 .option-subsection {
-  background: rgba(30, 31, 36, 0.5);
-  border: 1px solid rgba(68, 71, 83, 0.25);
+  background: var(--raised);
+  border: 1px solid var(--line);
   border-radius: 8px;
   padding: 10px 12px;
-  box-shadow: inset 0 0 0 1px rgba(94, 99, 112, 0.12);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 
 .option-control {
@@ -582,7 +667,7 @@ h1 {
 }
 
 .option-control-label {
-  color: #c4c9d1;
+  color: var(--fg-muted);
   font-size: 0.8em;
   display: flex;
   align-items: center;
@@ -602,39 +687,39 @@ h1 {
 
 .option-slider {
   flex: 1;
-  accent-color: #ed6d00;
+  accent-color: var(--brand);
   height: 4px;
 }
 
 .option-number-input {
   width: 72px;
-  background: rgba(68, 71, 83, 0.2);
-  border: 1px solid rgba(68, 71, 83, 0.5);
+  background: var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 4px;
   padding: 2px 6px;
-  color: #e8ecf4;
+  color: var(--fg);
   font-size: 0.8em;
 }
 
 .option-number-input:focus {
-  outline: 2px solid rgba(237, 109, 0, 0.5);
+  outline: 2px solid var(--brand-soft);
   outline-offset: 2px;
 }
 
 .option-control-unit {
-  color: #9ca3af;
+  color: var(--fg-muted);
   font-size: 0.75em;
 }
 
 .option-control-hint {
-  color: #7a808f;
+  color: var(--fg-subtle);
   font-size: 0.7em;
 }
 
 .option-color-input {
   width: 36px;
   height: 24px;
-  border: 1px solid rgba(68, 71, 83, 0.6);
+  border: 1px solid var(--line-strong);
   border-radius: 4px;
   background: transparent;
   padding: 0;
@@ -642,7 +727,7 @@ h1 {
 }
 
 .option-color-value {
-  color: #9ca3af;
+  color: var(--fg-muted);
   font-size: 0.75em;
   letter-spacing: 0.02em;
 }
@@ -657,35 +742,28 @@ h1 {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  background: rgba(68, 71, 83, 0.12);
+  background: var(--line);
   border-radius: 6px;
   padding: 6px 10px;
-  border: 1px solid rgba(68, 71, 83, 0.2);
+  border: 1px solid var(--line);
 }
 
 .option-color-label {
-  color: #c4c9d1;
+  color: var(--fg-muted);
   font-size: 0.8em;
 }
 
-/* Speed control */
-.speed-control {
-  position: absolute;
-  right: 12px;
-  top: calc(12px + env(safe-area-inset-top, 0px));
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  color: #f1f1f1;
-  font-family: Inter, system-ui, sans-serif;
-  z-index: 15;
+/* ------------------------------------------------------------------
+ * Floating chrome: menu button, side panel, HUD
+ * ------------------------------------------------------------------ */
+
+.glass {
+  background: var(--surface);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  box-shadow: var(--shadow-panel);
 }
 
-.speed-control select {
-  font-family: Inter, system-ui, sans-serif;
-}
-
-/* Side panel button */
 .side-panel-button {
   position: absolute;
   left: 12px;
@@ -695,23 +773,24 @@ h1 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #444753;
-  color: #f0f2f5;
-  border: 1px solid #555;
+  background: var(--surface);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-panel);
+  color: var(--fg);
+  border: 0;
   padding: 0;
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: 10px;
   z-index: 30;
-  transition: all 0.2s ease;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .side-panel-button:hover {
-  background: #ed6d00;
-  border-color: #ed6d00;
-  color: #ffffff;
+  background: var(--raised-hover);
+  color: var(--brand-text);
 }
 
-/* Side panel - shadcn/ui optimized */
 .side-panel {
   position: fixed;
   top: 0;
@@ -722,135 +801,90 @@ h1 {
      for browsers that don't support dvh. */
   height: 100vh;
   height: 100dvh;
-  width: 320px;
+  width: 360px;
   max-width: 85vw;
-  background: rgba(17, 24, 39, 0.98);
-  color: #f1f1f1;
-  padding: 0;
+  background: var(--surface);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  color: var(--fg);
   box-sizing: border-box;
-  transition: transform 0.3s ease-out;
+  transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
   z-index: 200;
   display: flex;
   flex-direction: column;
-  border-right: 2px solid #374151;
-  backdrop-filter: blur(12px);
-  box-shadow: 4px 0 20px rgba(0, 0, 0, 0.5);
+  border-right: 1px solid var(--line);
+  box-shadow: 8px 0 32px rgb(0 0 0 / 0.25);
+  font-size: 0.875rem;
 }
 
 .side-panel-header {
-  padding: 8px 10px;
-  border-bottom: 1px solid #374151;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) 10px 10px 12px;
   flex-shrink: 0;
-  background: rgba(55, 65, 81, 0.3);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .side-panel-content {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   /* Keep vertical scroll gestures from chaining to the page (which is
      otherwise hidden but can still be nudged) and from being reinterpreted
      as the browser's horizontal edge-swipe back/forward navigation. */
   overscroll-behavior: contain;
   touch-action: pan-y;
-  padding: 4px 8px calc(12px + env(safe-area-inset-bottom, 0px));
-  max-height: calc(100vh - 120px);
-  max-height: calc(100dvh - 120px);
-}
-
-/* Mobile optimizations with shadcn/ui */
-@media (max-width: 768px) {
-  .side-panel {
-    width: 100vw;
-    max-width: 100vw;
-  }
-
-  .side-panel-content {
-    max-height: calc(100vh - 100px);
-    max-height: calc(100dvh - 100px);
-  }
-}
-
-@media (max-width: 480px) {
-  .side-panel-header {
-    padding: 8px;
-  }
-
-  .side-panel-content {
-    padding: 0 8px calc(10px + env(safe-area-inset-bottom, 0px));
-  }
+  padding: 4px 12px calc(16px + env(safe-area-inset-bottom, 0px));
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
 }
 
 .side-panel.closed {
   transform: translateX(-100%);
+  box-shadow: none;
 }
 
 .side-panel h3 {
   margin-top: 0;
-  color: #ed6d00;
 }
 
-/* Legacy button styles (now using shadcn/ui buttons) - keeping for fallback */
+/* Bare <button>/<input>/<select> inside the panel that do not use a
+   primitive (data-slot) still get themed defaults. */
 .side-panel button:not([data-slot]) {
-  background: rgba(68, 71, 83, 0.8);
-  color: #c4c9d1;
-  border: 1px solid rgba(68, 71, 83, 0.6);
-  padding: 4px 8px;
-  font-weight: 400;
-  border-radius: 4px;
+  background: var(--raised);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  padding: 4px 10px;
+  border-radius: 6px;
   cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 0.8em;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  font-size: 0.8125rem;
 }
 
 .side-panel button:not([data-slot]):hover {
-  background: rgba(68, 71, 83, 1);
-  color: #f1f1f1;
-  border-color: rgba(68, 71, 83, 0.8);
+  background: var(--raised-hover);
 }
 
-.side-panel-close {
-  flex-shrink: 0 !important;
-  width: 40px !important;
-  height: 40px !important;
-  background: transparent !important;
-  border: none !important;
-  color: #999faa !important;
-  padding: 0 !important;
-  transition: color 0.2s ease, background 0.2s ease !important;
-}
-
-.side-panel-close:hover {
-  color: #ed6d00 !important;
-  background: rgba(237, 109, 0, 0.1) !important;
-}
-
-/* Legacy input styles - now using shadcn/ui components where possible */
-.side-panel input:not([data-slot]),
+.side-panel input:not([data-slot]):not([type="range"]):not([type="color"]):not([type="checkbox"]),
 .side-panel select:not([data-slot]) {
-  background: #444753;
-  color: #f1f1f1;
-  border: 1px solid #555;
-  border-radius: 3px;
-  padding: 4px 6px;
-  font-family: Inter, system-ui, sans-serif;
-  font-size: 0.8em;
-  transition: all 0.2s ease;
+  background: var(--sunken);
+  color: var(--fg);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.8125rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .side-panel input:not([data-slot]):focus,
 .side-panel select:not([data-slot]):focus {
   outline: none;
-  border-color: #ed6d00;
-  box-shadow: 0 0 0 2px rgba(237, 109, 0, 0.2);
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-soft);
 }
 
-/* Form labels and text */
-.side-panel span {
-  font-size: 0.8em;
-  color: #c4c9d1;
+input[type="range"] {
+  accent-color: var(--brand);
 }
 
 /* Satellite size control */
@@ -858,8 +892,7 @@ h1 {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #f1f1f1;
-  font-family: Inter, system-ui, sans-serif;
+  color: var(--fg);
 }
 
 .sat-size-control select {
@@ -868,103 +901,37 @@ h1 {
   flex-shrink: 1;
 }
 
-/* In the side panel, normalize font size to match other controls */
-.side-panel .sat-size-control,
-.side-panel .sat-size-control label,
-.side-panel .sat-size-control select {
-  font-size: 0.875rem;
+/* HUD text drawn directly over the 3D view */
+.hud-text {
+  color: var(--hud-fg);
+  text-shadow: var(--hud-shadow);
+  font-family: var(--app-font-mono);
+  font-variant-numeric: tabular-nums;
 }
-
-.side-panel .sat-size-control label {
-  color: #e5e7eb;
-}
-
-/* Custom tab styles for sidebar */
-.side-panel [data-slot="tabs-trigger"][data-state="active"] {
-  background-color: #ea580c !important; /* orange-600 with reduced opacity feel */
-  color: #fef3cd !important; /* warm light cream */
-  border-color: #fed7aa !important; /* orange-200 */
-  font-weight: 500 !important;
-  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05) !important;
-}
-
-/* Reduce tabs spacing */
-.side-panel [data-slot="tabs"] {
-  gap: 0.25rem !important;
-}
-
-.side-panel [data-slot="tabs-list"] {
-  padding: 2px !important;
-  height: 2rem !important;
-}
-
-.side-panel [data-slot="tabs-trigger"] {
-  padding: 0.25rem 0.5rem !important;
-  font-size: 0.8rem !important;
-}
-
-/* Compact tab content */
-.side-panel [data-slot="tabs-content"] {
-  padding: 1rem 0.5rem !important;
-}
-
-/* Reduce spacing in various form elements */
-.side-panel .space-y-3 > * + * {
-  margin-top: 0.5rem !important;
-}
-
-.side-panel .space-y-2 > * + * {
-  margin-top: 0.25rem !important;
-}
-
-/* Legacy tab styles - now using shadcn/ui Tabs component */
 
 /* Overlay */
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--overlay);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 40;
-  color: #f1f1f1;
-  font-family: Inter, system-ui, sans-serif;
+  color: var(--fg);
 }
 
 .overlay-box {
-  background: rgba(30, 32, 36, 0.9);
+  background: var(--surface-solid);
   padding: 16px;
-  border-radius: 6px;
+  border-radius: 10px;
   min-width: 250px;
 }
 
-/* Legacy editor button styles - now using shadcn/ui buttons */
-
 /* Focus styles */
-button:focus,
 button:focus-visible {
-  outline: 4px solid rgb(59 130 246);
-}
-
-/* Checkbox styles for better visibility */
-[data-slot="checkbox"] {
-  background-color: rgb(31 41 55) !important;
-  border-color: rgb(107 114 128) !important;
-}
-
-[data-slot="checkbox"]:hover {
-  background-color: rgb(55 65 81) !important;
-  border-color: rgb(251 146 60) !important;
-}
-
-[data-slot="checkbox"][data-state="checked"] {
-  background-color: rgb(251 146 60) !important;
-  border-color: rgb(251 146 60) !important;
-}
-
-[data-slot="checkbox"][data-state="checked"] svg {
-  color: white !important;
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
 }
 
 /* Import dialog spacing fixes */
@@ -975,87 +942,4 @@ button:focus-visible {
 [data-slot="dialog-content"] .flex.items-center.space-x-2 {
   margin-left: 0 !important;
   padding-left: 0 !important;
-}
-
-@theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
-}
-
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
-}
-
-@layer base {
-  * {
-    border-color: var(--border);
-    outline-color: rgb(var(--ring) / 0.5);
-  }
-  body {
-    background-color: var(--background);
-    color: var(--foreground);
-  }
 }

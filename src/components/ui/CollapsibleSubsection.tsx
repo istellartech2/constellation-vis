@@ -44,7 +44,7 @@ export default function CollapsibleSubsection({
         type="button"
         onClick={toggle}
         aria-expanded={isOpen}
-        className="w-full flex items-center justify-between text-sm font-medium text-gray-300 border border-gray-600 rounded-md px-3 py-2.5 bg-gray-800/50 hover:bg-gray-800"
+        className="w-full flex items-center justify-between text-sm font-medium text-fg-muted border border-line-strong rounded-md px-3 py-2.5 bg-raised hover:bg-sunken"
       >
         <span className="inline-flex items-center gap-2">
           <span>{title}</span>
@@ -54,7 +54,7 @@ export default function CollapsibleSubsection({
       </button>
 
       {isOpen && (
-        <div className="mt-2 rounded border border-gray-800 bg-gray-900/40 p-3 space-y-2">
+        <div className="mt-2 rounded border border-line bg-sunken p-3 space-y-2">
           {children}
         </div>
       )}
