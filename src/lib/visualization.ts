@@ -686,6 +686,9 @@ export default class SatelliteScene {
     const handleResize = () => {
       this.renderer.setSize(window.innerWidth, window.innerHeight);
       this.camera.aspect = window.innerWidth / window.innerHeight;
+      if (this.camera.view) {
+        this.camera.setViewOffset(window.innerWidth, window.innerHeight, 0, this.viewInsetPx / 2, window.innerWidth, window.innerHeight);
+      }
       this.camera.updateProjectionMatrix();
       this.kmlRenderer.setResolution(window.innerWidth, window.innerHeight);
     };
@@ -871,7 +874,14 @@ export default class SatelliteScene {
   private resetFreeCamera() {
     this.controls.enabled = true;
     this.controls.target.copy(DEFAULT_CAMERA_TARGET);
-    this.camera.position.copy(DEFAULT_CAMERA_POSITION);
+    // Back the camera off on narrow (portrait) screens so the whole globe
+    // fits horizontally; DEFAULT_CAMERA_POSITION is tuned for landscape.
+    const vHalf = THREE.MathUtils.degToRad(this.camera.fov / 2);
+    const hHalf = Math.atan(Math.tan(vHalf) * this.camera.aspect);
+    const fitDistance = 1.15 / Math.sin(Math.min(vHalf, hHalf));
+    this.camera.position
+      .copy(DEFAULT_CAMERA_POSITION)
+      .setLength(Math.max(DEFAULT_CAMERA_POSITION.length(), fitDistance));
     this.camera.up.copy(UP_AXIS);
     this.camera.lookAt(DEFAULT_CAMERA_TARGET);
     this.controls.update();
@@ -1240,8 +1250,28 @@ export default class SatelliteScene {
     this.islPathLines.visible = true;
   }
 
+  /** Bottom inset (px) currently applied via the camera view offset. */
+  private viewInsetPx = 0;
+
+  /**
+   * Shift the rendered image up so the globe stays centred in the area not
+   * covered by the mobile bottom sheet. The sheet publishes the covered
+   * height on <html data-sheet-inset>; eased here for a smooth slide.
+   */
+  private updateViewInset() {
+    const target = Number(document.documentElement.dataset.sheetInset ?? 0) || 0;
+    if (Math.abs(target - this.viewInsetPx) < 0.5) return;
+    this.viewInsetPx += (target - this.viewInsetPx) * 0.2;
+    if (Math.abs(target - this.viewInsetPx) < 0.5) this.viewInsetPx = target;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    if (this.viewInsetPx === 0) this.camera.clearViewOffset();
+    else this.camera.setViewOffset(w, h, 0, this.viewInsetPx / 2, w, h);
+  }
+
   private animate = () => {
     this.animationFrameId = requestAnimationFrame(this.animate);
+    this.updateViewInset();
     const nowReal = Date.now();
     const simDeltaMs = (nowReal - this.startReal) * this.params.speedRef.current;
     const simDate = new Date(this.startSim + simDeltaMs);

@@ -847,6 +847,75 @@ a:hover {
   margin-top: 0;
 }
 
+/* Drag handle: only shown when the panel is a bottom sheet (phones). */
+.sheet-handle {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .side-panel {
+    --sheet-half: 56dvh;
+    --sheet-full: calc(100dvh - 12px - env(safe-area-inset-top, 0px));
+    top: auto;
+    bottom: 0;
+    width: 100vw;
+    max-width: 100vw;
+    height: clamp(240px, calc(var(--sheet-half) - var(--sheet-drag, 0px)), var(--sheet-full));
+    border-right: 0;
+    border-top: 1px solid var(--line);
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -12px 40px rgb(0 0 0 / 0.35);
+    transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), height 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .side-panel.sheet-full {
+    height: clamp(240px, calc(var(--sheet-full) - var(--sheet-drag, 0px)), var(--sheet-full));
+  }
+
+  .side-panel.sheet-dragging {
+    transition: none;
+  }
+
+  .side-panel.closed {
+    transform: translateY(100%);
+  }
+
+  .sheet-handle {
+    display: flex;
+    justify-content: center;
+    padding-top: 6px;
+    touch-action: none;
+    flex-shrink: 0;
+  }
+
+  .sheet-grabber {
+    width: 44px;
+    height: 18px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: grab;
+    position: relative;
+  }
+
+  .sheet-grabber::before {
+    content: "";
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    top: 6px;
+    height: 5px;
+    border-radius: 999px;
+    background: var(--line-strong);
+  }
+
+  .side-panel-header {
+    padding-top: 2px;
+    touch-action: none;
+  }
+
+}
+
 /* Bare <button>/<input>/<select> inside the panel that do not use a
    primitive (data-slot) still get themed defaults. */
 .side-panel button:not([data-slot]) {
@@ -1007,6 +1076,36 @@ input[type="range"] {
   right: 12px;
   bottom: calc(14px + env(safe-area-inset-bottom, 0px));
   border: 0;
+}
+
+@media (max-width: 768px) {
+  /* The sheet covers the bottom HUD while open. */
+  :root[data-sheet-open] .playback-bar,
+  :root[data-sheet-open] .satellite-info,
+  :root[data-sheet-open] .isl-hud {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .playback-bar {
+    left: 12px;
+    right: 12px;
+    transform: none;
+    justify-content: space-between;
+    transition: opacity 0.2s ease;
+  }
+
+  .satellite-info {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    max-height: 42dvh;
+  }
+
+  .isl-hud {
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 /* HUD text drawn directly over the 3D view */

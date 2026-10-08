@@ -13,7 +13,8 @@ import {
   formatLongitude,
   getSatelliteDerivedInfo,
 } from "../../lib/satelliteDerivedInfo";
-import { X } from "lucide-react";
+import { useState } from "react";
+import { ChevronDown, X } from "lucide-react";
 import type { SatelliteCameraMode } from "../../lib/visualization";
 
 const CAMERA_VIEW_OPTIONS: { mode: SatelliteCameraMode; label: string }[] = [
@@ -88,6 +89,8 @@ export default function SatelliteInfo({
   onCameraModeChange,
   onClose,
 }: Props) {
+  // Phones start with the details folded so the card doesn't hide the globe.
+  const [expanded, setExpanded] = useState(() => !window.matchMedia("(max-width: 768px)").matches);
   if (selectedIdx === null) return null;
 
   const spec = satellites[selectedIdx];
@@ -155,16 +158,29 @@ export default function SatelliteInfo({
           <div className="text-[11px] font-medium text-fg-subtle">選択中の衛星</div>
           <div className="truncate text-[15px] font-semibold text-fg">{title}</div>
         </div>
+        <div className="-mr-1 -mt-0.5 flex shrink-0 items-center">
+        <button
+          type="button"
+          data-slot="icon-button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          aria-label={expanded ? "詳細を閉じる" : "詳細を表示"}
+          title={expanded ? "詳細を閉じる" : "詳細を表示"}
+          className="inline-flex size-7 items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-raised-hover hover:text-fg"
+        >
+          <ChevronDown className={`size-4 transition-transform ${expanded ? "" : "rotate-180"}`} />
+        </button>
         <button
           type="button"
           data-slot="icon-button"
           onClick={onClose}
           aria-label="選択を解除"
           title="選択を解除"
-          className="-mr-1 -mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-raised-hover hover:text-fg"
+          className="inline-flex size-7 items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-raised-hover hover:text-fg"
         >
           <X className="size-4" />
         </button>
+        </div>
       </header>
       <div role="radiogroup" aria-label="カメラ" className="grid grid-cols-3 gap-1 rounded-lg border border-line bg-sunken p-[3px]">
         {CAMERA_VIEW_OPTIONS.map((option) => {
@@ -186,6 +202,7 @@ export default function SatelliteInfo({
           );
         })}
       </div>
+      {expanded && (<>
       <div className="satellite-info-body">
         <Section title="基本情報" rows={metaRows} />
         <Section title="軌道要素" rows={orbitalRows} />
@@ -228,7 +245,8 @@ export default function SatelliteInfo({
           </section>
         )}
       </div>
-      <p className="text-[11px] text-fg-subtle">
+      </>)}
+      <p className="text-[11px] text-fg-subtle max-md:hidden">
         {cameraMode === "thirdPerson" ? "ホイールで拡大、上下ドラッグで角度調整" : "ホイールで拡大・縮小"}
       </p>
     </div>

@@ -1,5 +1,5 @@
 import { remoteDisplaySnapshot, type RemoteDisplaySettings } from "../../lib/remoteDisplay";
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import type { SatelliteSpec } from "../../lib/satellites";
 import type { CommittedScenario } from "../../lib/scenario";
 import type SatelliteScene from "../../lib/visualization";
@@ -28,6 +28,7 @@ import { validateSatellites, validateGroundStations } from "../../utils/validato
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./tabs";
 import { Button } from "./button";
 import { Menu, X } from "lucide-react";
+import { useSheetDrag } from "./useSheetDrag";
 import type { EarthTextureMode } from "../../lib/earthTextures";
 import type { ViewSettings } from "../../lib/viewState";
 
@@ -245,6 +246,7 @@ export default function SatelliteEditor({
     return d.toISOString().slice(0, 16);
   });
   const [open, setOpen] = useState(false);
+  const sheet = useSheetDrag(() => setOpen(false));
 
   // Let floating HUD elements (playback bar, satellite card) slide right of
   // the open panel on wide screens instead of being covered by it.
@@ -253,6 +255,15 @@ export default function SatelliteEditor({
     const update = () => {
       const wide = window.matchMedia("(min-width: 769px)").matches;
       root.style.setProperty("--panel-offset", open && wide ? "360px" : "0px");
+      // On phones the panel is a bottom sheet covering the HUD; let CSS hide it.
+      if (open && !wide) {
+        root.dataset.sheetOpen = "";
+        // Height the half sheet covers (matches --sheet-half: 56dvh).
+        root.dataset.sheetInset = String(Math.round(window.innerHeight * 0.56));
+      } else {
+        delete root.dataset.sheetOpen;
+        delete root.dataset.sheetInset;
+      }
     };
     update();
     window.addEventListener("resize", update);
@@ -436,8 +447,26 @@ export default function SatelliteEditor({
           <Menu className="h-5 w-5" />
         </button>
       )}
-      <div className={`side-panel ${open ? "" : "closed"}`}>
-        <div className="side-panel-header">
+      <div
+        className={`side-panel ${open ? "" : "closed"} ${sheet.snap === "full" ? "sheet-full" : ""} ${
+          sheet.dragOffset !== null ? "sheet-dragging" : ""
+        }`}
+        style={
+          sheet.dragOffset !== null
+            ? ({ "--sheet-drag": `${sheet.dragOffset}px` } as CSSProperties)
+            : undefined
+        }
+      >
+        <div className="sheet-handle" {...sheet.handleProps}>
+          <button
+            type="button"
+            data-slot="icon-button"
+            className="sheet-grabber"
+            aria-label={sheet.snap === "full" ? "パネルを縮める" : "パネルを広げる"}
+            onClick={() => sheet.setSnap(sheet.snap === "full" ? "half" : "full")}
+          />
+        </div>
+        <div className="side-panel-header" {...sheet.handleProps}>
           <Tabs
             value={tab}
             onValueChange={(value) => setTab(value as "editor" | "analysis" | "option" | "isl")}
