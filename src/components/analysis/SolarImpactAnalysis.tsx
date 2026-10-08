@@ -742,7 +742,7 @@ export default function SolarImpactAnalysis({ satText, constText, startTime }: P
           <div className="analysis-error">解析対象の衛星がありません</div>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 420px) minmax(0, 1fr)", gap: 12 }}>
+        <div className="analysis-split" style={{ display: "grid", gridTemplateColumns: "minmax(320px, 420px) minmax(0, 1fr)", gap: 12 }}>
           <section className="solar-panel">
             <div className="solar-panel-header">
               <div>
@@ -838,7 +838,7 @@ export default function SolarImpactAnalysis({ satText, constText, startTime }: P
               )}
             </section>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, minWidth: 0 }}>
+            <div className="analysis-chart-pair" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, minWidth: 0 }}>
               <div style={{ minHeight: 280 }}>
                 <ReactECharts ref={powerChartRef} option={powerOption} style={{ height: 280, width: "100%" }} />
               </div>

@@ -200,12 +200,12 @@ export default function SatelliteTomlEditorDialog({ open, satText, onSatTextChan
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="!w-[92vw] !max-w-6xl max-h-[88vh] overflow-hidden flex flex-col bg-surface-solid text-fg">
-        <DialogHeader>
-          <DialogTitle className="text-fg">人工衛星軌道編集</DialogTitle>
+      <DialogContent className="!w-[92vw] !max-w-6xl max-h-[88vh] overflow-hidden max-md:overflow-hidden max-md:h-[100dvh] max-md:rounded-none max-md:border-0 flex flex-col max-md:gap-3 bg-surface-solid text-fg">
+        <DialogHeader className="max-md:pr-10">
+          <DialogTitle className="text-fg max-md:text-left">人工衛星軌道編集</DialogTitle>
         </DialogHeader>
 
-        <div className="rounded-md border border-line bg-sunken px-4 py-3 text-sm text-fg">
+        <div className="rounded-md border border-line bg-sunken px-4 py-3 max-md:px-3 max-md:py-2 text-sm max-md:text-xs text-fg shrink-0">
           <div className="text-xs font-medium uppercase tracking-wide text-brand-text">{selectionTitle(selectedEntry)}</div>
           <div className="mt-1">
             {selectedEntry
@@ -219,23 +219,23 @@ export default function SatelliteTomlEditorDialog({ open, satText, onSatTextChan
           </div>
         </div>
 
-        <div className="flex-1 border border-line-strong rounded-md overflow-hidden flex min-h-0">
-          <div className="w-72 flex-shrink-0 border-r border-line-strong bg-surface-solid flex flex-col">
-            <div className="p-2 border-b border-line-strong space-y-2">
-              <Button variant="outline" size="sm" onClick={handleAddManual} className="w-full justify-center gap-2 bg-sunken hover:bg-raised-hover text-fg border-line-strong">
-                <Satellite className="h-4 w-4" />
+        <div className="flex-1 border border-line-strong rounded-md overflow-hidden max-md:overflow-y-auto max-md:overscroll-contain flex flex-col md:flex-row min-h-0">
+          <div className="md:w-72 flex-shrink-0 md:border-r max-md:border-b border-line-strong bg-surface-solid flex flex-col">
+            <div className="p-2 border-b border-line-strong space-y-2 max-md:space-y-0 max-md:grid max-md:grid-cols-3 max-md:gap-1.5">
+              <Button variant="outline" size="sm" onClick={handleAddManual} className="w-full justify-center gap-2 max-md:gap-1 max-md:h-10 max-md:px-1 max-md:text-xs bg-sunken hover:bg-raised-hover text-fg border-line-strong">
+                <Satellite className="h-4 w-4 max-md:hidden" />
                 単独衛星を追加
               </Button>
-              <Button variant="outline" size="sm" onClick={handleAddGeo} className="w-full justify-center gap-2 bg-sunken hover:bg-raised-hover text-fg border-line-strong">
-                <Globe className="h-4 w-4" />
+              <Button variant="outline" size="sm" onClick={handleAddGeo} className="w-full justify-center gap-2 max-md:gap-1 max-md:h-10 max-md:px-1 max-md:text-xs bg-sunken hover:bg-raised-hover text-fg border-line-strong">
+                <Globe className="h-4 w-4 max-md:hidden" />
                 静止衛星を追加
               </Button>
-              <Button variant="outline" size="sm" onClick={handleAddFormation} className="w-full justify-center gap-2 bg-sunken hover:bg-raised-hover text-fg border-line-strong">
-                <Rows3 className="h-4 w-4" />
+              <Button variant="outline" size="sm" onClick={handleAddFormation} className="w-full justify-center gap-2 max-md:gap-1 max-md:h-10 max-md:px-1 max-md:text-xs bg-sunken hover:bg-raised-hover text-fg border-line-strong">
+                <Rows3 className="h-4 w-4 max-md:hidden" />
                 編隊を追加
               </Button>
             </div>
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto max-md:max-h-40">
               {config.entries.length === 0 ? (
                 <div className="p-5 text-sm text-fg-subtle text-center">エントリがありません</div>
               ) : (
@@ -244,7 +244,7 @@ export default function SatelliteTomlEditorDialog({ open, satText, onSatTextChan
                     <li
                       key={entry.id}
                       onClick={() => setSelectedId(entry.id)}
-                      className={`cursor-pointer border-l-2 px-3 py-2 transition-colors ${
+                      className={`cursor-pointer border-l-2 px-3 py-2 max-md:py-2.5 transition-colors ${
                         entry.id === selectedId
                           ? "border-l-brand bg-brand-soft text-fg"
                           : entry.kind === "formation"
@@ -266,20 +266,20 @@ export default function SatelliteTomlEditorDialog({ open, satText, onSatTextChan
             </div>
             {selectedId && (
               <div className="p-2 border-t border-line-strong flex gap-1 justify-center">
-                <Button variant="outline" size="icon" onClick={() => handleMove("up")} disabled={selectedIndex <= 0} className="h-8 w-8 bg-sunken hover:bg-raised-hover text-fg border-line-strong disabled:opacity-40">
+                <Button variant="outline" size="icon" onClick={() => handleMove("up")} disabled={selectedIndex <= 0} className="h-8 w-8 max-md:h-10 max-md:w-10 bg-sunken hover:bg-raised-hover text-fg border-line-strong disabled:opacity-40">
                   <ChevronUp className="h-4 w-4" />
                 </Button>
-                <Button variant="outline" size="icon" onClick={() => handleMove("down")} disabled={selectedIndex < 0 || selectedIndex >= config.entries.length - 1} className="h-8 w-8 bg-sunken hover:bg-raised-hover text-fg border-line-strong disabled:opacity-40">
+                <Button variant="outline" size="icon" onClick={() => handleMove("down")} disabled={selectedIndex < 0 || selectedIndex >= config.entries.length - 1} className="h-8 w-8 max-md:h-10 max-md:w-10 bg-sunken hover:bg-raised-hover text-fg border-line-strong disabled:opacity-40">
                   <ChevronDown className="h-4 w-4" />
                 </Button>
-                <Button variant="outline" size="icon" onClick={handleDelete} className="h-8 w-8 bg-sunken hover:bg-danger text-fg border-line-strong">
+                <Button variant="outline" size="icon" onClick={handleDelete} className="h-8 w-8 max-md:h-10 max-md:w-10 bg-sunken hover:bg-danger text-fg border-line-strong">
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto bg-sunken">
+          <div className="flex-1 overflow-y-auto bg-sunken max-md:flex-auto max-md:overflow-visible">
             {!selectedEntry && <div className="h-full flex items-center justify-center text-fg-muted text-sm">左の一覧から衛星または編隊を選択してください</div>}
             {selectedEntry?.kind === "manual" && (
               <ManualEntryForm entry={selectedEntry} index={selectedIndex} errors={errors} onChange={(updater) => updateSelectedEntry((entry) => updater(entry as ManualSatelliteEntry))} />
@@ -296,11 +296,11 @@ export default function SatelliteTomlEditorDialog({ open, satText, onSatTextChan
           </div>
         </div>
 
-        {errors.length > 0 && <div className="rounded-md border border-danger/40 bg-danger-soft px-3 py-2 text-xs text-danger">{errors[0]?.message}</div>}
+        {errors.length > 0 && <div className="rounded-md border border-danger/40 bg-danger-soft px-3 py-2 text-xs text-danger shrink-0">{errors[0]?.message}</div>}
 
-        <DialogFooter className="border-t border-line pt-3">
-          <Button variant="outline" onClick={onClose} className="bg-raised hover:bg-raised-hover text-fg border-line-strong">キャンセル</Button>
-          <Button onClick={handleSave} className="bg-brand hover:bg-brand-hover text-brand-fg">保存</Button>
+        <DialogFooter className="border-t border-line pt-3 shrink-0 max-md:flex-row max-md:gap-2">
+          <Button variant="outline" onClick={onClose} className="bg-raised hover:bg-raised-hover text-fg border-line-strong max-md:h-11 max-md:flex-1">キャンセル</Button>
+          <Button onClick={handleSave} className="bg-brand hover:bg-brand-hover text-brand-fg max-md:h-11 max-md:flex-1">保存</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

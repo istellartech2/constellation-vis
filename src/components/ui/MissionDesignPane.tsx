@@ -507,7 +507,7 @@ export default function MissionDesignPane({ epochIso, initialForm, onAddCandidat
         <div className="shrink-0 border-t border-line pt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <p className="text-xs text-fg-muted min-w-0 break-words">{selectedShell ? `選択中: ${selectedShell.name}` : "比較表から候補を選択してください。"}</p>
           <Button onClick={() => selectedShell && onAddCandidate(selectedShell)}
-            disabled={!selectedShell || resultsStale || running} className="bg-brand hover:bg-brand-hover text-brand-fg shrink-0">
+            disabled={!selectedShell || resultsStale || running} className="bg-brand hover:bg-brand-hover text-brand-fg shrink-0 max-md:h-11">
             この候補をシェルとして追加
           </Button>
         </div>
@@ -516,10 +516,10 @@ export default function MissionDesignPane({ epochIso, initialForm, onAddCandidat
         <div className="flex items-center justify-end gap-3 border-t border-line pt-3 shrink-0">
           {(step === 2 || runRequest) && (
             <Button variant="outline" onClick={() => setStep(step === 2 ? 1 : 3)}
-              className="mr-auto bg-sunken hover:bg-raised-hover text-fg border-line-strong">{step === 2 ? "目的に戻る" : "前の候補を見る"}</Button>
+              className="mr-auto bg-sunken hover:bg-raised-hover text-fg border-line-strong max-md:h-11">{step === 2 ? "目的に戻る" : "前の候補を見る"}</Button>
           )}
           <Button onClick={() => step === 1 ? setStep(2) : start(form)} disabled={step === 2 && formErrors.length > 0}
-            className="bg-brand hover:bg-brand-hover text-brand-fg">{step === 1 ? "条件を設定する" : "この条件で候補を計算"}</Button>
+            className="bg-brand hover:bg-brand-hover text-brand-fg max-md:h-11">{step === 1 ? "条件を設定する" : "この条件で候補を計算"}</Button>
         </div>
       )}
     </div>

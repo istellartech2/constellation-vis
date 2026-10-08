@@ -36,13 +36,13 @@ export default function GroundStationList({
   const selectedIndex = stations.findIndex((s) => s.id === selectedId);
 
   return (
-    <div className="flex flex-col h-full border-r border-line-strong">
+    <div className="flex flex-col h-full md:border-r max-md:border-b border-line-strong">
       <div className="p-2 border-b border-line-strong space-y-1.5">
         <Button
           variant="outline"
           size="sm"
           onClick={onAdd}
-          className="w-full flex items-center justify-center gap-1 bg-sunken hover:bg-raised-hover text-fg border-line-strong"
+          className="w-full flex items-center justify-center gap-1 max-md:h-10 bg-sunken hover:bg-raised-hover text-fg border-line-strong"
         >
           <Plus className="h-4 w-4" />
           <span>地上局追加</span>
@@ -57,7 +57,7 @@ export default function GroundStationList({
             if (preset) onAddPreset(preset);
             e.target.value = "";
           }}
-          className="w-full px-2 py-1 text-xs bg-sunken border border-line-strong rounded text-fg focus:border-brand focus:outline-none"
+          className="w-full px-2 py-1 max-md:py-2 max-md:text-sm text-xs bg-sunken border border-line-strong rounded text-fg focus:border-brand focus:outline-none"
         >
           <option value="">プリセットから追加...</option>
           {GROUND_STATION_PRESETS.map((group, gi) => (
@@ -72,7 +72,7 @@ export default function GroundStationList({
         </select>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto max-md:max-h-40">
         {stations.length === 0 ? (
           <div className="p-4 text-center text-fg-subtle text-sm">
             地上局がありません
@@ -83,7 +83,7 @@ export default function GroundStationList({
               <li
                 key={s.id}
                 onClick={() => onSelect(s.id)}
-                className={`px-3 py-2 cursor-pointer text-sm transition-colors ${
+                className={`px-3 py-2 max-md:py-2.5 cursor-pointer text-sm transition-colors ${
                   s.id === selectedId
                     ? "bg-brand-soft text-fg"
                     : "hover:bg-sunken text-fg"
@@ -111,7 +111,7 @@ export default function GroundStationList({
             size="icon"
             onClick={() => onMoveUp(selectedId)}
             disabled={selectedIndex <= 0}
-            className="h-8 w-8 bg-sunken hover:bg-raised-hover text-fg border-line-strong disabled:opacity-40"
+            className="h-8 w-8 max-md:h-10 max-md:w-10 bg-sunken hover:bg-raised-hover text-fg border-line-strong disabled:opacity-40"
             title="上へ移動"
           >
             <ChevronUp className="h-4 w-4" />
@@ -121,7 +121,7 @@ export default function GroundStationList({
             size="icon"
             onClick={() => onMoveDown(selectedId)}
             disabled={selectedIndex >= stations.length - 1}
-            className="h-8 w-8 bg-sunken hover:bg-raised-hover text-fg border-line-strong disabled:opacity-40"
+            className="h-8 w-8 max-md:h-10 max-md:w-10 bg-sunken hover:bg-raised-hover text-fg border-line-strong disabled:opacity-40"
             title="下へ移動"
           >
             <ChevronDown className="h-4 w-4" />
@@ -130,7 +130,7 @@ export default function GroundStationList({
             variant="outline"
             size="icon"
             onClick={() => onDelete(selectedId)}
-            className="h-8 w-8 bg-sunken hover:bg-danger text-fg hover:text-fg border-line-strong hover:border-danger"
+            className="h-8 w-8 max-md:h-10 max-md:w-10 bg-sunken hover:bg-danger text-fg hover:text-fg border-line-strong hover:border-danger"
             title="削除"
           >
             <Trash2 className="h-4 w-4" />

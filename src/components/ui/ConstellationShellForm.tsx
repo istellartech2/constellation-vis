@@ -104,7 +104,7 @@ export default function ConstellationShellForm({
   const summary = details.slice(0, 4);
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto xl:overflow-hidden xl:grid xl:grid-cols-[minmax(0,1fr)_18rem]">
+    <div className="h-full min-h-0 overflow-y-auto max-md:h-auto max-md:overflow-visible xl:overflow-hidden xl:grid xl:grid-cols-[minmax(0,1fr)_18rem]">
       <section aria-label="シェルの設定" className="min-w-0 space-y-5 p-4 xl:overflow-y-auto">
         <div>
           <h3 className="text-base font-semibold text-fg">シェルの設定</h3>

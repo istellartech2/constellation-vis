@@ -3,6 +3,7 @@ import ReactECharts from "echarts-for-react";
 import { downloadPNG, downloadDualChartHTML } from "./utils/downloadUtils";
 import type { CallbackDataParams } from "echarts/types/dist/shared";
 import { getChartTheme } from "./utils/chartTheme";
+import { useCompactChart } from "./utils/useCompactChart";
 
 interface AvailabilityMetrics {
   latitude: number;
@@ -22,6 +23,7 @@ interface Props {
 export default function GlobalAvailabilityPopup({ show, onClose, availabilityMetrics, startTime }: Props) {
   const chartRef1 = useRef<InstanceType<typeof ReactECharts> | null>(null);
   const chartRef2 = useRef<InstanceType<typeof ReactECharts> | null>(null);
+  const compactChart = useCompactChart();
 
   if (!show || availabilityMetrics.length === 0) return null;
 
@@ -80,12 +82,9 @@ export default function GlobalAvailabilityPopup({ show, onClose, availabilityMet
     },
     backgroundColor: "transparent",
     textStyle: { color: t.fg },
-    grid: {
-      left: 60,
-      right: 20,
-      top: 40,
-      bottom: 40
-    },
+    grid: compactChart
+      ? { left: 52, right: 16, top: 40, bottom: 40 }
+      : { left: 60, right: 20, top: 40, bottom: 40 },
     xAxis: {
       type: 'value',
       name: '可用性 (%)',
@@ -149,12 +148,10 @@ export default function GlobalAvailabilityPopup({ show, onClose, availabilityMet
     },
     backgroundColor: "transparent",
     textStyle: { color: t.fg },
-    grid: {
-      left: 60,
-      right: 60,
-      top: 40,
-      bottom: 40
-    },
+    // Phones: the legend wraps to two lines, so reserve room under the axis.
+    grid: compactChart
+      ? { left: 52, right: 16, top: 40, bottom: 100 }
+      : { left: 60, right: 60, top: 40, bottom: 40 },
     xAxis: {
       type: 'value',
       name: '値',
@@ -274,7 +271,7 @@ export default function GlobalAvailabilityPopup({ show, onClose, availabilityMet
           </div>
         </div>
         
-        <div style={{ flex: 1, display: "flex", gap: "16px", minHeight: 0 }}>
+        <div className="global-availability-charts" style={{ flex: 1, display: "flex", gap: "16px", minHeight: 0 }}>
           <div style={{ flex: 1, minHeight: 0 }}>
             <ReactECharts
               ref={chartRef1}

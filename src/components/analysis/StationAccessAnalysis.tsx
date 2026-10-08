@@ -3,6 +3,7 @@ import ReactECharts from "echarts-for-react";
 import type { GroundStation } from "../../lib/groundStations";
 import { downloadPNG, downloadHTML, downloadCSV } from "./utils/downloadUtils";
 import { createStationAccessChartOption } from "./utils/chartOptions";
+import { useCompactChart } from "./utils/useCompactChart";
 import StationAvailabilityPopup from "./StationAvailabilityPopup";
 import type { StationVisibilitySample } from "../../lib/visibility";
 import type {
@@ -37,6 +38,7 @@ export default function StationAccessAnalysis({
   fovCrossTrackDeg,
 }: Props) {
   const [useSatelliteFov, setUseSatelliteFov] = useState(false);
+  const compactChart = useCompactChart();
   const [data, setData] = useState<StationVisibilitySample[]>([]);
   const [stations, setStations] = useState<GroundStation[]>([]);
   const [stats, setStats] = useState<Array<{ name: string; averageVisible: number; nonZeroRate: number }>>([]);
@@ -172,7 +174,7 @@ export default function StationAccessAnalysis({
   };
 
 
-  const option = createStationAccessChartOption(data, stations, stats);
+  const option = createStationAccessChartOption(data, stations, stats, compactChart);
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
