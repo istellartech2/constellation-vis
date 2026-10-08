@@ -54,10 +54,10 @@ function GroupRow({
 }) {
   return (
     <label
-      className={`flex items-center gap-2 min-h-[36px] px-2 py-1 rounded-md border cursor-pointer transition-colors select-none ${
+      className={`flex items-center gap-2 min-h-[36px] max-md:min-h-10 px-2 py-1 rounded-md border cursor-pointer transition-colors select-none ${
         checked
-          ? "border-orange-500 bg-orange-500/10"
-          : "border-gray-700 bg-gray-800/40 hover:bg-gray-700/60 hover:border-gray-500"
+          ? "border-brand bg-brand-soft"
+          : "border-line bg-raised hover:bg-raised-hover hover:border-line-strong"
       } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
     >
       <Checkbox
@@ -66,7 +66,7 @@ function GroupRow({
         onCheckedChange={() => onToggle()}
         className="size-4 shrink-0"
       />
-      <span className="text-sm text-gray-100 flex-1 leading-snug">{leaf.label}</span>
+      <span className="text-sm text-fg flex-1 leading-snug">{leaf.label}</span>
     </label>
   );
 }
@@ -89,15 +89,15 @@ export default function ImportDialog({
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="!w-[95vw] !max-w-2xl !max-h-[90vh] flex flex-col gap-0 p-0 bg-gray-900 text-gray-100 border-gray-700">
-        <DialogHeader className="px-4 pt-3 pb-2 border-b border-gray-700">
-          <div className="flex items-baseline justify-between gap-3">
-            <DialogTitle className="text-gray-100 text-base">
+      <DialogContent className="dialog-flush !w-[95vw] !max-w-2xl !max-h-[90vh] max-md:overflow-hidden max-md:h-[100dvh] max-md:rounded-none max-md:border-0 flex flex-col gap-0 p-0 bg-surface-solid text-fg border-line">
+        <DialogHeader className="px-4 pt-3 pb-2 border-b border-line max-md:pr-12 max-md:py-3 shrink-0">
+          <div className="flex items-baseline justify-between gap-3 max-md:flex-col max-md:items-start max-md:gap-1">
+            <DialogTitle className="text-fg text-base max-md:text-left">
               CelesTrak からインポート
             </DialogTitle>
-            <div className="text-xs text-gray-400 shrink-0">
+            <div className="text-xs text-fg-muted shrink-0">
               選択中{" "}
-              <span className="text-orange-300 font-semibold">
+              <span className="text-brand-text font-semibold">
                 {selectedGroups.length}
               </span>{" "}
               / {totalLeaves}
@@ -106,7 +106,7 @@ export default function ImportDialog({
                   type="button"
                   onClick={handleClearAll}
                   disabled={importing}
-                  className="ml-3 text-gray-400 hover:text-orange-300 disabled:opacity-50"
+                  className="ml-3 text-fg-muted hover:text-brand-text disabled:opacity-50 max-md:px-2 max-md:py-1"
                 >
                   クリア
                 </button>
@@ -118,14 +118,14 @@ export default function ImportDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto px-4 py-2 space-y-2">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-2 space-y-2">
           {categories.map((cat) => {
             const selectedCount = cat.leaves.filter((l) => selectedSet.has(l.id)).length;
             return (
               <section key={cat.id}>
-                <div className="flex items-baseline gap-1.5 text-sm font-semibold text-gray-200 mb-1.5">
+                <div className="flex items-baseline gap-1.5 text-sm font-semibold text-fg mb-1.5">
                   <span>{cat.label}</span>
-                  <span className="text-xs font-normal text-gray-400">
+                  <span className="text-xs font-normal text-fg-muted">
                     ({selectedCount}/{cat.leaves.length})
                   </span>
                 </div>
@@ -145,7 +145,7 @@ export default function ImportDialog({
           })}
         </div>
 
-        <DialogFooter className="px-4 py-3 border-t border-gray-700 gap-2 sm:gap-3 flex-col-reverse sm:flex-row">
+        <DialogFooter className="px-4 py-3 border-t border-line gap-2 sm:gap-3 flex-col-reverse max-md:flex-row sm:flex-row shrink-0">
           {importing ? (
             <div className="flex items-center justify-center w-full h-10">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -156,14 +156,14 @@ export default function ImportDialog({
               <Button
                 variant="outline"
                 onClick={onClose}
-                className="h-10 w-full sm:w-auto bg-gray-800 border-gray-600 text-gray-100 hover:bg-gray-700 hover:text-white"
+                className="h-10 w-full max-md:h-11 max-md:w-auto sm:w-auto bg-sunken border-line-strong text-fg hover:bg-raised-hover hover:text-fg"
               >
                 キャンセル
               </Button>
               <Button
                 onClick={onImport}
                 disabled={selectedGroups.length === 0}
-                className="h-10 w-full sm:w-auto sm:flex-1 bg-orange-600 hover:bg-orange-700 text-white font-semibold disabled:opacity-50"
+                className="h-10 w-full max-md:h-11 max-md:w-auto max-md:flex-1 sm:w-auto sm:flex-1 bg-brand hover:bg-brand-hover text-white font-semibold disabled:opacity-50"
               >
                 {selectedGroups.length === 0
                   ? "グループを選択してください"

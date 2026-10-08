@@ -5,6 +5,7 @@ import { parseSatellitesToml, parseConstellationToml } from "../../lib/config";
 import type { GroundStation } from "../../lib/groundStations";
 import { downloadPNG, downloadHTML, downloadCSV } from "./utils/downloadUtils";
 import { createGlobalAccessChartOption } from "./utils/chartOptions";
+import { useCompactChart } from "./utils/useCompactChart";
 import GlobalAvailabilityPopup from "./GlobalAvailabilityPopup";
 import type { StationVisibilitySample } from "../../lib/visibility";
 
@@ -24,6 +25,7 @@ interface Props {
 
 export default function GlobalAccessAnalysis({ satText, constText, startTime }: Props) {
   const [data, setData] = useState<StationVisibilitySample[]>([]);
+  const compactChart = useCompactChart();
   const [latitudeStations, setLatitudeStations] = useState<GroundStation[]>([]);
   const [stats, setStats] = useState<Array<{name: string; averageVisible: number; nonZeroRate: number}>>([]);
   const [availabilityMetrics, setAvailabilityMetrics] = useState<AvailabilityMetrics[]>([]);
@@ -129,7 +131,7 @@ export default function GlobalAccessAnalysis({ satText, constText, startTime }: 
     }
   };
 
-  const option = createGlobalAccessChartOption(data, latitudeStations, stats);
+  const option = createGlobalAccessChartOption(data, latitudeStations, stats, compactChart);
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
@@ -204,7 +206,6 @@ export default function GlobalAccessAnalysis({ satText, constText, startTime }: 
           ref={chartRef}
           option={option}
           style={{ height: "100%", width: "100%" }}
-          theme="dark"
         />
       </div>
       

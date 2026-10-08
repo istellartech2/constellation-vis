@@ -13,14 +13,15 @@ import {
   Radio,
   Palette,
   FolderOpen,
-  Check,
   Bookmark,
   Save,
   Plus,
   X,
+  SunMoon,
 } from "lucide-react";
 import PanelSection from "./PanelSection";
-import { ColorChip, HelpTip, InlineSlider } from "./compactControls";
+import { ColorChip, HelpTip, InlineSlider, SegmentedControl } from "./compactControls";
+import { useUiTheme } from "../../lib/uiTheme";
 import type SatelliteScene from "../../lib/visualization";
 import type { EarthTextureMode } from "../../lib/earthTextures";
 import {
@@ -98,7 +99,7 @@ function CheckboxItem({
         checked={checked}
         onCheckedChange={(v) => onChange(!!v)}
       />
-      <Label htmlFor={id} className="text-sm font-normal cursor-pointer text-gray-200">
+      <Label htmlFor={id} className="text-sm font-normal cursor-pointer text-fg">
         {label}
       </Label>
     </div>
@@ -150,6 +151,7 @@ export default function OptionTab(props: Props) {
     getCurrentView,
     onApplyView,
   } = props;
+  const [uiTheme, setUiTheme] = useUiTheme();
 
   const [loadedKMLs, setLoadedKMLs] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -244,7 +246,7 @@ export default function OptionTab(props: Props) {
         icon={<Bookmark />}
         action={
           savedViews.length > 0 ? (
-            <span className="rounded-full bg-gray-700 px-1.5 py-0.5 text-[10px] text-gray-300">
+            <span className="rounded-full bg-raised px-1.5 py-0.5 text-[10px] text-fg-muted">
               {savedViews.length}
             </span>
           ) : undefined
@@ -275,7 +277,7 @@ export default function OptionTab(props: Props) {
             <button
               type="button"
               onClick={handleCancelAddView}
-              className="shrink-0 text-gray-400 hover:text-gray-200 px-1"
+              className="shrink-0 text-fg-muted hover:text-fg px-1"
               aria-label="キャンセル"
             >
               <X className="w-4 h-4" />
@@ -285,7 +287,7 @@ export default function OptionTab(props: Props) {
           <Button
             onClick={() => setAddingView(true)}
             variant="secondary"
-            className="w-full h-8 justify-center gap-1.5 text-xs bg-gray-700 text-gray-200 border border-gray-600 hover:bg-gray-600 hover:text-white"
+            className="w-full h-8 justify-center gap-1.5 text-xs bg-raised text-fg border border-line-strong hover:bg-raised-hover hover:text-fg"
           >
             <Plus className="w-3.5 h-3.5" />
             現在のビューを保存
@@ -297,12 +299,12 @@ export default function OptionTab(props: Props) {
             {savedViews.map((v) => (
               <span
                 key={v.id}
-                className="inline-flex items-center rounded-full border border-gray-600 bg-gray-700/70 text-xs text-gray-200 transition-colors hover:border-gray-400"
+                className="inline-flex items-center rounded-full border border-line-strong bg-raised text-xs text-fg transition-colors hover:border-line-strong"
               >
                 <button
                   type="button"
                   onClick={() => onApplyView(v.settings)}
-                  className="max-w-[150px] truncate py-1 pl-3 pr-1.5 hover:text-white"
+                  className="max-w-[150px] truncate py-1 pl-3 pr-1.5 hover:text-fg"
                   title={`「${v.name}」を適用`}
                 >
                   {v.name}
@@ -310,7 +312,7 @@ export default function OptionTab(props: Props) {
                 <button
                   type="button"
                   onClick={() => handleDeleteView(v.id)}
-                  className="py-1 pl-0.5 pr-2 text-gray-400 hover:text-red-400"
+                  className="py-1 pl-0.5 pr-2 text-fg-muted hover:text-danger"
                   aria-label={`「${v.name}」を削除`}
                   title="削除"
                 >
@@ -321,7 +323,7 @@ export default function OptionTab(props: Props) {
           </div>
         ) : (
           !addingView && (
-            <p className="text-[11px] text-gray-400 leading-snug">
+            <p className="text-[11px] text-fg-muted leading-snug">
               画角と表示設定に名前を付けて保存できます。
             </p>
           )
@@ -371,42 +373,17 @@ export default function OptionTab(props: Props) {
       {/* C. 座標系と補助表示(ECI/ECEF・太陽・黄道面・GEO) */}
       <PanelSection title="座標系・補助表示" icon={<Sun />}>
         <div className="space-y-1">
-          <div className="text-sm text-gray-200">表示する座標系</div>
-          <div
-            className="inline-flex w-full rounded-md border border-gray-600 bg-gray-900/60 p-0.5"
-            role="group"
-            aria-label="座標系の選択"
-          >
-            <button
-              type="button"
-              onClick={() => onEcefChange(false)}
-              aria-pressed={!ecef}
-              data-slot="button"
-              className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 text-xs rounded transition-colors ${
-                !ecef
-                  ? "bg-gray-700 text-white font-medium"
-                  : "bg-transparent text-gray-400 hover:text-gray-200"
-              }`}
-            >
-              {!ecef && <Check className="h-3 w-3 text-orange-400" />}
-              ECI（慣性系）
-            </button>
-            <button
-              type="button"
-              onClick={() => onEcefChange(true)}
-              aria-pressed={ecef}
-              data-slot="button"
-              className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 text-xs rounded transition-colors ${
-                ecef
-                  ? "bg-gray-700 text-white font-medium"
-                  : "bg-transparent text-gray-400 hover:text-gray-200"
-              }`}
-            >
-              {ecef && <Check className="h-3 w-3 text-orange-400" />}
-              ECEF（地球固定）
-            </button>
-          </div>
-          <p className="text-[11px] text-gray-500 leading-snug">
+          <div className="text-sm text-fg">表示する座標系</div>
+          <SegmentedControl
+            ariaLabel="座標系の選択"
+            value={ecef ? "ecef" : "eci"}
+            options={[
+              { value: "eci", label: "ECI（慣性系）" },
+              { value: "ecef", label: "ECEF（地球固定）" },
+            ]}
+            onChange={(v) => onEcefChange(v === "ecef")}
+          />
+          <p className="text-[11px] text-fg-subtle leading-snug">
             {ecef
               ? "地球と一緒に回転。地表の動きが見やすい。"
               : "星に対して静止。軌道の形が見やすい。"}
@@ -432,8 +409,8 @@ export default function OptionTab(props: Props) {
       {/* D. 衛星の視野(センサ)定義。地上局の通信範囲コーンは通信タブへ移設。
           半角・傾きは 3D コーンと地上局アクセス解析の共通定義なので、
           コーン表示の ON/OFF とは独立に常に編集できるようにしてある。 */}
-      <PanelSection title="衛星の視野（センサ定義）" icon={<Radio />}>
-        <p className="text-[11px] text-gray-500">
+      <PanelSection title="衛星の視野（センサ定義）" icon={<Radio />} collapsible defaultOpen={showSatelliteFovCones}>
+        <p className="text-[11px] text-fg-subtle">
           ここで決めた視野半角と傾きは、3D のコーン表示と「地上局アクセス設計」解析の
           視野条件で共通に使われます。
         </p>
@@ -445,7 +422,7 @@ export default function OptionTab(props: Props) {
           />
           <Label
             htmlFor="satelliteFovCones"
-            className="text-sm font-normal cursor-pointer text-gray-200 flex-1"
+            className="text-sm font-normal cursor-pointer text-fg flex-1"
           >
             3D にコーンを表示
           </Label>
@@ -494,7 +471,7 @@ export default function OptionTab(props: Props) {
           onChange={onFovConeCrossTrackDegChange}
         />
         {showSatelliteFovCones && (
-          <p className="text-[11px] text-gray-500">
+          <p className="text-[11px] text-fg-subtle">
             円錐最小高さ {fovConeMinHeight.toFixed(2)}R<sub>⊕</sub>(約{" "}
             {Math.round(fovConeMinHeight * EARTH_RADIUS_KM).toLocaleString()} km)—
             衛星高度に応じた固定スケール
@@ -503,7 +480,7 @@ export default function OptionTab(props: Props) {
       </PanelSection>
 
       {/* E. 衛星ポイントカラー */}
-      <PanelSection title="衛星ポイントカラー" icon={<Palette />}>
+      <PanelSection title="衛星ポイントカラー" icon={<Palette />} collapsible defaultOpen={false}>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
           <ColorChip
             label="リンク可視"
@@ -528,6 +505,8 @@ export default function OptionTab(props: Props) {
         title="KML 重ね合わせ"
         icon={<FolderOpen />}
         action={<HelpTip text="KML ファイルのポイント・ライン・ポリゴンを地球上に重ねて表示します。" />}
+        collapsible
+        defaultOpen={loadedKMLs.length > 0}
       >
         <div className="flex gap-2 flex-wrap items-center">
           <Button
@@ -535,7 +514,7 @@ export default function OptionTab(props: Props) {
             disabled={loading}
             variant="secondary"
             size="sm"
-            className="h-8 gap-1.5 text-xs bg-gray-700 text-gray-200 border border-gray-600 hover:bg-gray-600 hover:text-white"
+            className="h-8 gap-1.5 text-xs bg-raised text-fg border border-line-strong hover:bg-raised-hover hover:text-fg"
           >
             <FileInput className="w-3.5 h-3.5" />
             {loading ? "読み込み中..." : "KMLを読み込む"}
@@ -545,7 +524,7 @@ export default function OptionTab(props: Props) {
               onClick={handleClearKML}
               variant="ghost"
               size="sm"
-              className="h-8 gap-1.5 text-xs text-gray-400 hover:text-gray-200"
+              className="h-8 gap-1.5 text-xs text-fg-muted hover:text-fg"
             >
               <Trash2 className="w-3.5 h-3.5" />
               クリア
@@ -554,17 +533,29 @@ export default function OptionTab(props: Props) {
         </div>
 
         {error && (
-          <div className="text-red-400 text-xs bg-red-900/20 p-2 rounded">{error}</div>
+          <div className="text-danger text-xs bg-danger-soft p-2 rounded">{error}</div>
         )}
 
         {loadedKMLs.length > 0 && (
-          <ul className="text-xs text-gray-300 list-disc list-inside">
+          <ul className="text-xs text-fg-muted list-disc list-inside">
             {loadedKMLs.map((file, index) => (
               <li key={index}>{file}</li>
             ))}
           </ul>
         )}
       </PanelSection>
+      <PanelSection title="画面テーマ" icon={<SunMoon />}>
+        <SegmentedControl
+          ariaLabel="画面テーマ"
+          value={uiTheme}
+          options={[
+            { value: "dark", label: "ダーク" },
+            { value: "light", label: "ライト" },
+          ]}
+          onChange={setUiTheme}
+        />
+      </PanelSection>
+
     </div>
   );
 }

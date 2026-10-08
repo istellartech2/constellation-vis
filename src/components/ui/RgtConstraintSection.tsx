@@ -132,7 +132,7 @@ export default function RgtConstraintSection({
 
   const content = (
     <>
-      <div className="flex flex-wrap gap-3 text-xs text-gray-300">
+      <div className="flex flex-wrap gap-3 text-xs text-fg-muted">
         <label className="flex items-center gap-2">
           <input
             type="radio"
@@ -160,19 +160,19 @@ export default function RgtConstraintSection({
           step={1}
           value={rgtRepeatOrbits}
           onChange={(e) => setRgtRepeatOrbits(Number(e.target.value))}
-          className="w-full px-2 py-1 text-sm bg-gray-800 border border-gray-600 rounded focus:border-amber-500 focus:outline-none text-gray-100"
+          className="w-full px-2 py-1 text-sm bg-sunken border border-line-strong rounded focus:border-brand focus:outline-none text-fg"
         />
-        <span className="text-xs text-gray-400">/</span>
+        <span className="text-xs text-fg-muted">/</span>
         <input
           type="number"
           min={1}
           step={1}
           value={rgtRepeatDays}
           onChange={(e) => setRgtRepeatDays(Number(e.target.value))}
-          className="w-full px-2 py-1 text-sm bg-gray-800 border border-gray-600 rounded focus:border-amber-500 focus:outline-none text-gray-100"
+          className="w-full px-2 py-1 text-sm bg-sunken border border-line-strong rounded focus:border-brand focus:outline-none text-fg"
         />
       </div>
-      <span className="text-xs text-gray-500">
+      <span className="text-xs text-fg-subtle">
         RGT比 = N_S / N_D（同じ地上軌跡が戻るまでの「衛星の周回数 / 地球の自転回数」）
       </span>
 
@@ -181,18 +181,18 @@ export default function RgtConstraintSection({
         variant="outline"
         size="sm"
         onClick={handleApplyRgt}
-        className="bg-gray-800 hover:bg-gray-700 text-gray-100 border-gray-600 w-fit"
+        className="bg-sunken hover:bg-raised-hover text-fg border-line-strong w-fit"
       >
         RGT比を適用
       </Button>
-      {rgtStatus && <p className="text-xs text-amber-300">{rgtStatus}</p>}
+      {rgtStatus && <p className="text-xs text-brand-text">{rgtStatus}</p>}
     </>
   );
 
   if (alwaysOpen) {
     return (
       <div className="space-y-2">
-        <div className="text-xs font-medium text-gray-400">RGT 条件（回帰軌道）</div>
+        <div className="text-xs font-medium text-fg-muted">RGT 条件（回帰軌道）</div>
         {content}
       </div>
     );

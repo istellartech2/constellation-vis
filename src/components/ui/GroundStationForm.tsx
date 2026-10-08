@@ -16,8 +16,8 @@ export default function GroundStationForm({ station, index, errors, onChange }: 
     errors.find((e) => e.stationId === station.id && e.field === `station.${index}.${name}`);
 
   const inputCls = (hasErr: boolean) =>
-    `w-full px-2 py-1 text-sm bg-gray-800 border rounded focus:outline-none text-gray-100 ${
-      hasErr ? "border-red-500" : "border-gray-600 focus:border-amber-500"
+    `w-full px-2 py-1 text-sm bg-sunken border rounded focus:outline-none text-fg ${
+      hasErr ? "border-danger" : "border-line-strong focus:border-brand"
     }`;
 
   return (
@@ -119,9 +119,9 @@ function Field({
 }) {
   return (
     <div>
-      <Label className="text-xs text-gray-400 mb-1 block">{label}</Label>
+      <Label className="text-xs text-fg-muted mb-1 block">{label}</Label>
       {children}
-      {error && <div className="text-xs text-red-400 mt-1">{error}</div>}
+      {error && <div className="text-xs text-danger mt-1">{error}</div>}
     </div>
   );
 }

@@ -36,13 +36,13 @@ export default function GroundStationList({
   const selectedIndex = stations.findIndex((s) => s.id === selectedId);
 
   return (
-    <div className="flex flex-col h-full border-r border-gray-600">
-      <div className="p-2 border-b border-gray-600 space-y-1.5">
+    <div className="flex flex-col h-full md:border-r max-md:border-b border-line-strong">
+      <div className="p-2 border-b border-line-strong space-y-1.5">
         <Button
           variant="outline"
           size="sm"
           onClick={onAdd}
-          className="w-full flex items-center justify-center gap-1 bg-gray-800 hover:bg-gray-700 text-gray-100 border-gray-600"
+          className="w-full flex items-center justify-center gap-1 max-md:h-10 bg-sunken hover:bg-raised-hover text-fg border-line-strong"
         >
           <Plus className="h-4 w-4" />
           <span>地上局追加</span>
@@ -57,7 +57,7 @@ export default function GroundStationList({
             if (preset) onAddPreset(preset);
             e.target.value = "";
           }}
-          className="w-full px-2 py-1 text-xs bg-gray-800 border border-gray-600 rounded text-gray-100 focus:border-amber-500 focus:outline-none"
+          className="w-full px-2 py-1 max-md:py-2 max-md:text-sm text-xs bg-sunken border border-line-strong rounded text-fg focus:border-brand focus:outline-none"
         >
           <option value="">プリセットから追加...</option>
           {GROUND_STATION_PRESETS.map((group, gi) => (
@@ -72,29 +72,29 @@ export default function GroundStationList({
         </select>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto max-md:max-h-40">
         {stations.length === 0 ? (
-          <div className="p-4 text-center text-gray-500 text-sm">
+          <div className="p-4 text-center text-fg-subtle text-sm">
             地上局がありません
           </div>
         ) : (
-          <ul className="divide-y divide-gray-700">
+          <ul className="divide-y divide-line">
             {stations.map((s) => (
               <li
                 key={s.id}
                 onClick={() => onSelect(s.id)}
-                className={`px-3 py-2 cursor-pointer text-sm transition-colors ${
+                className={`px-3 py-2 max-md:py-2.5 cursor-pointer text-sm transition-colors ${
                   s.id === selectedId
-                    ? "bg-amber-900/40 text-amber-50"
-                    : "hover:bg-gray-800 text-gray-200"
+                    ? "bg-brand-soft text-fg"
+                    : "hover:bg-sunken text-fg"
                 }`}
               >
                 <div className="flex items-center gap-2">
                   {hasError(s.id) && (
-                    <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
+                    <span className="w-2 h-2 rounded-full bg-danger flex-shrink-0" />
                   )}
                   <span className="truncate flex-1">{s.name || "(無名)"}</span>
-                  <span className="text-xs text-gray-400">
+                  <span className="text-xs text-fg-muted">
                     {s.latitudeDeg.toFixed(2)}, {s.longitudeDeg.toFixed(2)}
                   </span>
                 </div>
@@ -105,13 +105,13 @@ export default function GroundStationList({
       </div>
 
       {selectedId && (
-        <div className="p-2 border-t border-gray-600 flex gap-1 justify-center">
+        <div className="p-2 border-t border-line-strong flex gap-1 justify-center">
           <Button
             variant="outline"
             size="icon"
             onClick={() => onMoveUp(selectedId)}
             disabled={selectedIndex <= 0}
-            className="h-8 w-8 bg-gray-800 hover:bg-gray-700 text-gray-100 border-gray-600 disabled:opacity-40"
+            className="h-8 w-8 max-md:h-10 max-md:w-10 bg-sunken hover:bg-raised-hover text-fg border-line-strong disabled:opacity-40"
             title="上へ移動"
           >
             <ChevronUp className="h-4 w-4" />
@@ -121,7 +121,7 @@ export default function GroundStationList({
             size="icon"
             onClick={() => onMoveDown(selectedId)}
             disabled={selectedIndex >= stations.length - 1}
-            className="h-8 w-8 bg-gray-800 hover:bg-gray-700 text-gray-100 border-gray-600 disabled:opacity-40"
+            className="h-8 w-8 max-md:h-10 max-md:w-10 bg-sunken hover:bg-raised-hover text-fg border-line-strong disabled:opacity-40"
             title="下へ移動"
           >
             <ChevronDown className="h-4 w-4" />
@@ -130,7 +130,7 @@ export default function GroundStationList({
             variant="outline"
             size="icon"
             onClick={() => onDelete(selectedId)}
-            className="h-8 w-8 bg-gray-800 hover:bg-red-700 text-gray-100 hover:text-white border-gray-600 hover:border-red-600"
+            className="h-8 w-8 max-md:h-10 max-md:w-10 bg-sunken hover:bg-danger text-fg hover:text-fg border-line-strong hover:border-danger"
             title="削除"
           >
             <Trash2 className="h-4 w-4" />

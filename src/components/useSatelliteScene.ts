@@ -49,6 +49,9 @@ export function useSatelliteScene(
       // setting-driven rebuilds keep the user's viewpoint.
       const snap = cameraSnapshotRef?.current;
       if (snap) scene.applyCameraSnapshot(snap);
+      // No saved framing yet: report the scene's own default (fitted to the
+      // screen) so the placeholder camera in App is never persisted.
+      else params.onCameraChange?.(scene.getCameraSnapshot());
     }, 10);
     
     return () => {

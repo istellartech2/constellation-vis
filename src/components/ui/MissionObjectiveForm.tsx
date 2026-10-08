@@ -50,11 +50,11 @@ const FAMILIES: Array<{ value: MissionFamilyChoice; label: string }> = [
 ];
 
 const SELECT_CLS =
-  "w-full px-2 py-1.5 text-sm bg-gray-800 border border-gray-600 rounded text-gray-100 focus:border-amber-500 focus:outline-none disabled:opacity-50";
+  "w-full px-2 py-1.5 text-sm bg-sunken border border-line-strong rounded text-fg focus:border-brand focus:outline-none disabled:opacity-50";
 
 function SectionHeading({ children }: { children: ReactNode }) {
   return (
-    <div className="text-xs font-medium text-gray-200 border-b border-gray-600 pb-1">
+    <div className="text-xs font-medium text-fg border-b border-line-strong pb-1">
       {children}
     </div>
   );
@@ -77,7 +77,7 @@ export default function MissionObjectiveForm({ form, onChange, disabled, section
           {OBJECTIVES.map((objective) => (
             <label
               key={objective.kind}
-              className={`flex items-start gap-3 rounded-lg border p-3 text-sm ${form.objective === objective.kind ? "border-amber-500 bg-amber-900/20" : "border-gray-600 bg-gray-800/50 hover:border-gray-400"} ${
+              className={`flex items-start gap-3 rounded-lg border p-3 text-sm ${form.objective === objective.kind ? "border-brand bg-brand-soft" : "border-line-strong bg-raised hover:border-line-strong"} ${
                 disabled ? "opacity-50" : "cursor-pointer"
               }`}
             >
@@ -88,17 +88,17 @@ export default function MissionObjectiveForm({ form, onChange, disabled, section
                 checked={form.objective === objective.kind}
                 disabled={disabled}
                 onChange={() => onChange({ objective: objective.kind })}
-                className="mt-0.5 accent-amber-500"
+                className="mt-0.5 accent-brand"
               />
-              <span className="space-y-1 text-gray-100">
+              <span className="space-y-1 text-fg">
                 <span className="block font-medium">{objective.label}</span>
-                <span className="block text-sm text-gray-300">{objective.kind === "minSatellites" ? "必要なカバレッジを、できるだけ少ない衛星で実現" : objective.kind === "fixedBudget" ? "用意できる衛星数の範囲で、カバレッジを広げる" : "衛星数を減らす案と、低高度で遅延を減らす案を比較"}</span>
+                <span className="block text-sm text-fg-muted">{objective.kind === "minSatellites" ? "必要なカバレッジを、できるだけ少ない衛星で実現" : objective.kind === "fixedBudget" ? "用意できる衛星数の範囲で、カバレッジを広げる" : "衛星数を減らす案と、低高度で遅延を減らす案を比較"}</span>
               </span>
             </label>
           ))}
         </div>
         <div className="space-y-1">
-          <Label htmlFor="mission-region" className="text-sm text-gray-300">
+          <Label htmlFor="mission-region" className="text-sm text-fg-muted">
             対象領域
           </Label>
           <select
@@ -168,14 +168,14 @@ export default function MissionObjectiveForm({ form, onChange, disabled, section
           value={form.targetAvailabilityPercent} min={0.0001} max={100} step={0.01}
           disabled={disabled} help="必要な同時可視衛星数を満たす地点・時刻の割合。100% を指定しても、検証した格子と時間内での判定です。"
           onChange={(v) => onChange({ targetAvailabilityPercent: v })} />
-        <label htmlFor="mission-availability-basis" className="block text-sm text-gray-300">可用率の評価基準</label>
+        <label htmlFor="mission-availability-basis" className="block text-sm text-fg-muted">可用率の評価基準</label>
         <select id="mission-availability-basis" value={form.availabilityBasis} disabled={disabled}
-          className="w-full rounded border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-gray-100"
+          className="w-full rounded border border-line-strong bg-sunken px-3 py-2 text-sm text-fg"
           onChange={(e) => onChange({ availabilityBasis: e.target.value as MissionDesignForm["availabilityBasis"] })}>
           <option value="worstLatitude">最も条件の悪い緯度</option>
           <option value="areaAverage">領域全体の平均</option>
         </select>
-        <p className="text-xs text-gray-400">{form.availabilityBasis === "worstLatitude"
+        <p className="text-xs text-fg-muted">{form.availabilityBasis === "worstLatitude"
           ? "各緯度の経度・時間平均のうち、最も低い可用率で判定します。個々の地点の最低値ではありません。"
           : "対象領域の地点・時刻全体で平均します。一部の緯度での不足は平均に埋もれることがあります。"}</p>
 
@@ -254,7 +254,7 @@ export default function MissionObjectiveForm({ form, onChange, disabled, section
           />
           <Label
             htmlFor="mission-restrict-inclination"
-            className="text-xs font-normal cursor-pointer text-gray-200 inline-flex items-center gap-1"
+            className="text-xs font-normal cursor-pointer text-fg inline-flex items-center gap-1"
           >
             <span>傾斜角を指定する</span>
             <HelpTip text="指定しない場合は対象領域から必要な傾斜角の範囲を自動で決めます。打ち上げ場所や既存衛星に合わせたいときだけ指定してください。" />
@@ -297,7 +297,7 @@ export default function MissionObjectiveForm({ form, onChange, disabled, section
           />
           <Label
             htmlFor="mission-rgt"
-            className="text-xs font-normal cursor-pointer text-gray-200 inline-flex items-center gap-1"
+            className="text-xs font-normal cursor-pointer text-fg inline-flex items-center gap-1"
           >
             <span>RGT（回帰軌道）を課す</span>
             <HelpTip text="地上軌跡が一定日数で閉じる高度だけを候補にします。高度が自由変数ではなくなるため、通常の高度格子は置き換えられます。" />
@@ -305,7 +305,7 @@ export default function MissionObjectiveForm({ form, onChange, disabled, section
         </div>
 
         <div className="space-y-1">
-          <Label htmlFor="mission-family" className="text-sm text-gray-300 inline-flex items-center gap-1">
+          <Label htmlFor="mission-family" className="text-sm text-fg-muted inline-flex items-center gap-1">
             <span>設計方式</span>
             <HelpTip text="最適化の対象は Walker Delta と Walker Star (Streets of Coverage) のみです。Flower 系は列挙・検証カーネルの対象外です。" />
           </Label>

@@ -21,7 +21,7 @@ export default function PatternSelect({ value, onChange, id, disabled }: Props) 
 
   return (
     <div className="space-y-1">
-      <Label htmlFor={id} className="text-xs text-gray-400 inline-flex items-center gap-1">
+      <Label htmlFor={id} className="text-xs text-fg-muted inline-flex items-center gap-1">
         <span>設計方式</span>
         <HelpTip text={meta.help} />
       </Label>
@@ -30,7 +30,7 @@ export default function PatternSelect({ value, onChange, id, disabled }: Props) 
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value as PatternId)}
-        className="w-full px-2 py-1.5 text-sm bg-gray-800 border border-gray-600 rounded focus:border-amber-500 focus:outline-none text-gray-100"
+        className="w-full px-2 py-1.5 text-sm bg-sunken border border-line-strong rounded focus:border-brand focus:outline-none text-fg"
       >
         {PATTERN_GROUPS.map(({ group, patterns }) => (
           <optgroup key={group} label={group}>
@@ -42,7 +42,7 @@ export default function PatternSelect({ value, onChange, id, disabled }: Props) 
           </optgroup>
         ))}
       </select>
-      <p className="text-xs text-gray-500">{meta.summary}</p>
+      <p className="text-xs text-fg-subtle">{meta.summary}</p>
     </div>
   );
 }

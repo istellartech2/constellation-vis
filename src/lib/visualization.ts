@@ -62,6 +62,29 @@ const FOLLOW_LERP_ALPHA = 0.14;
 const ISL_PATH_INITIAL_SEGMENTS = 64;
 const ISL_RECOMPUTE_MIN_REAL_MS = 200;
 
+/** Pick radius around the pointer, in CSS pixels (bigger for touch). */
+const PICK_RADIUS_MOUSE_PX = 12;
+const PICK_RADIUS_TOUCH_PX = 22;
+
+/**
+ * Indexes of the screen points within `radiusPx` of (`x`, `y`), nearest
+ * first. Points set to `null` (behind the camera / occluded) are skipped.
+ */
+export function screenSpaceHits(
+  points: ({ x: number; y: number } | null)[],
+  x: number,
+  y: number,
+  radiusPx: number,
+): number[] {
+  const hits: { i: number; d: number }[] = [];
+  points.forEach((p, i) => {
+    if (!p) return;
+    const d = Math.hypot(p.x - x, p.y - y);
+    if (d <= radiusPx) hits.push({ i, d });
+  });
+  return hits.sort((a, b) => a.d - b.d).map((h) => h.i);
+}
+
 export function pickSatelliteHitIndex(
   hitIndexes: number[],
   selectedIndex: number | null,
@@ -296,6 +319,9 @@ export default class SatelliteScene {
     this.scene.add(this.cameraHolder);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    // Render at device resolution (capped at 2× to bound GPU cost) so the
+    // globe and orbit lines stay sharp on Retina / phone screens.
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     mountNode.appendChild(this.renderer.domElement);
 
@@ -577,10 +603,41 @@ export default class SatelliteScene {
         this.selectStation(idx);
         return;
       }
-      const hits = raycaster.intersectObject(satPoints, false);
-      const hitIndexes = hits
-        .map((hit) => hit.index)
-        .filter((index): index is number => index !== undefined);
+      // Screen-space picking: a fixed pixel radius regardless of zoom level,
+      // skipping satellites hidden behind the Earth (unit sphere at origin).
+      const rect = this.renderer.domElement.getBoundingClientRect();
+      const posAttr = this.satGeometry.getAttribute("position") as THREE.BufferAttribute;
+      const camPos = this.camera.getWorldPosition(new THREE.Vector3());
+      const world = new THREE.Vector3();
+      const ndc = new THREE.Vector3();
+      const toSat = new THREE.Vector3();
+      const screenPts: ({ x: number; y: number } | null)[] = [];
+      for (let i = 0; i < posAttr.count; i++) {
+        world.fromBufferAttribute(posAttr, i).applyMatrix4(satPoints.matrixWorld);
+        ndc.copy(world).project(this.camera);
+        if (ndc.z > 1 || ndc.z < -1) {
+          screenPts.push(null);
+          continue;
+        }
+        toSat.subVectors(world, camPos);
+        const dist = toSat.length();
+        toSat.divideScalar(dist);
+        // Ray–sphere test: does the line of sight hit the Earth before the satellite?
+        const b = camPos.dot(toSat);
+        const c = camPos.lengthSq() - 1;
+        const disc = b * b - c;
+        const tHit = disc > 0 ? -b - Math.sqrt(disc) : Infinity;
+        if (tHit > 0 && tHit < dist) {
+          screenPts.push(null);
+          continue;
+        }
+        screenPts.push({
+          x: rect.left + ((ndc.x + 1) / 2) * rect.width,
+          y: rect.top + ((1 - ndc.y) / 2) * rect.height,
+        });
+      }
+      const radius = event.pointerType === "touch" ? PICK_RADIUS_TOUCH_PX : PICK_RADIUS_MOUSE_PX;
+      const hitIndexes = screenSpaceHits(screenPts, event.clientX, event.clientY, radius);
       const nextIndex = pickSatelliteHitIndex(hitIndexes, this.selectedIndex);
       if (nextIndex !== null) {
         this.selectSatellite(nextIndex);
@@ -630,6 +687,7 @@ export default class SatelliteScene {
       this.renderer.setSize(window.innerWidth, window.innerHeight);
       this.camera.aspect = window.innerWidth / window.innerHeight;
       this.camera.updateProjectionMatrix();
+      this.applyViewOffset();
       this.kmlRenderer.setResolution(window.innerWidth, window.innerHeight);
     };
     window.addEventListener("resize", handleResize);
@@ -814,7 +872,14 @@ export default class SatelliteScene {
   private resetFreeCamera() {
     this.controls.enabled = true;
     this.controls.target.copy(DEFAULT_CAMERA_TARGET);
-    this.camera.position.copy(DEFAULT_CAMERA_POSITION);
+    // Back the camera off on narrow (portrait) screens so the whole globe
+    // fits horizontally; DEFAULT_CAMERA_POSITION is tuned for landscape.
+    const vHalf = THREE.MathUtils.degToRad(this.camera.fov / 2);
+    const hHalf = Math.atan(Math.tan(vHalf) * this.camera.aspect);
+    const fitDistance = 1.15 / Math.sin(Math.min(vHalf, hHalf));
+    this.camera.position
+      .copy(DEFAULT_CAMERA_POSITION)
+      .setLength(Math.max(DEFAULT_CAMERA_POSITION.length(), fitDistance));
     this.camera.up.copy(UP_AXIS);
     this.camera.lookAt(DEFAULT_CAMERA_TARGET);
     this.controls.update();
@@ -1183,8 +1248,43 @@ export default class SatelliteScene {
     this.islPathLines.visible = true;
   }
 
+  /** Insets (px) currently applied via the camera view offset. */
+  private viewInset = { left: 0, bottom: 0 };
+
+  /**
+   * Shift the rendered image so the globe stays centred in the area not
+   * covered by the side panel (desktop, left) or bottom sheet (phones).
+   * The panel publishes the covered size on <html data-view-inset-left /
+   * data-sheet-inset>; eased here for a smooth slide.
+   */
+  private updateViewInset() {
+    const ds = document.documentElement.dataset;
+    const target = {
+      left: Number(ds.viewInsetLeft ?? 0) || 0,
+      bottom: Number(ds.sheetInset ?? 0) || 0,
+    };
+    const cur = this.viewInset;
+    if (Math.abs(target.left - cur.left) < 0.5 && Math.abs(target.bottom - cur.bottom) < 0.5) return;
+    const ease = (from: number, to: number) => {
+      const next = from + (to - from) * 0.2;
+      return Math.abs(to - next) < 0.5 ? to : next;
+    };
+    cur.left = ease(cur.left, target.left);
+    cur.bottom = ease(cur.bottom, target.bottom);
+    this.applyViewOffset();
+  }
+
+  private applyViewOffset() {
+    const { left, bottom } = this.viewInset;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    if (left === 0 && bottom === 0) this.camera.clearViewOffset();
+    else this.camera.setViewOffset(w, h, -left / 2, bottom / 2, w, h);
+  }
+
   private animate = () => {
     this.animationFrameId = requestAnimationFrame(this.animate);
+    this.updateViewInset();
     const nowReal = Date.now();
     const simDeltaMs = (nowReal - this.startReal) * this.params.speedRef.current;
     const simDate = new Date(this.startSim + simDeltaMs);

@@ -21,6 +21,7 @@ import {
   downloadMultiChartHTML,
   downloadPNG,
 } from "./utils/downloadUtils";
+import { getChartTheme } from "./utils/chartTheme";
 
 interface Props {
   satText: string;
@@ -171,11 +172,12 @@ function getTooltipValue(value: unknown): number | null {
 }
 
 function createAltitudeTimelineOption(result: MaintenanceAnalysisResult): ECBasicOption {
+  const t = getChartTheme();
   return {
-    title: { text: "自然減衰による高度低下", textStyle: { color: "#ed6d00", fontSize: 14 }, left: "center" },
-    backgroundColor: "rgba(30, 32, 36, 0.95)",
-    textStyle: { color: "#f1f1f1" },
-    tooltip: {
+    title: { text: "自然減衰による高度低下", textStyle: { color: t.fg, fontSize: 14 }, left: "center" },
+    backgroundColor: "transparent",
+    textStyle: { color: t.fg },
+    tooltip: { backgroundColor: t.surface, borderColor: t.lineStrong, textStyle: { color: t.fg },
       trigger: "axis",
       formatter: (params: Array<{ axisValueLabel?: string; seriesName?: string; value?: unknown }>) => {
         const lines = params.map((param) => {
@@ -186,20 +188,20 @@ function createAltitudeTimelineOption(result: MaintenanceAnalysisResult): ECBasi
         return [`経過年: ${params[0]?.axisValueLabel ?? ""}`, ...lines].join("<br/>");
       },
     },
-    legend: { top: 28, textStyle: { color: "#999faa" }, data: ["平均高度", "近地点高度", "遠地点高度"] },
+    legend: { top: 28, textStyle: { color: t.fgMuted }, data: ["平均高度", "近地点高度", "遠地点高度"] },
     grid: { left: 55, right: 24, top: 80, bottom: 50 },
     xAxis: {
       type: "category",
       data: result.timeline.map((point) => formatNumber(point.elapsedYears, 1)),
-      axisLabel: { color: "#999faa" },
+      axisLabel: { color: t.fgMuted },
       name: "経過年 [yr]",
-      nameTextStyle: { color: "#999faa" },
+      nameTextStyle: { color: t.fgMuted },
     },
     yAxis: {
       type: "value",
-      axisLabel: { color: "#999faa" },
+      axisLabel: { color: t.fgMuted },
       name: "高度 [km]",
-      nameTextStyle: { color: "#999faa" },
+      nameTextStyle: { color: t.fgMuted },
     },
     series: [
       {
@@ -236,12 +238,13 @@ function createAltitudeTimelineOption(result: MaintenanceAnalysisResult): ECBasi
 }
 
 function createBudgetOption(result: MaintenanceAnalysisResult): ECBasicOption {
+  const t = getChartTheme();
   return {
-    title: { text: "年次ΔVと推進剤消費", textStyle: { color: "#ed6d00", fontSize: 14 }, left: "center" },
-    backgroundColor: "rgba(30, 32, 36, 0.95)",
-    textStyle: { color: "#f1f1f1" },
-    legend: { top: 28, textStyle: { color: "#999faa" }, data: ["年間ΔV", "累積推進剤"] },
-    tooltip: {
+    title: { text: "年次ΔVと推進剤消費", textStyle: { color: t.fg, fontSize: 14 }, left: "center" },
+    backgroundColor: "transparent",
+    textStyle: { color: t.fg },
+    legend: { top: 28, textStyle: { color: t.fgMuted }, data: ["年間ΔV", "累積推進剤"] },
+    tooltip: { backgroundColor: t.surface, borderColor: t.lineStrong, textStyle: { color: t.fg },
       trigger: "axis",
       formatter: (params: Array<{ axisValueLabel?: string; seriesName?: string; value?: unknown }>) => {
         const lines = params.map((param) => {
@@ -253,10 +256,10 @@ function createBudgetOption(result: MaintenanceAnalysisResult): ECBasicOption {
       },
     },
     grid: { left: 55, right: 55, top: 80, bottom: 45 },
-    xAxis: { type: "category", data: result.annualBudget.map((point) => point.label), axisLabel: { color: "#999faa" } },
+    xAxis: { type: "category", data: result.annualBudget.map((point) => point.label), axisLabel: { color: t.fgMuted } },
     yAxis: [
-      { type: "value", axisLabel: { color: "#999faa" }, name: "年間ΔV [m/s]", nameTextStyle: { color: "#999faa" } },
-      { type: "value", axisLabel: { color: "#999faa" }, name: "累積推進剤 [kg]", nameTextStyle: { color: "#999faa" } },
+      { type: "value", axisLabel: { color: t.fgMuted }, name: "年間ΔV [m/s]", nameTextStyle: { color: t.fgMuted } },
+      { type: "value", axisLabel: { color: t.fgMuted }, name: "累積推進剤 [kg]", nameTextStyle: { color: t.fgMuted } },
     ],
     series: [
       { name: "年間ΔV", type: "bar", data: result.annualBudget.map((point) => point.deltaV_mps), itemStyle: { color: "#ed8936" } },
@@ -274,13 +277,14 @@ function createBudgetOption(result: MaintenanceAnalysisResult): ECBasicOption {
 }
 
 function createComparisonOption(result: MaintenanceAnalysisResult, mode: ComparisonMode): ECBasicOption {
+  const t = getChartTheme();
   if (mode === "sweep") {
     return {
-      title: { text: "感度解析", textStyle: { color: "#ed6d00", fontSize: 14 }, left: "center" },
-      backgroundColor: "rgba(30, 32, 36, 0.95)",
-      textStyle: { color: "#f1f1f1" },
-      legend: { top: 28, textStyle: { color: "#999faa" }, data: ["年間ΔV", "必要推進剤"] },
-      tooltip: {
+      title: { text: "感度解析", textStyle: { color: t.fg, fontSize: 14 }, left: "center" },
+      backgroundColor: "transparent",
+      textStyle: { color: t.fg },
+      legend: { top: 28, textStyle: { color: t.fgMuted }, data: ["年間ΔV", "必要推進剤"] },
+      tooltip: { backgroundColor: t.surface, borderColor: t.lineStrong, textStyle: { color: t.fg },
         trigger: "axis",
         formatter: (params: Array<{ axisValueLabel?: string; seriesName?: string; value?: unknown }>) => {
           const lines = params.map((param) => {
@@ -295,15 +299,15 @@ function createComparisonOption(result: MaintenanceAnalysisResult, mode: Compari
       xAxis: {
         type: "category",
         data: result.sweep.map((point) => formatNumber(point.inputValue, 2)),
-        axisLabel: { color: "#999faa" },
+        axisLabel: { color: t.fgMuted },
         name: SWEEP_LABELS[result.analysisInput.sweepParameter],
         nameLocation: "middle",
         nameGap: 35,
-        nameTextStyle: { color: "#999faa" },
+        nameTextStyle: { color: t.fgMuted },
       },
       yAxis: [
-        { type: "value", axisLabel: { color: "#999faa" }, name: "年間ΔV [m/s]", nameTextStyle: { color: "#999faa" } },
-        { type: "value", axisLabel: { color: "#999faa" }, name: "必要推進剤 [kg]", nameTextStyle: { color: "#999faa" } },
+        { type: "value", axisLabel: { color: t.fgMuted }, name: "年間ΔV [m/s]", nameTextStyle: { color: t.fgMuted } },
+        { type: "value", axisLabel: { color: t.fgMuted }, name: "必要推進剤 [kg]", nameTextStyle: { color: t.fgMuted } },
       ],
       series: [
         { name: "年間ΔV", type: "line", smooth: true, data: result.sweep.map((point) => point.annualDeltaV_mps), lineStyle: { color: "#63b3ed", width: 2 }, itemStyle: { color: "#63b3ed" } },
@@ -313,11 +317,11 @@ function createComparisonOption(result: MaintenanceAnalysisResult, mode: Compari
   }
 
   return {
-    title: { text: "大気プリセット比較", textStyle: { color: "#ed6d00", fontSize: 14 }, left: "center" },
-    backgroundColor: "rgba(30, 32, 36, 0.95)",
-    textStyle: { color: "#f1f1f1" },
-    legend: { top: 28, textStyle: { color: "#999faa" }, data: ["年間ΔV", "必要推進剤"] },
-    tooltip: {
+    title: { text: "大気プリセット比較", textStyle: { color: t.fg, fontSize: 14 }, left: "center" },
+    backgroundColor: "transparent",
+    textStyle: { color: t.fg },
+    legend: { top: 28, textStyle: { color: t.fgMuted }, data: ["年間ΔV", "必要推進剤"] },
+    tooltip: { backgroundColor: t.surface, borderColor: t.lineStrong, textStyle: { color: t.fg },
       trigger: "axis",
       formatter: (params: Array<{ axisValueLabel?: string; seriesName?: string; value?: unknown }>) => {
         const lines = params.map((param) => {
@@ -329,10 +333,10 @@ function createComparisonOption(result: MaintenanceAnalysisResult, mode: Compari
       },
     },
     grid: { left: 55, right: 55, top: 80, bottom: 45 },
-    xAxis: { type: "category", data: result.scenarioComparisons.map((entry) => entry.label), axisLabel: { color: "#999faa" } },
+    xAxis: { type: "category", data: result.scenarioComparisons.map((entry) => entry.label), axisLabel: { color: t.fgMuted } },
     yAxis: [
-      { type: "value", axisLabel: { color: "#999faa" }, name: "年間ΔV [m/s]", nameTextStyle: { color: "#999faa" } },
-      { type: "value", axisLabel: { color: "#999faa" }, name: "必要推進剤 [kg]", nameTextStyle: { color: "#999faa" } },
+      { type: "value", axisLabel: { color: t.fgMuted }, name: "年間ΔV [m/s]", nameTextStyle: { color: t.fgMuted } },
+      { type: "value", axisLabel: { color: t.fgMuted }, name: "必要推進剤 [kg]", nameTextStyle: { color: t.fgMuted } },
     ],
     series: [
       { name: "年間ΔV", type: "bar", data: result.scenarioComparisons.map((entry) => entry.missionDeltaV_mps / Math.max(result.analysisInput.missionYears, 1e-6)), itemStyle: { color: "#ed8936" } },
@@ -501,9 +505,9 @@ export default function OrbitMaintenanceAnalysis({ satText, constText, startTime
   };
 
   const dateStr = useMemo(() => startTime.toISOString().slice(0, 10), [startTime]);
-  const altitudeOption = useMemo(() => result ? createAltitudeTimelineOption(result) : { backgroundColor: "rgba(30, 32, 36, 0.95)" }, [result]);
-  const budgetOption = useMemo(() => result ? createBudgetOption(result) : { backgroundColor: "rgba(30, 32, 36, 0.95)" }, [result]);
-  const comparisonOption = useMemo(() => result ? createComparisonOption(result, comparisonMode) : { backgroundColor: "rgba(30, 32, 36, 0.95)" }, [result, comparisonMode]);
+  const altitudeOption = useMemo(() => result ? createAltitudeTimelineOption(result) : { backgroundColor: "transparent" }, [result]);
+  const budgetOption = useMemo(() => result ? createBudgetOption(result) : { backgroundColor: "transparent" }, [result]);
+  const comparisonOption = useMemo(() => result ? createComparisonOption(result, comparisonMode) : { backgroundColor: "transparent" }, [result, comparisonMode]);
 
   const downloadChartSetAsHTML = () => {
     if (!altitudeChartRef.current || !budgetChartRef.current || !comparisonChartRef.current || !result) return;
@@ -577,7 +581,7 @@ export default function OrbitMaintenanceAnalysis({ satText, constText, startTime
           </div>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 420px) minmax(0, 1fr)", gap: 12 }}>
+        <div className="analysis-split" style={{ display: "grid", gridTemplateColumns: "minmax(320px, 420px) minmax(0, 1fr)", gap: 12 }}>
           <section className="solar-panel">
             <div className="solar-panel-header">
               <div>
@@ -682,16 +686,16 @@ export default function OrbitMaintenanceAnalysis({ satText, constText, startTime
                   </div>
                 </>
               ) : (
-                <div style={{ color: "#9ca3af" }}>解析開始後に指標を表示します。</div>
+                <div style={{ color: "var(--fg-muted)" }}>解析開始後に指標を表示します。</div>
               )}
             </section>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, minWidth: 0 }}>
+            <div className="analysis-chart-pair" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, minWidth: 0 }}>
               <div style={{ minHeight: 280 }}>
-                <ReactECharts ref={altitudeChartRef} option={altitudeOption} style={{ height: 280, width: "100%" }} theme="dark" />
+                <ReactECharts ref={altitudeChartRef} option={altitudeOption} style={{ height: 280, width: "100%" }} />
               </div>
               <div style={{ minHeight: 280 }}>
-                <ReactECharts ref={budgetChartRef} option={budgetOption} style={{ height: 280, width: "100%" }} theme="dark" />
+                <ReactECharts ref={budgetChartRef} option={budgetOption} style={{ height: 280, width: "100%" }} />
               </div>
             </div>
 
@@ -711,7 +715,7 @@ export default function OrbitMaintenanceAnalysis({ satText, constText, startTime
                 </div>
               </div>
               <div style={{ minHeight: 320 }}>
-                <ReactECharts ref={comparisonChartRef} option={comparisonOption} style={{ height: 320, width: "100%" }} theme="dark" />
+                <ReactECharts ref={comparisonChartRef} option={comparisonOption} style={{ height: 320, width: "100%" }} />
               </div>
             </section>
           </div>

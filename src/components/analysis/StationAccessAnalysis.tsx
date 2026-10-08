@@ -3,6 +3,7 @@ import ReactECharts from "echarts-for-react";
 import type { GroundStation } from "../../lib/groundStations";
 import { downloadPNG, downloadHTML, downloadCSV } from "./utils/downloadUtils";
 import { createStationAccessChartOption } from "./utils/chartOptions";
+import { useCompactChart } from "./utils/useCompactChart";
 import StationAvailabilityPopup from "./StationAvailabilityPopup";
 import type { StationVisibilitySample } from "../../lib/visibility";
 import type {
@@ -37,6 +38,7 @@ export default function StationAccessAnalysis({
   fovCrossTrackDeg,
 }: Props) {
   const [useSatelliteFov, setUseSatelliteFov] = useState(false);
+  const compactChart = useCompactChart();
   const [data, setData] = useState<StationVisibilitySample[]>([]);
   const [stations, setStations] = useState<GroundStation[]>([]);
   const [stats, setStats] = useState<Array<{ name: string; averageVisible: number; nonZeroRate: number }>>([]);
@@ -172,7 +174,7 @@ export default function StationAccessAnalysis({
   };
 
 
-  const option = createStationAccessChartOption(data, stations, stats);
+  const option = createStationAccessChartOption(data, stations, stats, compactChart);
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
@@ -219,22 +221,22 @@ export default function StationAccessAnalysis({
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 pb-2 text-xs text-gray-300">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 pb-2 text-xs text-fg-muted">
         <label className="inline-flex items-center gap-1.5 cursor-pointer">
           <input
             type="checkbox"
             checked={useSatelliteFov}
             onChange={(e) => setUseSatelliteFov(e.target.checked)}
-            className="accent-amber-500"
+            className="accent-brand"
           />
           <span>衛星の視野も可視条件に加える</span>
         </label>
-        <span className="text-gray-500">
+        <span className="text-fg-subtle">
           半角 {fovHalfAngleDeg}° / Along-track {fovAlongTrackDeg}° / Cross-track{" "}
           {fovCrossTrackDeg}°（変更は 表示オプション › 衛星の視野）
         </span>
         {useSatelliteFov && (
-          <span className="text-gray-500">
+          <span className="text-fg-subtle">
             地上局側の最低仰角・可視判定モードとの AND 条件です。傾きが 0° のときは
             最大オフナディア {fovHalfAngleDeg}° と同じ意味になります。
           </span>
@@ -257,7 +259,6 @@ export default function StationAccessAnalysis({
           ref={chartRef}
           option={option}
           style={{ height: "100%", width: "100%" }}
-          theme="dark"
         />
       </div>
       

@@ -15,6 +15,7 @@ import {
   downloadMultiChartHTML,
   downloadPNG,
 } from "./utils/downloadUtils";
+import { getChartTheme } from "./utils/chartTheme";
 
 interface Props {
   satText: string;
@@ -201,20 +202,21 @@ function getTooltipValue(value: unknown): number | null {
 }
 
 function createPowerTimelineOption(result: SolarPowerAnalysisResult): ECBasicOption {
+  const t = getChartTheme();
   return {
     title: {
       text: "周回電力タイムライン",
-      textStyle: { color: "#ed6d00", fontSize: 14 },
+      textStyle: { color: t.fg, fontSize: 14 },
       left: "center",
     },
-    backgroundColor: "rgba(30, 32, 36, 0.95)",
-    textStyle: { color: "#f1f1f1" },
+    backgroundColor: "transparent",
+    textStyle: { color: t.fg },
     legend: {
       top: 28,
-      textStyle: { color: "#999faa" },
+      textStyle: { color: t.fgMuted },
       data: ["発電電力", "消費電力", "正味電力"],
     },
-    tooltip: {
+    tooltip: { backgroundColor: t.surface, borderColor: t.lineStrong, textStyle: { color: t.fg },
       trigger: "axis",
       formatter: (params: Array<{ axisValueLabel?: string; seriesName?: string; value?: unknown }>) => {
         const lines = params
@@ -231,15 +233,15 @@ function createPowerTimelineOption(result: SolarPowerAnalysisResult): ECBasicOpt
     xAxis: {
       type: "category",
       data: result.orbitSamples.map((sample) => sample.timeLabel.slice(0, 5)),
-      axisLabel: { color: "#999faa" },
+      axisLabel: { color: t.fgMuted },
       name: "時刻 (UTC)",
-      nameTextStyle: { color: "#999faa" },
+      nameTextStyle: { color: t.fgMuted },
     },
     yAxis: {
       type: "value",
-      axisLabel: { color: "#999faa" },
+      axisLabel: { color: t.fgMuted },
       name: "電力 [W]",
-      nameTextStyle: { color: "#999faa" },
+      nameTextStyle: { color: t.fgMuted },
     },
     series: [
       {
@@ -272,15 +274,16 @@ function createPowerTimelineOption(result: SolarPowerAnalysisResult): ECBasicOpt
 }
 
 function createSocTimelineOption(result: SolarPowerAnalysisResult): ECBasicOption {
+  const t = getChartTheme();
   return {
     title: {
       text: "24時間SOC推移",
-      textStyle: { color: "#ed6d00", fontSize: 14 },
+      textStyle: { color: t.fg, fontSize: 14 },
       left: "center",
     },
-    backgroundColor: "rgba(30, 32, 36, 0.95)",
-    textStyle: { color: "#f1f1f1" },
-    tooltip: {
+    backgroundColor: "transparent",
+    textStyle: { color: t.fg },
+    tooltip: { backgroundColor: t.surface, borderColor: t.lineStrong, textStyle: { color: t.fg },
       trigger: "axis",
       formatter: (params: Array<{ axisValueLabel?: string; seriesName?: string; value?: unknown }>) => {
         const lines = params
@@ -297,17 +300,17 @@ function createSocTimelineOption(result: SolarPowerAnalysisResult): ECBasicOptio
     xAxis: {
       type: "category",
       data: result.daySamples.map((sample) => sample.timeLabel.slice(0, 5)),
-      axisLabel: { color: "#999faa" },
+      axisLabel: { color: t.fgMuted },
       name: "時刻 (UTC)",
-      nameTextStyle: { color: "#999faa" },
+      nameTextStyle: { color: t.fgMuted },
     },
     yAxis: {
       type: "value",
       min: 0,
       max: 100,
-      axisLabel: { color: "#999faa" },
+      axisLabel: { color: t.fgMuted },
       name: "SOC [%]",
-      nameTextStyle: { color: "#999faa" },
+      nameTextStyle: { color: t.fgMuted },
     },
     series: [
       {
@@ -329,21 +332,22 @@ function createSocTimelineOption(result: SolarPowerAnalysisResult): ECBasicOptio
 }
 
 function createComparisonOption(result: SolarPowerAnalysisResult, mode: ComparisonMode): ECBasicOption {
+  const t = getChartTheme();
   if (mode === "sweep") {
     return {
       title: {
         text: "感度解析",
-        textStyle: { color: "#ed6d00", fontSize: 14 },
+        textStyle: { color: t.fg, fontSize: 14 },
         left: "center",
       },
-      backgroundColor: "rgba(30, 32, 36, 0.95)",
-      textStyle: { color: "#f1f1f1" },
+      backgroundColor: "transparent",
+      textStyle: { color: t.fg },
       legend: {
         top: 28,
-        textStyle: { color: "#999faa" },
+        textStyle: { color: t.fgMuted },
         data: ["最小SOC", "正味収支"],
       },
-      tooltip: {
+      tooltip: { backgroundColor: t.surface, borderColor: t.lineStrong, textStyle: { color: t.fg },
         trigger: "axis",
         formatter: (params: Array<{ axisValueLabel?: string; seriesName?: string; value?: unknown }>) => {
           const lines = params
@@ -362,26 +366,26 @@ function createComparisonOption(result: SolarPowerAnalysisResult, mode: Comparis
       xAxis: {
         type: "category",
         data: result.sweep.map((point) => formatNumber(point.inputValue, 1)),
-        axisLabel: { color: "#999faa" },
+        axisLabel: { color: t.fgMuted },
         name: SWEEP_LABELS[result.analysisInput.sweepParameter],
         nameLocation: "middle",
         nameGap: 35,
-        nameTextStyle: { color: "#999faa" },
+        nameTextStyle: { color: t.fgMuted },
       },
       yAxis: [
         {
           type: "value",
           min: 0,
           max: 100,
-          axisLabel: { color: "#999faa" },
+          axisLabel: { color: t.fgMuted },
           name: "最小SOC [%]",
-          nameTextStyle: { color: "#999faa" },
+          nameTextStyle: { color: t.fgMuted },
         },
         {
           type: "value",
-          axisLabel: { color: "#999faa" },
+          axisLabel: { color: t.fgMuted },
           name: "正味収支 [Wh/day]",
-          nameTextStyle: { color: "#999faa" },
+          nameTextStyle: { color: t.fgMuted },
         },
       ],
       series: [
@@ -409,17 +413,17 @@ function createComparisonOption(result: SolarPowerAnalysisResult, mode: Comparis
   return {
     title: {
       text: "年代表点比較",
-      textStyle: { color: "#ed6d00", fontSize: 14 },
+      textStyle: { color: t.fg, fontSize: 14 },
       left: "center",
     },
-    backgroundColor: "rgba(30, 32, 36, 0.95)",
-    textStyle: { color: "#f1f1f1" },
+    backgroundColor: "transparent",
+    textStyle: { color: t.fg },
     legend: {
       top: 28,
-      textStyle: { color: "#999faa" },
+      textStyle: { color: t.fgMuted },
       data: ["最小SOC", "正味収支"],
     },
-    tooltip: {
+    tooltip: { backgroundColor: t.surface, borderColor: t.lineStrong, textStyle: { color: t.fg },
       trigger: "axis",
       formatter: (params: Array<{ axisValueLabel?: string; seriesName?: string; value?: unknown }>) => {
         const lines = params
@@ -437,22 +441,22 @@ function createComparisonOption(result: SolarPowerAnalysisResult, mode: Comparis
     xAxis: {
       type: "category",
       data: result.representativeDays.map((entry) => entry.label),
-      axisLabel: { color: "#999faa" },
+      axisLabel: { color: t.fgMuted },
     },
     yAxis: [
       {
         type: "value",
         min: 0,
         max: 100,
-        axisLabel: { color: "#999faa" },
+        axisLabel: { color: t.fgMuted },
         name: "最小SOC [%]",
-        nameTextStyle: { color: "#999faa" },
+        nameTextStyle: { color: t.fgMuted },
       },
       {
         type: "value",
-        axisLabel: { color: "#999faa" },
+        axisLabel: { color: t.fgMuted },
         name: "正味収支 [Wh/day]",
-        nameTextStyle: { color: "#999faa" },
+        nameTextStyle: { color: t.fgMuted },
       },
     ],
     series: [
@@ -685,9 +689,9 @@ export default function SolarImpactAnalysis({ satText, constText, startTime }: P
     downloadPNG(comparisonChartRef, `solar-power-comparison-${dateStr}.png`);
   };
 
-  const powerOption = useMemo(() => result ? createPowerTimelineOption(result) : { backgroundColor: "rgba(30, 32, 36, 0.95)" }, [result]);
-  const socOption = useMemo(() => result ? createSocTimelineOption(result) : { backgroundColor: "rgba(30, 32, 36, 0.95)" }, [result]);
-  const comparisonOption = useMemo(() => result ? createComparisonOption(result, comparisonMode) : { backgroundColor: "rgba(30, 32, 36, 0.95)" }, [result, comparisonMode]);
+  const powerOption = useMemo(() => result ? createPowerTimelineOption(result) : { backgroundColor: "transparent" }, [result]);
+  const socOption = useMemo(() => result ? createSocTimelineOption(result) : { backgroundColor: "transparent" }, [result]);
+  const comparisonOption = useMemo(() => result ? createComparisonOption(result, comparisonMode) : { backgroundColor: "transparent" }, [result, comparisonMode]);
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
@@ -738,7 +742,7 @@ export default function SolarImpactAnalysis({ satText, constText, startTime }: P
           <div className="analysis-error">解析対象の衛星がありません</div>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 420px) minmax(0, 1fr)", gap: 12 }}>
+        <div className="analysis-split" style={{ display: "grid", gridTemplateColumns: "minmax(320px, 420px) minmax(0, 1fr)", gap: 12 }}>
           <section className="solar-panel">
             <div className="solar-panel-header">
               <div>
@@ -830,16 +834,16 @@ export default function SolarImpactAnalysis({ satText, constText, startTime }: P
                   </div>
                 </>
               ) : (
-                <div style={{ color: "#9ca3af" }}>解析開始後に指標を表示します。</div>
+                <div style={{ color: "var(--fg-muted)" }}>解析開始後に指標を表示します。</div>
               )}
             </section>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, minWidth: 0 }}>
+            <div className="analysis-chart-pair" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, minWidth: 0 }}>
               <div style={{ minHeight: 280 }}>
-                <ReactECharts ref={powerChartRef} option={powerOption} style={{ height: 280, width: "100%" }} theme="dark" />
+                <ReactECharts ref={powerChartRef} option={powerOption} style={{ height: 280, width: "100%" }} />
               </div>
               <div style={{ minHeight: 280 }}>
-                <ReactECharts ref={socChartRef} option={socOption} style={{ height: 280, width: "100%" }} theme="dark" />
+                <ReactECharts ref={socChartRef} option={socOption} style={{ height: 280, width: "100%" }} />
               </div>
             </div>
 
@@ -871,7 +875,7 @@ export default function SolarImpactAnalysis({ satText, constText, startTime }: P
                 </div>
               </div>
               <div style={{ minHeight: 320 }}>
-                <ReactECharts ref={comparisonChartRef} option={comparisonOption} style={{ height: 320, width: "100%" }} theme="dark" />
+                <ReactECharts ref={comparisonChartRef} option={comparisonOption} style={{ height: 320, width: "100%" }} />
               </div>
             </section>
           </div>

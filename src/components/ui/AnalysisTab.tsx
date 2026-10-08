@@ -158,12 +158,14 @@ export default function AnalysisTab({
           集約した — requestedAnalysis 経由でのみここのモーダルが開く */}
       {analysisOpen && createPortal(
         <div className="overlay" style={{ zIndex: 1000 }}>
-          <div className="overlay-box" style={{ width: "90%", maxWidth: "1200px", height: "80%", maxHeight: "900px", display: "flex", flexDirection: "column" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div className="overlay-box analysis-modal">
+            <div className="analysis-modal-header">
               <h3 style={{ margin: 0, fontSize: "1rem" }}>{analysisType}</h3>
               <button
+                type="button"
                 onClick={handleAnalysisClose}
-                style={{ background: "transparent", border: "none", color: "#999faa", fontSize: "1.5rem", cursor: "pointer" }}
+                aria-label="閉じる"
+                className="analysis-close-button"
               >
                 ✕
               </button>

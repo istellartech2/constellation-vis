@@ -2,6 +2,8 @@ import { useRef } from "react";
 import ReactECharts from "echarts-for-react";
 import { downloadPNG, downloadDualChartHTML } from "./utils/downloadUtils";
 import type { CallbackDataParams } from "echarts/types/dist/shared";
+import { getChartTheme } from "./utils/chartTheme";
+import { useCompactChart } from "./utils/useCompactChart";
 
 interface AvailabilityMetrics {
   latitude: number;
@@ -21,6 +23,7 @@ interface Props {
 export default function GlobalAvailabilityPopup({ show, onClose, availabilityMetrics, startTime }: Props) {
   const chartRef1 = useRef<InstanceType<typeof ReactECharts> | null>(null);
   const chartRef2 = useRef<InstanceType<typeof ReactECharts> | null>(null);
+  const compactChart = useCompactChart();
 
   if (!show || availabilityMetrics.length === 0) return null;
 
@@ -70,50 +73,48 @@ export default function GlobalAvailabilityPopup({ show, onClose, availabilityMet
     }
   };
 
+  const t = getChartTheme();
   const timeAvailabilityOption = {
     title: {
       text: "時間的可用性",
-      textStyle: { color: "#ed6d00", fontSize: 14 },
+      textStyle: { color: t.fg, fontSize: 14 },
       left: 'center'
     },
-    backgroundColor: "rgba(30, 32, 36, 0.95)",
-    textStyle: { color: "#f1f1f1" },
-    grid: {
-      left: 60,
-      right: 20,
-      top: 40,
-      bottom: 40
-    },
+    backgroundColor: "transparent",
+    textStyle: { color: t.fg },
+    grid: compactChart
+      ? { left: 52, right: 16, top: 40, bottom: 40 }
+      : { left: 60, right: 20, top: 40, bottom: 40 },
     xAxis: {
       type: 'value',
       name: '可用性 (%)',
       nameLocation: 'middle',
       nameGap: 25,
-      nameTextStyle: { color: "#999faa" },
+      nameTextStyle: { color: t.fgMuted },
       min: 0,
       max: 100,
-      axisLabel: { color: "#999faa" }
+      axisLabel: { color: t.fgMuted }
     },
     yAxis: {
       type: 'category',
       name: '緯度 (°)',
       nameLocation: 'middle',
       nameGap: 40,
-      nameTextStyle: { color: "#999faa" },
+      nameTextStyle: { color: t.fgMuted },
       data: availabilityMetrics.map(m => m.latitude),
-      axisLabel: { color: "#999faa" }
+      axisLabel: { color: t.fgMuted }
     },
     series: [{
       type: 'line',
       data: availabilityMetrics.map(m => m.timeAvailability),
       smooth: true,
-      lineStyle: { color: "#ed6d00", width: 2 },
-      itemStyle: { color: "#ed6d00" },
+      lineStyle: { color: t.brand, width: 2 },
+      itemStyle: { color: t.brand },
       markLine: {
         data: [{
           yAxis: 90, // Index for latitude 0
           lineStyle: {
-            color: '#999faa',
+            color: t.fgMuted,
             type: 'dashed',
             width: 1
           },
@@ -123,7 +124,7 @@ export default function GlobalAvailabilityPopup({ show, onClose, availabilityMet
         }]
       }
     }],
-    tooltip: {
+    tooltip: { backgroundColor: t.surface, borderColor: t.lineStrong, textStyle: { color: t.fg },
       trigger: 'axis',
       formatter: (params: CallbackDataParams[] | CallbackDataParams) => {
         const [dataPoint] = Array.isArray(params) ? params : [params];
@@ -142,24 +143,22 @@ export default function GlobalAvailabilityPopup({ show, onClose, availabilityMet
   const interruptionOption = {
     title: {
       text: "中断特性",
-      textStyle: { color: "#ed6d00", fontSize: 14 },
+      textStyle: { color: t.fg, fontSize: 14 },
       left: 'center'
     },
-    backgroundColor: "rgba(30, 32, 36, 0.95)",
-    textStyle: { color: "#f1f1f1" },
-    grid: {
-      left: 60,
-      right: 60,
-      top: 40,
-      bottom: 40
-    },
+    backgroundColor: "transparent",
+    textStyle: { color: t.fg },
+    // Phones: the legend wraps to two lines, so reserve room under the axis.
+    grid: compactChart
+      ? { left: 52, right: 16, top: 40, bottom: 100 }
+      : { left: 60, right: 60, top: 40, bottom: 40 },
     xAxis: {
       type: 'value',
       name: '値',
       nameLocation: 'middle',
       nameGap: 25,
-      nameTextStyle: { color: "#999faa" },
-      axisLabel: { color: "#999faa" },
+      nameTextStyle: { color: t.fgMuted },
+      axisLabel: { color: t.fgMuted },
       min: 0
     },
     yAxis: {
@@ -167,13 +166,13 @@ export default function GlobalAvailabilityPopup({ show, onClose, availabilityMet
       name: '緯度 (°)',
       nameLocation: 'middle',
       nameGap: 40,
-      nameTextStyle: { color: "#999faa" },
+      nameTextStyle: { color: t.fgMuted },
       data: availabilityMetrics.map(m => m.latitude),
-      axisLabel: { color: "#999faa" }
+      axisLabel: { color: t.fgMuted }
     },
     legend: {
       data: ['中断頻度 (回/日)', '最大中断時間 (分)', '平均中断時間 (分)'],
-      textStyle: { color: "#999faa" },
+      textStyle: { color: t.fgMuted },
       top: 'bottom'
     },
     series: [
@@ -188,7 +187,7 @@ export default function GlobalAvailabilityPopup({ show, onClose, availabilityMet
           data: [{
             yAxis: 90,
             lineStyle: {
-              color: '#999faa',
+              color: t.fgMuted,
               type: 'dashed',
               width: 1
             },
@@ -217,7 +216,7 @@ export default function GlobalAvailabilityPopup({ show, onClose, availabilityMet
         connectNulls: false
       }
     ],
-    tooltip: {
+    tooltip: { backgroundColor: t.surface, borderColor: t.lineStrong, textStyle: { color: t.fg },
       trigger: 'axis',
       formatter: (params: CallbackDataParams[] | CallbackDataParams) => {
         const dataPoints = Array.isArray(params) ? params : [params];
@@ -272,13 +271,12 @@ export default function GlobalAvailabilityPopup({ show, onClose, availabilityMet
           </div>
         </div>
         
-        <div style={{ flex: 1, display: "flex", gap: "16px", minHeight: 0 }}>
+        <div className="global-availability-charts" style={{ flex: 1, display: "flex", gap: "16px", minHeight: 0 }}>
           <div style={{ flex: 1, minHeight: 0 }}>
             <ReactECharts
               ref={chartRef1}
               option={timeAvailabilityOption}
               style={{ height: "100%", width: "100%" }}
-              theme="dark"
             />
           </div>
           
@@ -287,7 +285,6 @@ export default function GlobalAvailabilityPopup({ show, onClose, availabilityMet
               ref={chartRef2}
               option={interruptionOption}
               style={{ height: "100%", width: "100%" }}
-              theme="dark"
             />
           </div>
         </div>

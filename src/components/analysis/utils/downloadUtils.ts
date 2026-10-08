@@ -2,6 +2,7 @@
 import type { MutableRefObject } from "react";
 import type ReactECharts from "echarts-for-react";
 import type { ECBasicOption } from "echarts/types/dist/shared";
+import { getChartTheme } from "./chartTheme";
 
 type ChartComponentRef = MutableRefObject<InstanceType<typeof ReactECharts> | null>;
 
@@ -12,7 +13,7 @@ export function downloadPNG(chartRef: ChartComponentRef, filename: string) {
   const url = chartInstance.getDataURL({
     type: 'png',
     pixelRatio: 2,
-    backgroundColor: 'rgba(30, 32, 36, 0.95)'
+    backgroundColor: getChartTheme().surface
   });
 
   const link = document.createElement('a');
@@ -23,6 +24,7 @@ export function downloadPNG(chartRef: ChartComponentRef, filename: string) {
 }
 
 export function downloadHTML(chartOption: ECBasicOption, title: string, filename: string) {
+  const t = getChartTheme();
   const htmlContent = `
 <!DOCTYPE html>
 <html>
@@ -31,16 +33,16 @@ export function downloadHTML(chartOption: ECBasicOption, title: string, filename
     <title>${title}</title>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
     <style>
-        body { margin: 0; padding: 30px; background: #141518; }
+        body { margin: 0; padding: 30px; background: ${t.surface}; }
         #chart { width: 100%; height: 600px; }
-        h1 { color: #ed6d00; font-family: Arial, sans-serif; text-align: center; }
+        h1 { color: ${t.fg}; font-family: Arial, sans-serif; text-align: center; }
     </style>
 </head>
 <body>
     <h1>${title}</h1>
     <div id="chart"></div>
     <script>
-        var chart = echarts.init(document.getElementById('chart'), 'dark');
+        var chart = echarts.init(document.getElementById('chart'));
         var option = ${JSON.stringify(chartOption, null, 2)};
         chart.setOption(option);
         window.addEventListener('resize', function() {
@@ -93,6 +95,7 @@ export function downloadDualChartHTML(
   title: string,
   filename: string
 ) {
+  const t = getChartTheme();
   const htmlContent = `
 <!DOCTYPE html>
 <html>
@@ -101,10 +104,10 @@ export function downloadDualChartHTML(
     <title>${title}</title>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
     <style>
-        body { margin: 0; padding: 30px; background: #141518; color: #f1f1f1; font-family: Arial, sans-serif; }
+        body { margin: 0; padding: 30px; background: ${t.surface}; color: ${t.fg}; font-family: Arial, sans-serif; }
         .chart-container { display: flex; gap: 20px; height: 600px; }
         .chart { flex: 1; }
-        h1 { color: #ed6d00; text-align: center; margin-bottom: 30px; }
+        h1 { color: ${t.fg}; text-align: center; margin-bottom: 30px; }
     </style>
 </head>
 <body>
@@ -114,8 +117,8 @@ export function downloadDualChartHTML(
         <div id="chart2" class="chart"></div>
     </div>
     <script>
-        var chart1 = echarts.init(document.getElementById('chart1'), 'dark');
-        var chart2 = echarts.init(document.getElementById('chart2'), 'dark');
+        var chart1 = echarts.init(document.getElementById('chart1'));
+        var chart2 = echarts.init(document.getElementById('chart2'));
         var option1 = ${JSON.stringify(chart1Option, null, 2)};
         var option2 = ${JSON.stringify(chart2Option, null, 2)};
         chart1.setOption(option1);
@@ -148,7 +151,7 @@ export function downloadMultiChartHTML(
     .join("");
   const chartInit = chartOptions
     .map((option, index) => `
-        var chart${index + 1} = echarts.init(document.getElementById('chart${index + 1}'), 'dark');
+        var chart${index + 1} = echarts.init(document.getElementById('chart${index + 1}'));
         var option${index + 1} = ${JSON.stringify(option, null, 2)};
         chart${index + 1}.setOption(option${index + 1});`)
     .join("\n");
@@ -156,6 +159,7 @@ export function downloadMultiChartHTML(
     .map((_, index) => `chart${index + 1}.resize();`)
     .join("\n            ");
 
+  const t = getChartTheme();
   const htmlContent = `
 <!DOCTYPE html>
 <html>
@@ -164,14 +168,14 @@ export function downloadMultiChartHTML(
     <title>${title}</title>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
     <style>
-        body { margin: 0; padding: 30px; background: #141518; color: #f1f1f1; font-family: Arial, sans-serif; }
-        h1 { color: #ed6d00; text-align: center; margin-bottom: 20px; }
-        .summary { max-width: 960px; margin: 0 auto 24px; padding: 16px; border: 1px solid #374151; border-radius: 8px; background: rgba(31, 41, 55, 0.7); }
+        body { margin: 0; padding: 30px; background: ${t.surface}; color: ${t.fg}; font-family: Arial, sans-serif; }
+        h1 { color: ${t.fg}; text-align: center; margin-bottom: 20px; }
+        .summary { max-width: 960px; margin: 0 auto 24px; padding: 16px; border: 1px solid ${t.lineStrong}; border-radius: 8px; background: ${t.raised}; }
         .charts { display: grid; grid-template-columns: 1fr; gap: 24px; }
         .chart { width: 100%; height: 460px; }
         table { border-collapse: collapse; width: 100%; }
-        td, th { border: 1px solid #4b5563; padding: 8px; text-align: left; }
-        th { color: #ed6d00; }
+        td, th { border: 1px solid ${t.lineStrong}; padding: 8px; text-align: left; }
+        th { color: ${t.brandText}; }
     </style>
 </head>
 <body>

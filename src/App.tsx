@@ -1,6 +1,6 @@
 import type { RemoteDisplaySettings } from "./lib/remoteDisplay";
 import { useRef, useEffect, useState, useCallback } from "react";
-import SpeedControl from "./components/ui/SpeedControl";
+import PlaybackBar from "./components/ui/PlaybackBar";
 import SatelliteEditor from "./components/ui/SatelliteEditor";
 import IslHud from "./components/ui/IslHud";
 import { useSatelliteScene } from "./components/useSatelliteScene";
@@ -156,12 +156,14 @@ function App() {
     SAVED_DISPLAY?.speedExp ?? Math.log10(INITIAL_SPEED),
   );
   const speedRef = useRef(Math.pow(10, SAVED_DISPLAY?.speedExp ?? Math.log10(INITIAL_SPEED)));
+  // isPaused: forced pause while an analysis runs; userPaused: play/pause button.
   const [isPaused, setIsPaused] = useState(false);
+  const [userPaused, setUserPaused] = useState(false);
   const savedSpeedRef = useRef(INITIAL_SPEED);
-  
+
   useEffect(() => {
-    speedRef.current = isPaused ? 0 : Math.pow(10, speedExp);
-  }, [speedExp, isPaused]);
+    speedRef.current = isPaused || userPaused ? 0 : Math.pow(10, speedExp);
+  }, [speedExp, isPaused, userPaused]);
 
   useEffect(() => {
     loadGroundStations().then((stations) => { if (!scenarioCommittedRef.current) setGroundStations(stations); });
@@ -379,25 +381,6 @@ function App() {
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
       <div ref={mountRef} style={{ width: "100%", height: "100%" }} />
-      <div
-        ref={timeRef}
-        style={{
-          position: "fixed",
-          right: 8,
-          bottom: "calc(env(safe-area-inset-bottom, 0px) + 6px)",
-          color: whiteBackground ? "#111827" : "#fff",
-          textShadow: whiteBackground
-            ? "0 0 3px #fff, 0 0 3px #fff"
-            : "0 0 3px rgba(0,0,0,0.6)",
-          fontFamily: "'Noto Sans Mono', monospace",
-          fontVariantNumeric: "tabular-nums",
-          fontSize: "0.9rem",
-          pointerEvents: "none",
-          whiteSpace: "pre",
-          textAlign: "right",
-          zIndex: 10,
-        }}
-      />
       <SatelliteInfo
         satellites={satellites}
         selectedIdx={selectedIdx}
@@ -406,21 +389,18 @@ function App() {
         showPerturbation={showPerturbation}
         cameraMode={cameraMode}
         onCameraModeChange={setCameraMode}
+        onClose={() => handleSelectSatellite(null)}
       />
       {gsInfoText && (
         <pre
           ref={gsInfoRef}
+          className={`hud-text${whiteBackground ? " hud-text-on-white" : ""}`}
           style={{
             position: "fixed",
             left: 0,
             top: 0,
             transform: "translate(-50%, -100%)",
-            color: whiteBackground ? "#111827" : "#fff",
-            textShadow: whiteBackground
-              ? "0 0 3px #fff, 0 0 3px #fff"
-              : "0 0 3px rgba(0,0,0,0.6)",
-            fontFamily: "'Noto Sans Mono', monospace",
-            fontSize: "0.9rem",
+            fontSize: "0.8rem",
             pointerEvents: "none",
             whiteSpace: "pre",
             zIndex: 10,
@@ -429,7 +409,13 @@ function App() {
           {gsInfoText}
         </pre>
       )}
-      <SpeedControl value={speedExp} onChange={setSpeedExp} whiteBackground={whiteBackground} />
+      <PlaybackBar
+        speedExp={speedExp}
+        onSpeedExpChange={setSpeedExp}
+        paused={userPaused}
+        onPausedChange={setUserPaused}
+        timeRef={timeRef}
+      />
       <IslHud
         islSettings={islSettings}
         islResult={islResult}

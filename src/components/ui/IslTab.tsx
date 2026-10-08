@@ -149,7 +149,7 @@ export default function IslTab({
             checked={showGroundStationCones}
             onCheckedChange={(v) => onShowGroundStationConesChange(v === true)}
           />
-          <Label htmlFor="isl-gs-cones" className="text-sm text-gray-200 flex-1">
+          <Label htmlFor="isl-gs-cones" className="text-sm text-fg flex-1">
             通信可能範囲を表示
           </Label>
           {showGroundStationCones && (
@@ -190,13 +190,13 @@ export default function IslTab({
       {/* 2. 衛星間経路探索(ISL)グループ — 結果・重み付け・詳細・診断がこの機能に
           属することを背景色で示す。負マージンで背景だけを外側に広げ、中身の幅は
           他セクションと変えない(カード枠で幅が狭くなるのを避ける) */}
-      <div className="-mx-3 px-3 pt-1 pb-1.5 rounded-lg bg-gray-900/35">
+      <div className="px-3 pt-2 pb-2.5 rounded-lg border border-line bg-sunken">
       <PanelSection
         title="衛星間経路探索(ISL)"
         icon={<Waypoints />}
         action={
           <div className="flex items-center gap-1.5 leading-none">
-            <span className={`text-xs ${enabled ? "text-orange-300" : "text-gray-400"}`}>
+            <span className={`text-xs ${enabled ? "text-brand-text" : "text-fg-muted"}`}>
               {enabled ? "有効" : "無効"}
             </span>
             <ToggleSwitch
@@ -228,17 +228,17 @@ export default function IslTab({
             onClick={swapEndpoints}
             title="A/B を入替"
             aria-label="A/B を入替"
-            className="shrink-0 p-1.5 rounded-md bg-transparent border-0 text-gray-400 hover:text-orange-300 hover:bg-gray-700/70 transition-colors"
+            className="shrink-0 p-1.5 rounded-md bg-transparent border-0 text-fg-muted hover:text-brand-text hover:bg-raised-hover transition-colors"
           >
             <ArrowUpDown className="h-4 w-4" />
           </button>
         </div>
         {!enabled && (
-          <p className="text-xs text-gray-400 mt-1.5">
+          <p className="text-xs text-fg-muted mt-1.5">
             地点 A・B を選んで有効化すると、衛星間リンク (ISL) 経由の最短通信経路を 3D 表示します。
           </p>
         )}
-        <p className="text-[11px] text-gray-500 mt-1">
+        <p className="text-[11px] text-fg-subtle mt-1">
           地上局の通信判定は最低仰角のみを使います。
         </p>
       </PanelSection>
@@ -248,13 +248,13 @@ export default function IslTab({
           {/* 3. 結果 — 設定より上に置き、パラメータ操作→数値変化のループを 1 画面で成立させる */}
           <PanelSection title="結果" icon={<Gauge />}>
             {missingEndpoints.length > 0 ? (
-              <p className="text-xs text-amber-400">
+              <p className="text-xs text-brand-text">
                 地点 {missingEndpoints.join(" と ")} が未設定です。上で地点を選択すると計算を開始します。
               </p>
             ) : !islResult ? (
-              <p className="text-sm text-gray-400 tabular-nums">計算中…</p>
+              <p className="text-sm text-fg-muted tabular-nums">計算中…</p>
             ) : !islResult.reachable ? (
-              <p className="text-sm text-red-400">
+              <p className="text-sm text-danger">
                 経路なし(到達不能{hasZeroParticipants ? " / 参加衛星 0" : ""})
               </p>
             ) : (
@@ -268,12 +268,12 @@ export default function IslTab({
                     label="総距離"
                   />
                 </div>
-                <div className="text-xs text-gray-400 tabular-nums">
+                <div className="text-xs text-fg-muted tabular-nums">
                   伝搬遅延 {propagationDelayMs(islResult.totalDistanceKm).toFixed(2)} ms + 追加コスト{" "}
                   {(islResult.totalDelayMs - propagationDelayMs(islResult.totalDistanceKm)).toFixed(2)}{" "}
                   ms
                 </div>
-                <div className="text-xs text-gray-400 tabular-nums">
+                <div className="text-xs text-fg-muted tabular-nums">
                   経路切替 {islSwitchCount} 回
                   {islLastSwitchSimMs !== null &&
                     ` ・ 直近の切替から ${Math.max(0, (currentSimMs - islLastSwitchSimMs) / 1000).toFixed(0)} 秒`}
@@ -284,7 +284,7 @@ export default function IslTab({
               <Button
                 variant="secondary"
                 size="sm"
-                className="w-full mt-1.5 bg-gray-700 text-gray-200 border border-gray-600 hover:bg-gray-600 hover:text-white"
+                className="w-full mt-1.5 bg-raised text-fg border border-line-strong hover:bg-raised-hover hover:text-fg"
                 onClick={onOpenTimelineAnalysis}
               >
                 <LineChart className="h-3.5 w-3.5 mr-1" />
@@ -337,7 +337,7 @@ export default function IslTab({
             {/* 幅が足りない画面では GSL/ISL の入力グループごとラベルの下へ折り返す */}
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span
-                className={`text-xs text-gray-300 ${LABEL_W} shrink-0 inline-flex items-center gap-0.5 whitespace-nowrap`}
+                className={`text-xs text-fg-muted ${LABEL_W} shrink-0 inline-flex items-center gap-0.5 whitespace-nowrap`}
               >
                 種別ペナルティ
                 <HelpTip text="リンク種別ごとの固定加算(ms)。ISL(衛星間)を避けたい場合は ISL 側を、GSL(地上⇔衛星)を避けたい場合は GSL 側を大きくします。" />
@@ -371,7 +371,7 @@ export default function IslTab({
                     })
                   }
                 />
-                <span className="text-[11px] text-gray-500">ms</span>
+                <span className="text-[11px] text-fg-subtle">ms</span>
               </span>
             </div>
           </PanelSection>
@@ -385,7 +385,7 @@ export default function IslTab({
                 checked={islSettings.includeBaseSatellites}
                 onCheckedChange={() => toggleIncludeBase()}
               />
-              <Label htmlFor="isl-include-base" className="text-sm text-gray-200">
+              <Label htmlFor="isl-include-base" className="text-sm text-fg">
                 個別衛星 (satellites.toml) を含める
               </Label>
             </div>
@@ -396,16 +396,16 @@ export default function IslTab({
                   checked={!islSettings.excludedShellKeys.includes(shell.key)}
                   onCheckedChange={() => toggleShell(shell.key)}
                 />
-                <Label htmlFor={`isl-shell-${shell.key}`} className="text-sm text-gray-200">
+                <Label htmlFor={`isl-shell-${shell.key}`} className="text-sm text-fg">
                   {shell.name || `シェル ${Number(shell.key) + 1}`} ({shell.count} 機)
                 </Label>
               </div>
             ))}
             {islShellRanges.length === 0 && (
-              <p className="text-xs text-gray-500">constellation.toml にシェルがありません。</p>
+              <p className="text-xs text-fg-subtle">constellation.toml にシェルがありません。</p>
             )}
             {hasZeroParticipants && (
-              <p className="text-xs text-red-400">
+              <p className="text-xs text-danger">
                 参加衛星が 0 機です。経路は常に到達不能になります。
               </p>
             )}
@@ -456,7 +456,7 @@ export default function IslTab({
               />
             ))}
             {islShellRanges.length === 0 && (
-              <p className="text-xs text-gray-500">constellation.toml にシェルがありません。</p>
+              <p className="text-xs text-fg-subtle">constellation.toml にシェルがありません。</p>
             )}
 
             <SubHeader>経路の表示色</SubHeader>
@@ -476,17 +476,17 @@ export default function IslTab({
 
           {/* 6. 診断 — 開発者向け */}
           <PanelSection title="診断" icon={<Gauge />} collapsible defaultOpen={false}>
-            <div className="text-xs text-gray-400 space-y-1.5 tabular-nums">
+            <div className="text-xs text-fg-muted space-y-1.5 tabular-nums">
               {islError && (
-                <div className="text-red-400 bg-red-900/20 rounded p-1.5 mb-1">{islError}</div>
+                <div className="text-danger bg-danger-soft rounded p-1.5 mb-1">{islError}</div>
               )}
               <div className="flex items-center gap-2">
                 <span className={`${LABEL_W} shrink-0`}>候補エッジ数</span>
-                <span className="text-gray-300">{islResult?.candidateEdgeCount ?? "-"}</span>
+                <span className="text-fg-muted">{islResult?.candidateEdgeCount ?? "-"}</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className={`${LABEL_W} shrink-0`}>計算時間</span>
-                <span className="text-gray-300">
+                <span className="text-fg-muted">
                   {islResult ? `${islResult.computeTimeMs.toFixed(2)} ms` : "-"}
                 </span>
               </div>
@@ -503,7 +503,7 @@ export default function IslTab({
                   step="1"
                   onChange={(v) => onIslSettingsChange({ ...islSettings, recomputeIntervalSimS: v })}
                 />
-                <span className="text-[11px] text-gray-500">sim秒</span>
+                <span className="text-[11px] text-fg-subtle">sim秒</span>
               </div>
             </div>
           </PanelSection>
@@ -532,7 +532,7 @@ function ToggleSwitch({
       aria-label={ariaLabel}
       onClick={() => onChange(!checked)}
       className={`relative inline-flex h-4 w-8 shrink-0 items-center rounded-full border-0 p-0 align-middle transition-colors ${
-        checked ? "bg-orange-600" : "bg-gray-600"
+        checked ? "bg-brand" : "bg-raised-hover"
       }`}
     >
       <span
@@ -546,12 +546,12 @@ function ToggleSwitch({
 
 function KpiCard({ value, unit, label }: { value: string; unit: string; label: string }) {
   return (
-    <div className="bg-gray-900/60 border border-gray-700 rounded-md px-1.5 py-1 text-center">
-      <div className="text-base font-semibold text-gray-100 leading-tight">
+    <div className="bg-sunken border border-line rounded-md px-1.5 py-1 text-center">
+      <div className="text-base font-semibold text-fg leading-tight">
         {value}
-        <span className="text-[10px] font-normal text-gray-400 ml-0.5">{unit}</span>
+        <span className="text-[10px] font-normal text-fg-muted ml-0.5">{unit}</span>
       </div>
-      <div className="text-[10px] text-gray-400">{label}</div>
+      <div className="text-[10px] text-fg-muted">{label}</div>
     </div>
   );
 }
@@ -567,9 +567,9 @@ function SubHeader({
 }) {
   return (
     <div
-      className={`text-[11px] font-semibold uppercase tracking-wide text-gray-300 ${
+      className={`text-[11px] font-semibold uppercase tracking-wide text-fg-muted ${
         first ? "" : "mt-3"
-      } mb-1 pb-0.5 border-b border-gray-700 flex items-center gap-1`}
+      } mb-1 pb-0.5 border-b border-line flex items-center gap-1`}
     >
       {children}
       {help && <HelpTip text={help} />}
@@ -608,9 +608,9 @@ function EndpointRow({
   return (
     <div>
       <div className="flex items-center gap-1.5">
-        <span className="text-xs font-semibold text-gray-300 w-9 shrink-0">{label}</span>
+        <span className="text-xs font-semibold text-fg-muted w-9 shrink-0">{label}</span>
         <select
-          className="w-[84px] shrink-0 bg-gray-700 text-gray-100 rounded px-1 py-1 text-xs"
+          className="w-[84px] shrink-0 bg-raised text-fg rounded px-1 py-1 text-xs"
           value={mode}
           onChange={(e) => handleModeChange(e.target.value as "none" | "station" | "adhoc")}
         >
@@ -620,7 +620,7 @@ function EndpointRow({
         </select>
         {endpoint?.kind === "station" && (
           <select
-            className="flex-1 min-w-0 bg-gray-700 text-gray-100 rounded px-1 py-1 text-xs"
+            className="flex-1 min-w-0 bg-raised text-fg rounded px-1 py-1 text-xs"
             value={endpoint.name}
             onChange={(e) => {
               const gs = groundStations.find((s) => s.name === e.target.value);
@@ -675,15 +675,15 @@ function ShellOverrideRow({
 }) {
   const mode = override?.mode ?? "dynamic";
   return (
-    <div className="border border-gray-600 rounded-md p-2 mb-2">
-      <div className="text-xs font-semibold text-gray-300 mb-1">
+    <div className="border border-line-strong rounded-md p-2 mb-2">
+      <div className="text-xs font-semibold text-fg-muted mb-1">
         {shell.name || `シェル ${Number(shell.key) + 1}`} ({shell.count} 機, {shell.planes} 面)
       </div>
       <div className="grid grid-cols-3 gap-1.5">
-        <label className="text-xs text-gray-400">
+        <label className="text-xs text-fg-muted">
           リンク方式
           <select
-            className="w-full bg-gray-700 text-gray-100 rounded px-1 py-0.5 mt-0.5"
+            className="w-full bg-raised text-fg rounded px-1 py-0.5 mt-0.5"
             value={mode}
             onChange={(e) => onChange({ mode: e.target.value as IslLinkModel["mode"] })}
           >
@@ -691,26 +691,26 @@ function ShellOverrideRow({
             <option value="gridPattern">gridPattern</option>
           </select>
         </label>
-        <label className="text-xs text-gray-400">
+        <label className="text-xs text-fg-muted">
           最大距離(km)
           <input
             type="number"
             step="100"
             placeholder="共通設定を使用"
-            className="w-full bg-gray-700 text-gray-100 rounded px-1 py-0.5 mt-0.5"
+            className="w-full bg-raised text-fg rounded px-1 py-0.5 mt-0.5"
             value={override?.maxRangeKm ?? ""}
             onChange={(e) =>
               onChange({ maxRangeKm: e.target.value === "" ? undefined : Number(e.target.value) })
             }
           />
         </label>
-        <label className="text-xs text-gray-400">
+        <label className="text-xs text-fg-muted">
           遮蔽マージン(km)
           <input
             type="number"
             step="10"
             placeholder="共通設定を使用"
-            className="w-full bg-gray-700 text-gray-100 rounded px-1 py-0.5 mt-0.5"
+            className="w-full bg-raised text-fg rounded px-1 py-0.5 mt-0.5"
             value={override?.losMarginKm ?? ""}
             onChange={(e) =>
               onChange({ losMarginKm: e.target.value === "" ? undefined : Number(e.target.value) })
@@ -775,13 +775,13 @@ function NumField({
 
   if (inline) {
     return (
-      <label className="inline-flex items-center gap-1 text-xs text-gray-400">
+      <label className="inline-flex items-center gap-1 text-xs text-fg-muted">
         {label}
         <input
           type="number"
           min={min}
           step={step}
-          className="w-14 bg-gray-700 text-gray-100 rounded px-1 py-0.5"
+          className="w-14 bg-raised text-fg rounded px-1 py-0.5"
           value={draft}
           onChange={(e) => handleChange(e.target.value)}
         />
@@ -790,13 +790,13 @@ function NumField({
   }
 
   return (
-    <label className="text-xs text-gray-400">
+    <label className="text-xs text-fg-muted">
       {label}
       <input
         type="number"
         min={min}
         step={step}
-        className="w-full bg-gray-700 text-gray-100 rounded px-1 py-0.5 mt-0.5"
+        className="w-full bg-raised text-fg rounded px-1 py-0.5 mt-0.5"
         value={draft}
         onChange={(e) => handleChange(e.target.value)}
       />

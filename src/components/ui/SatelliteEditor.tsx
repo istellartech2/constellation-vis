@@ -1,5 +1,5 @@
 import { remoteDisplaySnapshot, type RemoteDisplaySettings } from "../../lib/remoteDisplay";
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import type { SatelliteSpec } from "../../lib/satellites";
 import type { CommittedScenario } from "../../lib/scenario";
 import type SatelliteScene from "../../lib/visualization";
@@ -28,6 +28,7 @@ import { validateSatellites, validateGroundStations } from "../../utils/validato
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./tabs";
 import { Button } from "./button";
 import { Menu, X } from "lucide-react";
+import { useSheetDrag } from "./useSheetDrag";
 import type { EarthTextureMode } from "../../lib/earthTextures";
 import type { ViewSettings } from "../../lib/viewState";
 
@@ -245,6 +246,32 @@ export default function SatelliteEditor({
     return d.toISOString().slice(0, 16);
   });
   const [open, setOpen] = useState(false);
+  const sheet = useSheetDrag(() => setOpen(false));
+
+  // Let floating HUD elements (playback bar, satellite card) slide right of
+  // the open panel on wide screens instead of being covered by it.
+  useEffect(() => {
+    const root = document.documentElement;
+    const update = () => {
+      const wide = window.matchMedia("(min-width: 769px)").matches;
+      root.style.setProperty("--panel-offset", open && wide ? "360px" : "0px");
+      // Centre the globe in the area right of the panel.
+      if (open && wide) root.dataset.viewInsetLeft = "360";
+      else delete root.dataset.viewInsetLeft;
+      // On phones the panel is a bottom sheet covering the HUD; let CSS hide it.
+      if (open && !wide) {
+        root.dataset.sheetOpen = "";
+        // Height the half sheet covers (matches --sheet-half: 56dvh).
+        root.dataset.sheetInset = String(Math.round(window.innerHeight * 0.56));
+      } else {
+        delete root.dataset.sheetOpen;
+        delete root.dataset.sheetInset;
+      }
+    };
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [open]);
   const [tab, setTab] = useState<"editor" | "analysis" | "option" | "isl">("editor");
   const [importOpen, setImportOpen] = useState(false);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
@@ -423,44 +450,42 @@ export default function SatelliteEditor({
           <Menu className="h-5 w-5" />
         </button>
       )}
-      <div className={`side-panel ${open ? "" : "closed"}`}>
-        <div className="side-panel-header">
+      <div
+        className={`side-panel ${open ? "" : "closed"} ${sheet.snap === "full" ? "sheet-full" : ""} ${
+          sheet.dragOffset !== null ? "sheet-dragging" : ""
+        }`}
+        style={
+          sheet.dragOffset !== null
+            ? ({ "--sheet-drag": `${sheet.dragOffset}px` } as CSSProperties)
+            : undefined
+        }
+      >
+        <div className="sheet-handle" {...sheet.handleProps}>
+          <button
+            type="button"
+            data-slot="icon-button"
+            className="sheet-grabber"
+            aria-label={sheet.snap === "full" ? "パネルを縮める" : "パネルを広げる"}
+            onClick={() => sheet.setSnap(sheet.snap === "full" ? "half" : "full")}
+          />
+        </div>
+        <div className="side-panel-header" {...sheet.handleProps}>
           <Tabs
             value={tab}
             onValueChange={(value) => setTab(value as "editor" | "analysis" | "option" | "isl")}
             className="flex-1 min-w-0"
           >
-            <TabsList className="grid w-full grid-cols-4 h-10 bg-gray-700/80 rounded-lg p-1 shadow-inner border border-gray-600">
-              <TabsTrigger
-                value="editor"
-                className="data-[state=active]:!bg-orange-600 data-[state=active]:!text-orange-50 data-[state=active]:!shadow-sm data-[state=active]:!border-transparent hover:bg-gray-600/60 text-gray-200 transition-colors rounded-md font-medium"
-              >
-                シナリオ
-              </TabsTrigger>
-              <TabsTrigger
-                value="isl"
-                className="data-[state=active]:!bg-orange-600 data-[state=active]:!text-orange-50 data-[state=active]:!shadow-sm data-[state=active]:!border-transparent hover:bg-gray-600/60 text-gray-200 transition-colors rounded-md font-medium"
-              >
-                通信
-              </TabsTrigger>
-              <TabsTrigger
-                value="analysis"
-                className="data-[state=active]:!bg-orange-600 data-[state=active]:!text-orange-50 data-[state=active]:!shadow-sm data-[state=active]:!border-transparent hover:bg-gray-600/60 text-gray-200 transition-colors rounded-md font-medium"
-              >
-                解析
-              </TabsTrigger>
-              <TabsTrigger
-                value="option"
-                className="data-[state=active]:!bg-orange-600 data-[state=active]:!text-orange-50 data-[state=active]:!shadow-sm data-[state=active]:!border-transparent hover:bg-gray-600/60 text-gray-200 transition-colors rounded-md font-medium"
-              >
-                表示
-              </TabsTrigger>
+            <TabsList className="grid w-full grid-cols-4 h-9">
+              <TabsTrigger value="editor" className="text-[13px]">シナリオ</TabsTrigger>
+              <TabsTrigger value="isl" className="text-[13px]">通信</TabsTrigger>
+              <TabsTrigger value="analysis" className="text-[13px]">解析</TabsTrigger>
+              <TabsTrigger value="option" className="text-[13px]">表示</TabsTrigger>
             </TabsList>
           </Tabs>
           <Button
             variant="ghost"
             size="icon"
-            className="side-panel-close"
+            className="size-9 shrink-0"
             onClick={() => setOpen(false)}
             aria-label="閉じる"
           >
@@ -469,7 +494,7 @@ export default function SatelliteEditor({
         </div>
         <div className="side-panel-content">
           <Tabs value={tab} onValueChange={(value) => setTab(value as "editor" | "analysis" | "option" | "isl")} className="w-full">
-            <TabsContent value="editor" className="mt-0 bg-gray-800/40 border-2 border-gray-600 rounded-lg p-6 shadow-inner">
+            <TabsContent value="editor" className="mt-0">
               <EditorTab
                 satText={satText}
                 constText={constText}
@@ -487,7 +512,7 @@ export default function SatelliteEditor({
               />
             </TabsContent>
             
-            <TabsContent value="analysis" className="mt-0 bg-gray-800/40 border-2 border-gray-600 rounded-lg p-6 shadow-inner">
+            <TabsContent value="analysis" className="mt-0">
               <AnalysisTab
                 satText={satText}
                 constText={constText}
@@ -506,7 +531,7 @@ export default function SatelliteEditor({
               />
             </TabsContent>
 
-            <TabsContent value="isl" className="mt-0 bg-gray-800/40 border-2 border-gray-600 rounded-lg p-6 shadow-inner">
+            <TabsContent value="isl" className="mt-0">
               <IslTab
                 gsText={gsText}
                 islSettings={islSettings}
@@ -535,7 +560,7 @@ export default function SatelliteEditor({
               />
             </TabsContent>
 
-            <TabsContent value="option" className="mt-0 bg-gray-800/40 border-2 border-gray-600 rounded-lg p-6 shadow-inner">
+            <TabsContent value="option" className="mt-0">
               <OptionTab
                 satRadius={satRadius}
                 onSatRadiusChange={onSatRadiusChange}

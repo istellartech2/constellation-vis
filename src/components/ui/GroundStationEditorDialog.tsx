@@ -146,13 +146,13 @@ export default function GroundStationEditorDialog({
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="!w-[90vw] !max-w-6xl max-h-[85vh] overflow-hidden flex flex-col bg-gray-900 text-gray-100">
-        <DialogHeader>
-          <DialogTitle className="text-gray-100">地上局編集</DialogTitle>
+      <DialogContent className="!w-[90vw] !max-w-6xl max-h-[85vh] overflow-hidden max-md:overflow-hidden max-md:h-[100dvh] max-md:rounded-none max-md:border-0 flex flex-col max-md:gap-3 bg-surface-solid text-fg">
+        <DialogHeader className="max-md:pr-10">
+          <DialogTitle className="text-fg max-md:text-left">地上局編集</DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 border border-gray-600 rounded-md overflow-hidden flex min-h-0">
-          <div className="w-56 flex-shrink-0 bg-gray-900">
+        <div className="flex-1 border border-line-strong rounded-md overflow-hidden max-md:overflow-y-auto max-md:overscroll-contain flex flex-col md:flex-row min-h-0">
+          <div className="md:w-56 flex-shrink-0 bg-surface-solid">
             <GroundStationList
               stations={stations}
               selectedId={selectedId}
@@ -166,8 +166,8 @@ export default function GroundStationEditorDialog({
             />
           </div>
 
-          <div className="flex-1 flex flex-col min-w-0">
-            <div className="flex-shrink-0 max-h-[45%] overflow-y-auto bg-gray-850 border-b border-gray-600">
+          <div className="flex-1 flex flex-col min-w-0 max-md:flex-none">
+            <div className="flex-shrink-0 md:max-h-[45%] md:overflow-y-auto bg-sunken border-b border-line-strong">
               {selected ? (
                 <GroundStationForm
                   station={selected}
@@ -176,15 +176,15 @@ export default function GroundStationEditorDialog({
                   onChange={handleChange}
                 />
               ) : (
-                <div className="h-32 flex items-center justify-center text-gray-400 text-sm">
+                <div className="h-32 flex items-center justify-center text-fg-muted text-sm">
                   {stations.length === 0
                     ? "「地上局追加」をクリックして最初の地上局を作成してください"
                     : "地上局を選択してください"}
                 </div>
               )}
             </div>
-            <div className="flex-1 min-h-[280px] relative">
-              <div className="absolute top-2 left-2 z-[1000] bg-gray-900/80 text-xs text-gray-200 px-2 py-1 rounded pointer-events-none">
+            <div className="flex-1 min-h-[280px] relative max-md:flex-none max-md:h-[280px]">
+              <div className="absolute top-2 left-2 max-md:left-14 max-md:right-2 z-[1000] bg-sunken text-xs text-fg px-2 py-1 rounded pointer-events-none">
                 {selected
                   ? "地図クリックで選択中の地上局の座標を上書き"
                   : "地上局を選択してください"}
@@ -199,18 +199,18 @@ export default function GroundStationEditorDialog({
           </div>
         </div>
 
-        <DialogFooter className="border-t border-gray-700 pt-3">
+        <DialogFooter className="border-t border-line pt-3 shrink-0 max-md:flex-row max-md:gap-2">
           <Button
             variant="outline"
             onClick={onClose}
-            className="bg-gray-700 hover:bg-gray-600 text-gray-100 border-gray-500"
+            className="bg-raised hover:bg-raised-hover text-fg border-line-strong max-md:h-11 max-md:flex-1"
           >
             キャンセル
           </Button>
           <Button
             onClick={handleOK}
             disabled={!isValid}
-            className="bg-amber-600 hover:bg-amber-700 text-amber-50 disabled:opacity-50"
+            className="bg-brand hover:bg-brand-hover text-brand-fg disabled:opacity-50 max-md:h-11 max-md:flex-1"
           >
             OK
           </Button>

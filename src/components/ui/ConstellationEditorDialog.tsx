@@ -182,7 +182,7 @@ export default function ConstellationEditorDialog({
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent
-        className="dark !w-[94vw] !max-w-7xl h-[90dvh] max-h-[90dvh] overflow-hidden flex flex-col bg-gray-900 text-gray-100 max-md:!w-screen max-md:!max-w-none max-md:h-[100dvh] max-md:!max-h-none max-md:rounded-none"
+        className="dark !w-[94vw] !max-w-7xl h-[90dvh] max-h-[90dvh] overflow-hidden max-md:overflow-hidden max-md:h-[100dvh] max-md:rounded-none max-md:border-0 flex flex-col max-md:gap-3 bg-surface-solid text-fg"
         onEscapeKeyDown={(event) => {
           // In the wizard, Escape steps back to the shell list rather than
           // discarding the whole editing session.
@@ -192,21 +192,21 @@ export default function ConstellationEditorDialog({
           }
         }}
       >
-        <DialogHeader>
-          <DialogTitle className="text-gray-100 flex items-center gap-2">
+        <DialogHeader className="max-md:pr-10">
+          <DialogTitle className="text-fg flex items-center gap-2">
             {mode === "mission" && (
               <button
                 type="button"
                 onClick={backToShells}
                 aria-label="シェル一覧へ戻る"
-                className="p-1 -ml-1 rounded text-gray-400 hover:text-gray-100 hover:bg-gray-800"
+                className="p-1 -ml-1 rounded text-fg-muted hover:text-fg hover:bg-sunken max-md:p-2 max-md:-ml-2"
               >
                 <ChevronLeft className="h-5 w-5" />
               </button>
             )}
             <span>{mode === "mission" ? "ミッションから設計" : "コンステレーション編集"}</span>
           </DialogTitle>
-          <DialogDescription className="text-xs text-gray-400 text-left">
+          <DialogDescription className="text-xs text-fg-muted text-left">
             {mode === "mission" ? "目的に合う配置を探し、候補からシェルを作成します。" : "シェルを選んで設定を調整し、自動計算の結果を確認します。"}
           </DialogDescription>
         </DialogHeader>
@@ -214,13 +214,13 @@ export default function ConstellationEditorDialog({
         {mode === "shells" && (
           <div className="flex items-center gap-4 px-1">
             <div className="flex items-center gap-2">
-              <Label htmlFor="constellation-epoch" className="text-xs text-gray-300 whitespace-nowrap">基準時刻 (UTC)</Label>
+              <Label htmlFor="constellation-epoch" className="text-xs text-fg-muted whitespace-nowrap">基準時刻 (UTC)</Label>
               <input
                 id="constellation-epoch"
                 type="datetime-local"
                 value={formatDateForInput(config.epoch)}
                 onChange={(e) => handleEpochChange(e.target.value + ":00Z")}
-                className="w-48 px-2 py-1 text-sm bg-gray-800 border border-gray-600 rounded focus:border-amber-500 focus:outline-none text-gray-100"
+                className="w-48 px-2 py-1 text-sm bg-sunken border border-line-strong rounded focus:border-brand focus:outline-none text-fg"
               />
             </div>
           </div>
@@ -238,9 +238,9 @@ export default function ConstellationEditorDialog({
           </div>
         )}
         {mode === "shells" && (
-          <div className="flex-1 border border-gray-600 rounded-md overflow-hidden flex flex-col md:flex-row min-h-0">
+          <div className="flex-1 border border-line-strong rounded-md overflow-hidden max-md:overflow-y-auto max-md:overscroll-contain flex flex-col md:flex-row min-h-0">
             {/* Shell list: sidebar on desktop, compact select on mobile */}
-            <div className="md:w-52 md:flex-shrink-0 bg-gray-900">
+            <div className="md:w-52 md:flex-shrink-0 bg-surface-solid max-md:shrink-0">
               <ConstellationShellList
                 shells={config.shells}
                 selectedId={selectedShellId}
@@ -256,7 +256,7 @@ export default function ConstellationEditorDialog({
             </div>
 
             {/* Shell form */}
-            <div className="flex-1 min-w-0 min-h-0 overflow-hidden bg-gray-800/30">
+            <div className="flex-1 min-w-0 min-h-0 overflow-hidden bg-raised max-md:flex-auto max-md:overflow-visible">
               {selectedShell ? (
                 <ConstellationShellForm
                   shell={selectedShell}
@@ -266,7 +266,7 @@ export default function ConstellationEditorDialog({
                   onRedesign={(shell) => openMission(constraintsFromShell(shell))}
                 />
               ) : (
-                <div className="h-full flex items-center justify-center text-gray-400 text-sm p-6 text-center">
+                <div className="h-full flex items-center justify-center text-fg-muted text-sm p-6 text-center">
                   {config.shells.length === 0
                     ? "「シェル追加」をクリックして最初のシェルを作成してください"
                     : "シェルを選択してください"}
@@ -277,17 +277,17 @@ export default function ConstellationEditorDialog({
         )}
 
         {mode === "shells" && (
-          <DialogFooter className="border-t border-gray-700 pt-3 shrink-0 sm:items-center">
-            <p className="text-xs text-gray-400 sm:mr-auto">
+          <DialogFooter className="border-t border-line pt-3 shrink-0 sm:items-center max-md:flex-row max-md:flex-wrap max-md:gap-2">
+            <p className="text-xs text-fg-muted sm:mr-auto max-md:basis-full">
               {isValid ? "保存後、シナリオの「この内容で 3D ビューを更新」で反映します。" : "入力エラーを修正すると保存できます。"}
             </p>
-            <Button variant="outline" onClick={handleCancel} className="bg-gray-700 hover:bg-gray-600 text-gray-100 border-gray-500">
+            <Button variant="outline" onClick={handleCancel} className="bg-raised hover:bg-raised-hover text-fg border-line-strong max-md:h-11 max-md:flex-1">
               キャンセル
             </Button>
             <Button
               onClick={handleOK}
               disabled={!isValid}
-              className="bg-amber-600 hover:bg-amber-700 text-amber-50 disabled:opacity-50"
+              className="bg-brand hover:bg-brand-hover text-brand-fg disabled:opacity-50 max-md:h-11 max-md:flex-1"
             >
               編集内容を保存
             </Button>

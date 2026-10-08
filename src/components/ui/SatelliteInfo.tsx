@@ -13,7 +13,8 @@ import {
   formatLongitude,
   getSatelliteDerivedInfo,
 } from "../../lib/satelliteDerivedInfo";
-import { Button } from "./button";
+import { useState } from "react";
+import { ChevronDown, X } from "lucide-react";
 import type { SatelliteCameraMode } from "../../lib/visualization";
 
 const CAMERA_VIEW_OPTIONS: { mode: SatelliteCameraMode; label: string }[] = [
@@ -30,6 +31,7 @@ interface Props {
   showPerturbation: boolean;
   cameraMode: SatelliteCameraMode;
   onCameraModeChange: (mode: SatelliteCameraMode) => void;
+  onClose: () => void;
 }
 
 interface InfoRow {
@@ -63,43 +65,17 @@ function Section({
   if (rows.length === 0) return null;
 
   return (
-    <div style={{ marginTop: 10 }}>
-      <div
-        style={{
-          fontSize: "0.76rem",
-          textTransform: "uppercase",
-          letterSpacing: "0.08em",
-          color: "#9ca3af",
-          marginBottom: 4,
-        }}
-      >
-        {title}
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+    <section className="border-t border-line pt-2.5">
+      <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">{title}</h4>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
         {rows.map((row) => (
-          <div
-            key={row.label}
-            style={{
-              display: "flex",
-              alignItems: "baseline",
-              gap: 10,
-              whiteSpace: "nowrap",
-            }}
-          >
-            <div
-              style={{
-                minWidth: 132,
-                color: "#d1d5db",
-                flexShrink: 0,
-              }}
-            >
-              {row.label}
-            </div>
-            <div style={{ color: "#fff" }}>{row.value}</div>
+          <div key={row.label} className="contents">
+            <dt className="whitespace-nowrap text-fg-muted">{row.label}</dt>
+            <dd className="m-0 text-right font-mono tabular-nums text-fg whitespace-nowrap">{row.value}</dd>
           </div>
         ))}
-      </div>
-    </div>
+      </dl>
+    </section>
   );
 }
 
@@ -111,7 +87,10 @@ export default function SatelliteInfo({
   showPerturbation,
   cameraMode,
   onCameraModeChange,
+  onClose,
 }: Props) {
+  // Phones start with the details folded so the card doesn't hide the globe.
+  const [expanded, setExpanded] = useState(() => !window.matchMedia("(max-width: 768px)").matches);
   if (selectedIdx === null) return null;
 
   const spec = satellites[selectedIdx];
@@ -170,160 +149,106 @@ export default function SatelliteInfo({
     { label: "次の日照復帰まで", value: formatDurationMinutes(derived.timeToNextSunlightReturnMinutes) },
   ] : [];
 
+  const title = meta?.objectName ?? `衛星 #${selectedIdx + 1}`;
+
   return (
-    <div
-      style={{
-        position: "fixed",
-        left: 8,
-        bottom: "calc(env(safe-area-inset-bottom, 0px) + 6px)",
-        color: "#fff",
-        fontFamily: "'Noto Sans Mono', monospace",
-        fontSize: "0.88rem",
-        zIndex: 10,
-        lineHeight: "1.45",
-        background: "rgba(17, 24, 39, 0.84)",
-        border: "1px solid rgba(255, 255, 255, 0.14)",
-        borderRadius: 10,
-        padding: "10px 12px",
-        backdropFilter: "blur(8px)",
-        maxWidth: "min(420px, calc(100vw - 16px))",
-        boxShadow: "0 10px 24px rgba(0, 0, 0, 0.28)",
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
-        pointerEvents: "none",
-      }}
-    >
-      <Section title="基本情報" rows={metaRows} />
-      <Section title="軌道要素" rows={orbitalRows} />
-      {showDerivedInfo && <Section title="運用指標" rows={derivedRows} />}
-      {showPerturbation && (
-        <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid rgba(255, 255, 255, 0.15)" }}>
-          <div
-            style={{
-              fontSize: "0.76rem",
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-              color: "#9ca3af",
-              marginBottom: 4,
-            }}
-          >
-            摂動
-          </div>
-          {(() => {
-            const detailedRates = calculateDetailedPerturbationRates({
-              semiMajorAxisKm: e.semiMajorAxisKm,
-              eccentricity: e.eccentricity,
-              inclinationDeg: e.inclinationDeg,
-              raanDeg: e.raanDeg,
-              argPerigeeDeg: e.argPerigeeDeg,
-              meanAnomalyDeg: e.meanAnomalyDeg,
-            });
-
-            const j2Rates = formatJ2PerturbationRates(detailedRates.j2);
-            const j3Rates = formatJ3PerturbationRates(detailedRates.j3);
-
-            return (
-              <>
-                {j2Rates.length > 0 && (
-                  <div style={{ marginTop: 6 }}>
-                    <div style={{ fontSize: "0.8em", color: "#999", marginBottom: 2 }}>J₂項</div>
-                    {j2Rates.map((rate, index) => (
-                      <div key={index} style={{ fontSize: "0.85em", paddingLeft: 10, display: "flex", alignItems: "center", gap: 4 }}>
-                        <span dangerouslySetInnerHTML={{ __html: renderMath(rate.latex) }} />
-                        <span>: {rate.value}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {j3Rates.length > 0 && (
-                  <div style={{ marginTop: 6 }}>
-                    <div style={{ fontSize: "0.8em", color: "#999", marginBottom: 2 }}>J₃項</div>
-                    {j3Rates.map((rate, index) => (
-                      <div key={index} style={{ fontSize: "0.85em", paddingLeft: 10, display: "flex", alignItems: "center", gap: 4 }}>
-                        <span dangerouslySetInnerHTML={{ __html: renderMath(rate.latex) }} />
-                        <span>: {rate.value}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            );
-          })()}
+    <div className="hud-card glass satellite-info">
+      <header className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[11px] font-medium text-fg-subtle">選択中の衛星</div>
+          <div className="truncate text-[15px] font-semibold text-fg">{title}</div>
         </div>
-      )}
-      <div
-        style={{
-          marginTop: 8,
-          paddingTop: 8,
-          borderTop: "1px solid rgba(255, 255, 255, 0.08)",
-          fontSize: "0.76rem",
-          color: "#9ca3af",
-        }}
-      >
-        現在時刻: {simTime.toISOString().slice(0, 16).replace("T", " ")} UTC
+        <div className="-mr-1 -mt-0.5 flex shrink-0 items-center">
+        <button
+          type="button"
+          data-slot="icon-button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          aria-label={expanded ? "詳細を閉じる" : "詳細を表示"}
+          title={expanded ? "詳細を閉じる" : "詳細を表示"}
+          className="inline-flex size-7 items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-raised-hover hover:text-fg"
+        >
+          <ChevronDown className={`size-4 transition-transform ${expanded ? "" : "rotate-180"}`} />
+        </button>
+        <button
+          type="button"
+          data-slot="icon-button"
+          onClick={onClose}
+          aria-label="選択を解除"
+          title="選択を解除"
+          className="inline-flex size-7 items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-raised-hover hover:text-fg"
+        >
+          <X className="size-4" />
+        </button>
+        </div>
+      </header>
+      <div role="radiogroup" aria-label="カメラ" className="grid grid-cols-3 gap-1 rounded-lg border border-line bg-sunken p-[3px]">
+        {CAMERA_VIEW_OPTIONS.map((option) => {
+          const selected = cameraMode === option.mode;
+          return (
+            <button
+              key={option.mode}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              data-slot="icon-button"
+              onClick={() => onCameraModeChange(option.mode)}
+              className={`h-7 rounded-md text-xs font-medium transition-colors ${
+                selected ? "bg-seg-active text-fg shadow-sm" : "text-fg-muted hover:text-fg"
+              }`}
+            >
+              {option.label}
+            </button>
+          );
+        })}
       </div>
-      <div
-        style={{
-          pointerEvents: "auto",
-          display: "flex",
-          flexDirection: "column",
-          gap: 6,
-          paddingTop: 2,
-        }}
-      >
-        <div
-          style={{
-            fontSize: "0.74rem",
-            textTransform: "uppercase",
-            letterSpacing: "0.08em",
-            color: "#9ca3af",
-          }}
-        >
-          ビュー
-        </div>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-            gap: 6,
-            padding: 4,
-            borderRadius: 10,
-            background: "rgba(255, 255, 255, 0.06)",
-            border: "1px solid rgba(255, 255, 255, 0.08)",
-          }}
-        >
-          {CAMERA_VIEW_OPTIONS.map((option) => {
-            const selected = cameraMode === option.mode;
-            return (
-              <Button
-                key={option.mode}
-                type="button"
-                variant={selected ? "default" : "ghost"}
-                size="sm"
-                disabled={selected}
-                className={
-                  selected
-                    ? "bg-cyan-400/90 text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.4),0_0_0_1px_rgba(34,211,238,0.4)] hover:bg-cyan-400/90"
-                    : "bg-transparent text-slate-100 hover:bg-white/14 hover:text-white"
-                }
-                onClick={() => onCameraModeChange(option.mode)}
-              >
-                {option.label}
-              </Button>
-            );
-          })}
-        </div>
-        <div
-          style={{
-            fontSize: "0.74rem",
-            color: "#9ca3af",
-            lineHeight: 1.4,
-          }}
-        >
-          ホイールで拡大、後方追跡では上下ドラッグ可
-        </div>
+      {expanded && (<>
+      <div className="satellite-info-body">
+        <Section title="基本情報" rows={metaRows} />
+        <Section title="軌道要素" rows={orbitalRows} />
+        {showDerivedInfo && <Section title="運用指標" rows={derivedRows} />}
+        {showPerturbation && (
+          <section className="border-t border-line pt-2.5">
+            <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">摂動</h4>
+            {(() => {
+              const detailedRates = calculateDetailedPerturbationRates({
+                semiMajorAxisKm: e.semiMajorAxisKm,
+                eccentricity: e.eccentricity,
+                inclinationDeg: e.inclinationDeg,
+                raanDeg: e.raanDeg,
+                argPerigeeDeg: e.argPerigeeDeg,
+                meanAnomalyDeg: e.meanAnomalyDeg,
+              });
+
+              const j2Rates = formatJ2PerturbationRates(detailedRates.j2);
+              const j3Rates = formatJ3PerturbationRates(detailedRates.j3);
+
+              return (
+                <>
+                  {[{ label: "J₂項", rates: j2Rates }, { label: "J₃項", rates: j3Rates }].map(
+                    ({ label, rates }) =>
+                      rates.length > 0 && (
+                        <div key={label} className="mt-1.5">
+                          <div className="mb-0.5 text-[11px] text-fg-subtle">{label}</div>
+                          {rates.map((rate, index) => (
+                            <div key={index} className="flex items-center gap-1 pl-2.5 text-[0.85em]">
+                              <span dangerouslySetInnerHTML={{ __html: renderMath(rate.latex) }} />
+                              <span className="font-mono tabular-nums">: {rate.value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ),
+                  )}
+                </>
+              );
+            })()}
+          </section>
+        )}
       </div>
+      </>)}
+      <p className="text-[11px] text-fg-subtle max-md:hidden">
+        {cameraMode === "thirdPerson" ? "ホイールで拡大、上下ドラッグで角度調整" : "ホイールで拡大・縮小"}
+      </p>
     </div>
   );
 }

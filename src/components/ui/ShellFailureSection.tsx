@@ -90,13 +90,13 @@ export default function ShellFailureSection({
   };
 
   return (
-    <div className="space-y-2 rounded border border-gray-800 bg-gray-900/40 p-3">
-      <Label className="text-xs text-gray-400 inline-flex items-center gap-1">
+    <div className="space-y-2 rounded border border-line bg-sunken p-3">
+      <Label className="text-xs text-fg-muted inline-flex items-center gap-1">
         <span>故障モデル</span>
         <HelpTip text="指定した機数または割合の衛星を「故障」として取り除きます。抽選はシード値で決まる決定論的な処理なので、保存したTOMLを読み直しても、3D表示・各解析・CLI のどこでも同じ衛星が欠けます。残った衛星の衛星番号は変わらないため、欠番が故障機です。" />
       </Label>
 
-      <div className="flex flex-wrap gap-3 text-xs text-gray-300">
+      <div className="flex flex-wrap gap-3 text-xs text-fg-muted">
         {(
           [
             ["none", "故障なし"],
@@ -110,7 +110,7 @@ export default function ShellFailureSection({
               name={`failure-mode-${shell.id}`}
               checked={mode === value}
               onChange={() => selectMode(value)}
-              className="accent-amber-500"
+              className="accent-brand"
             />
             <span>{label}</span>
           </label>
@@ -174,18 +174,18 @@ export default function ShellFailureSection({
       )}
 
       {plan && plan.failedCount === 0 && mode !== "none" && (
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-fg-subtle">
           公称 {plan.nominalCount} 機 / 稼働 {plan.nominalCount} 機（指定量が小さいため故障 0 機）
         </p>
       )}
       {plan && plan.failedCount > 0 && (
-        <p className="text-xs text-amber-300">
+        <p className="text-xs text-brand-text">
           公称 {plan.nominalCount} 機 / 稼働 {plan.activeCount} 機（{plan.failedCount} 機故障、
           {((plan.failedCount / Math.max(1, plan.nominalCount)) * 100).toFixed(1)}%）
         </p>
       )}
       {plan && plan.failedCount > 0 && (
-        <p className="text-xs text-gray-500 break-all">
+        <p className="text-xs text-fg-subtle break-all">
           故障機のシェル内番号: {plan.failedIndices.map((i) => i + 1).join(", ")}
         </p>
       )}

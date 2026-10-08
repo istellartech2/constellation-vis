@@ -11,6 +11,7 @@ import {
   type IslRoutingWorkerResponse,
   type IslRoutingWorkerSweepRequest,
 } from "../../workers/islRoutingWorker.types";
+import { getChartTheme } from "./utils/chartTheme";
 
 interface Props {
   /** The currently active (committed) satellite array — matches islShellRanges exactly. */
@@ -116,31 +117,32 @@ export default function IslRoutingAnalysis({ satellites, islSettings, islShellRa
   const reachabilityRate = results && results.length > 0 ? (reachableCount / results.length) * 100 : null;
   const switchCount = results?.filter((r) => r.switchedFromPrevious).length ?? 0;
 
+  const t = getChartTheme();
   const chartOption = results && {
     backgroundColor: "transparent",
-    tooltip: { trigger: "axis" },
-    legend: { data: ["総遅延 (ms)", "ホップ数"], textStyle: { color: "#d1d5db" } },
+    tooltip: { trigger: "axis", backgroundColor: t.surface, borderColor: t.lineStrong, textStyle: { color: t.fg } },
+    legend: { data: ["総遅延 (ms)", "ホップ数"], textStyle: { color: t.fgMuted } },
     grid: { left: 60, right: 60, top: 40, bottom: 60 },
     xAxis: {
       type: "category",
       name: "経過時間 (s)",
       data: results.map((r, i) => (i === 0 ? 0 : Math.round((r.computedAtSimMs - results[0].computedAtSimMs) / 1000))),
-      axisLabel: { color: "#9ca3af" },
-      axisLine: { lineStyle: { color: "#4b5563" } },
+      axisLabel: { color: t.fgMuted },
+      axisLine: { lineStyle: { color: t.lineStrong } },
     },
     yAxis: [
       {
         type: "value",
         name: "総遅延 (ms)",
-        axisLabel: { color: "#9ca3af" },
-        axisLine: { lineStyle: { color: "#4b5563" } },
-        splitLine: { lineStyle: { color: "#374151" } },
+        axisLabel: { color: t.fgMuted },
+        axisLine: { lineStyle: { color: t.lineStrong } },
+        splitLine: { lineStyle: { color: t.line } },
       },
       {
         type: "value",
         name: "ホップ数",
-        axisLabel: { color: "#9ca3af" },
-        axisLine: { lineStyle: { color: "#4b5563" } },
+        axisLabel: { color: t.fgMuted },
+        axisLine: { lineStyle: { color: t.lineStrong } },
         splitLine: { show: false },
       },
     ],
@@ -197,30 +199,30 @@ export default function IslRoutingAnalysis({ satellites, islSettings, islShellRa
   return (
     <div className="flex flex-col h-full gap-3 overflow-auto">
       {!endpointsConfigured && (
-        <p className="text-sm text-amber-400">
+        <p className="text-sm text-brand-text">
           ISL タブで地点 A・B を設定すると、この解析を実行できます。
         </p>
       )}
 
       <div className="flex flex-wrap items-end gap-3">
-        <label className="text-xs text-gray-400">
+        <label className="text-xs text-fg-muted">
           期間(分)
           <input
             type="number"
             min={1}
             step={1}
-            className="w-20 bg-gray-700 text-gray-100 rounded px-1 py-0.5 mt-0.5 block"
+            className="w-20 bg-raised text-fg rounded px-1 py-0.5 mt-0.5 block"
             value={numericInputValue(parseNumericInput(durationMinDraft))}
             onChange={(e) => setDurationMinDraft(e.target.value)}
           />
         </label>
-        <label className="text-xs text-gray-400">
+        <label className="text-xs text-fg-muted">
           刻み(秒)
           <input
             type="number"
             min={1}
             step={1}
-            className="w-20 bg-gray-700 text-gray-100 rounded px-1 py-0.5 mt-0.5 block"
+            className="w-20 bg-raised text-fg rounded px-1 py-0.5 mt-0.5 block"
             value={numericInputValue(parseNumericInput(stepSDraft))}
             onChange={(e) => setStepSDraft(e.target.value)}
           />
@@ -240,10 +242,10 @@ export default function IslRoutingAnalysis({ satellites, islSettings, islShellRa
         )}
       </div>
 
-      {error && <div className="text-red-400 text-xs bg-red-900/20 p-2 rounded">{error}</div>}
+      {error && <div className="text-danger text-xs bg-danger-soft p-2 rounded">{error}</div>}
 
       {results && (
-        <div className="text-sm text-gray-200 flex flex-wrap gap-4">
+        <div className="text-sm text-fg flex flex-wrap gap-4">
           <span>到達可能率: {reachabilityRate?.toFixed(1)}%</span>
           <span>切替回数: {switchCount}</span>
           <span>ステップ数: {results.length}</span>
@@ -255,13 +257,12 @@ export default function IslRoutingAnalysis({ satellites, islSettings, islShellRa
           <ReactECharts
             ref={chartRef}
             option={chartOption}
-            theme="dark"
             style={{ height: "100%", width: "100%" }}
           />
         </div>
       )}
 
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-fg-subtle">
         黄色の破線は経路切替(フラッピング)が起きた時刻を示します。到達不能な区間は線が途切れます。
       </p>
     </div>
