@@ -255,6 +255,9 @@ export default function SatelliteEditor({
     const update = () => {
       const wide = window.matchMedia("(min-width: 769px)").matches;
       root.style.setProperty("--panel-offset", open && wide ? "360px" : "0px");
+      // Centre the globe in the area right of the panel.
+      if (open && wide) root.dataset.viewInsetLeft = "360";
+      else delete root.dataset.viewInsetLeft;
       // On phones the panel is a bottom sheet covering the HUD; let CSS hide it.
       if (open && !wide) {
         root.dataset.sheetOpen = "";

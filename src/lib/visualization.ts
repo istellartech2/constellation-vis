@@ -686,10 +686,8 @@ export default class SatelliteScene {
     const handleResize = () => {
       this.renderer.setSize(window.innerWidth, window.innerHeight);
       this.camera.aspect = window.innerWidth / window.innerHeight;
-      if (this.camera.view) {
-        this.camera.setViewOffset(window.innerWidth, window.innerHeight, 0, this.viewInsetPx / 2, window.innerWidth, window.innerHeight);
-      }
       this.camera.updateProjectionMatrix();
+      this.applyViewOffset();
       this.kmlRenderer.setResolution(window.innerWidth, window.innerHeight);
     };
     window.addEventListener("resize", handleResize);
@@ -1250,23 +1248,38 @@ export default class SatelliteScene {
     this.islPathLines.visible = true;
   }
 
-  /** Bottom inset (px) currently applied via the camera view offset. */
-  private viewInsetPx = 0;
+  /** Insets (px) currently applied via the camera view offset. */
+  private viewInset = { left: 0, bottom: 0 };
 
   /**
-   * Shift the rendered image up so the globe stays centred in the area not
-   * covered by the mobile bottom sheet. The sheet publishes the covered
-   * height on <html data-sheet-inset>; eased here for a smooth slide.
+   * Shift the rendered image so the globe stays centred in the area not
+   * covered by the side panel (desktop, left) or bottom sheet (phones).
+   * The panel publishes the covered size on <html data-view-inset-left /
+   * data-sheet-inset>; eased here for a smooth slide.
    */
   private updateViewInset() {
-    const target = Number(document.documentElement.dataset.sheetInset ?? 0) || 0;
-    if (Math.abs(target - this.viewInsetPx) < 0.5) return;
-    this.viewInsetPx += (target - this.viewInsetPx) * 0.2;
-    if (Math.abs(target - this.viewInsetPx) < 0.5) this.viewInsetPx = target;
+    const ds = document.documentElement.dataset;
+    const target = {
+      left: Number(ds.viewInsetLeft ?? 0) || 0,
+      bottom: Number(ds.sheetInset ?? 0) || 0,
+    };
+    const cur = this.viewInset;
+    if (Math.abs(target.left - cur.left) < 0.5 && Math.abs(target.bottom - cur.bottom) < 0.5) return;
+    const ease = (from: number, to: number) => {
+      const next = from + (to - from) * 0.2;
+      return Math.abs(to - next) < 0.5 ? to : next;
+    };
+    cur.left = ease(cur.left, target.left);
+    cur.bottom = ease(cur.bottom, target.bottom);
+    this.applyViewOffset();
+  }
+
+  private applyViewOffset() {
+    const { left, bottom } = this.viewInset;
     const w = window.innerWidth;
     const h = window.innerHeight;
-    if (this.viewInsetPx === 0) this.camera.clearViewOffset();
-    else this.camera.setViewOffset(w, h, 0, this.viewInsetPx / 2, w, h);
+    if (left === 0 && bottom === 0) this.camera.clearViewOffset();
+    else this.camera.setViewOffset(w, h, -left / 2, bottom / 2, w, h);
   }
 
   private animate = () => {
