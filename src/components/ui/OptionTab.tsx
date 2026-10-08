@@ -13,14 +13,15 @@ import {
   Radio,
   Palette,
   FolderOpen,
-  Check,
   Bookmark,
   Save,
   Plus,
   X,
+  SunMoon,
 } from "lucide-react";
 import PanelSection from "./PanelSection";
-import { ColorChip, HelpTip, InlineSlider } from "./compactControls";
+import { ColorChip, HelpTip, InlineSlider, SegmentedControl } from "./compactControls";
+import { useUiTheme } from "../../lib/uiTheme";
 import type SatelliteScene from "../../lib/visualization";
 import type { EarthTextureMode } from "../../lib/earthTextures";
 import {
@@ -150,6 +151,7 @@ export default function OptionTab(props: Props) {
     getCurrentView,
     onApplyView,
   } = props;
+  const [uiTheme, setUiTheme] = useUiTheme();
 
   const [loadedKMLs, setLoadedKMLs] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -238,6 +240,18 @@ export default function OptionTab(props: Props) {
 
   return (
     <div>
+      <PanelSection title="画面テーマ" icon={<SunMoon />}>
+        <SegmentedControl
+          ariaLabel="画面テーマ"
+          value={uiTheme}
+          options={[
+            { value: "dark", label: "ダーク" },
+            { value: "light", label: "ライト" },
+          ]}
+          onChange={setUiTheme}
+        />
+      </PanelSection>
+
       {/* 0. ビュー(画角・表示設定)の保存と呼び出し */}
       <PanelSection
         title="ビュー保存"
@@ -372,40 +386,15 @@ export default function OptionTab(props: Props) {
       <PanelSection title="座標系・補助表示" icon={<Sun />}>
         <div className="space-y-1">
           <div className="text-sm text-fg">表示する座標系</div>
-          <div
-            className="inline-flex w-full rounded-md border border-line-strong bg-sunken p-0.5"
-            role="group"
-            aria-label="座標系の選択"
-          >
-            <button
-              type="button"
-              onClick={() => onEcefChange(false)}
-              aria-pressed={!ecef}
-              data-slot="button"
-              className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 text-xs rounded transition-colors ${
-                !ecef
-                  ? "bg-raised text-fg font-medium"
-                  : "bg-transparent text-fg-muted hover:text-fg"
-              }`}
-            >
-              {!ecef && <Check className="h-3 w-3 text-brand-text" />}
-              ECI（慣性系）
-            </button>
-            <button
-              type="button"
-              onClick={() => onEcefChange(true)}
-              aria-pressed={ecef}
-              data-slot="button"
-              className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 text-xs rounded transition-colors ${
-                ecef
-                  ? "bg-raised text-fg font-medium"
-                  : "bg-transparent text-fg-muted hover:text-fg"
-              }`}
-            >
-              {ecef && <Check className="h-3 w-3 text-brand-text" />}
-              ECEF（地球固定）
-            </button>
-          </div>
+          <SegmentedControl
+            ariaLabel="座標系の選択"
+            value={ecef ? "ecef" : "eci"}
+            options={[
+              { value: "eci", label: "ECI（慣性系）" },
+              { value: "ecef", label: "ECEF（地球固定）" },
+            ]}
+            onChange={(v) => onEcefChange(v === "ecef")}
+          />
           <p className="text-[11px] text-fg-subtle leading-snug">
             {ecef
               ? "地球と一緒に回転。地表の動きが見やすい。"

@@ -17,6 +17,7 @@
   --surface-solid: oklch(0.19 0.008 260);
   --raised: oklch(0.235 0.009 260);            /* cards / buttons */
   --raised-hover: oklch(0.275 0.01 260);
+  --seg-active: oklch(0.3 0.01 260);            /* selected segment / tab */
   --sunken: oklch(0.155 0.008 260);            /* inputs, wells */
   --line: oklch(1 0 0 / 0.08);
   --line-strong: oklch(1 0 0 / 0.15);
@@ -36,8 +37,6 @@
   --warning-soft: oklch(0.8 0.15 85 / 0.15);
   --info: oklch(0.72 0.12 235);
   --info-soft: oklch(0.72 0.12 235 / 0.15);
-  --hud-fg: #ffffff;
-  --hud-shadow: 0 1px 3px rgb(0 0 0 / 0.7);
   --shadow-panel: 0 12px 40px rgb(0 0 0 / 0.45), 0 0 0 1px var(--line);
   --overlay: rgb(0 0 0 / 0.6);
 }
@@ -49,6 +48,7 @@
   --surface-solid: oklch(0.995 0 0);
   --raised: oklch(0.965 0.003 260);
   --raised-hover: oklch(0.93 0.005 260);
+  --seg-active: oklch(1 0 0);
   --sunken: oklch(0.975 0.003 260);
   --line: oklch(0.2 0.02 260 / 0.09);
   --line-strong: oklch(0.2 0.02 260 / 0.17);
@@ -68,8 +68,6 @@
   --warning-soft: oklch(0.75 0.15 85 / 0.18);
   --info: oklch(0.52 0.14 245);
   --info-soft: oklch(0.52 0.14 245 / 0.1);
-  --hud-fg: #ffffff;
-  --hud-shadow: 0 1px 3px rgb(0 0 0 / 0.7);
   --shadow-panel: 0 10px 32px rgb(15 23 42 / 0.16), 0 0 0 1px var(--line);
   --overlay: rgb(15 23 42 / 0.35);
 }
@@ -126,6 +124,7 @@
   --color-surface-solid: var(--surface-solid);
   --color-raised: var(--raised);
   --color-raised-hover: var(--raised-hover);
+  --color-seg-active: var(--seg-active);
   --color-sunken: var(--sunken);
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
@@ -901,12 +900,126 @@ input[type="range"] {
   flex-shrink: 1;
 }
 
-/* HUD text drawn directly over the 3D view */
-.hud-text {
-  color: var(--hud-fg);
-  text-shadow: var(--hud-shadow);
+/* Playback HUD (bottom centre) */
+.playback-bar,
+.satellite-info {
+  transition: left 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.playback-bar {
+  position: fixed;
+  left: calc(50% + var(--panel-offset, 0px) / 2);
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px 5px 5px;
+  border-radius: 999px;
+  color: var(--fg);
+  user-select: none;
+}
+
+.playback-speed {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--fg);
   font-family: var(--app-font-mono);
   font-variant-numeric: tabular-nums;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  text-align: center;
+  text-align-last: center;
+  width: 3.5rem;
+  padding: 4px 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.playback-speed:hover {
+  background: var(--raised-hover);
+}
+
+.playback-speed:focus-visible {
+  outline: 2px solid var(--brand);
+}
+
+.playback-speed option {
+  background: var(--surface-solid);
+  color: var(--fg);
+}
+
+.playback-divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 6px 4px;
+  background: var(--line-strong);
+}
+
+.playback-time {
+  font-family: var(--app-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  white-space: pre;
+  color: var(--fg-muted);
+}
+
+.playback-time::first-line {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+/* Bottom-corner info cards over the 3D view */
+.hud-card {
+  position: fixed;
+  z-index: 15;
+  border-radius: 14px;
+  color: var(--fg);
+}
+
+.satellite-info {
+  left: calc(12px + var(--panel-offset, 0px));
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  width: min(320px, calc(100vw - 24px));
+  max-height: calc(100dvh - 90px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.satellite-info-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.isl-hud {
+  right: 12px;
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  border: 0;
+}
+
+/* HUD text drawn directly over the 3D view */
+.hud-text {
+  color: #fff;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.8);
+  font-family: var(--app-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-text-on-white {
+  color: #111827;
+  text-shadow: 0 0 3px #fff, 0 0 3px #fff;
 }
 
 /* Overlay */

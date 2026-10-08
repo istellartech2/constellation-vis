@@ -245,6 +245,19 @@ export default function SatelliteEditor({
     return d.toISOString().slice(0, 16);
   });
   const [open, setOpen] = useState(false);
+
+  // Let floating HUD elements (playback bar, satellite card) slide right of
+  // the open panel on wide screens instead of being covered by it.
+  useEffect(() => {
+    const root = document.documentElement;
+    const update = () => {
+      const wide = window.matchMedia("(min-width: 769px)").matches;
+      root.style.setProperty("--panel-offset", open && wide ? "360px" : "0px");
+    };
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [open]);
   const [tab, setTab] = useState<"editor" | "analysis" | "option" | "isl">("editor");
   const [importOpen, setImportOpen] = useState(false);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);

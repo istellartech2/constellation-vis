@@ -25,15 +25,7 @@ export default function IslHud({ islSettings, islResult, islSwitchCount, onClick
       type="button"
       onClick={onClick}
       title="クリックで通信タブを開く"
-      style={{
-        position: "fixed",
-        right: 8,
-        bottom: "calc(env(safe-area-inset-bottom, 0px) + 58px)",
-        zIndex: 10,
-        textAlign: "right",
-        cursor: "pointer",
-      }}
-      className="bg-sunken border border-line-strong rounded-lg px-2.5 py-1.5 backdrop-blur-sm hover:border-brand transition-colors"
+      className="hud-card glass isl-hud text-right cursor-pointer px-3 py-2 transition-colors hover:bg-raised-hover"
     >
       <div className="text-[11px] text-fg-muted truncate max-w-[220px]">
         {nameA} ⇄ {nameB}

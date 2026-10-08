@@ -1,6 +1,7 @@
 // Chart option generators for analysis components
 import type { GroundStation } from "../../../lib/groundStations";
 import type { StationVisibilityEntry, StationVisibilitySample } from "../../../lib/visibility";
+import { getChartTheme } from "./chartTheme";
 
 export type ChartData = StationVisibilitySample;
 
@@ -9,25 +10,26 @@ export function createStationAccessChartOption(
   stations: GroundStation[],
   stats: Array<{name: string; averageVisible: number; nonZeroRate: number}>
 ) {
+  const t = getChartTheme();
   if (data.length === 0) {
     return {
       title: {
         text: "地上局アクセス解析",
-        textStyle: { color: "#ed6d00" },
+        textStyle: { color: t.fg },
         left: 'center'
       },
-      backgroundColor: "rgba(30, 32, 36, 0.95)"
+      backgroundColor: "transparent"
     };
   }
 
   return {
     title: {
       text: "地上局アクセス解析",
-      textStyle: { color: "#ed6d00", fontSize: 16 },
+      textStyle: { color: t.fg, fontSize: 16 },
       left: 'center'
     },
-    backgroundColor: "rgba(30, 32, 36, 0.95)",
-    textStyle: { color: "#f1f1f1" },
+    backgroundColor: "transparent",
+    textStyle: { color: t.fg },
     grid: {
       left: 160,
       right: 10,
@@ -38,13 +40,13 @@ export function createStationAccessChartOption(
       type: 'category',
       data: data.map(d => d.time.substr(0, 5)),
       axisLabel: { 
-        color: "#999faa",
+        color: t.fgMuted,
         rotate: 45
       },
       name: '時刻 (UTC)',
       nameLocation: 'middle',
       nameGap: 35,
-      nameTextStyle: { color: "#999faa" }
+      nameTextStyle: { color: t.fgMuted }
     },
     yAxis: {
       type: 'category',
@@ -53,14 +55,14 @@ export function createStationAccessChartOption(
         return `${s.name}\nAvg.: ${stat.averageVisible.toFixed(2)}\n≠0: ${(stat.nonZeroRate * 100).toFixed(1)}%`;
       }),
       axisLabel: { 
-        color: "#999faa",
+        color: t.fgMuted,
         fontSize: 13,
         lineHeight: 14
       },
       name: '地上局',
       nameLocation: 'middle',
       nameGap: 120,
-      nameTextStyle: { color: "#999faa" }
+      nameTextStyle: { color: t.fgMuted }
     },
     visualMap: {
       min: 0,
@@ -69,9 +71,9 @@ export function createStationAccessChartOption(
       orient: 'horizontal',
       left: 'left',
       bottom: 0,
-      textStyle: { color: "#f1f1f1" },
+      textStyle: { color: t.fg },
       inRange: {
-        color: ['#2d3748', '#38a169', '#d69e2e', '#e53e3e']
+        color: [t.raised, '#38a169', '#d69e2e', '#e53e3e']
       }
     },
     series: [{
@@ -102,11 +104,11 @@ export function createStationAccessChartOption(
       start: 0,
       end: 16.67,
       bottom: 10,
-      textStyle: { color: "#f1f1f1" },
-      borderColor: "#ed6d00",
-      fillerColor: "rgba(237, 109, 0, 0.3)",
+      textStyle: { color: t.fg },
+      borderColor: t.brand,
+      fillerColor: "rgba(240, 114, 20, 0.3)",
       handleStyle: {
-        color: "#ed6d00"
+        color: t.brand
       }
     }]
   };
@@ -117,25 +119,26 @@ export function createGlobalAccessChartOption(
   latitudeStations: GroundStation[],
   stats: Array<{name: string; averageVisible: number; nonZeroRate: number}>
 ) {
+  const t = getChartTheme();
   if (data.length === 0) {
     return {
       title: {
         text: "全球アクセス解析",
-        textStyle: { color: "#ed6d00" },
+        textStyle: { color: t.fg },
         left: 'center'
       },
-      backgroundColor: "rgba(30, 32, 36, 0.95)"
+      backgroundColor: "transparent"
     };
   }
 
   return {
     title: {
       text: "全球アクセス解析",
-      textStyle: { color: "#ed6d00", fontSize: 16 },
+      textStyle: { color: t.fg, fontSize: 16 },
       left: 'center'
     },
-    backgroundColor: "rgba(30, 32, 36, 0.95)",
-    textStyle: { color: "#f1f1f1" },
+    backgroundColor: "transparent",
+    textStyle: { color: t.fg },
     grid: {
       left: 160,
       right: 10,
@@ -146,13 +149,13 @@ export function createGlobalAccessChartOption(
       type: 'category',
       data: data.map(d => d.time.substr(0, 5)),
       axisLabel: { 
-        color: "#999faa",
+        color: t.fgMuted,
         rotate: 45
       },
       name: '時刻 (UTC)',
       nameLocation: 'middle',
       nameGap: 35,
-      nameTextStyle: { color: "#999faa" }
+      nameTextStyle: { color: t.fgMuted }
     },
     yAxis: {
       type: 'category',
@@ -161,13 +164,13 @@ export function createGlobalAccessChartOption(
         return stat ? `${s.name} (Avg:${stat.averageVisible.toFixed(1)})` : s.name;
       }),
       axisLabel: { 
-        color: "#999faa",
+        color: t.fgMuted,
         fontSize: 11
       },
       name: '緯度',
       nameLocation: 'middle',
       nameGap: 120,
-      nameTextStyle: { color: "#999faa" }
+      nameTextStyle: { color: t.fgMuted }
     },
     visualMap: {
       min: 0,
@@ -176,9 +179,9 @@ export function createGlobalAccessChartOption(
       orient: 'horizontal',
       left: 'left',
       bottom: 0,
-      textStyle: { color: "#f1f1f1" },
+      textStyle: { color: t.fg },
       inRange: {
-        color: ['#2d3748', '#38a169', '#d69e2e', '#e53e3e']
+        color: [t.raised, '#38a169', '#d69e2e', '#e53e3e']
       }
     },
     series: [{
@@ -209,11 +212,11 @@ export function createGlobalAccessChartOption(
       start: 0,
       end: 16.67,
       bottom: 10,
-      textStyle: { color: "#f1f1f1" },
-      borderColor: "#ed6d00",
-      fillerColor: "rgba(237, 109, 0, 0.3)",
+      textStyle: { color: t.fg },
+      borderColor: t.brand,
+      fillerColor: "rgba(240, 114, 20, 0.3)",
       handleStyle: {
-        color: "#ed6d00"
+        color: t.brand
       }
     }]
   };

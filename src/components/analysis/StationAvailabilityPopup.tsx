@@ -95,7 +95,7 @@ export default function StationAvailabilityPopup({ show, onClose, availabilityMe
             </div>
           </div>
         ) : (
-          <p style={{ color: "#999faa" }}>可用性データがありません。解析を実行してください。</p>
+          <p style={{ color: "var(--fg-muted)" }}>可用性データがありません。解析を実行してください。</p>
         )}
       </div>
     </div>

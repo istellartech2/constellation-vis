@@ -11,6 +11,7 @@ import {
   type IslRoutingWorkerResponse,
   type IslRoutingWorkerSweepRequest,
 } from "../../workers/islRoutingWorker.types";
+import { getChartTheme } from "./utils/chartTheme";
 
 interface Props {
   /** The currently active (committed) satellite array — matches islShellRanges exactly. */
@@ -116,31 +117,32 @@ export default function IslRoutingAnalysis({ satellites, islSettings, islShellRa
   const reachabilityRate = results && results.length > 0 ? (reachableCount / results.length) * 100 : null;
   const switchCount = results?.filter((r) => r.switchedFromPrevious).length ?? 0;
 
+  const t = getChartTheme();
   const chartOption = results && {
     backgroundColor: "transparent",
-    tooltip: { trigger: "axis" },
-    legend: { data: ["総遅延 (ms)", "ホップ数"], textStyle: { color: "#d1d5db" } },
+    tooltip: { trigger: "axis", backgroundColor: t.surface, borderColor: t.lineStrong, textStyle: { color: t.fg } },
+    legend: { data: ["総遅延 (ms)", "ホップ数"], textStyle: { color: t.fgMuted } },
     grid: { left: 60, right: 60, top: 40, bottom: 60 },
     xAxis: {
       type: "category",
       name: "経過時間 (s)",
       data: results.map((r, i) => (i === 0 ? 0 : Math.round((r.computedAtSimMs - results[0].computedAtSimMs) / 1000))),
-      axisLabel: { color: "#9ca3af" },
-      axisLine: { lineStyle: { color: "#4b5563" } },
+      axisLabel: { color: t.fgMuted },
+      axisLine: { lineStyle: { color: t.lineStrong } },
     },
     yAxis: [
       {
         type: "value",
         name: "総遅延 (ms)",
-        axisLabel: { color: "#9ca3af" },
-        axisLine: { lineStyle: { color: "#4b5563" } },
-        splitLine: { lineStyle: { color: "#374151" } },
+        axisLabel: { color: t.fgMuted },
+        axisLine: { lineStyle: { color: t.lineStrong } },
+        splitLine: { lineStyle: { color: t.line } },
       },
       {
         type: "value",
         name: "ホップ数",
-        axisLabel: { color: "#9ca3af" },
-        axisLine: { lineStyle: { color: "#4b5563" } },
+        axisLabel: { color: t.fgMuted },
+        axisLine: { lineStyle: { color: t.lineStrong } },
         splitLine: { show: false },
       },
     ],
@@ -255,7 +257,6 @@ export default function IslRoutingAnalysis({ satellites, islSettings, islShellRa
           <ReactECharts
             ref={chartRef}
             option={chartOption}
-            theme="dark"
             style={{ height: "100%", width: "100%" }}
           />
         </div>

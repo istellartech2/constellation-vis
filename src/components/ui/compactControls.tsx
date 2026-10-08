@@ -142,3 +142,43 @@ export function ColorChip({
     </label>
   );
 }
+
+/** Segmented control (2–4 mutually exclusive options) used across the panel. */
+export function SegmentedControl<T extends string>({
+  value,
+  options,
+  onChange,
+  ariaLabel,
+}: {
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (value: T) => void;
+  ariaLabel: string;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label={ariaLabel}
+      className="flex w-full gap-1 rounded-lg border border-line bg-sunken p-[3px]"
+    >
+      {options.map((o) => {
+        const selected = o.value === value;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            data-slot="button"
+            onClick={() => onChange(o.value)}
+            className={`h-7 flex-1 rounded-md px-2 text-xs font-medium transition-colors ${
+              selected ? "bg-seg-active text-fg shadow-sm" : "text-fg-muted hover:text-fg"
+            }`}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}

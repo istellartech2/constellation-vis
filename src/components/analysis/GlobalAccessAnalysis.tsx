@@ -204,7 +204,6 @@ export default function GlobalAccessAnalysis({ satText, constText, startTime }: 
           ref={chartRef}
           option={option}
           style={{ height: "100%", width: "100%" }}
-          theme="dark"
         />
       </div>
       
