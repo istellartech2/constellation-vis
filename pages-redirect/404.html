@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Constellation Viewer は移転しました</title>
+    <link rel="canonical" href="https://constellation-vis-rho.vercel.app/" />
+    <meta name="robots" content="noindex" />
+    <meta http-equiv="refresh" content="0; url=https://constellation-vis-rho.vercel.app/" />
+    <script>
+      // Forward to the new host, keeping any sub-path, query and hash.
+      (function () {
+        var base = "/constellation-vis";
+        var path = location.pathname.indexOf(base) === 0 ? location.pathname.slice(base.length) : location.pathname;
+        location.replace("https://constellation-vis-rho.vercel.app" + (path || "/") + location.search + location.hash);
+      })();
+    </script>
+    <style>
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #07090d; color: #e8eaef; font-family: system-ui, sans-serif; }
+      a { color: #ff9a4d; }
+    </style>
+  </head>
+  <body>
+    <p>Constellation Viewer は <a href="https://constellation-vis-rho.vercel.app/">constellation-vis-rho.vercel.app</a> に移転しました。</p>
+  </body>
+</html>
