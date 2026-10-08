@@ -25,11 +25,11 @@ export default function PanelSection({
     <>
       <div className="flex items-center gap-1.5 min-w-0">
         {icon && (
-          <span className="text-brand-text shrink-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+          <span className="text-fg-subtle shrink-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
             {icon}
           </span>
         )}
-        <span className="text-xs font-semibold uppercase tracking-wide text-fg truncate">
+        <span className="text-[13px] font-semibold text-fg truncate">
           {title}
         </span>
       </div>
@@ -45,12 +45,13 @@ export default function PanelSection({
 
   return (
     <section className="panel-section">
-      <div className="flex items-center justify-between gap-2 mb-1.5">
+      <div className="flex items-center justify-between gap-2 mb-2">
         {collapsible ? (
           <button
             type="button"
             onClick={() => setOpen((p) => !p)}
             aria-expanded={open}
+            data-slot="button"
             className="flex-1 flex items-center justify-between gap-2 text-left bg-transparent border-0 p-0 hover:opacity-80 transition-opacity"
           >
             {headerInner}

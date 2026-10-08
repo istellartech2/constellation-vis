@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { pickSatelliteHitIndex } from "./visualization";
+import { pickSatelliteHitIndex, screenSpaceHits } from "./visualization";
 
 describe("pickSatelliteHitIndex", () => {
   it("returns null when there are no hits", () => {
@@ -18,5 +18,18 @@ describe("pickSatelliteHitIndex", () => {
 
   it("falls back to the first hit when current selection is not in the hit list", () => {
     expect(pickSatelliteHitIndex([3, 4, 5], 10)).toBe(3);
+  });
+});
+
+describe("screenSpaceHits", () => {
+  const pts = [{ x: 100, y: 100 }, null, { x: 108, y: 100 }, { x: 300, y: 300 }];
+
+  it("returns points within the radius, nearest first", () => {
+    expect(screenSpaceHits(pts, 106, 100, 12)).toEqual([2, 0]);
+  });
+
+  it("skips hidden points and those outside the radius", () => {
+    expect(screenSpaceHits(pts, 300, 290, 5)).toEqual([]);
+    expect(screenSpaceHits(pts, 300, 290, 12)).toEqual([3]);
   });
 });

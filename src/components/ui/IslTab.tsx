@@ -190,7 +190,7 @@ export default function IslTab({
       {/* 2. 衛星間経路探索(ISL)グループ — 結果・重み付け・詳細・診断がこの機能に
           属することを背景色で示す。負マージンで背景だけを外側に広げ、中身の幅は
           他セクションと変えない(カード枠で幅が狭くなるのを避ける) */}
-      <div className="-mx-3 px-3 pt-1 pb-1.5 rounded-lg bg-sunken">
+      <div className="px-3 pt-2 pb-2.5 rounded-lg border border-line bg-sunken">
       <PanelSection
         title="衛星間経路探索(ISL)"
         icon={<Waypoints />}

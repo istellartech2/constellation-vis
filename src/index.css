@@ -35,7 +35,7 @@
   --success-soft: oklch(0.74 0.15 155 / 0.15);
   --warning: oklch(0.8 0.15 85);
   --warning-soft: oklch(0.8 0.15 85 / 0.15);
-  --info: oklch(0.72 0.12 235);
+  --info: oklch(0.64 0.14 245);
   --info-soft: oklch(0.72 0.12 235 / 0.15);
   --shadow-panel: 0 12px 40px rgb(0 0 0 / 0.45), 0 0 0 1px var(--line);
   --overlay: rgb(0 0 0 / 0.6);
@@ -635,8 +635,8 @@ a:hover {
 
 /* Panel section spacing & dividers (used by editor / analysis / option tabs) */
 .panel-section {
-  padding-top: 8px;
-  padding-bottom: 8px;
+  padding-top: 12px;
+  padding-bottom: 12px;
   border-top: 1px solid var(--line);
 }
 

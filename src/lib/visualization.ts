@@ -62,6 +62,29 @@ const FOLLOW_LERP_ALPHA = 0.14;
 const ISL_PATH_INITIAL_SEGMENTS = 64;
 const ISL_RECOMPUTE_MIN_REAL_MS = 200;
 
+/** Pick radius around the pointer, in CSS pixels (bigger for touch). */
+const PICK_RADIUS_MOUSE_PX = 12;
+const PICK_RADIUS_TOUCH_PX = 22;
+
+/**
+ * Indexes of the screen points within `radiusPx` of (`x`, `y`), nearest
+ * first. Points set to `null` (behind the camera / occluded) are skipped.
+ */
+export function screenSpaceHits(
+  points: ({ x: number; y: number } | null)[],
+  x: number,
+  y: number,
+  radiusPx: number,
+): number[] {
+  const hits: { i: number; d: number }[] = [];
+  points.forEach((p, i) => {
+    if (!p) return;
+    const d = Math.hypot(p.x - x, p.y - y);
+    if (d <= radiusPx) hits.push({ i, d });
+  });
+  return hits.sort((a, b) => a.d - b.d).map((h) => h.i);
+}
+
 export function pickSatelliteHitIndex(
   hitIndexes: number[],
   selectedIndex: number | null,
@@ -296,6 +319,9 @@ export default class SatelliteScene {
     this.scene.add(this.cameraHolder);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    // Render at device resolution (capped at 2× to bound GPU cost) so the
+    // globe and orbit lines stay sharp on Retina / phone screens.
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     mountNode.appendChild(this.renderer.domElement);
 
@@ -577,10 +603,41 @@ export default class SatelliteScene {
         this.selectStation(idx);
         return;
       }
-      const hits = raycaster.intersectObject(satPoints, false);
-      const hitIndexes = hits
-        .map((hit) => hit.index)
-        .filter((index): index is number => index !== undefined);
+      // Screen-space picking: a fixed pixel radius regardless of zoom level,
+      // skipping satellites hidden behind the Earth (unit sphere at origin).
+      const rect = this.renderer.domElement.getBoundingClientRect();
+      const posAttr = this.satGeometry.getAttribute("position") as THREE.BufferAttribute;
+      const camPos = this.camera.getWorldPosition(new THREE.Vector3());
+      const world = new THREE.Vector3();
+      const ndc = new THREE.Vector3();
+      const toSat = new THREE.Vector3();
+      const screenPts: ({ x: number; y: number } | null)[] = [];
+      for (let i = 0; i < posAttr.count; i++) {
+        world.fromBufferAttribute(posAttr, i).applyMatrix4(satPoints.matrixWorld);
+        ndc.copy(world).project(this.camera);
+        if (ndc.z > 1 || ndc.z < -1) {
+          screenPts.push(null);
+          continue;
+        }
+        toSat.subVectors(world, camPos);
+        const dist = toSat.length();
+        toSat.divideScalar(dist);
+        // Ray–sphere test: does the line of sight hit the Earth before the satellite?
+        const b = camPos.dot(toSat);
+        const c = camPos.lengthSq() - 1;
+        const disc = b * b - c;
+        const tHit = disc > 0 ? -b - Math.sqrt(disc) : Infinity;
+        if (tHit > 0 && tHit < dist) {
+          screenPts.push(null);
+          continue;
+        }
+        screenPts.push({
+          x: rect.left + ((ndc.x + 1) / 2) * rect.width,
+          y: rect.top + ((1 - ndc.y) / 2) * rect.height,
+        });
+      }
+      const radius = event.pointerType === "touch" ? PICK_RADIUS_TOUCH_PX : PICK_RADIUS_MOUSE_PX;
+      const hitIndexes = screenSpaceHits(screenPts, event.clientX, event.clientY, radius);
       const nextIndex = pickSatelliteHitIndex(hitIndexes, this.selectedIndex);
       if (nextIndex !== null) {
         this.selectSatellite(nextIndex);

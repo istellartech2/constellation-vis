@@ -240,18 +240,6 @@ export default function OptionTab(props: Props) {
 
   return (
     <div>
-      <PanelSection title="画面テーマ" icon={<SunMoon />}>
-        <SegmentedControl
-          ariaLabel="画面テーマ"
-          value={uiTheme}
-          options={[
-            { value: "dark", label: "ダーク" },
-            { value: "light", label: "ライト" },
-          ]}
-          onChange={setUiTheme}
-        />
-      </PanelSection>
-
       {/* 0. ビュー(画角・表示設定)の保存と呼び出し */}
       <PanelSection
         title="ビュー保存"
@@ -421,7 +409,7 @@ export default function OptionTab(props: Props) {
       {/* D. 衛星の視野(センサ)定義。地上局の通信範囲コーンは通信タブへ移設。
           半角・傾きは 3D コーンと地上局アクセス解析の共通定義なので、
           コーン表示の ON/OFF とは独立に常に編集できるようにしてある。 */}
-      <PanelSection title="衛星の視野（センサ定義）" icon={<Radio />}>
+      <PanelSection title="衛星の視野（センサ定義）" icon={<Radio />} collapsible defaultOpen={showSatelliteFovCones}>
         <p className="text-[11px] text-fg-subtle">
           ここで決めた視野半角と傾きは、3D のコーン表示と「地上局アクセス設計」解析の
           視野条件で共通に使われます。
@@ -492,7 +480,7 @@ export default function OptionTab(props: Props) {
       </PanelSection>
 
       {/* E. 衛星ポイントカラー */}
-      <PanelSection title="衛星ポイントカラー" icon={<Palette />}>
+      <PanelSection title="衛星ポイントカラー" icon={<Palette />} collapsible defaultOpen={false}>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
           <ColorChip
             label="リンク可視"
@@ -517,6 +505,8 @@ export default function OptionTab(props: Props) {
         title="KML 重ね合わせ"
         icon={<FolderOpen />}
         action={<HelpTip text="KML ファイルのポイント・ライン・ポリゴンを地球上に重ねて表示します。" />}
+        collapsible
+        defaultOpen={loadedKMLs.length > 0}
       >
         <div className="flex gap-2 flex-wrap items-center">
           <Button
@@ -554,6 +544,18 @@ export default function OptionTab(props: Props) {
           </ul>
         )}
       </PanelSection>
+      <PanelSection title="画面テーマ" icon={<SunMoon />}>
+        <SegmentedControl
+          ariaLabel="画面テーマ"
+          value={uiTheme}
+          options={[
+            { value: "dark", label: "ダーク" },
+            { value: "light", label: "ライト" },
+          ]}
+          onChange={setUiTheme}
+        />
+      </PanelSection>
+
     </div>
   );
 }
