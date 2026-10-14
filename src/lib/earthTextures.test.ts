@@ -1,5 +1,7 @@
+import { describe, it, expect } from "bun:test";
 import {
   BLUE_MARBLE_EARTH_MODE,
+  DARK_MONOCHROME_EARTH_MODE,
   EARTH_TEXTURE_OPTIONS,
   HIGH_RESOLUTION_EARTH_MODE,
   LAYERED_EARTH_ASSETS,
@@ -14,6 +16,7 @@ describe("earthTextures", () => {
       "./assets/earth02.webp",
       BLUE_MARBLE_EARTH_MODE,
       HIGH_RESOLUTION_EARTH_MODE,
+      DARK_MONOCHROME_EARTH_MODE,
     ]);
   });
 

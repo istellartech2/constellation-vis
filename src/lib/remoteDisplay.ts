@@ -1,3 +1,4 @@
+import { EARTH_TEXTURE_OPTIONS } from "./earthTextures";
 import type { DisplaySettings } from "./viewState";
 
 /** Scalar rendering settings; camera framing and ISL configuration stay local. */
@@ -13,7 +14,7 @@ const ranges: Record<string, readonly [number, number]> = {
   fovConeHalfAngleDeg: [1, 80], fovConeAlongTrackDeg: [-60, 60], fovConeCrossTrackDeg: [-60, 60],
   speedExp: [0, Math.log10(600)],
 };
-const textures = new Set(["./assets/earth01.webp", "./assets/earth02.webp", "blue-marble", "high-resolution"]);
+const textures = new Set<string>(EARTH_TEXTURE_OPTIONS.map(({ value }) => value));
 
 export function validateRemoteDisplay(value: unknown): RemoteDisplaySettings {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("display must be an object");

@@ -1,11 +1,14 @@
 export const BLUE_MARBLE_EARTH_MODE = "blue-marble" as const;
 export const HIGH_RESOLUTION_EARTH_MODE = "high-resolution" as const;
 
+export const DARK_MONOCHROME_EARTH_MODE = "dark-monochrome" as const;
+
 export type EarthTextureMode =
   | "./assets/earth01.webp"
   | "./assets/earth02.webp"
   | typeof BLUE_MARBLE_EARTH_MODE
-  | typeof HIGH_RESOLUTION_EARTH_MODE;
+  | typeof HIGH_RESOLUTION_EARTH_MODE
+  | typeof DARK_MONOCHROME_EARTH_MODE;
 
 export type LayeredEarthMode =
   | typeof BLUE_MARBLE_EARTH_MODE
@@ -44,6 +47,7 @@ export const EARTH_TEXTURE_OPTIONS: EarthTextureOption[] = [
   { label: "Simple", value: "./assets/earth02.webp" },
   { label: "Blue Marble", value: BLUE_MARBLE_EARTH_MODE },
   { label: "High Resolution", value: HIGH_RESOLUTION_EARTH_MODE },
+  { label: "ダーク・モノクロ", value: DARK_MONOCHROME_EARTH_MODE },
 ];
 
 export const LAYERED_EARTH_ASSETS: Record<LayeredEarthMode, LayeredEarthAssets> = {
