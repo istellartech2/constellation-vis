@@ -20,6 +20,7 @@ import { computeFovConeQuaternion, computeTiltedConeHeight } from "./orbitalCoor
 import {
   BLUE_MARBLE_EARTH_MODE,
   DARK_MONOCHROME_EARTH_MODE,
+  PAPER_ATLAS_EARTH_MODE,
   isLayeredEarthMode,
   resolveLayeredEarthAssets,
   type EarthTextureMode,
@@ -1778,6 +1779,7 @@ export default class SatelliteScene {
     };
 
     const darkMonochrome = this.params.earthTexture === DARK_MONOCHROME_EARTH_MODE;
+    const paperAtlas = this.params.earthTexture === PAPER_ATLAS_EARTH_MODE;
     const layeredEarthMode = isLayeredEarthMode(this.params.earthTexture)
       ? this.params.earthTexture
       : null;
@@ -1785,13 +1787,13 @@ export default class SatelliteScene {
       ? resolveLayeredEarthAssets(layeredEarthMode, this.renderer.capabilities.maxTextureSize)
       : null;
 
-    const surfaceMesh = darkMonochrome
-      ? this.createDarkMonochromeSurface(geometry, group, loadTexture)
+    const surfaceMesh = darkMonochrome || paperAtlas
+      ? this.createMonochromeSurface(geometry, group, loadTexture, paperAtlas)
       : layeredAssets
         ? this.createLayeredEarthSurface(geometry, group, layeredAssets, loadTexture)
         : this.createBasicEarthSurface(geometry, group, loadTexture);
 
-    if (darkMonochrome) {
+    if (darkMonochrome || paperAtlas) {
       animatedMaterials.push(surfaceMesh.userData.shaderEntry);
     }
 
@@ -1852,10 +1854,11 @@ export default class SatelliteScene {
     return mesh;
   }
 
-  private createDarkMonochromeSurface(
+  private createMonochromeSurface(
     geometry: THREE.SphereGeometry,
     group: THREE.Group,
     loadTexture: (path: string, colorSpace?: THREE.ColorSpace) => THREE.Texture,
+    paperAtlas: boolean,
   ) {
     // Reuse the data mask without loading day imagery, clouds, or city lights.
     const assets = resolveLayeredEarthAssets(
@@ -1865,18 +1868,23 @@ export default class SatelliteScene {
       uniforms: {
         oceanMask: { value: loadTexture(assets.oceanMask) },
         borderMask: { value: loadTexture("./assets/earth_country_borders_4096.webp") },
-        borderColor: { value: new THREE.Color("#b6c4d6") },
-        oceanColor: { value: new THREE.Color("#03050a") },
-        landColor: { value: new THREE.Color("#727984") },
+        borderColor: { value: new THREE.Color(paperAtlas ? "#88939c" : "#b6c4d6") },
+        oceanColor: { value: new THREE.Color(paperAtlas ? "#f6f7f7" : "#03050a") },
+        landColor: { value: new THREE.Color(paperAtlas ? "#c4cacd" : "#727984") },
+        paperAtlas: { value: paperAtlas },
         sunDirection: { value: new THREE.Vector3(1, 0, 0) },
         brightEarth: { value: this.params.brightEarth },
       },
       vertexShader: `
         varying vec2 vUv;
         varying vec3 vWorldNormal;
+        varying vec3 vViewNormal;
+        varying vec3 vViewPosition;
         void main() {
           vUv = uv;
           vWorldNormal = normalize(mat3(modelMatrix) * normal);
+          vViewNormal = normalize(normalMatrix * normal);
+          vViewPosition = -(modelViewMatrix * vec4(position, 1.0)).xyz;
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }
       `,
@@ -1888,8 +1896,11 @@ export default class SatelliteScene {
         uniform vec3 landColor;
         uniform vec3 sunDirection;
         uniform bool brightEarth;
+        uniform bool paperAtlas;
         varying vec2 vUv;
         varying vec3 vWorldNormal;
+        varying vec3 vViewNormal;
+        varying vec3 vViewPosition;
         void main() {
           // White denotes water; smooth the mask to suppress inland noise.
           float water = smoothstep(0.15, 0.85, texture2D(oceanMask, vUv).r);
@@ -1897,8 +1908,15 @@ export default class SatelliteScene {
           // Keep the continents legible on the night side, too.
           float shade = brightEarth ? 1.0 : 0.55 + 0.45 * daylight;
           float border = texture2D(borderMask, vUv).r * (1.0 - water);
-          vec3 land = mix(landColor, borderColor, border * 0.4);
+          vec3 land = mix(landColor, borderColor, border * (paperAtlas ? 0.26 : 0.4));
           vec3 surface = mix(land * shade, oceanColor, water);
+          if (paperAtlas) {
+            // A quiet, camera-relative edge keeps the globe legible on both
+            // backgrounds without hiding the map on the simulated night side.
+            float facing = max(dot(normalize(vViewNormal), normalize(vViewPosition)), 0.0);
+            float paperShade = brightEarth ? 1.0 : 0.91 + 0.09 * smoothstep(0.0, 0.6, facing);
+            surface = mix(land, oceanColor, water) * paperShade;
+          }
           gl_FragColor = vec4(surface, 1.0);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>

@@ -2,6 +2,7 @@ import { describe, it, expect } from "bun:test";
 import {
   BLUE_MARBLE_EARTH_MODE,
   DARK_MONOCHROME_EARTH_MODE,
+  PAPER_ATLAS_EARTH_MODE,
   EARTH_TEXTURE_OPTIONS,
   HIGH_RESOLUTION_EARTH_MODE,
   LAYERED_EARTH_ASSETS,
@@ -17,6 +18,7 @@ describe("earthTextures", () => {
       BLUE_MARBLE_EARTH_MODE,
       HIGH_RESOLUTION_EARTH_MODE,
       DARK_MONOCHROME_EARTH_MODE,
+      PAPER_ATLAS_EARTH_MODE,
     ]);
   });
 
@@ -56,6 +58,7 @@ describe("earthTextures", () => {
     expect(isLayeredEarthMode(BLUE_MARBLE_EARTH_MODE)).toBe(true);
     expect(isLayeredEarthMode(HIGH_RESOLUTION_EARTH_MODE)).toBe(true);
     expect(isLayeredEarthMode("./assets/earth01.webp")).toBe(false);
+    expect(isLayeredEarthMode(PAPER_ATLAS_EARTH_MODE)).toBe(false);
   });
 
   it("resolves texture tiers for both layered modes", () => {

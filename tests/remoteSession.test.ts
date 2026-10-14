@@ -106,6 +106,11 @@ describe("remote scenario operations", () => {
 
 
 describe("remote display options", () => {
+  it("accepts Paper Atlas and preserves it through encrypted session serialization", () => {
+    const updated = applyScenarioOperation(emptyScenario(), { type: "display", settings: { earthTexture: "paper-atlas" } });
+    expect(decryptScenario(encryptScenario(updated, Buffer.alloc(32, 1)), Buffer.alloc(32, 1)).display)
+      .toEqual({ earthTexture: "paper-atlas" });
+  });
   it("merges validated display patches without changing scenario data and preserves them across operations", () => {
     const original = { ...emptyScenario(), gsText: station, display: { whiteBackground: false, fovConeHalfAngleDeg: 30 } };
     const updated = applyScenarioOperation(original, { type: "display", settings: { whiteBackground: true, earthTexture: "blue-marble", satelliteVisibleColor: "#abcdef" } });
