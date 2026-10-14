@@ -118,6 +118,10 @@ describe("remote display options", () => {
     expect(applyScenarioOperation(updated, { type: "bundle", text: '# === satellites ===\n' }).display).toEqual(updated.display);
     expect(applyScenarioOperation(emptyScenario(), { type: "clear" }).display).toBeUndefined();
   });
+  it("accepts the dark monochrome mode in remote display updates", () => {
+    const updated = applyScenarioOperation(emptyScenario(), { type: "display", settings: { earthTexture: "dark-monochrome" } });
+    expect(updated.display?.earthTexture).toBe("dark-monochrome");
+  });
   it("rejects invalid settings before committing a revision", async () => {
     const store = new MemoryStore(); const session = await create(store);
     const path = `/${session.sessionId}`;

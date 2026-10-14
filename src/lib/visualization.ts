@@ -18,6 +18,8 @@ import { KMLRenderer } from "./kmlRenderer";
 import { loadKMLFromURL } from "./kml";
 import { computeFovConeQuaternion, computeTiltedConeHeight } from "./orbitalCoordinates";
 import {
+  BLUE_MARBLE_EARTH_MODE,
+  DARK_MONOCHROME_EARTH_MODE,
   isLayeredEarthMode,
   resolveLayeredEarthAssets,
   type EarthTextureMode,
@@ -1775,6 +1777,7 @@ export default class SatelliteScene {
       return texture;
     };
 
+    const darkMonochrome = this.params.earthTexture === DARK_MONOCHROME_EARTH_MODE;
     const layeredEarthMode = isLayeredEarthMode(this.params.earthTexture)
       ? this.params.earthTexture
       : null;
@@ -1782,9 +1785,15 @@ export default class SatelliteScene {
       ? resolveLayeredEarthAssets(layeredEarthMode, this.renderer.capabilities.maxTextureSize)
       : null;
 
-    const surfaceMesh = layeredAssets
-      ? this.createLayeredEarthSurface(geometry, group, layeredAssets, loadTexture)
-      : this.createBasicEarthSurface(geometry, group, loadTexture);
+    const surfaceMesh = darkMonochrome
+      ? this.createDarkMonochromeSurface(geometry, group, loadTexture)
+      : layeredAssets
+        ? this.createLayeredEarthSurface(geometry, group, layeredAssets, loadTexture)
+        : this.createBasicEarthSurface(geometry, group, loadTexture);
+
+    if (darkMonochrome) {
+      animatedMaterials.push(surfaceMesh.userData.shaderEntry);
+    }
 
     if (layeredAssets) {
       const cloudMesh = this.createEarthClouds(geometry, group, layeredAssets, loadTexture);
@@ -1800,8 +1809,10 @@ export default class SatelliteScene {
         (nightLights.material as THREE.Material).dispose();
       });
       animatedMaterials.push(nightLights.userData.shaderEntry);
+    }
 
-      const atmosphere = this.createAtmosphere(geometry, group);
+    if (layeredAssets || darkMonochrome) {
+      const atmosphere = this.createAtmosphere(geometry, group, darkMonochrome);
       const atmosphereOuter = atmosphere.userData.companion as THREE.Mesh | undefined;
       disposeFns.push(() => {
         atmosphere.geometry.dispose();
@@ -1837,6 +1848,67 @@ export default class SatelliteScene {
     const texture = loadTexture(this.params.earthTexture, THREE.SRGBColorSpace);
     const material = new THREE.MeshPhongMaterial({ map: texture, shininess: 1 });
     const mesh = new THREE.Mesh(geometry, material);
+    group.add(mesh);
+    return mesh;
+  }
+
+  private createDarkMonochromeSurface(
+    geometry: THREE.SphereGeometry,
+    group: THREE.Group,
+    loadTexture: (path: string, colorSpace?: THREE.ColorSpace) => THREE.Texture,
+  ) {
+    // Reuse the data mask without loading day imagery, clouds, or city lights.
+    const assets = resolveLayeredEarthAssets(
+      BLUE_MARBLE_EARTH_MODE, this.renderer.capabilities.maxTextureSize,
+    );
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        oceanMask: { value: loadTexture(assets.oceanMask) },
+        borderMask: { value: loadTexture("./assets/earth_country_borders_4096.webp") },
+        borderColor: { value: new THREE.Color("#b6c4d6") },
+        oceanColor: { value: new THREE.Color("#03050a") },
+        landColor: { value: new THREE.Color("#727984") },
+        sunDirection: { value: new THREE.Vector3(1, 0, 0) },
+        brightEarth: { value: this.params.brightEarth },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        varying vec3 vWorldNormal;
+        void main() {
+          vUv = uv;
+          vWorldNormal = normalize(mat3(modelMatrix) * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D oceanMask;
+        uniform sampler2D borderMask;
+        uniform vec3 borderColor;
+        uniform vec3 oceanColor;
+        uniform vec3 landColor;
+        uniform vec3 sunDirection;
+        uniform bool brightEarth;
+        varying vec2 vUv;
+        varying vec3 vWorldNormal;
+        void main() {
+          // White denotes water; smooth the mask to suppress inland noise.
+          float water = smoothstep(0.15, 0.85, texture2D(oceanMask, vUv).r);
+          float daylight = max(dot(normalize(vWorldNormal), normalize(sunDirection)), 0.0);
+          // Keep the continents legible on the night side, too.
+          float shade = brightEarth ? 1.0 : 0.55 + 0.45 * daylight;
+          float border = texture2D(borderMask, vUv).r * (1.0 - water);
+          vec3 land = mix(landColor, borderColor, border * 0.4);
+          vec3 surface = mix(land * shade, oceanColor, water);
+          gl_FragColor = vec4(surface, 1.0);
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }
+      `,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.userData.shaderEntry = {
+      sunDirectionUniform: material.uniforms.sunDirection.value as THREE.Vector3,
+    };
     group.add(mesh);
     return mesh;
   }
@@ -1944,22 +2016,22 @@ export default class SatelliteScene {
     return mesh;
   }
 
-  private createAtmosphere(baseGeometry: THREE.SphereGeometry, group: THREE.Group) {
+  private createAtmosphere(baseGeometry: THREE.SphereGeometry, group: THREE.Group, darkMonochrome = false) {
     const outer = this.createAtmosphereLayer(baseGeometry, group, {
       side: THREE.BackSide,
-      scale: 1.055,
-      glowStrength: this.params.brightEarth ? 0.14 : 0.22,
-      sunFloor: 0.22,
+      scale: darkMonochrome ? 1.018 : 1.055,
+      glowStrength: darkMonochrome ? 0.25 : this.params.brightEarth ? 0.14 : 0.22,
+      sunFloor: darkMonochrome ? 0.8 : 0.22,
       fresnelPower: 2.6,
-      color: "#4f97ff",
+      color: darkMonochrome ? "#2d8bd4" : "#4f97ff",
     });
     const inner = this.createAtmosphereLayer(baseGeometry, group, {
       side: THREE.FrontSide,
-      scale: 1.016,
-      glowStrength: this.params.brightEarth ? 0.045 : 0.08,
-      sunFloor: 0.32,
-      fresnelPower: 1.35,
-      color: "#a8d4ff",
+      scale: darkMonochrome ? 1.003 : 1.016,
+      glowStrength: darkMonochrome ? 0.3 : this.params.brightEarth ? 0.045 : 0.08,
+      sunFloor: darkMonochrome ? 0.8 : 0.32,
+      fresnelPower: darkMonochrome ? 4.0 : 1.35,
+      color: darkMonochrome ? "#2d8bd4" : "#a8d4ff",
     });
     inner.userData.companion = outer;
     return inner;
@@ -1978,7 +2050,9 @@ export default class SatelliteScene {
     },
   ) {
     const geometry = baseGeometry.clone();
+    const darkMonochrome = this.params.earthTexture === DARK_MONOCHROME_EARTH_MODE;
     const material = new THREE.ShaderMaterial({
+      defines: darkMonochrome ? { DARK_MONOCHROME: 1 } : {},
       uniforms: {
         sunDirection: { value: new THREE.Vector3(1, 0, 0) },
         glowStrength: { value: options.glowStrength },
@@ -2012,7 +2086,14 @@ export default class SatelliteScene {
           float fresnel = pow(1.0 - max(dot(viewDir, normalDir), 0.0), fresnelPower);
           float sunAmount = sunFloor + (1.0 - sunFloor) * max(dot(normalDir, normalize(sunDirection)), 0.0);
           float alpha = fresnel * sunAmount * glowStrength;
-          gl_FragColor = vec4(atmosphereColor * alpha, alpha);
+          #ifdef DARK_MONOCHROME
+            // AdditiveBlending applies alpha; output the blue tint only once.
+            gl_FragColor = vec4(atmosphereColor, alpha);
+            #include <tonemapping_fragment>
+            #include <colorspace_fragment>
+          #else
+            gl_FragColor = vec4(atmosphereColor * alpha, alpha);
+          #endif
         }
       `,
       transparent: true,
