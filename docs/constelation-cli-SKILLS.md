@@ -149,7 +149,7 @@ Check these invariants instead of hard-coding every floating-point result:
 - One-way delay equals `slantRangeKm / 299792.458 * 1000`.
 - Doppler is proportional to carrier frequency and has the opposite sign from range rate.
 - Doppler changes sign around closest approach for a normal pass.
-- AOS/LOS refinement remains stable when reducing `stepSeconds`.
+- AOS/LOS refinement remains stable when reducing `stepSeconds` for the same detected transition. Coarse sampling can miss a pass that starts and ends between two invisible samples; `eventToleranceSeconds` limits boundary refinement, not missed-contact error.
 
 After modifying orbit, visibility, parsing, or output code, run the full test, lint, Web build, CLI build, and fixture executable checks. Preserve the existing Web application's visibility behavior.
 

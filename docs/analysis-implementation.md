@@ -1,8 +1,8 @@
 # 衛星コンステレーション／通信解析 — 実装まとめ
 
-*(Markdown 上のプレーンテキスト数式・擬似コード、LaTeX 不使用。既存 `docs/` の記法に合わせる)*
+衛星位置の計算は `satellite.js` の **SGP4/SDP4** を使う。その位置からアクセス・通信経路・日照を評価する。軌道を決める設計計算と、長期の高度低下を見積もる寿命計算はそれぞれ別の役割を持つ。
 
-このリポジトリが実際に何をどう計算しているかを、**通信コンステレーションの概念設計に必要な項目**の順に並べた索引兼リファレンス。個別テーマの深掘りは既存ドキュメントに委ね、ここは「どのファイルの、どの関数が、どんなモデルで、どんな既定値で動くか」を一望できる層に徹する。
+初めて読む場合は、[計算の概要](how-it-works.md)から始めてほしい。本ドキュメントは、各機能の式・単位・既定値・実装箇所を調べるための詳細リファレンスである。
 
 ---
 
@@ -10,26 +10,29 @@
 
 | テーマ | 深掘りドキュメント | 本ドキュメントの担当 |
 | --- | --- | --- |
-| 摂動（J2 / J3 / 大気抗力）の理論式 | `docs/perturbation.md` | 実装との差分、既定値、テストで固定されている範囲（§8） |
-| RGT（回帰軌道） | `docs/RGTorbit.md` | API 形と使いどころ（§9） |
-| ISL 経路探索 | `docs/isl-routing.md`（理論+実装で自己完結） | 位置づけと他モジュールとの境界（§7） |
-| コンステレーション設計方式（6 方式）と TOML | `docs/constellation-patterns.md` | 解析側から見た `shellRanges` 等の意味（§11） |
-| ミッション駆動の設計オプティマイザ | `docs/constellation-design.md` | 「解析的カバレッジ」と「サンプリングカバレッジ」の使い分け（§11） |
-| CLI（`constelation-cli`）の使い方 | `docs/constelation-cli-SKILLS.md` | 解析エンジンとの関係（§12） |
-| 解析タブの機能ロードマップ | `docs/analysis-roadmap.md` | — |
+| 摂動（J2 / J3 / 大気抗力）の理論式 | [perturbation.md](perturbation.md) | 実装との差分、既定値、テストで固定されている範囲（§8） |
+| RGT（回帰軌道） | [RGTorbit.md](RGTorbit.md) | API 形と使いどころ（§9） |
+| ISL 経路探索 | [isl-routing.md](isl-routing.md)（理論+実装で自己完結） | 位置づけと他モジュールとの境界（§7） |
+| コンステレーション設計方式（6 方式）と TOML | [constellation-patterns.md](constellation-patterns.md) | 解析側から見た `shellRanges` 等の意味（§11） |
+| ミッション駆動の設計オプティマイザ | [constellation-design.md](constellation-design.md) | 「解析的カバレッジ」と「サンプリングカバレッジ」の使い分け（§11） |
+| CLI（`constelation-cli`）の使い方 | [constelation-cli-SKILLS.md](constelation-cli-SKILLS.md) | 解析エンジンとの関係（§12） |
 | **座標系・時刻系、プロパゲータ、可視性、リンク幾何、デューティ、日照** | **（本ドキュメント）** | §1〜§6, §10 |
 
 ---
 
+<a id="coordinates"></a>
+
 ## 1. 座標系と時刻系
 
-軌道計算は `satellite.js` v6（SGP4）に一本化されており、フレーム間変換もすべて `satellite.js` のヘルパを経由する。
+実際の衛星の伝播は `satellite.js` v6（SGP4/SDP4）。ただし設計の粗スクリーニングは円 Kepler 運動（§11.2）、長期減衰は別のレート積分（§8.2）である。座標変換は `satellite.js` のヘルパを基本とし、設計検証では同じ ECI→ECF 回転をバッファへ直接計算する。
+
+ここで ECI と呼ぶ SGP4 出力は TEME であり、J2000/GCRF ではない。GMST のみで回す ECF は極運動を含む厳密な ITRF 変換ではない。時刻は JavaScript `Date` の UTC を使い、UT1−UTC や TT/TDB への変換、地球姿勢パラメータ（EOP）は扱わない。[Vallado et al., Revisiting Spacetrack Report #3](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753.pdf) が TEME と地球固定系変換の理論上の参照先。
 
 ### 1.1 使用するフレーム
 
 | フレーム | 生成元 | 用途 |
 | --- | --- | --- |
-| ECI（実体は TEME） | `satellite.propagate(satrec, date).position` / `.velocity`、単位 km, km/s | すべての計算の起点 |
+| ECI（実体は TEME） | `satellite.propagate(satrec, date).position` / `.velocity`、単位 km, km/s | 描画・アクセス・詳細検証の起点 |
 | ECF / ECEF | `satellite.eciToEcf(eci, gmst)` | 地上局との相対幾何、カバレッジ判定 |
 | 測地座標（緯度・経度・高度） | `satellite.eciToGeodetic(eci, gmst)` | 直下点、地上軌跡 |
 | Look angles（方位・仰角・スラントレンジ） | `satellite.ecfToLookAngles(observer, satEcf)` | 可視性判定、リンク幾何 |
@@ -41,9 +44,11 @@
 ### 1.2 LVLH フレーム（`src/lib/orbitalCoordinates.ts`）
 
 ```
-radial     = r_hat                     # 地心 → 衛星
-alongTrack = W x R                     # 速度方向（数値安定化のため再直交化）
-crossTrack = W = R x V                 # 軌道角運動量方向（進行方向を見て「左」）
+R          = normalize(r)              # 地心位置 r の単位ベクトル
+V          = v                         # 慣性系の速度
+radial     = R                         # 地心 → 衛星
+alongTrack = normalize(W x R)          # 速度の接線成分方向（楕円軌道では速度全体とは異なる）
+crossTrack = W = normalize(R x V)      # 軌道角運動量方向（進行方向を見て「左」）
 nadir      = -radial
 ```
 
@@ -64,7 +69,7 @@ Y_scene = Z_eci / R_polar        # 北極方向（極半径で割る = 非等方
 Z_scene = -Y_eci / R_equator
 ```
 
-`R_equator = 6378.137 km`、`R_polar = 6356.7523142 km`。Y を極半径で正規化することで、単位球のジオメトリのまま扁平楕円体として見える。**解析コードはこの座標系に依存しない**（`src/lib/isl/*`, `constellationDesign/*` は Three.js に依存しないことをファイル冒頭で明言している）。
+`R_equator = 6378.137 km`、`R_polar = 6356.7523142 km`。衛星位置は上の非等方スケールで変換し、地球の描画グループは別途 `scale(1, R_polar/R_equator, 1)` で扁平化する。**解析コードはこの座標系に依存しない**（`src/lib/isl/*`, `constellationDesign/*` は Three.js に依存しないことをファイル冒頭で明言している）。
 
 ### 1.4 太陽方向（`src/lib/astronomy.ts`）
 
@@ -82,15 +87,17 @@ eps    = 23.4393deg - 0.0130042*T                    [deg]
 sun_eci = ( cos(lambda), cos(eps)*sin(lambda), sin(eps)*sin(lambda) )   # 単位ベクトル
 ```
 
-**距離は持たない（単位ベクトル）**。太陽視差や光行差は無視。日照判定（§10）にはこれで十分だが、太陽輻射圧や高精度な半影計算には使えない。
+**距離は持たない（単位ベクトル）**。太陽視差や光行差は無視。§10 の簡易日照判定に使う。太陽輻射圧や高精度な半影計算は対象外。
 
 ---
 
+<a id="propagation"></a>
+
 ## 2. プロパゲータ
 
-### 2.1 SGP4 のみ
+### 2.1 位置伝播と別モデルの区別
 
-数値積分器は存在しない。すべての伝播は `satellite.js` の SGP4/SDP4 で行う。摂動（§8）は**別建ての解析的レートモデル**であり、伝播そのものには寄与しない。
+衛星位置の高忠実度数値積分器は存在しない。描画・アクセス・リンク・設計の詳細検証は `satellite.js` の SGP4/SDP4 で行う。設計の粗スクリーニングには円 Kepler 運動、自然減衰にはレートのオイラー積分を使う。摂動（§8）は**別建ての解析的レートモデル**であり、伝播そのものには寄与しない。
 
 ### 2.2 衛星定義の 2 形態（`src/lib/satellites.ts`）
 
@@ -107,7 +114,7 @@ n_rad      = sqrt(mu / a^3),  mu = 398600.4418 km^3/s^2
 meanMotion = n_rad * 86400 / (2*pi)     [rev/day]  -> TLE 2行目に 8 桁で書き込む
 ```
 
-TLE 経由であることに伴う制約:
+以下は軌道要素から合成する TLE の仕様。外部から読み込んだ TLE の B* は元データを使い、0 へ書き換えない。6 桁以上の衛星番号を使う OMM 経路には、TLE 固定列の丸め制約はない。
 
 | 項目 | 実装値 | 影響 |
 | --- | --- | --- |
@@ -116,17 +123,16 @@ TLE 経由であることに伴う制約:
 | 平均運動 | 8 桁 | — |
 | `satnum` | 5 桁ゼロ埋め | 6 桁以上のカタログ番号は表現不可 |
 | B\*（`bstar`）| **0 固定** | SGP4 の伝播中に大気抗力が入らない |
-| ndot / nddot | **0 固定** | 同上 |
+| ndot / nddot | **0 固定** | SGP4 はこれらの TLE フィールドを伝播に使わない。抗力の有無は B* とモデルに依存 |
 
-**重要な帰結**: 入力の `semiMajorAxisKm` は Kepler 平均運動として TLE に書かれるが、SGP4 は 2 行目の平均運動を **Kozai 型平均運動**として解釈し、内部で Brouwer 型へ変換する。そのため SGP4 内部の半長軸は入力値と一致しない。実測（a = 6928.137 km, e = 0, i = 97.6°）:
+**重要な帰結**: 入力の `semiMajorAxisKm` は Kepler 平均運動として TLE に書かれるが、SGP4 はこの平均運動を **Kozai 型平均運動**として解釈し、内部で Brouwer 型へ変換する。そのため SGP4 内部の半長軸は入力値と一致しない。計算例（a = 6928.137 km, e = 0, i = 97.6°）:
 
 ```
 入力 a            = 6928.137 km
 satrec.a * 6378.135 = 6925.128 km      # 差 -3.0 km
-エポックでの |r|    = 6931.211 km
 ```
 
-数 km の差は可視化・アクセス統計には無視できるが、**高度をパラメータとして掃引する解析で「入力高度」と「実効高度」を突き合わせるときは要注意**。
+数 km の差は被覆境界や接触時刻にも影響し得る。**高度をパラメータとして掃引する解析で「入力高度」と「実効高度」を突き合わせるときは要注意**。
 
 ### 2.3 導出情報（`src/lib/satelliteDerivedInfo.ts`）
 
@@ -136,13 +142,16 @@ satrec.a * 6378.135 = 6925.128 km      # 差 -3.0 km
 | --- | --- |
 | `periodMinutes` | `2*pi / satrec.no` |
 | `perigee/apogeeAltitudeKm` | `satrec.a * 6378.137 * (1 ± e) - 6378.137` |
-| `currentAltitudeKm`, `latitudeDeg`, `longitudeDeg` | `eciToGeodetic` |
+| `currentAltitudeKm` | `\|r_TEME\| - 6378.137`（赤道球基準の高度。測地高度ではない） |
+| `latitudeDeg`, `longitudeDeg` | `eciToGeodetic`（測地緯度・東経正） |
 | `eciSpeedKmPerSec` | 伝播速度ベクトルのノルム |
 | `eclipseMinutes`, `eclipseRatio`, 次の食入り／日照復帰までの時間 | §10.1 の影判定を 10 s 刻みで走査、遷移は 18 回二分法で精密化。探索窓は周期の 2.5 倍 |
 
-（`satrec.a` は SGP4 内部で WGS-72 の 6378.135 km を単位とするが、ここでは 6378.137 km を掛けている。差は 2 m 相当で実用上無視できる。）
+（`satrec.a` は SGP4 内部で WGS-72 の 6378.135 km を単位とするが、ここでは 6378.137 km を掛けている。半長軸の差は `satrec.a * 0.002 km` で、LEO では約 2 m。）
 
 ---
+
+<a id="visibility"></a>
 
 ## 3. 地上局可視性（`src/lib/visibility.ts`）
 
@@ -176,7 +185,20 @@ toStation = r_station - r_sat
 offNadir  = acos( clamp( nadir_hat . toStation_hat, -1, 1 ) )
 ```
 
-**「OR」モードは存在しない**（`default` は `elevation_only` にフォールバック）。
+**「OR」モードは存在しない**（`default` は `elevation_only` にフォールバック）。`off_nadir_only` は仰角も地球遮蔽も検査しないため、地平線下の局まで条件を満たす場合がある。地平線上かつ視野内を求める場合は `and` と非負の最低仰角を使う。
+
+### 3.1.1 衛星 FOV（局アクセス解析で任意に追加）
+
+`StationAccessAnalysis.tsx` の「衛星の視野」条件は既定 OFF。ON のときだけ、表示設定の半角・along-track/cross-track 傾きを `SatelliteFovCriteria` として渡し、局の条件に AND する。
+
+```
+b = computeSensorDirectionEci(r, v, alongTrackDeg, crossTrackDeg)
+b_ecf = eciToEcf(b, gmst)
+FOV条件 = acos(clamp(b_ecf_hat · (r_station-r_sat)_hat, -1, 1)) <= halfAngle
+可視 = 局の可視条件 && FOV条件
+```
+
+速度が使えない場合は純 nadir にフォールバックする。円錐の半角は全開口角の半分。全球アクセス UI、CLI の `calculateLinkGeometry`、ISL、ミッション設計はこの表示設定の FOV を渡さないので、同じ衛星でも結果が一致するとは限らない。
 
 ### 3.2 時系列と統計
 
@@ -190,7 +212,9 @@ offNadir  = acos( clamp( nadir_hat . toStation_hat, -1, 1 ) )
 | `calculateStationStats(data)` | — | 局ごとの `averageVisible`, `nonZeroRate` |
 | `generateVisibilityReport(...)` | 24 h / 10 s | CSV 文字列 |
 
-`visibleSeconds = visibleStepCount * stepSec`、つまり**サンプル数 × ステップ幅による矩形近似**。`visibility.ts` には AOS/LOS の二分法精密化がない（それを持つのは §6 の `linkDutyAnalysis.ts` だけ）。したがって 10 s より短いパスは取りこぼし得るし、パス長は最大 ±1 ステップの誤差を持つ。
+`visibleSeconds = visibleStepCount * stepSec`、つまり**サンプル数 × ステップ幅による矩形近似**。`visibility.ts` には AOS/LOS の二分法精密化がない（それを持つのは §6 の `linkDutyAnalysis.ts` だけ）。したがって 10 s より短いパスは取りこぼし得る。区間境界の精度はサンプル刻みに制限される。
+
+時系列は `t <= end` で終点も含む。24 h / 10 s は 8641 点であり、全点が可視なら `visibleSeconds` は 86410 s になる。不可視区間の長さもサンプル数 × 刻みなので、窓全体が不可視なら 24 h + 10 s。これらは厳密な区間積分ではなく、終点を含むサンプル集計である。
 
 ### 3.3 可用性メトリクス（`calculateAvailabilityMetrics`）
 
@@ -211,6 +235,8 @@ avgInterruptionTime   = 0 区間の平均長                                    
 
 ---
 
+<a id="global-access"></a>
+
 ## 4. 全球アクセス／可用性（`src/components/analysis/GlobalAccessAnalysis.tsx`）
 
 「全球」といっても実装は **1 本の経線上の緯度スイープ**である。
@@ -228,11 +254,13 @@ calculateStationAccessData(全衛星, 181局, startTime, 24 h, 10 s)
   -> 可用性は元データから calculateAvailabilityMetrics(..., 10)
 ```
 
-24 h 窓なので地球は 1 回転し、経度方向は時間軸に畳み込まれる。「全球」の妥当性はこの前提に依存する（回帰軌道や 1 日で経度が閉じない構成では、単一経線のサンプリングは偏る）。
+24 h は太陽日であり、恒星日（約 86164 s）とは異なる。衛星も同時に運動するため、単一経線の時系列を全経度の同時評価と同一視できない。これは選択した経線の緯度別アクセスであり、全球の面積平均や最悪地点の可用性を保証しない。
 
 局側の解析（`StationAccessAnalysis.tsx`）は同じ `visibility.ts` を使い、Worker（`src/workers/stationAccessWorker.ts`）に逃がして実行する。
 
 ---
+
+<a id="link-geometry"></a>
 
 ## 5. リンク幾何（`src/lib/linkGeometry.ts`）
 
@@ -283,6 +311,8 @@ visible         = passesVisibilityCriteria(...)         # §3.1 を再利用
 
 ---
 
+<a id="link-duty"></a>
+
 ## 6. リンクデューティ解析（`src/lib/linkDutyAnalysis.ts`）
 
 「衛星 × 端末」の総当たりで接触窓を求め、サービス／フィーダ／エンドツーエンドのデューティ比に集約する。CLI（`src/cli/main.ts`）の唯一の計算エンジンでもある。
@@ -303,7 +333,7 @@ interface LinkDutyAnalysisInput {
 
 ### 6.2 AOS/LOS の求め方（`analyzePair`）
 
-粗いグリッド走査 → 符号反転区間を二分法で詰める、という 2 段構成。**`visibility.ts` にはないこの精密化があるので、接触時間の精度はステップ幅に依存しない。**
+粗いグリッド走査 → 符号反転区間を二分法で詰める、という 2 段構成。**検出済みの遷移区間を `eventToleranceSeconds` まで精密化する。ただし両端が不可視の間に完結する短いパスや、同じ状態に戻る複数遷移は見落とす。接触窓の検出と窓内統計は依然としてステップ幅に依存する。**
 
 ```
 for t = start .. end step stepSeconds:
@@ -347,119 +377,66 @@ endToEnd      = intersect( service, feeder )    # 同時に両方繋がってい
 
 `LinkDutyAnalysisResult`（`schemaVersion: 1`、`generator: { name: "constelation-cli", version: "0.1.0" }`）。`analysis` ブロックにモデル規約が入る（§5.2）。`satellites[].{duty, links, contactWindows}` と、時刻ごとの `samples`（`includeSamples: false` / CLI の `--summary-only` で省略可）、`warnings`。
 
-CLI からの使い方は `docs/constelation-cli-SKILLS.md` を参照。
+CLI からの使い方は [constelation-cli-SKILLS.md](constelation-cli-SKILLS.md) を参照。
 
 ---
+
+<a id="isl"></a>
 
 ## 7. 衛星間リンク（ISL）経路探索
 
-`src/lib/isl/*` + `src/workers/islRoutingWorker.ts`。**理論・実装・既定値・テストは `docs/isl-routing.md` に自己完結してまとめられている**ので、ここでは他モジュールとの境界だけ示す。
+`src/lib/isl/*` + `src/workers/islRoutingWorker.ts`。**理論・実装・既定値・テストは [isl-routing.md](isl-routing.md) に自己完結してまとめられている**ので、ここでは他モジュールとの境界だけ示す。
 
-| モジュール | 役割 |
-| --- | --- |
-| `isl/geometry.ts` | エッジ存在条件（距離、視線・地球かすめ余裕 `losMarginKm`、GSL の仰角）、`remainingLinkTime` |
-| `isl/candidates.ts` | 候補リンク生成 3 方式: `naiveIslCandidates`（全ペア）/ `uniformGridIslCandidates`（一様グリッド、naive と完全一致がテストで固定）/ `gridPatternIslCandidates`（+Grid: 面内前後 2 + 隣接面 2）、`naiveGslCandidates` |
-| `isl/cost.ts` | 等価遅延コスト `propagationDelayMs + hopPenaltyMs + kindPenaltyMs + stabilityMs` |
-| `isl/stability.ts` | `stabilityPenaltyMs = w_tau * max(0, 1 - remaining/tau_min)`、`tau_min = 60 s` |
-| `isl/graph.ts` | スナップショットグラフ構築 |
-| `isl/shortestPath.ts` | バイナリヒープ Dijkstra ＋ ヒステリシス割引（前回経路のエッジを `switchDiscount` だけ安くする） |
-| `isl/propagate.ts` | 1 時刻の全機伝播。伝播失敗は `valid[i] = false` にする（`{0,0,0}` で代用しない） |
-| `isl/participants.ts` | `excludedShellKeys` / `includeBaseSatellites` から参加衛星インデックスを解決 |
+`linkGeometry.ts` / `linkDutyAnalysis.ts`（地上リンク）と `isl/*`（経路探索）は**独立**である。ISL は GSL を含めた「地上 A → 衛星 → ISL → 衛星 → 地上 B」の合計を出せるが、§6 の接触窓・デューティとは統合しない。
 
-`linkGeometry.ts` / `linkDutyAnalysis.ts`（地上リンク）と `isl/*`（衛星間）は**独立**である。ISL のコストは光速遅延＋ホップペナルティで、地上側の `oneWayPropagationDelayMs` とは合算されない。つまり「地上局 → 衛星 → ISL 数ホップ → 衛星 → 地上局」の総遅延を 1 本の指標として出す機能は現状ない（ISL 側は端点 A/B に地上点を置いて GSL を含めた総遅延を出せるが、それは §6 のデューティ集計とは別系統）。
+`IslPathResult.totalDelayMs` は各エッジの**伝搬遅延 + ユーザー指定ペナルティ**の合計（割引前）である。物理的な真空伝搬遅延だけなら `totalDistanceKm / c * 1000`。ヒステリシス割引は経路選択にだけ適用し、報告する `totalDelayMs` には適用しない。
 
-`IslShellRange` の `planeSizes` / `wrapPlanes` の意味論は `docs/constellation-patterns.md` §9 を参照。
+`IslShellRange` の `planeSizes` / `wrapPlanes` の意味論は [constellation-patterns.md](constellation-patterns.md) §9 を参照。
 
 ---
+
+<a id="perturbation"></a>
 
 ## 8. 摂動と軌道維持
 
 ### 8.1 摂動レート（`src/lib/perturbation.ts`）
 
-理論式は `docs/perturbation.md`。`calculateDetailedPerturbationRates(elements, ballisticCoefficient = 0.012, atmosphereModel?)` が J2 / J3 / 抗力 / 合計に分解して返す。**周回平均した永年項のみ**、短周期項なし。
+`calculateDetailedPerturbationRates(elements, ballisticCoefficient = 0.012, atmosphereModel?)` は、J2 / J3 / 抗力 / 合計の簡易レートを返す。短周期成分は扱わず、SGP4 の位置伝播にも加算しない。
 
-定数: `mu = 3.986004418e14 m^3/s^2`, `Re = 6378137 m`, `J2 = 1.08263e-3`, `J3 = -2.532e-6`。
+式・単位・大気密度モデル・検証範囲は [摂動モデル](perturbation.md) を参照。関数の既定は指数大気、軌道維持解析は Harris-Priester 風モデルを指定する。J2 平均近点角補正と J3 の検証範囲も同資料に記載する。
 
-出力単位（`PerturbationRates`）は項目ごとに異なるので注意:
-
-| フィールド | 単位 |
-| --- | --- |
-| `da_dt` | km/year |
-| `de_dt` | 1/year |
-| `di_dt`, `dOmega_dt`, `domega_dt` | deg/year |
-| `dM_dt` | **deg/day** |
-
-大気モデルは 2 種（`AtmosphereModelInput.model`）:
-
-- `"exponential"`: `rho = rho0 * mult * exp(-(h - h0)/H)`、既定 `h0 = 400 km`, `H = 60 km`, `rho0 = 1e-12 kg/m^3`
-- `"harris-priester"`: 150〜1500 km の 16 点テーブルを**対数線形補間**して
-
-```
-solarFactor        = max(0.35, 1 + 0.004*(F10.7 - 150))
-geomagneticFactor  = 1 + 0.02*sqrt(Ap)
-diurnalFactor      = 0.85 + 0.3*diurnalBulgeFactor
-rho = table(h) * solarFactor * geomagneticFactor * diurnalFactor * densityMultiplier
-```
-
-抗力は **近地点高度が `lowOrbitLimitKm`（既定 1000 km）未満のときだけ**適用され、
-
-```
-v_rel = sqrt(mu / a)                  # 円軌道近似。地球大気の共回転を差し引いていない
-F     = 0.5 * rho * v_rel * B         # [1/s]。v_rel は 1 次（レート、加速度ではない）
-da/dt = -2 * a * F                    # == -rho * B * sqrt(mu * a)（教科書形と恒等）
-de/dt = (da/dt) * e / (2*H)           # King-Hele 小 e 極限。H は局所スケールハイト
-di/dt = dOmega/dt = domega/dt = 0
-```
-
-`H` は `atmosphericScaleHeightKm(h, model)` が返す。指数モデルでは `scaleHeightKm`
-そのまま、Harris-Priester ではテーブルの対数勾配 `-(dh)/(d ln rho)` から算出する
-（LEO で 30〜120 km 程度）。
-
-**検証状況**:
-
-`src/lib/perturbation.test.ts` が `da/dt` と教科書形 `-rho*B*sqrt(mu*a)` の一致を
-両大気モデル × 4 高度で相対誤差 1e-9 以内に固定し、`de/dt` については e = 0 で厳密に 0、
-`(da/dt)*e/(2H)` と一致、B に対して線形、`lowOrbitLimitKm` 超で 0、を固定している。
-Python 参照実装 `tests/simple_perturbation_calc.py` にも同じ抗力項が入り、
-`tests/perturbation_test_data.json` を生成する（テストはこの JSON を直接 import するので
-参照実装・フィクスチャ・アサーションが乖離しない）。ISS 級（h = 410 km, B = 0.008,
-実測 ~2 km/month）は桁確認としてのみ使う（±1 桁の幅で固定）。
-
-**残る既知の保守性（モデルの限界、バグではない）**:
-
-- `HP_DENSITY_TABLE` は単一の高め曲線で、400〜700 km で**現実的な周回平均密度の約 2〜3 倍**に出る。550 km でテーブル値 6.05e-13 kg/m^3 に対し、NRLMSISE-00 級の F10.7 = 150 平均は 1.5〜2.5e-13 程度。
-- `diurnalFactor` の可動域が 0.85〜1.15 しかなく、本来の Harris-Priester が持つ最小密度／最大密度プロファイル間のスイングを表現できていない（`rho = rho_min + (rho_max - rho_min)*cos^n(psi/2)`）。
-- 結果として**抗力起因の高度低下・寿命・維持 ΔV は 2〜3 倍の保守側**に出る。ISS 級の桁確認でも Harris-Priester は約 4.1 km/month（実測 ~2）、指数モデル既定は約 0.93 km/month（既定 `rho0 = 1e-12 @ 400 km` が低め）で、実測を両側から挟む。
-- 正しい直し方は min/max テーブル対を持って上式で内挿することであり、一律のスケール係数を掛けることではない（`HP_BASE_SCALE` がまさにそれで、次元エラーを隠していた）。
-
-J2 / J3 由来の値（RAAN 歳差、SSO 条件、近地点ドリフト、RGT）は従来どおり信頼できる。
-
-参考として h = 550 km, i = 97.6° での J2 RAAN 歳差は `+360.3 deg/year`（≈ 0.987 deg/day）で、太陽同期条件と一致する。
+<a id="maintenance"></a>
 
 ### 8.2 軌道維持解析（`src/lib/orbitMaintenanceAnalysis.ts`）
 
-`analyzeOrbitMaintenance(input)`。大気モデルは **Harris-Priester に固定**（`normalizeInput` が `atmosphereModel: "harris-priester"` を強制）。抗力レートは §8.1 の修正後の式を使う。
+`analyzeOrbitMaintenance(spec, satelliteLabel, startTime, input)`。大気モデルは **Harris-Priester 風モデルに固定**（`normalizeInput` が `atmosphereModel: "harris-priester"` を強制）。抗力レートは [摂動モデル](perturbation.md) の式を使い、この解析では高度上限を `lowOrbitLimitKm = 1500` に上書きする（摂動関数の既定は 1000 km）。
 
-自然減衰は摂動レートの単純オイラー積分:
+自然減衰は抗力レートの単純オイラー積分。以下の a・Re・高度は km、レートは km/year、年は 365.25 日:
 
 ```
 for step in 0 .. totalSteps:               # 刻み timelineStepDays（既定 15 日）
+    record(a, e, step)                    # 更新前の状態を記録
+    if step == totalSteps or perigeeAltitude(a, e) <= deorbitAltitudeKm:
+        continue                         # 閾値以下では以降の更新を止める
     rates = calculateDetailedPerturbationRates({a, e, ...}, B, atmosphere)
     a += rates.drag.da_dt * (stepDays / 365.25)
-    e += clamp(rates.drag.de_dt * (stepDays / 365.25))
-    a  = max(a, Re + deorbitAltitudeKm)
-    if perigeeAltitude <= deorbitAltitudeKm: break
+    e = clamp(e + rates.drag.de_dt * (stepDays / 365.25), 0, 0.8)
+    a = max(a, Re + deorbitAltitudeKm)
 ```
 
 タイムラインに記録される `densityKgPerM3` / `densityReferenceAltitudeKm` は `max(perigeeAltitude, 120 km)` で評価した表示用の値。**積分に使う摂動レートの計算には生の近地点高度が渡される**（Harris-Priester 側がテーブル下端 150 km で自前にクリップする）。
 
-維持 ΔV は「1 年分落ちた高度を Hohmann 2 インパルスで元に戻す」で見積る（`buildAnnualBudget`、年内は 10 日刻みで再積分）:
+維持 ΔV は「1 年分落ちた平均高度を円軌道間の Hohmann 2 インパルスで元に戻す」で見積る（`buildAnnualBudget`、年内は 10 日刻みで再積分）:
 
 ```
+# r1, r2 は変更前後の軌道半径 [m]、mu は m^3/s^2、dv は m/s
+# Isp は比推力 [s]、g0 = 9.80665 m/s^2、質量は kg
 dv = |sqrt(mu/r1)*(sqrt(2*r2/(r1+r2)) - 1)| + |sqrt(mu/r2)*(1 - sqrt(2*r1/(r1+r2)))|
 推進剤 = dryMass * (exp(dv / (Isp*g0)) - 1)                    # ツィオルコフスキー
 必要量（マージン込み）= 推進剤合計 * (1 + propellantMarginPercent/100)
 ```
+
+減衰・年次予算とも `ceil(duration/step)` で窓を丸めるので、終点が要求期間を超え得る（年次予算は 365.25 日を 370 日まで計算）。各年は同じ入力高度から再開し、推進剤は各年のドライ質量基準の見積りを加算する。楕円軌道の維持、面変更、RAAN 維持、デオービット噴射はこの ΔV に含めない。減衰の初期 e/i は選択した衛星要素を参照する。
 
 自然寿命は `timelineStepDays = 30` で最大 30 年まで前方積分し、近地点が `deorbitAltitudeKm` を切った時刻を返す（届かなければ `{ years: 30, reached: false }`）。
 
@@ -478,9 +455,11 @@ dv = |sqrt(mu/r1)*(sqrt(2*r2/(r1+r2)) - 1)| + |sqrt(mu/r2)*(1 - sqrt(2*r1/(r1+r2
 
 ---
 
+<a id="rgt"></a>
+
 ## 9. 回帰軌道 RGT（`src/lib/rgt.ts`）
 
-理論は `docs/RGTorbit.md`。J2 平均要素ベースで「整数回帰比 (revs, days)」を満たす高度／傾斜角を解く。
+理論は [RGTorbit.md](RGTorbit.md)。J2 平均要素ベースで「整数回帰比 (revs, days)」を満たす高度／傾斜角を解く。
 
 | 関数 | 用途 |
 | --- | --- |
@@ -489,9 +468,11 @@ dv = |sqrt(mu/r1)*(sqrt(2*r2/(r1+r2)) - 1)| + |sqrt(mu/r2)*(1 - sqrt(2*r1/(r1+r2
 | `solveInclinationFromAltitudeAndRatio` | 高度と比を固定して傾斜角を解く |
 | `solveRgtFromAltitudeInclination` | 上をまとめた入口 |
 
-RGT は設計方式（Walker 等）と直交する**横断ヘルパ**として位置づけられており、方式そのものではない（`docs/constellation-patterns.md` §8）。UI は `src/components/ui/RgtConstraintSection.tsx`。
+RGT は設計方式（Walker 等）と直交する**横断ヘルパ**として位置づけられており、方式そのものではない（[constellation-patterns.md](constellation-patterns.md) §8）。UI は `src/components/ui/RgtConstraintSection.tsx`。
 
 ---
+
+<a id="solar-power"></a>
 
 ## 10. 日照・電力
 
@@ -507,7 +488,7 @@ perpSq = |r_sat|^2 - d^2                     # 太陽方向に直交な距離^2
 return perpSq <= (6378.137)^2                # 円柱内 → 食
 ```
 
-含まれないもの: 半影（penumbra）／本影の円錐、地球扁平、大気による屈折・減光、太陽の有限角径。LEO の食時間見積りとしては十分だが、食入り／食出の遷移は瞬時として扱われる。
+含まれないもの: 半影（penumbra）／本影の円錐、地球扁平、大気による屈折・減光、太陽の有限角径。食入り／食出の遷移は瞬時として扱う。
 
 ### 10.2 電力成立性（`src/lib/solarPowerAnalysis.ts`）
 
@@ -525,7 +506,9 @@ net <  0 : E += (net / dischargeEfficiency) * dt （0 で下限クリップ）
 SOC      = E / capacity * 100
 ```
 
-代表日 4 点（春分・夏至・秋分・冬至付近、時刻は解析開始時刻の時分秒を流用）で年間の最悪ケースを取り、1 変数感度掃引も返す。
+`E` と容量は Wh、発生／負荷は W なので、上の `dt` は **時間（h = stepSeconds/3600）**。初期点では更新せず、以後は区間右端の電力で更新する。
+
+代表日 4 点（同じ UTC 年の 3/20・6/21・9/22・12/21、時分秒は開始時刻から流用）を比較し、**4 点のうち最低 SOC の日**を返す。年間全日の最悪ケースではない。各日は同じ初期 SOC から独立に開始し、1 変数感度掃引も返す。
 
 必要太陽電池出力の下限見積り:
 
@@ -534,11 +517,22 @@ averageLoad = (baseLoad + payloadLoad*duty) * (1+margin)
             + (sunlightExtra*sunlightRatio + eclipseExtra*(1-sunlightRatio)) * (1+margin)
 generationFactor = degradation * sunTrackingFactor * powerPathEfficiency * sunlightRatio
 minSolarArrayW   = averageLoad / generationFactor
+# margin = designMarginPercent/100、電力は W、sunlightRatio は 0〜1 の割合
 ```
+
+KPI の定義と近似:
+
+- `dailyGenerationWh` / `dailyLoadWh` は `sum(P_sample * stepSeconds/3600)`。初期点・終点とも数えるため、24 h / 120 s では 721 点 = 24 h + 120 s 相当。周回 KPI でも同名フィールドはその周回窓の合計であり、24 h 換算ではない。
+- `minBatteryRequiredWh = eclipseLoadW * (eclipseMinutes/60) / max(1-minSocPercent/100, 0.05)`。日照復帰までのエネルギー下限見積りで、初期 SOC と放電効率を式に入れない。`eclipseMinutes` は §2.3 の次の食区間から取る。
+- `minSolarArrayPowerRequiredW` も平均負荷の下限見積りで、バッテリの充放電損失を含めない。これらの値だけで SOC 条件の成立を保証しない。
+- `sunlightRatio` はサンプル比、`maxContinuousEclipseMinutes` は連続食サンプル数 × 刻み。SOC 計算は容量でクリップし、負荷未達の時間や充電余剰の量は記録しない。
+- `designStatus` は最小 SOC がしきい値以下なら `critical`、それ以外で発電量 < 消費量なら `warning`、他は `nominal`。
 
 主な既定値（`createDefaultSolarPowerInput`）: 周回刻み 30 s、24 h 刻み 120 s、BOL 250 W、日照追尾係数 0.78、電力経路効率 0.90、劣化 2.5 %/年、ミッション 3 年、ベース負荷 90 W、バッテリ 650 Wh、初期 SOC 95 %、最低 SOC 30 %、充電効率 0.95、放電効率 0.94、設計マージン 20 %。
 
 ---
+
+<a id="coverage"></a>
 
 ## 11. カバレッジ幾何とコンステレーション設計
 
@@ -567,11 +561,11 @@ orbitalPeriodSec(h), oneWayLatencyMs, nadirLatencyMs
 - 粗スクリーン（`screen.ts`）: 5° グリッド、8 時刻、球面述語、**円 Kepler 運動**
 - 数値検証（`verify.ts`）: 2° グリッド（高精度モードは 1°）、32 時刻（同 96）、**SGP4**、ギャップ評価は約 110 点 × 24 h × 60 s 刻み
 
-が**同一の判定実装**を共有する。「スクリーンでは成立、検証では不成立」という不一致が幾何実装の差ではなく忠実度の差からしか生じないようにするための設計。
+が同じ集計カーネルを使う。位置モデル・幾何判定・サンプル設定は異なるので、評価値の一致は保証しない。
 
 fold（N 重可用性）、緯度別カバレッジ行、ギャップ統計をここで扱う。§3.3 の「1 機以上」しか見ない可用性とはここが決定的に違う。
 
-詳細は `docs/constellation-design.md`（2 段パイプライン、指標定義、Worker プロトコル、限界）。
+詳細は [constellation-design.md](constellation-design.md)（2 段パイプライン、指標定義、Worker プロトコル、限界）。
 
 ### 11.3 解析側から見た設計方式
 
@@ -581,8 +575,8 @@ fold（N 重可用性）、緯度別カバレッジ行、ギャップ統計を�
 { key, name?, startIndex, count, planes, planeSizes?, wrapPlanes? }
 ```
 
-- `planeSizes`: 面あたり機数が均等でない場合（不均等 Flower、間引き Necklace）のみ入る
-- `wrapPlanes`: 最終面が面 0 と RAAN 隣接でない場合（Walker Star / SoC は 180° を張って逆行シームを持つ）に `false`
+- `planeSizes`: 各面の機数が既定の先頭詰め配置と異なる場合に入る（不均等 Flower、Necklace の間引き、故障による欠損など）
+- `wrapPlanes`: Walker Star や通常の SoC ではシームを跨ぐ構造リンクを張らないため `false`。SoC が全周配置になる場合は `true`（[配置方式 §9](constellation-patterns.md)）
 
 ISL の `gridPattern` トポロジと、シェル別リンクモデルの解決はこれを見て行う。生成物 `src/lib/satellites.generated.ts` は `scripts/generate-satellites.ts` が作るので手編集しない。
 
@@ -596,7 +590,7 @@ ISL の `gridPattern` トポロジと、シェル別リンクモデルの解決�
 | 局アクセス解析 | `src/workers/stationAccessWorker.ts` | TOML パース + `visibility.ts`。UI は `terminate()` で中断 |
 | ISL 経路探索 | `src/workers/islRoutingWorker.ts` | `init` / `configure` / `compute` / `sweep`。`propagateAll` のバッファを init 間で再利用 |
 | ミッション設計 | `src/workers/constellationDesignWorker.ts` | `enumerate → screen → verify` を丸ごとオフスレッド。キャンセルメッセージはなく `terminate()` で中断 |
-| CLI | `src/cli/main.ts`（`bun run cli` / `bun run build:cli`） | `analyzeLinkDuty` のみ。`--format json|csv`, `--summary-only`, `--duration-hours`, `--step-seconds` |
+| CLI | `src/cli/main.ts`（`bun run cli` / `bun run build:cli`） | `analyzeLinkDuty` のみ。`--format json\|csv`, `--summary-only`, `--duration-hours`, `--step-seconds` |
 | データ生成 | `scripts/generate-satellites.ts`（`predev` / `prebuild`） | `public/*.toml` → `src/lib/satellites.generated.ts` |
 
 Worker 越しに渡すものはすべて structured-clone 可能なプレーンデータ（`*.types.ts` に契約を分離）。`constellationDesign` 系と `isl` 系は **Three.js / React / DOM に依存しない**ことを設計制約として守っている（`coverageGeometry.ts` が `SPEED_OF_LIGHT_KM_PER_SEC` をあえて再宣言しているのはこのため）。
@@ -643,8 +637,8 @@ Worker 越しに渡すものはすべて structured-clone 可能なプレーン�
 | ISL 再計算間隔 | 10 シミュレーション秒 | `isl/types.ts` |
 | 弾道係数（摂動関数の既定引数） | 0.012 m^2/kg | `perturbation.ts` |
 | 弾道係数（軌道維持 UI 初期値） | 0.022 m^2/kg | `orbitMaintenanceAnalysis.ts` |
-| 抗力適用の高度上限 | 1000 km | `perturbation.ts` |
-| 指数大気の基準 | h0 = 400 km, H = 60 km, rho0 = 1e-12 | `perturbation.ts` |
+| 抗力適用の高度上限 | 関数既定 1000 km / 維持解析 1500 km | `perturbation.ts`, `orbitMaintenanceAnalysis.ts` |
+| 指数大気の基準 | h0 = 400 km, H = 60 km, rho0 = 1e-12 kg/m^3 | `perturbation.ts` |
 | F10.7 / Ap（既定） | 150 / 15 | `perturbation.ts` |
 | 軌道維持タイムライン刻み | 15 日（年次予算は 10 日、寿命推定は 30 日） | `orbitMaintenanceAnalysis.ts` |
 | 電力解析 周回／日刻み | 30 s / 120 s | `solarPowerAnalysis.ts` |
@@ -655,57 +649,25 @@ Worker 越しに渡すものはすべて structured-clone 可能なプレーン�
 
 ---
 
-## 14. 通信用途での前提と未実装事項
+<a id="limits"></a>
 
-概念設計でこのツールの出力を使うときに、**明示的に外にある**もの。
+## 14. 解析範囲と限界
 
-### 14.1 リンクバジェットが存在しない
+| 対象 | 結果に含まれないもの・解釈の注意 | 詳細 |
+| --- | --- | --- |
+| 地上リンク | RF リンクバジェット（EIRP、G/T、自由空間・降雨損失など）、変調・符号化、干渉、容量・ビーム割当・ハンドオーバを評価しない | §5・§6 |
+| 距離・Doppler | 真空中の幾何遅延と一次 Doppler。大気屈折、機器遅延、相対論補正、Doppler レートは含まない | §5 |
+| 可用性 | 有限サンプルの評価。局アクセスは 1 機以上、設計は指定 fold 以上を数える。「全球アクセス」は単一経線 | §3・§4・[設計指標](constellation-design.md#availability-metrics) |
+| 通信経路 | 単一 A/B 間の経路コスト。帯域・輻輳・冗長経路・パケット動作を扱わず、地上リンクのデューティとも統合しない | [ISL の制限](isl-routing.md#limitations) |
+| 寿命・推進剤 | 簡易大気とレート積分。密度モデル・楕円軌道近似・刻みの誤差保証はない | §8・[摂動モデル](perturbation.md) |
+| 日照・電力 | 円柱影、固定の日照追尾係数、代表 4 日の比較。半影や年間全日の最悪条件は評価しない | §10 |
+| ミッション設計 | Walker Delta / Star の全球・緯度帯探索。Flower 系、任意ポリゴン、需要分布、ISL 接続性は対象外 | [設計の限界](constellation-design.md#limitations) |
 
-- EIRP、G/T、アンテナパターン、自由空間損失、降雨減衰（ITU-R P.618 等）、大気吸収、偏波損失、実装損失 — いずれも計算しない。
-- したがって `dutyRatio` / `endToEndRatio` は **可視性ベースの時間比**であって、スループットでも C/N でもない。「繋がる時間の割合」の上限値として読むこと。
-- 変調・符号化、適応制御（ACM）、周波数計画、干渉（ITU 調整、同一周波数の他コンステレーションとの EPFD）も対象外。
-
-### 14.2 伝搬モデルの単純化
-
-- 遅延は幾何距離 ÷ 真空光速のみ（`propagationDelayModel: "geometric-vacuum"`）。電離層・対流圏遅延、機器遅延なし。
-- 仰角は幾何仰角。大気屈折補正なし。低仰角では実効仰角が数分角ずれる。
-- ドップラーは 1 次（`-f * rangedot / c`）。相対論補正、ドップラーレート（加速度項）は未計算。
-
-### 14.3 ネットワーク／運用モデルの欠落
-
-- ハンドオーバ判定、ビーム割当、セル設計、容量制約、輻輳、キュー遅延 — なし。`maxSimultaneousLinks` は幾何的な同時可視本数の最大にすぎない。
-- 地上リンク（§6）と ISL（§7）の遅延は合算されない。マルチホップのエンドツーエンド遅延を 1 指標で出す機能はない。
-- ISL 経路探索は最短経路 1 本のみ。冗長経路、帯域、パケットレベルの挙動は扱わない。
-
-### 14.4 可視性・可用性の解像度
-
-- `visibility.ts` は **AOS/LOS の二分法精密化を持たない**。10 s 刻みより短いパスは取りこぼす。精密な接触窓が必要なら `linkDutyAnalysis.ts`（§6.2）を使う。
-- 可用性（§3.3）は「1 機以上見えているか」だけ。N 重可用性は `constellationDesign/coverageKernel.ts`（§11.2）側にしかない。
-- t = 0 時点で既に不可視だった中断は `interruptionFrequency` に数えられない（長さは max/avg に含まれる）。
-- 「全球アクセス」は単一経線 × 24 h のサンプリング（§4）。回帰軌道や 1 日で経度が閉じない構成では偏りが出る。
-- 接触窓の `maxElevationDeg` 等はグリッドサンプルからのみ取るので、真のピークをわずかに下振れし得る（§6.2）。
-
-### 14.5 力学モデルの限界
-
-- 伝播は SGP4 のみ。要素入力経路では `bstar = 0` なので**伝播中に抗力が入らない**（§2.2）。長期の高度低下は §8 の別モデルで扱う二重構造になっている。
-- 入力 `semiMajorAxisKm` と SGP4 内部半長軸に数 km の差がある（Kozai / Brouwer 変換、§2.2）。
-- 摂動レートは J2 / J3 の永年項 + 簡易抗力のみ。高次項、月太陽引力、太陽輻射圧、共鳴、地球放射圧なし。
-- 抗力レートは教科書形 `da/dt = -rho*B*sqrt(mu*a)` に一致することがテストで固定されているが、**密度テーブルが高め（周回平均の約 2〜3 倍）**なので、高度低下量・寿命・維持 ΔV は 2〜3 倍の保守側に出る（§8.1）。
-- 影判定は円柱影で半影なし（§10.1）。
-- 太陽位置は低精度級数、単位ベクトルのみ（距離を持たない、§1.4）。太陽輻射圧や日照強度の季節変動を扱えない。
-
-### 14.6 設計オプティマイザの範囲
-
-- 列挙対象は **Walker Delta と Walker Star（Streets of Coverage）のみ**。Flower 系 3 方式は生成器・フォームとしては実装済みだが最適化には入らない（カーネルの `T = P*S, e = 0` 高速経路が崩れるため）。
-- ISL 制約は意図的に対象外（`isl?: never` フック）。
-- 対象領域は「全球」または「緯度帯」のみ。任意ポリゴンや重み付き需要地図は非対応。
-- 詳細は `docs/constellation-design.md` §9。
-
-### 14.7 既知の運用上の癖
-
-- 既定の解析開始時刻が `public/constellation.toml` のエポックから大きく離れていると、要素定義の衛星が画面外に描かれる（既存の癖として認識されている）。解析結果自体は開始時刻に対して正しいが、要素のエポックと解析窓を合わせておくのが安全。
+RGT/J2 補正と J3 は [RGT §4.1](RGTorbit.md#implemented-rates)・[摂動モデル](perturbation.md)、長期維持・電力サイジングの近似は §8・§10 を参照。エポックから離れた解析では、入力データの有効性も確認すること。
 
 ---
+
+<a id="implementation-tests"></a>
 
 ## 15. ファイル → 主要関数 → テスト 対応表
 
@@ -744,11 +706,10 @@ Worker 越しに渡すものはすべて structured-clone 可能なプレーン�
 
 ## 16. 関連ドキュメント
 
-- `docs/perturbation.md` — J2 / J3 / 抗力の理論式と擬似コード
-- `docs/RGTorbit.md` — 回帰軌道の条件式と設計フロー
-- `docs/isl-routing.md` — ISL 経路探索の理論・実装・既定値・性能
-- `docs/constellation-patterns.md` — 6 設計方式と TOML スキーマ
-- `docs/constellation-design.md` — ミッション駆動オプティマイザ（2 段パイプライン）
-- `docs/constelation-cli-SKILLS.md` — CLI エージェント向けガイド（`dist/SKILLS.md` の元）
-- `docs/analysis-roadmap.md` — 解析タブの機能ロードマップ
+- [perturbation.md](perturbation.md) — J2 / J3 / 抗力の理論式と擬似コード
+- [RGTorbit.md](RGTorbit.md) — 回帰軌道の条件式と設計フロー
+- [isl-routing.md](isl-routing.md) — ISL 経路探索の理論・実装・既定値・性能
+- [constellation-patterns.md](constellation-patterns.md) — 6 設計方式と TOML スキーマ
+- [constellation-design.md](constellation-design.md) — ミッション駆動オプティマイザ（2 段パイプライン）
+- [constelation-cli-SKILLS.md](constelation-cli-SKILLS.md) — CLI エージェント向けガイド（`dist/SKILLS.md` の元）
 - `AGENTS.md` / `CLAUDE.md` — プロジェクト運用ルール

@@ -18,9 +18,15 @@ A web application that visualizes satellite constellations in Earth orbit.
 - Analysis tab for access and coverage statistics
 - Save / load the entire configuration as a single `settings.toml` bundle
 
+## Models and documentation
+
+Satellite positions are calculated with `satellite.js` SGP4/SDP4. Access and routing analyses use those positions; lifetime estimates use a separate drag model.
+
+See [Calculation overview (日本語)](docs/how-it-works.md) for what each feature computes, and [Analysis models and definitions](docs/analysis-implementation.md) for equations and implementation details.
+
 ## Prerequisites
 
-- [bun](https://bun.sh/) ≥ 1.0
+- [bun](https://bun.sh/) ≥ 1.3.11
 
 ## Installation
 
@@ -95,9 +101,15 @@ For local API development use `vercel dev` with development Redis credentials an
 - アクセス・カバレッジを集計する解析タブ
 - 設定一式を `settings.toml` 1 ファイルにまとめて保存／読み込み
 
+## 計算モデルとドキュメント
+
+衛星位置は `satellite.js` の **SGP4/SDP4** で計算し、その位置からアクセス・通信経路・日照を評価します。寿命は別の大気抵抗モデルで見積もります。
+
+各機能の計算内容は [計算の概要](docs/how-it-works.md)、数式・定義・実装の詳細は [解析モデルと実装](docs/analysis-implementation.md) を参照してください。
+
 ## 前提条件
 
-- [bun](https://bun.sh/) 1.0 以上
+- [bun](https://bun.sh/) 1.3.11 以上
 
 ## インストール
 

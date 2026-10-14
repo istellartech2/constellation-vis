@@ -1,7 +1,5 @@
 # コンステレーション設計方式 — リファレンス
 
-*(Markdown 上のプレーンテキスト数式、LaTeX 不使用)*
-
 「コンステレーション編集」ダイアログの各シェルは、6 つの設計方式(パターン)のいずれかで定義できる: **Walker Delta / Walker Star / Streets of Coverage / Flower / Lattice Flower(2D-LFC) / Necklace Flower**。本ドキュメントは各方式の意味・入力・数式・派生値・バリデーションと、方式を跨いで共通する仕組み(RGT ヘルパー、ISL の `planeSizes`/`wrapPlanes`)をまとめたリファレンスである。
 
 実装は `src/lib/constellationPatterns/` にあり、各方式は同じ `PatternGenerator` インターフェース(`plan` / `derive` / `validate`)を実装して `registry.ts` の `PATTERN_REGISTRY` に登録されている。TOML キーの一覧は `fields.ts` の `FIELD_REGISTRY` が唯一の情報源で、両パーサ(`tomlParsers.ts` / `constellationSerializer.ts`)・バリデーション・エディタ UI がここを読む。
@@ -20,6 +18,8 @@
 - 未知の `pattern` 文字列は検証エラーではなく **`walker_delta` 扱いにフォールバック**しつつ、警告メッセージで知らせる(`validateShell`)。
 
 ---
+
+角度入力と配置式は deg、高度は km。三角関数を使う被覆式では rad に変換する。以下の既定値は TOML キーを省略した場合の値で、新規シェルのプリセットとは区別する。
 
 ## 2. Walker Delta
 
@@ -55,6 +55,8 @@
 M(p, j) = ( mean_anomaly_0 + (360 / T) · (p·F + j·P) ) mod 360
 ```
 
+T が P の倍数でない場合は各面に `ceil(T/P)` スロットを先頭から詰め、合計 T 機で止める。末尾の面が少数または空になるため、均等 Walker 配置ではない。全方式の通常の高度入力 `apogee_altitude` は遠地点高度で、`a = (R_e + h_apogee)/(1+e)`（R_e = 6378.137 km）。RGT ソルバーの高度 `a-R_e` とは区別する。
+
 **注意**: この 2 式は旧実装 `generateFromShellsDetailed` からの**文字通りの移植**であり、`360/T` を先に割ったり `raan_range/P` を定数化したりする代数的な簡約はしていない。浮動小数の最下位ビットまで一致させることが目的で、崩すと `tests/constellationPatternsBaseline.test.ts` が壊れる。
 
 `wrapPlanes = true`(最終面は面 0 の RAAN 隣接面として扱われる。ISL の +Grid ではリングが閉じる)。
@@ -62,8 +64,8 @@ M(p, j) = ( mean_anomaly_0 + (360 / T) · (p·F + j·P) ) mod 360
 ### 派生値
 
 - Walker 表記 `T/P/F: i`
-- 等価 2D-LFC の `Nc`(`lfcNcFromWalker`): `count` が `planes` で割り切れず、`phasing` が整数でない場合は `null`
-- 標準の派生セット(半長軸・周期・面内/面間角度間隔・RGT 近似比)は §7 参照
+- 等価 2D-LFC の `Nc`(`lfcNcFromWalker`): `count` が `planes` で割り切れない、または `phasing` が整数でない場合は `null`
+- 標準の派生セット(半長軸・周期・面内/面間角度間隔)は `derivedCommon.ts`、RGT 近似比は §8 参照
 
 ### バリデーション
 
@@ -101,7 +103,7 @@ seam = raan_range − (planes − 1) · Δco
 M(p, j) = ( mean_anomaly_0 + (360 / T) · (p·F + j·P) ) mod 360     (F は既定 P/2)
 ```
 
-`raan_spacing` を省略すると `Ω_p` は Walker Delta と同じ式 `raan_start + raan_range·p/planes` になるため、**`raan_range = 180` の Walker Delta とビット単位で一致する**(`walkerStar.test.ts` の等価性テスト)。
+`raan_spacing` を省略すると `Ω_p` は Walker Delta と同じ式 `raan_start + raan_range·p/planes` になるため、**`raan_range = 180` の Walker Delta とビット単位で一致する**(`tests/constellationPatterns.test.ts` の等価性テスト)。
 
 シームは Δco より広い RAAN ギャップになる(その両側の衛星は逆方向に運動するため)。したがって `wrapPlanes = false`: 最終面は +Grid トポロジ上で面 0 の隣接面として扱われない。
 
@@ -135,10 +137,10 @@ Walker Star の一種だが、**面数・面間隔・面間位相はユーザー
 
 | キー | 型 | 既定値 | 意味 |
 |---|---|---|---|
-| `apogee_altitude` | number | 0 | 高度 h [km](離心率は通常 0 として扱う) |
+| `apogee_altitude` | number | 0 | 高度 h [km]（離心率は通常 0 として扱う） |
 | `soc_min_elevation` | number | 10 | 最低仰角 ε [deg] |
 | `soc_coverage_fold` | int | 1 | 被覆重複度 n |
-| `soc_target_latitude` | number | 0 | 保証すべき最大緯度 λ_n(0 = 全球) |
+| `soc_target_latitude` | number | 0 | サイジングに使う目標緯度 λ_n(0 = 全球) |
 | `soc_sats_per_plane` | int | 11 | 1 面あたりの衛星数 S |
 | `inclination` | number | 90(既定) | 傾斜角 |
 
@@ -187,8 +189,8 @@ F = T · ω / 360
 ```
 
 **実装上の逸脱(計画からの意図的な変更)**:
-- `safety`(`spacingSafetyFactor`)の既定値は **1**(当初計画は 0.98)。理由は `streets_of_coverage.ts` がシェル保存時に常に safety = 1 で再計算するため、最適化エンジンが 0.98 でサイズした候補をこのパターンでシェル化すると *面数が変わってしまう*(Iridium 例: 0.98 なら P = 7/T = 77 になるところ、シェル化すると P = 6/T = 66 に戻る)。安全余裕はステージ 2 の数値検証が担う設計になっている(詳細は `docs/constellation-design.md`)。
-- `soc_coverage_fold > 1`(n 重被覆)の寸法計算は**近似**であり、`fold_approximation` 警告が出る。面内 n 重のストリート半幅を用いるだけで、面間の重なりは考慮していない。実際の可用率は数値検証(§カバレッジカーネル)で確認する必要がある。
+- `safety`(`spacingSafetyFactor`)の既定値は **1**(当初計画は 0.98)。理由は `streetsOfCoverage.ts` がシェル保存時に常に safety = 1 で再計算するため、最適化エンジンが 0.98 でサイズした候補をこのパターンでシェル化すると *面数が変わってしまう*(Iridium 例: 0.98 なら P = 7/T = 77 になるところ、シェル化すると P = 6/T = 66 に戻る)。最終的な成立性は [ミッション設計の数値検証](constellation-design.md#availability-metrics) で確認する。
+- `soc_coverage_fold > 1`(n 重被覆)の寸法計算は**近似**であり、`fold_approximation` 警告が出る。面内 n 重のストリート半幅を用いるだけで、面間の重なりは考慮していない。実際の可用率は[数値検証](constellation-design.md#availability-metrics)で確認する必要がある。
 - 目標緯度が低い n ≥ 2 では式 (6) の必要 RAAN 範囲が 360° になり、面が全周に並ぶ(Walker Delta 相当の配置)。このとき `full_circle_layout` 警告が出て、ISL 用の `wrapPlanes` は true になる。
 - `apogee_altitude` が 0 以下(未入力を含む)の場合、`designStreetsOfCoverage` は例外を投げず `feasible: false` + `infeasible_coverage` 警告を返し、生成器は格納された `planes`/`count` にフォールバックする。
 
@@ -263,7 +265,7 @@ D. Mortari, M. P. Wilkins, C. Bruccoleri, *"The Flower Constellations"*, Journal
 M_k = M₀ − 360°·k·(Np·Fn + Fd·Fh)/(Fd·Nd)     (mod 360°),  k = 0..Ns−1
 ```
 
-この式は位相不変量 `Np·Ω_k + Nd·M_k ≡ 一定 (mod 360°)` を保つ、つまり全衛星が同一の相対軌道を描く。
+この式は位相不変量 `Np·Ω_k + Nd·M_k ≡ 一定 (mod 360°)` を保ち、配置式の位相互換性を表す。ただし半長軸を求める RGT は現在の簡易 J2 式であり、SGP4 での同一地上軌跡・厳密な閉鎖を保証するものではない（[RGT §4.1](RGTorbit.md#implemented-rates)）。
 
 **半長軸は自由パラメータではない**。(i, e, Np, Nd) から反復地上軌跡条件(`docs/RGTorbit.md` 参照)を満たす a を `rgt.ts::solveAltitudeFromInclinationAndRatio` で解く。`apogee_altitude` はソルバーの初期推定値、および解けた値との不一致チェックにのみ使われる。ソルバーが失敗した場合は `solver_failed` 警告を出して格納値にフォールバックする(例外は投げない)。
 
@@ -451,7 +453,7 @@ RGT(Repeat Ground Track、反復地上軌跡)は独立した設計方式では�
 
 - `rgt_repeat_orbits` / `rgt_repeat_days` は全パターンで書き込み可能な**メモ用**フィールド(informational)で、生成される衛星要素そのものには影響しない。エディタの「RGT条件」ボタンが平均軌道要素を埋めるのに使う。
 - Flower Constellation だけは RGT 条件がハードな設計制約になる: 半長軸がユーザー入力ではなく `solveAltitudeFromInclinationAndRatio(高度, 傾斜角, Np, Nd, e)` で解かれた値になる(§5)。
-- ミッション設計エンジン(`docs/constellation-design.md`)でも RGT を有効にすると、自由な高度グリッドの代わりに、その傾斜角で実際に反復地上軌跡を閉じる離散高度だけが候補になる。
+- ミッション設計エンジン(`docs/constellation-design.md`)でも RGT を有効にすると、自由な高度グリッドの代わりに、その傾斜角で現在の RGT 近似式を満たす離散高度だけが候補になる。SGP4 での閉鎖保証ではない。
 
 ---
 
@@ -509,6 +511,7 @@ RGT(Repeat Ground Track、反復地上軌跡)は独立した設計方式では�
 | `failure_percent` | number | 0 | 全(故障モデル。> 0 のとき `failed_count` より優先) |
 | `failure_seed` | int | 0 | 全(故障モデルの抽選シード) |
 | `rgt_repeat_orbits`, `rgt_repeat_days` | int | – | 全(任意メモ) |
+| `mission_availability_target`, `mission_availability_basis` | number/string | –（旧データは areaAverage） | 全（目標可用率 (0,1] と評価基準 areaAverage / worstLatitude） |
 | `mission_objective`, `mission_min_elevation`, `mission_fold`, `mission_region`, `mission_lat_min`, `mission_lat_max`, `mission_alt_min`, `mission_alt_max` | string/number | – | 全(ミッション設計ウィザード由来、任意) |
 
 `mission_*` はミッション設計ウィザード(`docs/constellation-design.md`)が候補をシェル化する際の由来情報で、生成される衛星要素には影響しない。
