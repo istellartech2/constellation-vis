@@ -16,7 +16,11 @@ interface Props {
   placed: Record<string, PlacedFiling>;
   onClose: () => void;
   onApply: (dataset: FilingDataset, configuration: string, epoch: Date) => void;
+  /** Place the configuration as a large catalog layer instead of editor TOML (no 10,000-ID limit). */
+  onApplyAsCatalog?: (dataset: FilingDataset, configuration: string, epoch: Date) => void;
 }
+/** The editor gives filings the placeholder ids 90000–99999. */
+const EDITOR_FILING_LIMIT = 10_000;
 const COUNTRIES = [...new Set(FILING_CATALOG.map(entry => entry.country))].sort((a, b) => a.localeCompare(b, "ja"));
 function SourceRow({ item }: { item: FilingCatalogEntry }) {
   const meta = [item.satellites !== undefined && `${item.satellites.toLocaleString()}機`, item.submission, item.date, item.country].filter(Boolean).join(" · ");
@@ -43,7 +47,7 @@ function summarize(config: FilingConfiguration) {
   return { inclination, altitude: `${low.toLocaleString()}${low !== high ? `–${high.toLocaleString()}` : ""} km` };
 }
 
-export default function FilingImportDialog({ open, defaultEpoch, placed, onClose, onApply }: Props) {
+export default function FilingImportDialog({ open, defaultEpoch, placed, onClose, onApply, onApplyAsCatalog }: Props) {
   const [dataset, setDataset] = useState<FilingDataset | null>(null);
   const [extract, setExtract] = useState<FilingExtract | null>(null);
   const [configuration, setConfiguration] = useState("");
@@ -66,7 +70,9 @@ export default function FilingImportDialog({ open, defaultEpoch, placed, onClose
   const config = dataset?.configurations.find(item => item.id === configuration);
   const existing = dataset ? placed[dataset.key] : undefined;
   const epochDate = new Date(epoch + "Z");
-  const canApply = Boolean(config && !busy && Number.isFinite(epochDate.valueOf()));
+  const canPlace = Boolean(config && !busy && Number.isFinite(epochDate.valueOf()));
+  const tooLargeForEditor = (config?.count ?? 0) > EDITOR_FILING_LIMIT;
+  const canApply = canPlace && !tooLargeForEditor;
 
   useEffect(() => { if (open) setEpoch(defaultEpoch); }, [open, defaultEpoch]);
   useEffect(() => () => {
@@ -128,6 +134,13 @@ export default function FilingImportDialog({ open, defaultEpoch, placed, onClose
       stop(); setError(cause instanceof Error ? cause.message : "ファイルを読み込めませんでした。");
     }
   }
+  function applyAsCatalog() {
+    if (!dataset || !canPlace || !onApplyAsCatalog) return;
+    try {
+      onApplyAsCatalog(dataset, configuration, epochDate);
+      close();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "配置を反映できませんでした。"); }
+  }
   function back() { stop(); setDataset(null); setExtract(null); setError(null); }
   function close() { stop(); onClose(); }
   function apply() {
@@ -139,10 +152,13 @@ export default function FilingImportDialog({ open, defaultEpoch, placed, onClose
   }
 
   const applyLabel = !config ? "構成を選んでください"
+    : tooLargeForEditor ? "エディタ上限（1万機）超"
     : !existing ? `${config.count.toLocaleString()} 機をシナリオに追加`
     : existing.configuration === configuration ? "配置を更新"
     : `${configurationLabel(configuration)}に置き換え`;
-  const applyHint = !config ? "" : existing
+  const applyHint = !config ? "" : tooLargeForEditor
+    ? `${config.count.toLocaleString()}機はエディタの上限を超えるため、大規模カタログとして配置してください（全衛星をGPUで近似表示します）。`
+    : existing
     ? `シナリオ内の「${dataset!.name}」${existing.count.toLocaleString()}機（${configurationLabel(existing.configuration)}）を置き換えます。他の衛星はそのままです。`
     : "既存の衛星はそのまま残り、3Dビューに反映されます。";
 
@@ -293,6 +309,7 @@ export default function FilingImportDialog({ open, defaultEpoch, placed, onClose
           {dataset && <p className="text-[11px] leading-snug text-fg-muted sm:flex-1">{applyHint}</p>}
           <div className={`flex gap-2 ${dataset ? "" : "sm:ml-auto"}`}>
             <Button variant="outline" onClick={close} className="h-10 max-md:h-11 bg-sunken border-line-strong text-fg hover:bg-raised-hover hover:text-fg">{dataset ? "キャンセル" : "閉じる"}</Button>
+            {dataset && onApplyAsCatalog && <Button variant="outline" onClick={applyAsCatalog} disabled={!canPlace} className="h-10 max-md:h-11 bg-raised border-line-strong text-fg hover:bg-raised-hover hover:text-fg">大規模カタログとして配置</Button>}
             {dataset && <Button onClick={apply} disabled={!canApply} className="h-10 max-md:h-11 max-md:flex-1 bg-brand hover:bg-brand-hover text-white font-semibold disabled:opacity-50">{applyLabel}</Button>}
           </div>
         </DialogFooter>

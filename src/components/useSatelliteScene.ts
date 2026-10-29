@@ -74,6 +74,7 @@ export function useSatelliteScene(
     params.speedRef,
     params.startTime,
     params.satellites,
+    params.catalog,
     params.groundStations,
     params.earthTexture,
     params.brightEarth,

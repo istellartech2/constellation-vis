@@ -19,6 +19,10 @@ import OptionTab from "./OptionTab";
 import IslTab from "./IslTab";
 import ImportDialog from "./ImportDialog";
 import FilingImportDialog, { type PlacedFiling } from "./FilingImportDialog";
+import CatalogLayerDialog from "./CatalogLayerDialog";
+import type { CatalogLayer } from "../../lib/catalogLayers";
+import { filingCatalog } from "../../lib/filings/geometry";
+import { MASS_MODE_THRESHOLD } from "../../lib/massSatelliteLayer";
 import { replaceFilingText } from "../../lib/filings/replace";
 import type { FilingDataset } from "../../lib/filings/types";
 import type { IslPathResult, IslSettings, IslShellRange } from "../../lib/isl/types";
@@ -167,6 +171,21 @@ interface Props {
   currentSimMs: number;
   /** External request to open the panel on a specific tab (e.g. from the ISL HUD). */
   openTabRequest?: { tab: "editor" | "analysis" | "isl" | "option"; nonce: number } | null;
+  /** Large catalogs drawn after the editor satellites (see CatalogLayerDialog). */
+  catalogLayers: CatalogLayer[];
+  onCatalogLayerAdd: (layer: CatalogLayer) => void;
+  onCatalogLayerRemove: (id: string) => void;
+}
+
+/** Analyses and ISL routing only see editor satellites; say so when that matters. */
+function ScopeNote({ editorCount, catalogCount }: { editorCount: number; catalogCount: number }) {
+  if (catalogCount === 0 && editorCount <= MASS_MODE_THRESHOLD) return null;
+  return (
+    <p className="mb-2 rounded border border-line bg-raised px-3 py-2 text-[11px] text-fg-muted" role="note">
+      {catalogCount > 0 && <>大規模カタログ（{catalogCount.toLocaleString()}機）は対象外です。エディタの衛星{editorCount.toLocaleString()}機のみを扱います。</>}
+      {editorCount > MASS_MODE_THRESHOLD && <>エディタの衛星が{MASS_MODE_THRESHOLD.toLocaleString()}機を超えているため、計算に時間がかかります。</>}
+    </p>
+  );
 }
 
 export default function SatelliteEditor({
@@ -232,7 +251,12 @@ export default function SatelliteEditor({
   islLastSwitchSimMs,
   currentSimMs,
   openTabRequest,
+  catalogLayers,
+  onCatalogLayerAdd,
+  onCatalogLayerRemove,
 }: Props) {
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const catalogCount = catalogLayers.reduce((sum, l) => sum + l.catalog.count, 0);
   const remoteAppliedRef = useRef(false);
   const remoteStartTimeRef = useRef<string | null>(null);
   const [satText, setSatText] = useState("");
@@ -459,10 +483,22 @@ export default function SatelliteEditor({
     setUpdateFeedback("success");
   }
 
+  function applyFilingAsCatalog(dataset: FilingDataset, configuration: string, epoch: Date) {
+    const catalog = filingCatalog(dataset, configuration, epoch);
+    onCatalogLayerAdd({
+      id: `filing:${dataset.key}:${configuration}:${epoch.toISOString()}`,
+      name: `${dataset.name}（${configuration === "default" ? "単一構成" : `構成 ${configuration}`}）`,
+      kind: "filing",
+      detail: `ITU申請上の仮配置 · 基準 ${epoch.toISOString().slice(0, 16).replace("T", " ")} UTC`,
+      catalog,
+    });
+  }
+
   return (
     <>
       <NoticeDialog open={notice !== null} onClose={() => setNotice(null)} title="お知らせ" description={notice ?? ""} />
-      <FilingImportDialog open={filingOpen} defaultEpoch={startText} placed={placedFilings} onClose={() => setFilingOpen(false)} onApply={applyFiling} />
+      <FilingImportDialog open={filingOpen} defaultEpoch={startText} placed={placedFilings} onClose={() => setFilingOpen(false)} onApply={applyFiling} onApplyAsCatalog={applyFilingAsCatalog} />
+      <CatalogLayerDialog open={catalogOpen} layers={catalogLayers} editorCount={satellites.length} startTime={new Date(startText + "Z")} onAdd={onCatalogLayerAdd} onRemove={onCatalogLayerRemove} onClose={() => setCatalogOpen(false)} />
       <ImportDialog
         open={importOpen}
         importing={importing}
@@ -536,6 +572,8 @@ export default function SatelliteEditor({
                 onStartTextChange={setStartText}
                 onImportClick={() => setImportOpen(true)}
                 onFilingImportClick={() => setFilingOpen(true)}
+                onCatalogClick={() => setCatalogOpen(true)}
+                catalogCount={catalogCount}
                 onUpdate={handleUpdate}
                 updateFeedback={updateFeedback}
                 onSaveBundle={handleSaveBundle}
@@ -544,6 +582,7 @@ export default function SatelliteEditor({
             </TabsContent>
             
             <TabsContent value="analysis" className="mt-0">
+              <ScopeNote editorCount={satellites.length} catalogCount={catalogCount} />
               <AnalysisTab
                 satText={satText}
                 constText={constText}
@@ -563,6 +602,7 @@ export default function SatelliteEditor({
             </TabsContent>
 
             <TabsContent value="isl" className="mt-0">
+              <ScopeNote editorCount={satellites.length} catalogCount={catalogCount} />
               <IslTab
                 gsText={gsText}
                 islSettings={islSettings}

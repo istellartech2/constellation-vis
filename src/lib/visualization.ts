@@ -7,6 +7,20 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import * as satellite from "satellite.js";
 import { toSatrec } from "./satellites";
 import type { SatelliteSpec } from "./satellites";
+import {
+  catalogFromSpecs,
+  catalogSatrecAt,
+  concatCatalogs,
+  isFilingRow,
+  type SatelliteCatalog,
+} from "./satelliteCatalog";
+import {
+  MASS_FOCUS_LIMIT,
+  MassSatelliteLayer,
+  isMassMode,
+  stationSeesPoint,
+  type MassStation,
+} from "./massSatelliteLayer";
 import type { GroundStation } from "./groundStations";
 import {
   sunVectorECI,
@@ -117,6 +131,13 @@ export interface SatelliteSceneParams {
   speedRef: React.MutableRefObject<number>;
   startTime: Date;
   satellites: SatelliteSpec[];
+  /**
+   * Large columnar catalog (TLE/OMM files, filings placed as a catalog)
+   * drawn after `satellites`; its rows take indexes from
+   * `satellites.length` on. Once the total exceeds `MASS_MODE_THRESHOLD`
+   * every satellite is drawn by the GPU {@link MassSatelliteLayer}.
+   */
+  catalog?: SatelliteCatalog | null;
   groundStations: GroundStation[];
   satRadius: number;
   earthTexture: EarthTextureMode;
@@ -175,7 +196,12 @@ export default class SatelliteScene {
   private readonly cameraHolder: THREE.Group;
   private readonly disposeFns: (() => void)[] = [];
 
+  /** SGP4 records for every satellite in CPU mode; empty in mass mode. */
   private readonly satRecs: satellite.SatRec[];
+  /** Satellites drawn: editor `satellites` followed by `catalog` rows. */
+  private readonly satCount: number;
+  /** GPU layer drawing every satellite when `satCount` exceeds the mass-mode threshold. */
+  private readonly massLayer: MassSatelliteLayer | null;
   private readonly satPosAttr: THREE.BufferAttribute;
   private readonly satColorAttr: THREE.BufferAttribute;
   private readonly groundPosAttr: THREE.BufferAttribute;
@@ -184,8 +210,11 @@ export default class SatelliteScene {
   private readonly stationConeMaterials: THREE.MeshBasicMaterial[];
   private readonly stationConeMeshes: THREE.Mesh[];
   private readonly groundConeColor: THREE.Color;
-  private readonly linkGeometries: THREE.BufferGeometry[][];
-  private readonly linkLines: THREE.Line[][];
+  /** All satellite–station links in one draw call (2 vertices per visible pair). */
+  private readonly linkGeometry: THREE.BufferGeometry;
+  private linkPositions = new Float32Array(0);
+  private linkCount = 0;
+  private readonly linkSegments: THREE.LineSegments;
   private readonly earthGroup: THREE.Group;
   private readonly earthResourceDisposers: (() => void)[];
   private readonly earthAnimationBindings: EarthAnimationBinding[];
@@ -221,7 +250,9 @@ export default class SatelliteScene {
   private stationMat: THREE.MeshBasicMaterial;
   private fovConeGeometry: THREE.ConeGeometry;
   private fovConeMaterial: THREE.MeshBasicMaterial;
-  private fovConeMeshes: THREE.Mesh[];
+  /** One instance per drawn FOV cone (every satellite in CPU mode, the focus subset in mass mode). */
+  private readonly fovCones: THREE.InstancedMesh;
+  private fovConeCount = 0;
   private readonly fovConeColor: THREE.Color;
   private readonly satelliteVisibleColor: THREE.Color;
   private readonly satelliteHiddenColor: THREE.Color;
@@ -408,7 +439,29 @@ export default class SatelliteScene {
       color: params.whiteBackground ? 0x2563eb : 0xffffff,
     });
 
-    this.satRecs = this.params.satellites.map((spec) => toSatrec(spec));
+    const catalog = this.params.catalog ?? null;
+    this.satCount = this.params.satellites.length + (catalog?.count ?? 0);
+    const massMode = isMassMode(this.satCount);
+    // CPU mode keeps exact SGP4 for every satellite (catalog rows included);
+    // mass mode hands all of them to the GPU J2 layer instead.
+    this.satRecs = massMode ? [] : [
+      ...this.params.satellites.map((spec) => toSatrec(spec)),
+      ...Array.from({ length: catalog?.count ?? 0 }, (_, i) => catalogSatrecAt(catalog!, i)),
+    ];
+    this.massLayer = massMode
+      ? new MassSatelliteLayer(
+        concatCatalogs([catalogFromSpecs(this.params.satellites), ...(catalog ? [catalog] : [])]),
+        this.currentSimDate.getTime(),
+        this.params.satRadius,
+        { visible: this.satelliteVisibleColor, hidden: this.satelliteHiddenColor, selected: this.satelliteSelectedColor },
+      )
+      : null;
+    const filingMarkers = new Float32Array(this.satRecs.length);
+    if (!massMode) {
+      this.params.satellites.forEach((s, i) => { filingMarkers[i] = s.meta?.dataStatus === "filing" ? 1 : 0; });
+      const offset = this.params.satellites.length;
+      for (let i = 0; i < (catalog?.count ?? 0); i++) filingMarkers[offset + i] = isFilingRow(catalog!, i) ? 1 : 0;
+    }
 
     const satPositions = new Float32Array(this.satRecs.length * 3);
     const satColors = new Float32Array(this.satRecs.length * 3);
@@ -417,7 +470,7 @@ export default class SatelliteScene {
     this.satColorAttr = new THREE.BufferAttribute(satColors, 3);
     this.satGeometry.setAttribute("position", this.satPosAttr);
     this.satGeometry.setAttribute("color", this.satColorAttr);
-    this.satGeometry.setAttribute("filingMarker", new THREE.BufferAttribute(new Float32Array(this.params.satellites.map(s => s.meta?.dataStatus === "filing" ? 1 : 0)), 1));
+    this.satGeometry.setAttribute("filingMarker", new THREE.BufferAttribute(filingMarkers, 1));
     const textureCircle = new THREE.TextureLoader().load("./assets/circle.png");
     this.satMaterial = new THREE.PointsMaterial({
       size: this.params.satRadius * 2,
@@ -496,12 +549,10 @@ export default class SatelliteScene {
     this.linkMaterial = new THREE.LineBasicMaterial({
       color: params.whiteBackground ? 0x2563eb : 0xffffff,
     });
-    this.linkGeometries = this.params.groundStations.map(() =>
-      this.satRecs.map(() => new THREE.BufferGeometry()),
-    );
-    this.linkLines = this.linkGeometries.map((arr) =>
-      arr.map((g) => new THREE.Line(g, this.linkMaterial)),
-    );
+    this.linkGeometry = new THREE.BufferGeometry();
+    this.linkSegments = new THREE.LineSegments(this.linkGeometry, this.linkMaterial);
+    this.linkSegments.frustumCulled = false;
+    this.ensureLinkCapacity(64);
 
     this.satEciPositions = this.satRecs.map(() => ({ x: 0, y: 0, z: 0 }));
 
@@ -558,22 +609,24 @@ export default class SatelliteScene {
       depthWrite: false,
       side: THREE.DoubleSide,
     });
-    this.fovConeMeshes = this.satRecs.map(() => {
-      const mesh = new THREE.Mesh(this.fovConeGeometry, this.fovConeMaterial);
-      mesh.visible = this.params.showSatelliteFovCones;
-      this.scene.add(mesh);
-      return mesh;
-    });
+    this.fovCones = new THREE.InstancedMesh(
+      this.fovConeGeometry,
+      this.fovConeMaterial,
+      Math.max(1, this.massLayer ? MASS_FOCUS_LIMIT + 1 : this.satRecs.length),
+    );
+    this.fovCones.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.fovCones.frustumCulled = false;
+    this.fovCones.count = 0;
+    this.scene.add(this.fovCones);
 
     this.scene.add(satPoints);
     this.scene.add(groundPoints);
+    if (this.massLayer) {
+      this.scene.add(this.massLayer.points);
+      this.scene.add(this.massLayer.groundPoints);
+    }
     this.stationMeshes.forEach((m) => this.scene.add(m));
-    this.linkLines.forEach((arr) => {
-      arr.forEach((l) => {
-        l.visible = false;
-        this.scene.add(l);
-      });
-    });
+    this.scene.add(this.linkSegments);
 
     // Initialize KML renderer
     this.kmlRenderer = new KMLRenderer(this.scene);
@@ -639,6 +692,15 @@ export default class SatelliteScene {
       // Screen-space picking: a fixed pixel radius regardless of zoom level,
       // skipping satellites hidden behind the Earth (unit sphere at origin).
       const rect = this.renderer.domElement.getBoundingClientRect();
+      const radius = event.pointerType === "touch" ? PICK_RADIUS_TOUCH_PX : PICK_RADIUS_MOUSE_PX;
+      if (this.massLayer) {
+        this.camera.updateMatrixWorld();
+        const hits = this.massLayer.pick(this.camera, rect, event.clientX, event.clientY, radius, this.currentSimDate.getTime());
+        const next = pickSatelliteHitIndex(hits, this.selectedIndex);
+        if (next !== null) this.selectSatellite(next);
+        else this.clearSelections();
+        return;
+      }
       const posAttr = this.satGeometry.getAttribute("position") as THREE.BufferAttribute;
       const camPos = this.camera.getWorldPosition(new THREE.Vector3());
       const world = new THREE.Vector3();
@@ -669,7 +731,6 @@ export default class SatelliteScene {
           y: rect.top + ((1 - ndc.y) / 2) * rect.height,
         });
       }
-      const radius = event.pointerType === "touch" ? PICK_RADIUS_TOUCH_PX : PICK_RADIUS_MOUSE_PX;
       const hitIndexes = screenSpaceHits(screenPts, event.clientX, event.clientY, radius);
       const nextIndex = pickSatelliteHitIndex(hitIndexes, this.selectedIndex);
       if (nextIndex !== null) {
@@ -840,6 +901,7 @@ export default class SatelliteScene {
     // Satellite point size.
     if (next.satRadius !== prev.satRadius) {
       this.satMaterial.size = next.satRadius * 2;
+      this.massLayer?.setSatRadius(next.satRadius);
     }
 
     // Colors: mutate the cached Color objects in place. fovConeMaterial.color
@@ -870,9 +932,7 @@ export default class SatelliteScene {
       geo.translate(0, -0.5, 0);
       this.fovConeGeometry.dispose();
       this.fovConeGeometry = geo;
-      this.fovConeMeshes.forEach((m) => {
-        m.geometry = geo;
-      });
+      this.fovCones.geometry = geo;
     }
 
     // Ground-station cone geometry depends on the min-elevation and range.
@@ -975,9 +1035,9 @@ export default class SatelliteScene {
   }
 
   /** Write the Earth-fixed sub-satellite point at `date` into vertex `index`. */
-  private writeGroundTrackVertex(rec: satellite.SatRec, date: Date, index: number): boolean {
-    const pv = satellite.propagate(rec, date);
-    if (!pv?.position) return false;
+  private writeGroundTrackVertex(satIndex: number, date: Date, index: number): boolean {
+    const pv = this.propagateIndex(satIndex, date);
+    if (!pv) return false;
     const geo = satellite.eciToGeodetic(pv.position, satellite.gstime(date));
     const ecf = satellite.geodeticToEcf({
       longitude: geo.longitude,
@@ -1015,7 +1075,7 @@ export default class SatelliteScene {
   private updateGroundTrack(gmst: number) {
     const line = this.groundTrackLine;
     if (!line || this.selectedIndex === null) return;
-    const rec = this.satRecs[this.selectedIndex];
+    const satIndex = this.selectedIndex;
     const nowMs = this.currentSimDate.getTime();
     // Time moved backwards (seek/reverse): restart the trail from here.
     if (this.groundTrackCount > 0 && nowMs < this.groundTrackNextSampleMs - GROUND_TRACK_STEP_MS) {
@@ -1025,18 +1085,35 @@ export default class SatelliteScene {
     while (this.groundTrackNextSampleMs <= nowMs) {
       this.ensureGroundTrackCapacity(this.groundTrackCount + 2);
       const sampleDate = new Date(this.groundTrackNextSampleMs);
-      if (this.writeGroundTrackVertex(rec, sampleDate, this.groundTrackCount)) this.groundTrackCount += 1;
+      if (this.writeGroundTrackVertex(satIndex, sampleDate, this.groundTrackCount)) this.groundTrackCount += 1;
       this.groundTrackNextSampleMs += GROUND_TRACK_STEP_MS;
     }
     this.ensureGroundTrackCapacity(this.groundTrackCount + 1);
-    const hasTip = this.writeGroundTrackVertex(rec, this.currentSimDate, this.groundTrackCount);
+    const hasTip = this.writeGroundTrackVertex(satIndex, this.currentSimDate, this.groundTrackCount);
     line.geometry.setDrawRange(0, this.groundTrackCount + (hasTip ? 1 : 0));
     line.geometry.getAttribute("position").needsUpdate = true;
     line.rotation.y = gmst;
   }
 
+  /**
+   * ECI state (km, km/s) of satellite `i` at `date` from whichever propagator
+   * draws it — SGP4 in CPU mode, the GPU layer's J2 twin in mass mode — so
+   * orbit lines, tracks and the follow camera stay on the drawn point.
+   */
+  private propagateIndex(i: number, date: Date): { position: Vec3; velocity: Vec3 | null } | null {
+    if (this.massLayer) return this.massLayer.stateAt(i, date.getTime());
+    const pv = satellite.propagate(this.satRecs[i], date);
+    if (!pv?.position) return null;
+    return { position: pv.position, velocity: pv.velocity ?? null };
+  }
+
+  private orbitPeriodMinutes(i: number): number {
+    return this.massLayer ? this.massLayer.periodMinutes(i) : (2 * Math.PI) / this.satRecs[i].no;
+  }
+
   private selectSatellite(idx: number) {
     this.selectedIndex = idx;
+    this.massLayer?.setSelected(idx);
     this.params.onSelect?.(idx);
     this.updateTrack();
     this.resetGroundTrack();
@@ -1044,6 +1121,7 @@ export default class SatelliteScene {
 
   private clearSatelliteSelection() {
     this.selectedIndex = null;
+    this.massLayer?.setSelected(null);
     this.hasCachedSelection = false;
     this.hasCachedVelocity = false;
     this.params.onSelect?.(null);
@@ -1063,14 +1141,15 @@ export default class SatelliteScene {
       this.orbitLine = null;
     }
     if (this.selectedIndex === null) return;
-    const rec = this.satRecs[this.selectedIndex];
+    const satIndex = this.selectedIndex;
     const points: THREE.Vector3[] = [];
-    const periodMinutes = (2 * Math.PI) / rec.no;
-    const trackMinutes = Math.round(periodMinutes * 2);
+    const periodMinutes = this.orbitPeriodMinutes(satIndex);
+    // Cap at ~2 days so a GEO/HEO pick never builds a huge line.
+    const trackMinutes = Math.min(Math.round(periodMinutes * 2), 2880);
     for (let m = 0; m <= trackMinutes; m += 1) {
       const d = new Date(this.currentSimDate.getTime() + m * 60000);
-      const pv = satellite.propagate(rec, d);
-      if (pv?.position) {
+      const pv = this.propagateIndex(satIndex, d);
+      if (pv) {
         const { x, y, z } = pv.position;
         points.push(
           new THREE.Vector3(
@@ -1106,10 +1185,14 @@ export default class SatelliteScene {
   }
 
   private islNodeScenePosition(nodeId: number, target: THREE.Vector3): THREE.Vector3 {
-    const satCount = this.satRecs.length;
+    // The routing worker only knows the editor satellites; its two endpoint
+    // node ids follow them, ahead of any catalog rows drawn after them.
+    const satCount = this.params.satellites.length;
     if (nodeId === satCount) return target.copy(this.islEndpointMeshA.position);
     if (nodeId === satCount + 1) return target.copy(this.islEndpointMeshB.position);
-    const p = this.satEciPositions[nodeId];
+    const p = this.massLayer
+      ? this.propagateIndex(nodeId, this.currentSimDate)?.position ?? { x: 0, y: 0, z: 0 }
+      : this.satEciPositions[nodeId];
     return target.set(
       p.x / EARTH_RADIUS_EQUATOR_KM,
       p.z / EARTH_RADIUS_POLAR_KM,
@@ -1437,12 +1520,21 @@ export default class SatelliteScene {
       this.params.stationInfoRef.current.style.top = `${y}px`;
     }
 
+    const gsScene = gsEcis.map((p) => new THREE.Vector3(
+      p.x / EARTH_RADIUS_EQUATOR_KM,
+      p.z / EARTH_RADIUS_POLAR_KM,
+      -p.y / EARTH_RADIUS_EQUATOR_KM,
+    ));
+    this.linkCount = 0;
+    this.fovConeCount = 0;
+    const satPosition = this.tempVectorB;
+
     for (let i = 0; i < this.satRecs.length; i++) {
       const rec = this.satRecs[i];
       const pv = satellite.propagate(rec, simDate);
       if (pv?.position) {
         const { x, y, z } = pv.position;
-        const satPosition = new THREE.Vector3(
+        satPosition.set(
           x / EARTH_RADIUS_EQUATOR_KM,
           z / EARTH_RADIUS_POLAR_KM,
           -y / EARTH_RADIUS_EQUATOR_KM,
@@ -1467,39 +1559,18 @@ export default class SatelliteScene {
 
         const satEcf = satellite.eciToEcf(pv.position, gmst);
         let anyVisible = false;
-        this.params.groundStations.forEach((_, gi) => {
+        for (let gi = 0; gi < observerGds.length; gi++) {
           const look = satellite.ecfToLookAngles(observerGds[gi], satEcf);
           // Visibility is determined solely by elevation angle to support satellites at any altitude
-          const visible = look.elevation > minElevationRads[gi];
-          if (visible) {
+          if (look.elevation > minElevationRads[gi]) {
             anyVisible = true;
-            const p1 = new THREE.Vector3(
-              gsEcis[gi].x / EARTH_RADIUS_EQUATOR_KM,
-              gsEcis[gi].z / EARTH_RADIUS_POLAR_KM,
-              -gsEcis[gi].y / EARTH_RADIUS_EQUATOR_KM,
-            );
-            this.linkGeometries[gi][i].setFromPoints([p1, satPosition.clone()]);
-            this.linkLines[gi][i].visible = true;
-          } else {
-            this.linkLines[gi][i].visible = false;
+            this.pushLink(gsScene[gi], satPosition);
           }
-        });
+        }
         if (this.selectedIndex === i) {
-          this.cachedSelectedPosition.copy(satPosition);
-          this.hasCachedSelection = true;
+          this.cacheSelectedState(satPosition, pv.velocity ?? null);
           hasSelectedSat = true;
-          if (pv.velocity) {
-            this.cachedSelectedVelocity.set(
-              pv.velocity.x,
-              pv.velocity.z,
-              -pv.velocity.y,
-            ).multiplyScalar(1 / EARTH_RADIUS_EQUATOR_KM);
-            this.hasCachedVelocity = true;
-            hasSelectedVelocity = true;
-            if (this.cachedSelectedVelocity.lengthSq() > 1e-8) {
-              this.followBasis.copy(this.cachedSelectedVelocity).normalize();
-            }
-          }
+          hasSelectedVelocity = !!pv.velocity;
           this.satColorAttr.setXYZ(i, this.satelliteSelectedColor.r, this.satelliteSelectedColor.g, this.satelliteSelectedColor.b);
         } else if (anyVisible) {
           this.satColorAttr.setXYZ(i, this.satelliteVisibleColor.r, this.satelliteVisibleColor.g, this.satelliteVisibleColor.b);
@@ -1507,95 +1578,35 @@ export default class SatelliteScene {
           this.satColorAttr.setXYZ(i, this.satelliteHiddenColor.r, this.satelliteHiddenColor.g, this.satelliteHiddenColor.b);
         }
 
-        const cone = this.fovConeMeshes[i];
-        if (cone) {
-          if (this.params.showSatelliteFovCones) {
-            const hasTilt = this.params.fovConeAlongTrackDeg !== 0 || this.params.fovConeCrossTrackDeg !== 0;
-            let coneHeightKm: number | null = null;
-
-            if (hasTilt && pv.velocity) {
-              // Use ray-sphere intersection for tilted cones
-              coneHeightKm = computeTiltedConeHeight(
-                pv.position,
-                pv.velocity,
-                this.params.fovConeAlongTrackDeg,
-                this.params.fovConeCrossTrackDeg,
-                this.params.fovConeHalfAngleDeg,
-                EARTH_RADIUS_EQUATOR_KM,
-              );
-            } else {
-              // Use nadir-based calculation for non-tilted cones
-              const rSat = Math.sqrt(x * x + y * y + z * z);
-              const sinTerm = rSat * sinHalfAngle;
-              const underRoot = (EARTH_RADIUS_EQUATOR_KM * EARTH_RADIUS_EQUATOR_KM) - (sinTerm * sinTerm);
-              if (underRoot > 0 && sinHalfAngle > 0) {
-                const sqrtTerm = Math.sqrt(underRoot);
-                const slantLengthKm = rSat * cosHalfAngle - sqrtTerm;
-                if (slantLengthKm > 0) {
-                  coneHeightKm = slantLengthKm * cosHalfAngle;
-                }
-              }
-            }
-
-            if (coneHeightKm !== null && coneHeightKm > 0) {
-              const normalizedHeight = coneHeightKm / EARTH_RADIUS_EQUATOR_KM;
-              const clampedHeight = Math.max(normalizedHeight, this.fovConeMinHeight);
-              cone.visible = true;
-              cone.position.copy(satPosition);
-              cone.scale.setScalar(clampedHeight);
-              // Use LVLH coordinate system if velocity is available
-              if (pv.velocity) {
-                const fovQuat = computeFovConeQuaternion(
-                  pv.position,
-                  pv.velocity,
-                  this.params.fovConeAlongTrackDeg,
-                  this.params.fovConeCrossTrackDeg,
-                );
-                if (fovQuat) {
-                  cone.quaternion.copy(fovQuat);
-                } else {
-                  // Fallback to pure nadir if LVLH computation fails
-                  tmpDir.copy(satPosition).normalize().negate();
-                  if (tmpDir.lengthSq() > 0) {
-                    tmpQuat.setFromUnitVectors(DOWN_AXIS, tmpDir);
-                    cone.quaternion.copy(tmpQuat);
-                  }
-                }
-              } else {
-                // Fallback when velocity is not available
-                tmpDir.copy(satPosition).normalize().negate();
-                if (tmpDir.lengthSq() > 0) {
-                  tmpQuat.setFromUnitVectors(DOWN_AXIS, tmpDir);
-                  cone.quaternion.copy(tmpQuat);
-                }
-              }
-            } else {
-              cone.visible = false;
-            }
-          } else {
-            cone.visible = false;
-          }
+        if (this.params.showSatelliteFovCones) {
+          this.pushFovCone(pv.position, pv.velocity ?? null, satPosition, sinHalfAngle, cosHalfAngle);
         }
       } else {
-        // Propagation failed: explicitly mark satellite as hidden and hide link lines.
+        // Propagation failed: explicitly mark satellite as hidden (no link, no cone).
         // (The ISL routing worker re-propagates independently and applies the
         // same failed-propagation exclusion on its own copy of the satrecs.)
         this.satColorAttr.setXYZ(i, this.satelliteHiddenColor.r, this.satelliteHiddenColor.g, this.satelliteHiddenColor.b);
-        this.params.groundStations.forEach((_, gi) => {
-          this.linkLines[gi][i].visible = false;
-        });
-        const cone = this.fovConeMeshes[i];
-        if (cone) {
-          cone.visible = false;
-        }
       }
     }
 
-    this.satPosAttr.needsUpdate = true;
-    this.satColorAttr.needsUpdate = true;
-    this.groundPosAttr.needsUpdate = true;
-    this.satGeometry.computeBoundingSphere();
-    this.groundGeometry.computeBoundingSphere();
+    if (this.massLayer) {
+      const selected = this.updateMassLayer(simDate, gmst, gsEcis, gsScene, sinHalfAngle, cosHalfAngle);
+      hasSelectedSat = selected.hasSelectedSat;
+      hasSelectedVelocity = selected.hasSelectedVelocity;
+    }
+
+    this.linkGeometry.setDrawRange(0, this.linkCount * 2);
+    (this.linkGeometry.getAttribute("position") as THREE.BufferAttribute).needsUpdate = true;
+    this.fovCones.count = this.fovConeCount;
+    this.fovCones.instanceMatrix.needsUpdate = true;
+
+    if (this.satRecs.length > 0) {
+      this.satPosAttr.needsUpdate = true;
+      this.satColorAttr.needsUpdate = true;
+      this.groundPosAttr.needsUpdate = true;
+      this.satGeometry.computeBoundingSphere();
+      this.groundGeometry.computeBoundingSphere();
+    }
 
     this.updateGroundTrack(gmst);
     this.updateIslMarkersAndPath(simDate, gmst, nowReal);
@@ -1608,6 +1619,167 @@ export default class SatelliteScene {
     }
     this.renderer.render(this.scene, this.camera);
   };
+
+  private ensureLinkCapacity(links: number) {
+    if (links * 6 <= this.linkPositions.length) return;
+    const next = new Float32Array(Math.max(links, (this.linkPositions.length / 6) * 2) * 6);
+    next.set(this.linkPositions);
+    this.linkPositions = next;
+    // Free the old GPU buffer before swapping in the larger attribute.
+    this.linkGeometry.dispose();
+    const attr = new THREE.BufferAttribute(next, 3);
+    attr.setUsage(THREE.DynamicDrawUsage);
+    this.linkGeometry.setAttribute("position", attr);
+  }
+
+  private pushLink(from: THREE.Vector3, to: THREE.Vector3) {
+    this.ensureLinkCapacity(this.linkCount + 1);
+    const o = this.linkCount * 6;
+    const a = this.linkPositions;
+    a[o] = from.x; a[o + 1] = from.y; a[o + 2] = from.z;
+    a[o + 3] = to.x; a[o + 4] = to.y; a[o + 5] = to.z;
+    this.linkCount++;
+  }
+
+  private cacheSelectedState(satPosition: THREE.Vector3, velocityEci: Vec3 | null) {
+    this.cachedSelectedPosition.copy(satPosition);
+    this.hasCachedSelection = true;
+    if (!velocityEci) return;
+    this.cachedSelectedVelocity.set(
+      velocityEci.x,
+      velocityEci.z,
+      -velocityEci.y,
+    ).multiplyScalar(1 / EARTH_RADIUS_EQUATOR_KM);
+    this.hasCachedVelocity = true;
+    if (this.cachedSelectedVelocity.lengthSq() > 1e-8) {
+      this.followBasis.copy(this.cachedSelectedVelocity).normalize();
+    }
+  }
+
+  private readonly coneMatrix = new THREE.Matrix4();
+  private readonly coneQuaternion = new THREE.Quaternion();
+  private readonly coneScale = new THREE.Vector3();
+  private readonly coneDirection = new THREE.Vector3();
+
+  /** Append one FOV cone instance; skipped when the cone does not reach the Earth. */
+  private pushFovCone(
+    positionEci: Vec3,
+    velocityEci: Vec3 | null,
+    satPosition: THREE.Vector3,
+    sinHalfAngle: number,
+    cosHalfAngle: number,
+  ) {
+    if (this.fovConeCount >= this.fovCones.instanceMatrix.count) return;
+    const hasTilt = this.params.fovConeAlongTrackDeg !== 0 || this.params.fovConeCrossTrackDeg !== 0;
+    let coneHeightKm: number | null = null;
+    if (hasTilt && velocityEci) {
+      // Use ray-sphere intersection for tilted cones
+      coneHeightKm = computeTiltedConeHeight(
+        positionEci,
+        velocityEci,
+        this.params.fovConeAlongTrackDeg,
+        this.params.fovConeCrossTrackDeg,
+        this.params.fovConeHalfAngleDeg,
+        EARTH_RADIUS_EQUATOR_KM,
+      );
+    } else {
+      // Use nadir-based calculation for non-tilted cones
+      const { x, y, z } = positionEci;
+      const rSat = Math.sqrt(x * x + y * y + z * z);
+      const sinTerm = rSat * sinHalfAngle;
+      const underRoot = (EARTH_RADIUS_EQUATOR_KM * EARTH_RADIUS_EQUATOR_KM) - (sinTerm * sinTerm);
+      if (underRoot > 0 && sinHalfAngle > 0) {
+        const slantLengthKm = rSat * cosHalfAngle - Math.sqrt(underRoot);
+        if (slantLengthKm > 0) coneHeightKm = slantLengthKm * cosHalfAngle;
+      }
+    }
+    if (coneHeightKm === null || coneHeightKm <= 0) return;
+
+    // Use the LVLH frame when velocity is available, else point at nadir.
+    const fovQuat = velocityEci
+      ? computeFovConeQuaternion(
+        positionEci,
+        velocityEci,
+        this.params.fovConeAlongTrackDeg,
+        this.params.fovConeCrossTrackDeg,
+      )
+      : null;
+    if (fovQuat) {
+      this.coneQuaternion.copy(fovQuat);
+    } else {
+      this.coneDirection.copy(satPosition).normalize().negate();
+      if (this.coneDirection.lengthSq() === 0) return;
+      this.coneQuaternion.setFromUnitVectors(DOWN_AXIS, this.coneDirection);
+    }
+    const normalizedHeight = coneHeightKm / EARTH_RADIUS_EQUATOR_KM;
+    this.coneScale.setScalar(Math.max(normalizedHeight, this.fovConeMinHeight));
+    this.coneMatrix.compose(satPosition, this.coneQuaternion, this.coneScale);
+    this.fovCones.setMatrixAt(this.fovConeCount++, this.coneMatrix);
+  }
+
+  private readonly drawingBufferSize = new THREE.Vector2();
+
+  /**
+   * Mass mode per-frame work: GPU uniforms, plus CPU propagation of only the
+   * selected satellite and the capped focus subset (links, FOV cones).
+   */
+  private updateMassLayer(
+    simDate: Date,
+    gmst: number,
+    gsEcis: Vec3[],
+    gsScene: THREE.Vector3[],
+    sinHalfAngle: number,
+    cosHalfAngle: number,
+  ) {
+    const layer = this.massLayer!;
+    const simMs = simDate.getTime();
+    const cosG = Math.cos(gmst);
+    const sinG = Math.sin(gmst);
+    const stations: MassStation[] = this.params.groundStations.map((gs, gi) => {
+      const lat = THREE.MathUtils.degToRad(gs.latitudeDeg);
+      const lon = THREE.MathUtils.degToRad(gs.longitudeDeg);
+      const ux = Math.cos(lat) * Math.cos(lon);
+      const uy = Math.cos(lat) * Math.sin(lon);
+      return {
+        eci: gsEcis[gi],
+        // Geodetic up rotated from Earth-fixed to inertial, like ecfToEci.
+        up: { x: ux * cosG - uy * sinG, y: ux * sinG + uy * cosG, z: Math.sin(lat) },
+        sinMinElevation: Math.sin(THREE.MathUtils.degToRad(gs.minElevationDeg)),
+      };
+    });
+    this.renderer.getDrawingBufferSize(this.drawingBufferSize);
+    layer.update(simMs, stations, this.drawingBufferSize.y / 2);
+
+    const satPosition = this.tempVectorC;
+    const conesOn = this.params.showSatelliteFovCones;
+    const pairs = layer.advanceFocusScan(simMs, stations);
+    let lastSat = -1;
+    for (let k = 0; k < pairs.length; k += 2) {
+      const i = pairs[k];
+      const s = pairs[k + 1];
+      const st = layer.stateAt(i, simMs);
+      if (!stationSeesPoint(stations[s], st.position.x, st.position.y, st.position.z)) continue;
+      satPosition.set(
+        st.position.x / EARTH_RADIUS_EQUATOR_KM,
+        st.position.z / EARTH_RADIUS_POLAR_KM,
+        -st.position.y / EARTH_RADIUS_EQUATOR_KM,
+      );
+      this.pushLink(gsScene[s], satPosition);
+      if (conesOn && i !== lastSat) this.pushFovCone(st.position, st.velocity, satPosition, sinHalfAngle, cosHalfAngle);
+      lastSat = i;
+    }
+
+    if (this.selectedIndex === null) return { hasSelectedSat: false, hasSelectedVelocity: false };
+    const st = layer.stateAt(this.selectedIndex, simMs);
+    satPosition.set(
+      st.position.x / EARTH_RADIUS_EQUATOR_KM,
+      st.position.z / EARTH_RADIUS_POLAR_KM,
+      -st.position.y / EARTH_RADIUS_EQUATOR_KM,
+    );
+    this.cacheSelectedState(satPosition, st.velocity);
+    if (conesOn) this.pushFovCone(st.position, st.velocity, satPosition, sinHalfAngle, cosHalfAngle);
+    return { hasSelectedSat: true, hasSelectedVelocity: true };
+  }
 
   private updateCameraFollow(
     hasSelectedSat: boolean,
@@ -1774,7 +1946,9 @@ export default class SatelliteScene {
     this.stationGeo.dispose();
     this.stationConeGeometries.forEach((g) => g.dispose());
     this.fovConeGeometry.dispose();
-    this.linkGeometries.forEach(arr => arr.forEach(g => g.dispose()));
+    this.linkGeometry.dispose();
+    this.fovCones.dispose();
+    this.massLayer?.dispose();
     this.islPathGeometry.dispose();
     this.islEndpointGeo.dispose();
 

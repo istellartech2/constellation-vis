@@ -1,5 +1,5 @@
 import type { RemoteDisplaySettings } from "./lib/remoteDisplay";
-import { useRef, useEffect, useState, useCallback } from "react";
+import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import PlaybackBar from "./components/ui/PlaybackBar";
 import SatelliteEditor from "./components/ui/SatelliteEditor";
 import IslHud from "./components/ui/IslHud";
@@ -7,6 +7,14 @@ import { useSatelliteScene } from "./components/useSatelliteScene";
 import { SATELLITES as INITIAL_SATS, INITIAL_SHELL_RANGES } from "./lib/satellites";
 import { loadGroundStations, type GroundStation } from "./lib/groundStations";
 import SatelliteInfo from "./components/ui/SatelliteInfo";
+import {
+  deleteCatalogLayer,
+  loadCatalogLayers,
+  mergeCatalogLayers,
+  saveCatalogLayer,
+  type CatalogLayer,
+} from "./lib/catalogLayers";
+import { isMassMode } from "./lib/massSatelliteLayer";
 import { formatGroundStationInfo } from "./lib/formatGroundStationInfo";
 import { type EarthTextureMode } from "./lib/earthTextures";
 import { type SatelliteCameraMode } from "./lib/visualization";
@@ -49,6 +57,14 @@ function App() {
 
   const scenarioCommittedRef = useRef(false);
   const [satellites, setSatellites] = useState(INITIAL_SATS);
+  const [catalogLayers, setCatalogLayers] = useState<CatalogLayer[]>([]);
+  const catalog = useMemo(() => mergeCatalogLayers(catalogLayers), [catalogLayers]);
+  const totalSatellites = satellites.length + (catalog?.count ?? 0);
+  const filingCount = useMemo(
+    () => satellites.filter(s => s.meta?.dataStatus === "filing").length
+      + catalogLayers.reduce((sum, l) => sum + (l.kind === "filing" ? l.catalog.count : 0), 0),
+    [satellites, catalogLayers],
+  );
   const [groundStations, setGroundStations] = useState<GroundStation[]>([]);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [selectedGsIdx, setSelectedGsIdx] = useState<number | null>(null);
@@ -257,6 +273,27 @@ function App() {
     setCameraMode("free");
   }, []);
 
+  // Large catalogs persist in IndexedDB (far beyond localStorage); restore them once.
+  useEffect(() => {
+    let cancelled = false;
+    loadCatalogLayers().then((layers) => {
+      if (!cancelled && layers.length > 0) setCatalogLayers((prev) => (prev.length === 0 ? layers : prev));
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Indexes shift whenever layers change, so drop the selection like an editor update does.
+  const handleCatalogLayerAdd = useCallback((layer: CatalogLayer) => {
+    setSelectedIdx(null);
+    setCatalogLayers((prev) => [...prev.filter((l) => l.id !== layer.id), layer]);
+    saveCatalogLayer(layer).catch((err) => console.warn("大規模カタログを保存できませんでした:", err));
+  }, []);
+  const handleCatalogLayerRemove = useCallback((id: string) => {
+    setSelectedIdx(null);
+    setCatalogLayers((prev) => prev.filter((l) => l.id !== id));
+    deleteCatalogLayer(id).catch((err) => console.warn("大規模カタログを削除できませんでした:", err));
+  }, []);
+
   const handleAnalysisStart = () => {
     savedSpeedRef.current = speedRef.current;
     setIsPaused(true);
@@ -274,6 +311,7 @@ function App() {
     speedRef,
     startTime,
     satellites,
+    catalog,
     groundStations,
     satRadius,
     earthTexture,
@@ -375,15 +413,26 @@ function App() {
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
       <div ref={mountRef} style={{ width: "100%", height: "100%" }} />
-      {satellites.some(s => s.meta?.dataStatus === "filing") && (
-        <div className="glass pointer-events-none absolute top-3 left-1/2 z-10 flex max-w-[75vw] -translate-x-1/2 items-center gap-2 rounded-full px-3 py-1 text-xs text-fg" role="status" title="実際の衛星位置・配備状況を示しません">
-          <span className="size-2.5 shrink-0 rounded-full border-2 border-fg-muted" aria-hidden="true" />
-          申請上の仮配置 {satellites.filter(s => s.meta?.dataStatus === "filing").length.toLocaleString()}機
-          <span className="text-fg-subtle max-sm:hidden">· 実位置ではありません</span>
+      {(filingCount > 0 || isMassMode(totalSatellites)) && (
+        <div className="pointer-events-none absolute top-3 left-1/2 z-10 flex max-w-[75vw] -translate-x-1/2 flex-col items-center gap-1">
+          {filingCount > 0 && (
+            <div className="glass flex items-center gap-2 rounded-full px-3 py-1 text-xs text-fg" role="status" title="実際の衛星位置・配備状況を示しません">
+              <span className="size-2.5 shrink-0 rounded-full border-2 border-fg-muted" aria-hidden="true" />
+              申請上の仮配置 {filingCount.toLocaleString()}機
+              <span className="text-fg-subtle max-sm:hidden">· 実位置ではありません</span>
+            </div>
+          )}
+          {isMassMode(totalSatellites) && (
+            <div className="glass flex items-center gap-2 rounded-full px-3 py-1 text-xs text-fg" role="status" title="全衛星をGPUでJ2永年摂動の解析解により計算しています。リンク線・FOVコーンは一部の衛星に限って表示します。">
+              大規模表示 {totalSatellites.toLocaleString()}機
+              <span className="text-fg-subtle max-sm:hidden">· J2近似（GPU）</span>
+            </div>
+          )}
         </div>
       )}
       <SatelliteInfo
         satellites={satellites}
+        catalog={catalog}
         selectedIdx={selectedIdx}
         simTime={simTime}
         showPerturbation={showPerturbation}
@@ -498,6 +547,9 @@ function App() {
         islLastSwitchSimMs={islLastSwitchSimMs}
         currentSimMs={simTime.getTime()}
         openTabRequest={openTabRequest}
+        catalogLayers={catalogLayers}
+        onCatalogLayerAdd={handleCatalogLayerAdd}
+        onCatalogLayerRemove={handleCatalogLayerRemove}
       />
     </div>
   );
