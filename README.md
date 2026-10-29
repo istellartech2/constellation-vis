@@ -1,156 +1,42 @@
 # Constellation Visualizer
 
-[![Vercel](https://img.shields.io/badge/Vercel-Live%20Demo-black)](https://constellation-vis-rho.vercel.app/)
+Design satellite constellations, explore their orbits in 3D, and evaluate how they connect with the Earth and each other.
 
-A web application that visualizes satellite constellations in Earth orbit.
+[Open the app](https://constellation-vis-rho.vercel.app/) · [日本語](docs/README.ja.md) · [Documentation](docs/how-it-works.md)
 
-## License and third-party material
+## Explore
 
-Copyright 2026 Interstellar Technologies Inc. Project-authored material is licensed under [Apache-2.0](LICENSE). Third-party dependencies, map data, and assets retain their own terms; see [THIRD-PARTY.md](THIRD-PARTY.md) and the web build’s `third-party-licenses.txt`.
+- **Build a constellation** — define satellites from TLEs or orbital elements, import data from CelesTrak, or design a constellation from a pattern or mission requirements.
+- **See the geometry** — explore orbits, ground stations, sensor fields of view, and satellite links around a 3D Earth.
+- **Analyze a mission** — evaluate ground access, satellite-to-satellite routes, orbital lifetime, propellant, and power.
+- **Work with your tools** — save scenarios as TOML, run ground-link analysis from the CLI, or connect an AI to a temporary session.
 
-[constellation-viewer-demo.webm](https://github.com/user-attachments/assets/5389ebab-c38b-4a5f-9e25-4042f1ca3824)
+Satellite positions use `satellite.js` SGP4/SDP4. Access and link results describe geometric opportunities; they are not a radio link budget or an operating schedule. See the [calculation overview](docs/how-it-works.md) for model assumptions and limitations.
 
-## Features
+## Get started
 
-- 3D Earth with selectable textures and day/night lighting
-- Plot satellites from TLE strings or Keplerian elements
-- Generate constellations from six design patterns (Walker Delta/Star, Streets of Coverage, Flower, Lattice Flower, Necklace Flower) or from a mission-driven design wizard (see `docs/constellation-patterns.md` / `docs/constellation-design.md`)
-- Import live orbital data from CelesTrak (cached in IndexedDB so subsequent loads work offline and gracefully fall back when CelesTrak rate-limits a group)
-- Define ground stations on a map and visualize their visibility cones (elevation, off-nadir, or both)
-- Define the satellite sensor FOV (half-angle plus along-track / cross-track tilt) in one place (Display options › Satellite FOV) and reuse it for both the 3D cone and the station-access analysis
-- Apply a per-shell failure model (fixed count or percentage, deterministic draw)
-- Analysis tab for access and coverage statistics
-- Save / load the entire configuration as a single `settings.toml` bundle
+Requires [Bun](https://bun.sh/) 1.3.11 or later.
 
-## Models and documentation
-
-Satellite positions are calculated with `satellite.js` SGP4/SDP4. Access and routing analyses use those positions; lifetime estimates use a separate drag model.
-
-See [Calculation overview (日本語)](docs/how-it-works.md) for what each feature computes, and [Analysis models and definitions](docs/analysis-implementation.md) for equations and implementation details.
-
-## Prerequisites
-
-- [bun](https://bun.sh/) ≥ 1.3.11
-
-## Installation
-
-```bash
+```sh
 bun install
-```
-
-## Development
-
-Start the development server with hot module replacement:
-
-```bash
 bun run dev
 ```
 
-Open your browser and visit `http://localhost:5173`.
+Open [localhost:5173](http://localhost:5173). The development server runs the frontend; local AI session API development requires additional setup.
 
-### Running Tests
-
-Run the test suite (Bun native test runner):
-
-```bash
-bun run test
+```sh
+bun run test       # Bun tests
+bun run lint       # ESLint
+bun run build      # TypeScript and production build
+bun run build:cli  # Bun-powered CLI in dist/
 ```
 
-Lint the codebase:
+## Learn more
 
-```bash
-bun run lint
-```
+- [Calculation overview](docs/how-it-works.md) · [Models and implementation](docs/analysis-implementation.md)
+- [Constellation patterns](docs/constellation-patterns.md) · [Mission-driven design](docs/constellation-design.md) · [ISL routing](docs/isl-routing.md)
+- [CLI guide](docs/constelation-cli-SKILLS.md) · [AI session API](public/ai-api.md) · [Deployment and local API setup](docs/deployment.md)
 
-Build for production:
+## License
 
-```bash
-bun run build
-```
-
-## Deployment
-
-Live build: https://constellation-vis-rho.vercel.app/
-
-Hosted in the Interstellar Technologies Inc Vercel team. The GitHub repository is connected to Vercel: pushes to `main` deploy production; other branches receive preview deployments. `vercel.json` runs lint, the Bun test suite, TypeScript and Vite before publishing, so a failed check prevents release. GitHub Actions independently runs CI (including the CLI build). The previous GitHub Pages workflow is retained for manual legacy deployments only.
-
-The root Vite base path is `/`; manual GitHub Pages builds explicitly set `BASE_URL=/constellation-vis/`.
-
-### Private AI sessions
-
-In the scenario menu, start **AI連携**, copy the connection instructions, and give them to an external AI. HTTP updates are automatically reflected in the connected browser. Sessions use independent browser/controller Bearer tokens, encrypted Redis data, a fixed one-hour TTL and optimistic revisions. Ending a session deletes the live record. See [`public/ai-api.md`](public/ai-api.md) for the protocol, privacy boundaries, limits and curl examples.
-
-Server-only environment variables:
-
-- `KV_REST_API_URL` and `KV_REST_API_TOKEN` (or `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`): supplied by the project's Upstash integration.
-- `SESSION_ENCRYPTION_KEY`: 32 random bytes encoded as 64 hexadecimal characters. Set as a sensitive production/preview variable; never use a `VITE_` prefix. Changing it invalidates existing encrypted sessions.
-
-For local API development use `vercel dev` with development Redis credentials and a separate local encryption key. Plain `bun run dev` runs only the Vite frontend. Production and preview Redis keys are namespaced separately. Secrets, local environments, simulation run outputs and local datasets are excluded from deploy uploads.
-
----
-
-# Constellation Visualizer (日本語)
-
-地球周回軌道の衛星コンステレーションを可視化する Web アプリケーション。
-
-## 機能
-
-- 3D の地球を複数のテクスチャ・昼夜ライティングで描画
-- TLE / Keplerian 軌道要素から衛星をプロット
-- 6 種類の設計方式(Walker Delta/Star, Streets of Coverage, Flower, Lattice Flower, Necklace Flower)またはミッションから設計するウィザードでコンステレーションを生成(`docs/constellation-patterns.md` / `docs/constellation-design.md` 参照)
-- CelesTrak から軌道データをインポート（IndexedDB にキャッシュし、レート制限時は前回データへ自動フォールバック）
-- 地図上で地上局を定義し、可視範囲（仰角・オフナディア・両方）を可視化
-- 衛星のセンサ視野（視野半角・Along-track / Cross-track 傾き）を「表示オプション › 衛星の視野」で 1 か所だけ定義し、3D のコーン表示と地上局アクセス解析の可視条件で共通利用
-- コンステレーションのシェル単位で故障モデル（機数指定／割合指定、決定論的な抽選）を適用
-- アクセス・カバレッジを集計する解析タブ
-- 設定一式を `settings.toml` 1 ファイルにまとめて保存／読み込み
-
-## 計算モデルとドキュメント
-
-衛星位置は `satellite.js` の **SGP4/SDP4** で計算し、その位置からアクセス・通信経路・日照を評価します。寿命は別の大気抵抗モデルで見積もります。
-
-各機能の計算内容は [計算の概要](docs/how-it-works.md)、数式・定義・実装の詳細は [解析モデルと実装](docs/analysis-implementation.md) を参照してください。
-
-## 前提条件
-
-- [bun](https://bun.sh/) 1.3.11 以上
-
-## インストール
-
-リポジトリのフォルダで以下を実行:
-
-```bash
-bun install
-```
-
-## 開発
-
-開発サーバーを起動:
-
-```bash
-bun run dev
-```
-
-ブラウザで `http://localhost:5173` を開いてください。
-
-### テスト実行
-
-```bash
-bun run test
-```
-
-コード検査:
-
-```bash
-bun run lint
-```
-
-本番ビルド:
-
-```bash
-bun run build
-```
-
-## アプリケーション URL
-
-https://constellation-vis-rho.vercel.app/
+Copyright 2026 Interstellar Technologies Inc. Project-authored material is licensed under [Apache-2.0](LICENSE). Third-party components and data retain their own terms; see [THIRD-PARTY.md](THIRD-PARTY.md).
