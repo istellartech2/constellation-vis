@@ -1,4 +1,5 @@
 import type { OrbitalElements, SatelliteMetadata, SatelliteSpec } from "./satellites";
+import { FILING_METADATA_KEYS, serializeFilingMetadata } from "./filings/metadata";
 import { geoElementsFromLongitude } from "./astronomy";
 import {
   createDefaultFormationEntry,
@@ -252,7 +253,13 @@ function orbitalMetaFromEntry(entry: TomlRecord): SatelliteEditorMetadata | unde
   if (entry.objectName !== undefined) meta.objectName = String(entry.objectName);
   if (entry.objectId !== undefined) meta.objectId = String(entry.objectId);
   if (entry.noradCatId !== undefined) meta.noradCatId = Number(entry.noradCatId);
-  return meta.objectName || meta.objectId || meta.noradCatId !== undefined ? meta : undefined;
+  if (entry.dataStatus === "filing") {
+    meta.dataStatus = "filing";
+    for (const key of FILING_METADATA_KEYS) {
+      if (key !== "dataStatus" && typeof entry[key] === "string") meta[key] = entry[key];
+    }
+  }
+  return meta.objectName || meta.objectId || meta.noradCatId !== undefined || meta.dataStatus ? meta : undefined;
 }
 
 function cloneMeta(meta?: SatelliteEditorMetadata): SatelliteMetadata | undefined {
@@ -261,6 +268,7 @@ function cloneMeta(meta?: SatelliteEditorMetadata): SatelliteMetadata | undefine
     objectName: meta.objectName,
     objectId: meta.objectId,
     noradCatId: meta.noradCatId,
+    ...(meta.dataStatus === "filing" ? Object.fromEntries(FILING_METADATA_KEYS.map(key => [key, meta[key]])) : {}),
   };
 }
 
@@ -601,6 +609,7 @@ export function serializeSatelliteEditorConfig(config: SatelliteEditorConfig): s
   const lines: string[] = [];
   for (const entry of config.entries) {
     lines.push("[[satellites]]");
+    if (entry.kind === "manual") lines.push(...serializeFilingMetadata(entry.meta));
     if (entry.kind === "manual" && entry.type === "tle") {
       lines.push('type = "tle"');
       if (entry.name) lines.push(`name = ${JSON.stringify(entry.name)}`);

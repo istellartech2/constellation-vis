@@ -1,4 +1,5 @@
 import type { SatelliteSpec } from "../lib/satellites";
+import { serializeFilingMetadata } from "../lib/filings/metadata";
 
 const MU = 398600.4418; // km^3/s^2
 
@@ -292,11 +293,11 @@ function describeFailure(status: number, body: string): string {
 export function satellitesToToml(list: SatelliteSpec[]): string {
   return list
     .map((s) => {
-      const meta = s.meta
+      const meta = serializeFilingMetadata(s.meta).map(line => line + "\n").join("") + (s.meta
         ? ((s.meta.objectName ? `name = ${JSON.stringify(s.meta.objectName)}\n` : "") +
             (s.meta.objectId ? `objectId = ${JSON.stringify(s.meta.objectId)}\n` : "") +
             (s.meta.noradCatId !== undefined ? `noradCatId = ${s.meta.noradCatId}\n` : ""))
-        : "";
+        : "");
       if (s.type === "tle") {
         return (
           "[[satellites]]\n" +
@@ -329,8 +330,21 @@ export function mergeImportedSatellites(base: SatelliteSpec[], imported: Satelli
   const merged = [...base];
   const catalogId = (sat: SatelliteSpec): number => sat.meta?.noradCatId ??
     (sat.type === "elements" ? sat.elements.satnum : Number(sat.lines[0].slice(2, 7)));
+  // Filing IDs are local placeholders, not NORAD identities. Move them aside
+  // if an actual catalog object is later imported with the same number.
+  const incomingIds = new Set(imported.map(catalogId));
+  const occupied = new Set([...merged.map(catalogId), ...incomingIds]);
+  let placeholder = 90000;
+  merged.forEach((sat, index) => {
+    if (sat.type !== "elements" || sat.meta?.dataStatus !== "filing" || !incomingIds.has(sat.elements.satnum)) return;
+    while (occupied.has(placeholder) && placeholder <= 99999) placeholder++;
+    if (placeholder > 99999) throw new Error("仮配置の衛星IDを再割り当てできません。他の仮配置を減らしてください。");
+    merged[index] = { ...sat, elements: { ...sat.elements, satnum: placeholder } };
+    occupied.add(placeholder++);
+  });
   const indices = new Map<number, number>();
   merged.forEach((sat, index) => {
+    if (sat.meta?.dataStatus === "filing") return;
     const id = catalogId(sat);
     if (Number.isInteger(id) && id > 0) indices.set(id, index);
   });

@@ -18,6 +18,9 @@ import AnalysisTab, { type AnalysisType } from "./AnalysisTab";
 import OptionTab from "./OptionTab";
 import IslTab from "./IslTab";
 import ImportDialog from "./ImportDialog";
+import FilingImportDialog from "./FilingImportDialog";
+import { replaceFilingText } from "../../lib/filings/replace";
+import type { FilingDataset } from "../../lib/filings/types";
 import type { IslPathResult, IslSettings, IslShellRange } from "../../lib/isl/types";
 import {
   celestrakEntryToSat,
@@ -239,6 +242,7 @@ export default function SatelliteEditor({
   const remoteAppliedRef = useRef(false);
   const remoteStartTimeRef = useRef<string | null>(null);
   const [satText, setSatText] = useState("");
+  const [filingOpen, setFilingOpen] = useState(false);
   const [constText, setConstText] = useState("");
   const [gsText, setGsText] = useState("");
   const [startText, setStartText] = useState(() => {
@@ -398,7 +402,7 @@ export default function SatelliteEditor({
       onUpdate({
         satellites: [...base, ...con],
         groundStations: gs,
-        startTime: new Date(startText),
+        startTime: new Date(startText + "Z"),
         islShellRanges: shellRanges,
       });
       setUpdateFeedback("success");
@@ -413,7 +417,7 @@ export default function SatelliteEditor({
       satText,
       constText,
       gsText,
-      new Date(startText),
+      new Date(startText + "Z"),
     );
     downloadFile("settings.toml", bundle);
   };
@@ -433,9 +437,24 @@ export default function SatelliteEditor({
     }
   }
 
+  function applyFiling(dataset: FilingDataset, configuration: string, epoch: Date) {
+    const nextText = replaceFilingText(satText, dataset, configuration, epoch);
+    const base = parseSatellitesToml(nextText);
+    const { satellites: con, ranges } = constText ? buildConstellation(constText, base.length) : { satellites: [], ranges: [] };
+    const groundStations = parseGroundStationsToml(gsText);
+    validateSatellites(base);
+    validateSatellites(con);
+    validateGroundStations(groundStations);
+    onUpdate({ satellites: [...base, ...con], groundStations, startTime: epoch, islShellRanges: ranges });
+    setSatText(nextText);
+    setStartText(epoch.toISOString().slice(0, 16));
+    setUpdateFeedback("success");
+  }
+
   return (
     <>
       <NoticeDialog open={notice !== null} onClose={() => setNotice(null)} title="お知らせ" description={notice ?? ""} />
+      <FilingImportDialog open={filingOpen} onClose={() => setFilingOpen(false)} onApply={applyFiling} />
       <ImportDialog
         open={importOpen}
         importing={importing}
@@ -508,6 +527,7 @@ export default function SatelliteEditor({
                 onGsTextChange={setGsText}
                 onStartTextChange={setStartText}
                 onImportClick={() => setImportOpen(true)}
+                onFilingImportClick={() => setFilingOpen(true)}
                 onUpdate={handleUpdate}
                 updateFeedback={updateFeedback}
                 onSaveBundle={handleSaveBundle}

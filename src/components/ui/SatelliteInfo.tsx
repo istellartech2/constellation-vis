@@ -182,6 +182,11 @@ export default function SatelliteInfo({
         </button>
         </div>
       </header>
+      {meta?.dataStatus === "filing" && <div className="rounded-lg border border-amber-400/40 bg-amber-400/10 p-2 text-xs leading-relaxed">
+        <p className="font-medium text-amber-400">◇ 申請上の仮配置 · 構成 {meta.filingConfiguration === "default" ? "単一" : meta.filingConfiguration}</p>
+        <p className="text-fg-muted">基準日時・位相の解釈に仮定を含みます。実際の位置や運用を示しません。</p>
+        {meta.filingSource?.startsWith("https://www.itu.int/") && <a href={meta.filingSource} target="_blank" rel="noopener noreferrer" className="text-brand-text underline">公式申請を確認</a>}
+      </div>}
       <div role="radiogroup" aria-label="カメラ" className="grid grid-cols-3 gap-1 rounded-lg border border-line bg-sunken p-[3px]">
         {CAMERA_VIEW_OPTIONS.map((option) => {
           const selected = cameraMode === option.mode;

@@ -28,11 +28,13 @@ export function parseConfigBundle(text: string): ConfigBundle {
 
   let current: keyof typeof sections | null = null;
   let startTimeLine: string | null = null;
+  let hasSection = false;
 
   for (const rawLine of text.split(/\r?\n/)) {
     const trimmed = rawLine.trim();
     const sectionMatch = trimmed.match(/^# ===\s*(satellites|constellation|groundstations)\s*===\s*$/i);
     if (sectionMatch) {
+      hasSection = true;
       current = sectionMatch[1].toLowerCase() as keyof typeof sections;
       continue;
     }
@@ -44,6 +46,12 @@ export function parseConfigBundle(text: string): ConfigBundle {
     if (current) {
       sections[current].push(rawLine);
     }
+  }
+
+  if (!hasSection) {
+    throw new Error(
+      "設定ファイルの区切り（# === satellites === など）がありません。衛星単体の TOML は「衛星」の TOML 編集で読み込むか、設定ファイル形式で保存してください。",
+    );
   }
 
   const satText = sections.satellites.join("\n").trim();

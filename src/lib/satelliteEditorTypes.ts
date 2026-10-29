@@ -1,4 +1,4 @@
-import type { OrbitalElements } from "./satellites";
+import type { OrbitalElements, SatelliteMetadata } from "./satellites";
 
 export type ManualSatelliteType = "tle" | "elements" | "geo";
 export type FormationRelativeModel = "roe" | "relativeState";
@@ -13,7 +13,7 @@ export type AlongTrackArrangement = "centered";
 export type ProgradeDirection = "prograde" | "retrograde";
 export type CrossTrackSide = "north" | "south";
 
-export interface SatelliteEditorMetadata {
+export interface SatelliteEditorMetadata extends SatelliteMetadata {
   objectName?: string;
   objectId?: string;
   noradCatId?: number;

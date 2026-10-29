@@ -20,6 +20,13 @@ export interface OrbitalElements {
 }
 
 export interface SatelliteMetadata {
+  /** Declared filing geometry; never an observed or operational position. */
+  dataStatus?: "filing";
+  filingName?: string;
+  filingKey?: string;
+  filingConfiguration?: string;
+  filingSource?: string;
+  filingSha256?: string;
   objectName?: string;
   objectId?: string;
   noradCatId?: number;

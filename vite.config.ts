@@ -14,13 +14,16 @@ const port = env?.PORT ? Number(env.PORT) : undefined;
 
 export default defineConfig({
   plugins: [react(), tailwindcss(), thirdPartyNotices(), localSessionPlugin()],
-  worker: { plugins: () => [thirdPartyNotices(true)] },
+  worker: { format: 'es', plugins: () => [thirdPartyNotices(true)] },
   base,
   server: port ? { port } : undefined,
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
       "size-sensor": path.resolve(__dirname, "./src/lib/chartResizeObserver.ts"),
+      "stream": "stream-browserify",
+      "events": "events/",
+      "process": "process/browser",
     },
   },
 })

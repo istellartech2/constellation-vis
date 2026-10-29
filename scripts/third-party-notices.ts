@@ -49,6 +49,21 @@ export function noticesForModules(moduleIds: Iterable<string>): string {
       // 7301c160fda44cb8cf2b9fdfde61efad35736196.
       parts.push(readFileSync(join(overrides, "react-remove-scroll-bar-LICENSE"), "utf8").trim());
     }
+    if (!parts.length && meta.name === "isarray" && meta.version === "1.0.0") {
+      // This published package embeds the full MIT notice in README.md.
+      const readme = readFileSync(join(dir, "README.md"), "utf8");
+      const license = readme.split("## License\n")[1]?.trim();
+      if (meta.license !== "MIT" || !license?.includes("Permission is hereby granted")) {
+        throw new Error("Unexpected license notice for isarray@1.0.0");
+      }
+      parts.push(`--- README.md license ---\n${license.replaceAll("&lt;", "<").replaceAll("&gt;", ">")}`);
+    }
+    if (!parts.length && meta.name === "@nodable/entities" && meta.version === "3.1.0") {
+      // npm omits LICENSE; upstream nodable/val-parsers commit
+      // 4fe544c219e52cb6e302c43a88824a8333babe3e contains the MIT notice.
+      if (meta.license !== "MIT") throw new Error("Unexpected license for @nodable/entities@3.1.0");
+      parts.push(readFileSync(join(overrides, "nodable-entities-LICENSE"), "utf8").trim());
+    }
     if (!parts.length) {
       throw new Error(`Missing license notice for ${meta.name}@${meta.version}; verify upstream terms and add a version-specific override.`);
     }

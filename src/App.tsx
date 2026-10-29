@@ -381,6 +381,13 @@ function App() {
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
       <div ref={mountRef} style={{ width: "100%", height: "100%" }} />
+      {satellites.some(s => s.meta?.dataStatus === "filing") && (
+        <div className="pointer-events-none absolute top-3 left-1/2 z-10 max-w-[75vw] -translate-x-1/2 rounded-lg border border-amber-400/40 bg-surface-solid/95 px-3 py-2 text-center text-xs text-fg shadow-lg" role="status">
+          <span className="mr-1.5 text-amber-400" aria-hidden="true">◇</span>
+          申請上の仮配置 {satellites.filter(s => s.meta?.dataStatus === "filing").length.toLocaleString()}機
+          <span className="mt-0.5 block text-[10px] text-fg-muted">実際の衛星位置・配備状況を示しません</span>
+        </div>
+      )}
       <SatelliteInfo
         satellites={satellites}
         selectedIdx={selectedIdx}
