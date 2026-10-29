@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Download, ExternalLink, FileUp, Info, Loader2, ShieldCheck } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, ChevronRight, Download, ExternalLink, FileUp, Info, Loader2, Search, ShieldCheck } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./dialog";
 import { Button } from "./button";
-import { AI_FILING, FILING_CATALOG } from "../../lib/filings/catalog";
+import { FILING_CATALOG, hasPlacement, searchFilingCatalog, type FilingCatalogEntry } from "../../lib/filings/catalog";
 import { MAX_FILING_EXTRACT_BYTES, filingExtractFilename, parseFilingExtract, type FilingExtract } from "../../lib/filings/extract";
 import type { FilingConfiguration, FilingDataset, FilingWorkerResponse } from "../../lib/filings/types";
 import { downloadFile } from "../../lib/config";
@@ -16,6 +16,22 @@ interface Props {
   placed: Record<string, PlacedFiling>;
   onClose: () => void;
   onApply: (dataset: FilingDataset, configuration: string, epoch: Date) => void;
+}
+const COUNTRIES = [...new Set(FILING_CATALOG.map(entry => entry.country))].sort((a, b) => a.localeCompare(b, "ja"));
+function SourceRow({ item }: { item: FilingCatalogEntry }) {
+  const meta = [item.satellites !== undefined && `${item.satellites.toLocaleString()}機`, item.submission, item.date, item.country].filter(Boolean).join(" · ");
+  return (
+    <li className="flex items-center gap-3 py-1.5 pl-8 pr-3">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium" title={item.reference}>{item.name}</p>
+        <p className="truncate text-[11px] text-fg-muted" title={item.description}>{meta}{item.description && <span className="text-fg-subtle"> · {item.description}</span>}</p>
+      </div>
+      <div className="flex shrink-0 flex-col items-end gap-0.5">
+        <a href={item.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-brand-text hover:underline">{item.agency}で開く<ExternalLink className="size-3" /></a>
+        {!hasPlacement(item) && <span className="text-[10px] text-fg-subtle">配置データなし</span>}
+      </div>
+    </li>
+  );
 }
 function configurationLabel(id: string) { return id === "default" ? "単一構成" : `構成 ${id}`; }
 function summarize(config: FilingConfiguration) {
@@ -35,6 +51,14 @@ export default function FilingImportDialog({ open, defaultEpoch, placed, onClose
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [country, setCountry] = useState("");
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const groups = useMemo(() => searchFilingCatalog(FILING_CATALOG, query, country), [query, country]);
+  const matched = groups.reduce((sum, g) => sum + g.count, 0);
+  // While filtering, show every match instead of making people reopen groups.
+  const filtering = Boolean(query.trim() || country);
+  const toggleSystem = (id: string) => setExpanded(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const workerRef = useRef<Worker | null>(null);
   const generation = useRef(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -124,7 +148,7 @@ export default function FilingImportDialog({ open, defaultEpoch, placed, onClose
 
   return (
     <Dialog open={open} onOpenChange={value => { if (!value) close(); }}>
-      <DialogContent className="dialog-flush !w-[95vw] !max-w-2xl !max-h-[90vh] max-md:overflow-hidden max-md:h-[100dvh] max-md:rounded-none max-md:border-0 flex flex-col gap-0 p-0 bg-surface-solid text-fg border-line">
+      <DialogContent className={`dialog-flush !w-[95vw] !max-w-2xl !max-h-[90vh] ${dataset ? "" : "md:h-[min(90vh,760px)]"} max-md:overflow-hidden max-md:h-[100dvh] max-md:rounded-none max-md:border-0 flex flex-col gap-0 p-0 bg-surface-solid text-fg border-line`}>
         <DialogHeader className="px-4 pt-3 pb-2 border-b border-line max-md:pr-12 max-md:py-3 shrink-0">
           <div className="flex items-center gap-2 pr-8">
             {dataset && <button type="button" onClick={back} aria-label="ファイルを選び直す" title="ファイルを選び直す" className="-ml-1 inline-flex size-7 items-center justify-center rounded-md text-fg-muted hover:bg-raised-hover hover:text-fg"><ArrowLeft className="size-4" /></button>}
@@ -133,41 +157,80 @@ export default function FilingImportDialog({ open, defaultEpoch, placed, onClose
           <DialogDescription className="sr-only">ITUの申請ファイルを端末内で読み込み、申請上の配置をシナリオに追加します。</DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3 space-y-4">
+        <div className={`flex-1 min-h-0 px-4 py-3 ${dataset ? "overflow-y-auto overscroll-contain space-y-4" : "flex flex-col gap-4"}`}>
           {!dataset ? <>
             <div
               onDragOver={event => { event.preventDefault(); setDragging(true); }}
               onDragLeave={() => setDragging(false)}
               onDrop={event => { event.preventDefault(); setDragging(false); const file = event.dataTransfer.files[0]; if (file && !busy) void loadFile(file); }}
-              className={`rounded-lg border-2 border-dashed p-5 text-center transition-colors ${dragging ? "border-brand bg-brand-soft" : "border-line-strong bg-sunken"}`}
+              className={`flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border-2 border-dashed px-4 py-3 transition-colors ${dragging ? "border-brand bg-brand-soft" : "border-line-strong bg-sunken"}`}
             >
               <input ref={inputRef} type="file" accept=".mdb,.json" className="hidden" aria-label="申請ファイル" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void loadFile(file); }} />
-              <p className="text-sm font-semibold">申請ファイルを開く</p>
-              <p className="mt-1 text-xs text-fg-muted">SNS MDB（.mdb）または保存した抽出ファイル（.filing.json）</p>
-              <Button type="button" disabled={busy} onClick={() => inputRef.current?.click()} className="mt-3 h-9 gap-2 bg-brand hover:bg-brand-hover text-white font-semibold">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold">申請ファイルを開く</p>
+                <p className="text-xs text-fg-muted">SNS MDB（.mdb）または保存した抽出ファイル（.filing.json）</p>
+                {busy ? <button type="button" onClick={stop} className="text-[11px] text-fg-muted underline">解析を中止</button>
+                  : <p className="flex items-center gap-1 text-[11px] text-fg-subtle"><ShieldCheck className="size-3" />ドロップも可 · 端末内で解析し、送信しません</p>}
+              </div>
+              <Button type="button" disabled={busy} onClick={() => inputRef.current?.click()} className="h-9 shrink-0 gap-2 bg-brand hover:bg-brand-hover text-white font-semibold max-sm:w-full">
                 {busy ? <Loader2 className="size-4 animate-spin" /> : <FileUp className="size-4" />}{busy ? "端末内で解析中…" : "ファイルを選択"}
               </Button>
-              {busy ? <button type="button" onClick={stop} className="mt-2 block w-full text-xs text-fg-muted underline">解析を中止</button>
-                : <p className="mt-2 flex items-center justify-center gap-1 text-[11px] text-fg-subtle"><ShieldCheck className="size-3" />ドロップも可 · 端末内で解析し、送信しません</p>}
             </div>
 
-            <section>
-              <h3 className="text-sm font-semibold">ファイルの入手先</h3>
-              <p className="mt-0.5 mb-2 text-xs text-fg-muted">ITUの申請ページで、添付の「SNS(MDB) As Received Copy」をダウンロードします（ZIPは展開）。</p>
-              <ul className="space-y-1.5">
-                {FILING_CATALOG.map(item => (
-                  <li key={item.id} className="flex items-center gap-3 rounded-md border border-line bg-raised px-3 py-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium">{item.name}<span className="ml-2 text-[11px] font-normal text-fg-subtle">{item.country} · {item.date}</span></p>
-                      <p className="truncate text-[11px] text-fg-muted" title={item.description}>{item.description}</p>
-                    </div>
-                    <a href={item.url} target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center gap-1 text-xs text-brand-text hover:underline">ITUで開く<ExternalLink className="size-3" /></a>
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-2 text-[11px] text-fg-subtle">
-                参考（配置データなし）：<a href={AI_FILING.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-fg-muted hover:text-fg hover:underline">{AI_FILING.name}<ExternalLink className="size-3" /></a>
-              </p>
+            <section className="flex min-h-0 flex-1 flex-col">
+              <div className="flex items-baseline justify-between gap-2">
+                <h3 className="text-sm font-semibold">ファイルの入手先</h3>
+                <span className="text-xs text-fg-muted tabular-nums">{filtering ? `${matched} / ${FILING_CATALOG.length} 件` : `${groups.length} システム · ${FILING_CATALOG.length} 件`}</span>
+              </div>
+              <p className="mt-0.5 text-xs text-fg-muted">ITUの申請ページで、添付の「SNS(MDB) As Received Copy」をダウンロードします（ZIPは展開）。</p>
+              <div className="mt-2 flex gap-2">
+                <label className="relative min-w-0 flex-1">
+                  <span className="sr-only">申請を検索</span>
+                  <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-fg-subtle" aria-hidden="true" />
+                  <input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Starlink・GW-2・参照番号など" className="h-8 w-full rounded border-2 border-line-strong bg-sunken pl-7 pr-2 text-sm text-fg outline-none placeholder:text-fg-subtle focus:border-brand" />
+                </label>
+                <select aria-label="国で絞り込む" value={country} onChange={event => setCountry(event.target.value)} className="h-8 shrink-0 rounded border-2 border-line-strong bg-sunken px-1.5 text-sm text-fg outline-none focus:border-brand">
+                  <option value="">すべての国</option>
+                  {COUNTRIES.map(name => <option key={name} value={name}>{name}</option>)}
+                </select>
+              </div>
+              {groups.length ? (
+                <div className="mt-2 min-h-40 flex-1 divide-y divide-line overflow-y-auto overscroll-contain rounded-md border border-line bg-raised">
+                  {groups.map(({ system, series, count }) => {
+                    const open = filtering || expanded.has(system.id);
+                    return (
+                      <section key={system.id} aria-label={system.name}>
+                        <button type="button" aria-expanded={open} onClick={() => toggleSystem(system.id)} disabled={filtering}
+                          className="sticky top-0 z-10 flex w-full items-center gap-2 bg-raised px-3 py-2 text-left hover:bg-raised-hover disabled:cursor-default disabled:hover:bg-raised">
+                          <ChevronRight className={`size-3.5 shrink-0 text-fg-subtle transition-transform ${open ? "rotate-90" : ""}`} aria-hidden="true" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-semibold">{system.name}{system.operator && <span className="ml-2 text-[11px] font-normal text-fg-subtle">{system.operator}</span>}</span>
+                            {!open && <span className="block truncate text-[11px] text-fg-muted">{system.description}</span>}
+                          </span>
+                          <span className="shrink-0 rounded bg-sunken px-1.5 py-0.5 text-[10px] tabular-nums text-fg-muted">{count}件</span>
+                        </button>
+                        {open && <div className="pb-1">
+                          {series.map(item => (
+                            <div key={item.id}>
+                              {(system.series.length > 1 || item.description) && (
+                                <p className="truncate px-3 pb-0.5 pl-8 pt-1.5 text-[11px] text-fg-subtle">
+                                  <span className="font-semibold text-fg-muted">{item.label}</span>{item.description && ` · ${item.description}`}
+                                </p>
+                              )}
+                              <ul>{item.entries.map(entry => <SourceRow key={entry.id} item={entry} />)}</ul>
+                            </div>
+                          ))}
+                        </div>}
+                      </section>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="mt-2 rounded-md border border-line bg-raised px-3 py-4 text-center text-xs text-fg-muted">
+                  該当する申請はありません。
+                  <button type="button" onClick={() => { setQuery(""); setCountry(""); }} className="ml-1 underline hover:text-fg">条件をクリア</button>
+                </p>
+              )}
             </section>
           </> : <>
             <section className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
