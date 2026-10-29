@@ -35,7 +35,8 @@ bun run build:cli  # Bun-powered CLI in dist/
 
 - [Calculation overview](docs/how-it-works.md) · [Models and implementation](docs/analysis-implementation.md)
 - [Constellation patterns](docs/constellation-patterns.md) · [Mission-driven design](docs/constellation-design.md) · [ISL routing](docs/isl-routing.md)
-- [CLI guide](docs/constelation-cli-SKILLS.md) · [AI session API](public/ai-api.md) · [Deployment and local API setup](docs/deployment.md)
+- [CLI guide](docs/constelation-cli-SKILLS.md) · [AI session API](public/ai-api.md) · [Deployment](docs/deployment.md)
+- [Contributing](CONTRIBUTING.md) · [Releasing](docs/releasing.md)
 
 ## License
 

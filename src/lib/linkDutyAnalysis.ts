@@ -1,4 +1,5 @@
 import * as satellite from "satellite.js";
+import { version } from "../../package.json";
 import { toSatrec, type SatelliteSpec } from "./satellites";
 import {
   calculateLinkGeometry,
@@ -392,7 +393,7 @@ export function analyzeLinkDuty(input: LinkDutyAnalysisInput): LinkDutyAnalysisR
   const constellationEndToEndSeconds = sumIntervals(constellationEndToEnd);
   return {
     schemaVersion: 1,
-    generator: { name: "constelation-cli", version: "0.1.0" },
+    generator: { name: "constelation-cli", version },
     analysis: {
       startTime: input.startTime.toISOString(),
       endTime: new Date(endMs).toISOString(),

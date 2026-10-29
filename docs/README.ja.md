@@ -36,6 +36,7 @@ bun run build:cli  # Bun で実行する CLI を dist/ に生成
 - [計算の概要](how-it-works.md) · [解析モデルと実装](analysis-implementation.md)
 - [コンステレーション配置方式](constellation-patterns.md) · [ミッションからの設計](constellation-design.md) · [衛星間リンクの経路探索](isl-routing.md)
 - [CLI ガイド](constelation-cli-SKILLS.md) · [AI セッション API](../public/ai-api.md) · [デプロイとローカル API 設定](deployment.md)
+- [PR の進め方](../CONTRIBUTING.md) · [リリース手順](releasing.md)
 
 ## ライセンス
 

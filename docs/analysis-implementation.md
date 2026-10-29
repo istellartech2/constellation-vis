@@ -375,7 +375,7 @@ endToEnd      = intersect( service, feeder )    # 同時に両方繋がってい
 
 ### 6.4 出力スキーマ
 
-`LinkDutyAnalysisResult`（`schemaVersion: 1`、`generator: { name: "constelation-cli", version: "0.1.0" }`）。`analysis` ブロックにモデル規約が入る（§5.2）。`satellites[].{duty, links, contactWindows}` と、時刻ごとの `samples`（`includeSamples: false` / CLI の `--summary-only` で省略可）、`warnings`。
+`LinkDutyAnalysisResult`（`schemaVersion: 1`、`generator.name: "constelation-cli"`、`generator.version` は `package.json` のバージョン）。`analysis` ブロックにモデル規約が入る（§5.2）。`satellites[].{duty, links, contactWindows}` と、時刻ごとの `samples`（`includeSamples: false` / CLI の `--summary-only` で省略可）、`warnings`。
 
 CLI からの使い方は [constelation-cli-SKILLS.md](constelation-cli-SKILLS.md) を参照。
 

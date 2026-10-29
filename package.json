@@ -2,7 +2,7 @@
   "name": "constellation-vis",
   "private": true,
   "license": "Apache-2.0",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "predev": "bun scripts/generate-satellites.ts",

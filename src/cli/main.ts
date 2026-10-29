@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { writeFile } from "node:fs/promises";
+import { version } from "../../package.json";
 import { analyzeLinkDuty } from "../lib/linkDutyAnalysis";
 import { loadScenario } from "./scenarioParser";
 import { serializeJson, writeCsvOutput } from "./output";
@@ -14,7 +15,7 @@ interface CliOptions {
   stepSeconds?: number;
 }
 
-const HELP = `constelation-cli 0.1.0
+const HELP = `constelation-cli ${version}
 
 Usage:
   constelation-cli analyze <scenario.toml> [options]
@@ -90,7 +91,7 @@ export async function runCli(args: string[]): Promise<number> {
     return 0;
   }
   if (parsed === "version") {
-    process.stdout.write("0.1.0\n");
+    process.stdout.write(`${version}\n`);
     return 0;
   }
   const scenario = await loadScenario(parsed.inputPath);

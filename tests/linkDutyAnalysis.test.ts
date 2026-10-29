@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { parseScenarioToml } from "../src/cli/scenarioParser";
 import { analyzeLinkDuty } from "../src/lib/linkDutyAnalysis";
+import { version } from "../package.json";
 
 describe("link duty analysis", () => {
   it("finds service, feeder, and end-to-end duty", async () => {
@@ -11,6 +12,7 @@ describe("link duty analysis", () => {
     const result = analyzeLinkDuty({ ...scenario, stepSeconds: 30, includeSamples: false });
     const satellite = result.satellites[0];
 
+    expect(result.generator.version).toBe(version);
     expect(satellite.contactWindows.length).toBeGreaterThan(0);
     expect(satellite.duty.serviceRatio).toBeGreaterThan(0);
     expect(satellite.duty.feederRatio).toBeGreaterThan(0);
