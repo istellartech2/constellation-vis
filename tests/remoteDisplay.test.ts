@@ -15,4 +15,13 @@ describe("validateRemoteDisplay", () => {
   it("rejects unknown fields", () => {
     expect(() => validateRemoteDisplay({ nope: true })).toThrow("Unknown display field");
   });
+
+  it("rewrites legacy earth texture paths to mode ids", () => {
+    expect(validateRemoteDisplay({ earthTexture: "./assets/earth02.webp" })).toEqual({ earthTexture: "natural-earth" });
+    expect(() => validateRemoteDisplay({ earthTexture: "./assets/earth/day-natural-4k.webp" })).toThrow("Unknown earthTexture");
+  });
+
+  it("accepts the border and cloud toggles", () => {
+    expect(validateRemoteDisplay({ showCountryBorders: true, showClouds: false })).toEqual({ showCountryBorders: true, showClouds: false });
+  });
 });

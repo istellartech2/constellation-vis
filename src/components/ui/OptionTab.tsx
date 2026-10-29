@@ -23,7 +23,7 @@ import PanelSection from "./PanelSection";
 import { ColorChip, HelpTip, InlineSlider, SegmentedControl } from "./compactControls";
 import { useUiTheme } from "../../lib/uiTheme";
 import type SatelliteScene from "../../lib/visualization";
-import type { EarthTextureMode } from "../../lib/earthTextures";
+import { isLayeredEarthMode, type EarthTextureMode } from "../../lib/earthTextures";
 import {
   listSavedViews,
   saveNamedView,
@@ -39,6 +39,10 @@ interface Props {
   onSatRadiusChange: (r: number) => void;
   earthTexture: EarthTextureMode;
   onEarthTextureChange: (t: EarthTextureMode) => void;
+  showCountryBorders: boolean;
+  onShowCountryBordersChange: (v: boolean) => void;
+  showClouds: boolean;
+  onShowCloudsChange: (v: boolean) => void;
   showGraticule: boolean;
   onShowGraticuleChange: (v: boolean) => void;
   showEcliptic: boolean;
@@ -110,6 +114,10 @@ export default function OptionTab(props: Props) {
     onSatRadiusChange,
     earthTexture,
     onEarthTextureChange,
+    showCountryBorders,
+    onShowCountryBordersChange,
+    showClouds,
+    onShowCloudsChange,
     showGraticule,
     onShowGraticuleChange,
     showEcliptic,
@@ -329,6 +337,20 @@ export default function OptionTab(props: Props) {
       {/* A. 地球の見た目 */}
       <PanelSection title="地球の見た目" icon={<Globe />}>
         <EarthTextureSelector value={earthTexture} onChange={onEarthTextureChange} />
+        <CheckboxItem
+          id="countryBorders"
+          checked={showCountryBorders}
+          onChange={onShowCountryBordersChange}
+          label="国境線を表示"
+        />
+        {isLayeredEarthMode(earthTexture) && (
+          <CheckboxItem
+            id="clouds"
+            checked={showClouds}
+            onChange={onShowCloudsChange}
+            label="雲を表示（装飾・実際の雲ではありません）"
+          />
+        )}
         <CheckboxItem
           id="graticule"
           checked={showGraticule}

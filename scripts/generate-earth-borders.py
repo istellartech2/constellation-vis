@@ -1,4 +1,4 @@
-"""Rasterize Natural Earth's land boundaries for the dark monochrome globe.
+"""Rasterize Natural Earth's land boundaries for the globe's country borders.
 
 Requires Pillow. Download the public-domain source, then run:
   curl -fL https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_50m_admin_0_boundary_lines_land.geojson -o /tmp/earth-borders.geojson
@@ -52,6 +52,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path)
     parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parents[1]
-                        / "public/assets/earth_country_borders_4096.webp")
+                        / "public/assets/earth/country-borders-4k.webp")
     args = parser.parse_args()
     generate(args.source, args.output)

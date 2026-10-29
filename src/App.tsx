@@ -8,7 +8,7 @@ import { SATELLITES as INITIAL_SATS, INITIAL_SHELL_RANGES } from "./lib/satellit
 import { loadGroundStations, type GroundStation } from "./lib/groundStations";
 import SatelliteInfo from "./components/ui/SatelliteInfo";
 import { formatGroundStationInfo } from "./lib/formatGroundStationInfo";
-import { type EarthTextureMode } from "./lib/earthTextures";
+import { DEFAULT_EARTH_MODE, isMonochromeEarthMode, type EarthTextureMode } from "./lib/earthTextures";
 import { type SatelliteCameraMode } from "./lib/visualization";
 import {
   loadLastView,
@@ -62,8 +62,15 @@ function App() {
   );
 
   const [earthTexture, setEarthTexture] = useState<EarthTextureMode>(
-    SAVED_DISPLAY?.earthTexture ?? "./assets/earth01.webp",
+    SAVED_DISPLAY?.earthTexture ?? DEFAULT_EARTH_MODE,
   );
+  // Monochrome globes have always drawn borders and photo globes have not;
+  // keep that look for views saved before borders became a setting.
+  const [showCountryBorders, setShowCountryBorders] = useState(
+    SAVED_DISPLAY?.showCountryBorders ??
+      isMonochromeEarthMode(SAVED_DISPLAY?.earthTexture ?? DEFAULT_EARTH_MODE),
+  );
+  const [showClouds, setShowClouds] = useState(SAVED_DISPLAY?.showClouds ?? false);
   const [showGraticule, setShowGraticule] = useState(SAVED_DISPLAY?.showGraticule ?? true);
   const [showEcliptic, setShowEcliptic] = useState(SAVED_DISPLAY?.showEcliptic ?? true);
   const [showGeoOrbit, setShowGeoOrbit] = useState(SAVED_DISPLAY?.showGeoOrbit ?? false);
@@ -175,6 +182,8 @@ function App() {
   const currentDisplay: DisplaySettings = {
     satRadius,
     earthTexture,
+    showCountryBorders,
+    showClouds,
     showGraticule,
     showEcliptic,
     showGeoOrbit,
@@ -222,6 +231,8 @@ function App() {
   }, [
     satRadius,
     earthTexture,
+    showCountryBorders,
+    showClouds,
     showGraticule,
     showEcliptic,
     showGeoOrbit,
@@ -277,6 +288,8 @@ function App() {
     groundStations,
     satRadius,
     earthTexture,
+    showCountryBorders,
+    showClouds,
     showGraticule,
     showEcliptic,
     showGeoOrbit,
@@ -312,6 +325,8 @@ function App() {
   const applyDisplay = useCallback((d: RemoteDisplaySettings) => {
     if (d.satRadius !== undefined) setSatRadius(d.satRadius);
     if (d.earthTexture !== undefined) setEarthTexture(d.earthTexture);
+    if (d.showCountryBorders !== undefined) setShowCountryBorders(d.showCountryBorders);
+    if (d.showClouds !== undefined) setShowClouds(d.showClouds);
     if (d.showGraticule !== undefined) setShowGraticule(d.showGraticule);
     if (d.showEcliptic !== undefined) setShowEcliptic(d.showEcliptic);
     if (d.showGeoOrbit !== undefined) setShowGeoOrbit(d.showGeoOrbit);
@@ -429,6 +444,10 @@ function App() {
         onSatRadiusChange={setSatRadius}
         earthTexture={earthTexture}
         onEarthTextureChange={setEarthTexture}
+        showCountryBorders={showCountryBorders}
+        onShowCountryBordersChange={setShowCountryBorders}
+        showClouds={showClouds}
+        onShowCloudsChange={setShowClouds}
         showGraticule={showGraticule}
         onShowGraticuleChange={setShowGraticule}
         showEcliptic={showEcliptic}

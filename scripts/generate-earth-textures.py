@@ -1,6 +1,6 @@
 """Rebuild Earth textures from pinned NASA and Natural Earth sources.
 
-See public/assets/earth-textures.README.md for downloads, hashes and licenses.
+See public/assets/earth/README.md for downloads, hashes and licenses.
 Requires Pillow. Inputs are kept outside the repository.
 """
 import argparse
@@ -11,7 +11,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter
 
 Image.MAX_IMAGE_PIXELS = None  # The pinned global source rasters are large.
-ROOT = Path(__file__).resolve().parents[1] / 'public' / 'assets'
+ROOT = Path(__file__).resolve().parents[1] / 'public' / 'assets' / 'earth'
 SOURCES = {
     'blue.jpg': 'dea8b4dc8a4f93f5f8bce0c8c85a508a178e7901e9ed8e6bf86e6ce7ef6d61e2',
     'night.jpg': '76428afb33e80d6112a8f0c110af4e5e52316e3a1858561a3b8c931779eca723',
@@ -65,30 +65,23 @@ def main(source):
     with zipfile.ZipFile(source / 'natural-earth.zip') as archive:
         archive.extract('NE1_LR_LC.tif', source)
     with Image.open(source / 'blue.jpg') as im:
-        for w in (4096, 8192, 16000):
-            save(im, f'earth_day_blue_marble_{w}.webp', w)
-        save(im, 'earth01.webp', 4096)
+        for w, tier in ((4096, '4k'), (8192, '8k')):
+            save(im, f'day-blue-marble-{tier}.webp', w)
     mask = land_mask(source / 'land.geojson')
     with Image.open(source / 'NE1_LR_LC.tif') as im:
-        for w in (4096, 8192, 16000):
+        for w, tier in ((4096, '4k'), (8192, '8k')):
             natural = im.resize((w, w // 2), Image.Resampling.LANCZOS).convert('RGB')
             ocean = Image.new('RGB', natural.size, (37, 86, 117))
             water = mask.resize(natural.size, Image.Resampling.LANCZOS)
             natural = Image.composite(ocean, natural, water)
-            natural.save(ROOT / f'earth_day_natural_{w}.webp', 'WEBP', quality=88, method=4)
-            if w == 4096:
-                natural.save(ROOT / 'earth02.webp', 'WEBP', quality=88, method=4)
-            print(f'earth_day_natural_{w}.webp', natural.size, flush=True)
+            natural.save(ROOT / f'day-natural-{tier}.webp', 'WEBP', quality=88, method=4)
+            print(f'day-natural-{tier}.webp', natural.size, flush=True)
     with Image.open(source / 'night.jpg') as im:
-        for w in (2048, 8192):
-            save(im, f'earth_night_lights_{w}.webp', w)
-    for w in (2048, 8192):
-        save(mask, f'earth_ocean_mask_{w}.webp', w, 95)
-    for w in (2048, 4096):
-        save(Image.new('RGB', (8, 4), (128, 128, 255)), f'earth_surface_normal_{w}.webp', w, 100)
-    cloud = clouds()
-    for w in (2048, 8192):
-        save(cloud, f'earth_clouds_{w}.webp', w, 90)
+        for w, tier in ((2048, '2k'), (8192, '8k')):
+            save(im, f'night-lights-{tier}.webp', w)
+    for w, tier in ((2048, '2k'), (8192, '8k')):
+        save(mask, f'ocean-mask-{tier}.webp', w, 95)
+    save(clouds(), 'clouds-2k.webp', 2048, 90)
 
 
 if __name__ == '__main__':

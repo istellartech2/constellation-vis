@@ -1,125 +1,115 @@
 export const BLUE_MARBLE_EARTH_MODE = "blue-marble" as const;
-export const HIGH_RESOLUTION_EARTH_MODE = "high-resolution" as const;
-
+export const NATURAL_EARTH_MODE = "natural-earth" as const;
 export const DARK_MONOCHROME_EARTH_MODE = "dark-monochrome" as const;
 export const PAPER_ATLAS_EARTH_MODE = "paper-atlas" as const;
 
-export type EarthTextureMode =
-  | "./assets/earth01.webp"
-  | "./assets/earth02.webp"
+export const DEFAULT_EARTH_MODE = BLUE_MARBLE_EARTH_MODE;
+
+/** Image-based globes, drawn with night lights and atmosphere. */
+export type LayeredEarthMode =
   | typeof BLUE_MARBLE_EARTH_MODE
-  | typeof HIGH_RESOLUTION_EARTH_MODE
+  | typeof NATURAL_EARTH_MODE;
+
+export type MonochromeEarthMode =
   | typeof DARK_MONOCHROME_EARTH_MODE
   | typeof PAPER_ATLAS_EARTH_MODE;
 
-export type LayeredEarthMode =
-  | typeof BLUE_MARBLE_EARTH_MODE
-  | typeof HIGH_RESOLUTION_EARTH_MODE;
+export type EarthTextureMode = LayeredEarthMode | MonochromeEarthMode;
 
 export interface EarthTextureOption {
   label: string;
   value: EarthTextureMode;
 }
 
-export interface LayeredEarthAssets {
-  dayMap16k: string;
-  dayMap8k: string;
-  dayMap4k: string;
-  normalMap4k: string;
-  normalMap2k: string;
-  oceanMask8k: string;
-  oceanMask2k: string;
-  lightsMap8k: string;
-  lightsMap2k: string;
-  cloudsMap8k: string;
-  cloudsMap2k: string;
+export const EARTH_TEXTURE_OPTIONS: EarthTextureOption[] = [
+  { label: "衛星写真", value: BLUE_MARBLE_EARTH_MODE },
+  { label: "地図（彩色）", value: NATURAL_EARTH_MODE },
+  { label: "地図（ダーク）", value: DARK_MONOCHROME_EARTH_MODE },
+  { label: "地図（ペーパー）", value: PAPER_ATLAS_EARTH_MODE },
+];
+
+/**
+ * Retired values. The image paths and "high-resolution" were stored by
+ * earlier releases; the flat and layered variants of each image are now one
+ * mode, since they differed only in lighting effects.
+ */
+const LEGACY_EARTH_MODES: Record<string, EarthTextureMode> = {
+  "./assets/earth01.webp": BLUE_MARBLE_EARTH_MODE,
+  "./assets/earth02.webp": NATURAL_EARTH_MODE,
+  "high-resolution": NATURAL_EARTH_MODE,
+};
+
+const EARTH_MODES = new Set<string>(EARTH_TEXTURE_OPTIONS.map(({ value }) => value));
+
+/** Map a stored or remote value to a current mode, or undefined if unknown. */
+export function normalizeEarthTextureMode(value: unknown): EarthTextureMode | undefined {
+  if (typeof value !== "string") return undefined;
+  if (EARTH_MODES.has(value)) return value as EarthTextureMode;
+  return LEGACY_EARTH_MODES[value];
+}
+
+/** A texture with an optional higher-resolution replacement. */
+export interface TieredTexture {
+  low: string;
+  high: string;
+}
+
+const earthAsset = (name: string) => `./assets/earth/${name}.webp`;
+
+export const EARTH_ASSETS = {
+  dayBlueMarble: { low: earthAsset("day-blue-marble-4k"), high: earthAsset("day-blue-marble-8k") },
+  dayNatural: { low: earthAsset("day-natural-4k"), high: earthAsset("day-natural-8k") },
+  oceanMask: { low: earthAsset("ocean-mask-2k"), high: earthAsset("ocean-mask-8k") },
+  nightLights: { low: earthAsset("night-lights-2k"), high: earthAsset("night-lights-8k") },
+  // Synthetic noise; a larger image would only be an upscale.
+  clouds: earthAsset("clouds-2k"),
+  countryBorders: earthAsset("country-borders-4k"),
+} as const;
+
+export const LAYERED_EARTH_DAY_MAPS: Record<LayeredEarthMode, TieredTexture> = {
+  [BLUE_MARBLE_EARTH_MODE]: EARTH_ASSETS.dayBlueMarble,
+  [NATURAL_EARTH_MODE]: EARTH_ASSETS.dayNatural,
+};
+
+/** First texture to show, plus the one to swap in once it has downloaded. */
+export interface ProgressiveTexture {
+  initial: string;
+  upgrade?: string;
 }
 
 export interface ResolvedLayeredEarthAssets {
-  dayMap: string;
-  normalMap: string;
-  oceanMask: string;
-  lightsMap: string;
+  dayMap: ProgressiveTexture;
+  oceanMask: ProgressiveTexture;
+  lightsMap: ProgressiveTexture;
   cloudsMap: string;
-  qualityTier: "16k" | "8k" | "4k";
+  qualityTier: "8k" | "4k";
 }
 
-export const EARTH_TEXTURE_OPTIONS: EarthTextureOption[] = [
-  { label: "Base", value: "./assets/earth01.webp" },
-  { label: "Simple", value: "./assets/earth02.webp" },
-  { label: "Blue Marble", value: BLUE_MARBLE_EARTH_MODE },
-  { label: "High Resolution", value: HIGH_RESOLUTION_EARTH_MODE },
-  { label: "ダーク・モノクロ", value: DARK_MONOCHROME_EARTH_MODE },
-  { label: "ペーパー・アトラス", value: PAPER_ATLAS_EARTH_MODE },
-];
-
-export const LAYERED_EARTH_ASSETS: Record<LayeredEarthMode, LayeredEarthAssets> = {
-  [BLUE_MARBLE_EARTH_MODE]: {
-    dayMap16k: "./assets/earth_day_blue_marble_16000.webp",
-    dayMap8k: "./assets/earth_day_blue_marble_8192.webp",
-    dayMap4k: "./assets/earth_day_blue_marble_4096.webp",
-    normalMap4k: "./assets/earth_surface_normal_4096.webp",
-    normalMap2k: "./assets/earth_surface_normal_2048.webp",
-    oceanMask8k: "./assets/earth_ocean_mask_8192.webp",
-    oceanMask2k: "./assets/earth_ocean_mask_2048.webp",
-    lightsMap8k: "./assets/earth_night_lights_8192.webp",
-    lightsMap2k: "./assets/earth_night_lights_2048.webp",
-    cloudsMap8k: "./assets/earth_clouds_8192.webp",
-    cloudsMap2k: "./assets/earth_clouds_2048.webp",
-  },
-  [HIGH_RESOLUTION_EARTH_MODE]: {
-    dayMap16k: "./assets/earth_day_natural_16000.webp",
-    dayMap8k: "./assets/earth_day_natural_8192.webp",
-    dayMap4k: "./assets/earth_day_natural_4096.webp",
-    normalMap4k: "./assets/earth_surface_normal_4096.webp",
-    normalMap2k: "./assets/earth_surface_normal_2048.webp",
-    oceanMask8k: "./assets/earth_ocean_mask_8192.webp",
-    oceanMask2k: "./assets/earth_ocean_mask_2048.webp",
-    lightsMap8k: "./assets/earth_night_lights_8192.webp",
-    lightsMap2k: "./assets/earth_night_lights_2048.webp",
-    cloudsMap8k: "./assets/earth_clouds_8192.webp",
-    cloudsMap2k: "./assets/earth_clouds_2048.webp",
-  },
-};
-
 export function isLayeredEarthMode(mode: EarthTextureMode): mode is LayeredEarthMode {
-  return mode === BLUE_MARBLE_EARTH_MODE || mode === HIGH_RESOLUTION_EARTH_MODE;
+  return mode === BLUE_MARBLE_EARTH_MODE || mode === NATURAL_EARTH_MODE;
+}
+
+export function isMonochromeEarthMode(mode: EarthTextureMode): mode is MonochromeEarthMode {
+  return mode === DARK_MONOCHROME_EARTH_MODE || mode === PAPER_ATLAS_EARTH_MODE;
+}
+
+/** Start from the small texture and upgrade only when the GPU can hold 8k. */
+export function resolveProgressiveTexture(
+  texture: TieredTexture,
+  maxTextureSize: number,
+): ProgressiveTexture {
+  return maxTextureSize >= 8192 ? { initial: texture.low, upgrade: texture.high } : { initial: texture.low };
 }
 
 export function resolveLayeredEarthAssets(
   mode: LayeredEarthMode,
   maxTextureSize: number,
 ): ResolvedLayeredEarthAssets {
-  const assets = LAYERED_EARTH_ASSETS[mode];
-
-  if (maxTextureSize >= 16000) {
-    return {
-      dayMap: assets.dayMap16k,
-      normalMap: assets.normalMap4k,
-      oceanMask: assets.oceanMask8k,
-      lightsMap: assets.lightsMap8k,
-      cloudsMap: assets.cloudsMap8k,
-      qualityTier: "16k",
-    };
-  }
-
-  if (maxTextureSize >= 8192) {
-    return {
-      dayMap: assets.dayMap8k,
-      normalMap: assets.normalMap4k,
-      oceanMask: assets.oceanMask8k,
-      lightsMap: assets.lightsMap8k,
-      cloudsMap: assets.cloudsMap8k,
-      qualityTier: "8k",
-    };
-  }
-
   return {
-    dayMap: assets.dayMap4k,
-    normalMap: assets.normalMap2k,
-    oceanMask: assets.oceanMask2k,
-    lightsMap: assets.lightsMap2k,
-    cloudsMap: assets.cloudsMap2k,
-    qualityTier: "4k",
+    dayMap: resolveProgressiveTexture(LAYERED_EARTH_DAY_MAPS[mode], maxTextureSize),
+    oceanMask: resolveProgressiveTexture(EARTH_ASSETS.oceanMask, maxTextureSize),
+    lightsMap: resolveProgressiveTexture(EARTH_ASSETS.nightLights, maxTextureSize),
+    cloudsMap: EARTH_ASSETS.clouds,
+    qualityTier: maxTextureSize >= 8192 ? "8k" : "4k",
   };
 }

@@ -1,4 +1,4 @@
-import type { EarthTextureMode } from "./earthTextures";
+import { DEFAULT_EARTH_MODE, normalizeEarthTextureMode, type EarthTextureMode } from "./earthTextures";
 import type { SatelliteCameraMode } from "./visualization";
 import { createDefaultIslSettings, DEFAULT_GSL_COLOR, DEFAULT_ISL_COLOR, type IslSettings } from "./isl/types";
 
@@ -35,6 +35,10 @@ export interface CameraSnapshot {
 export interface DisplaySettings {
   satRadius: number;
   earthTexture: EarthTextureMode;
+  /** Absent in views saved before borders became a setting. */
+  showCountryBorders?: boolean;
+  /** Absent in views saved before clouds became a setting. */
+  showClouds?: boolean;
   showGraticule: boolean;
   showEcliptic: boolean;
   showGeoOrbit: boolean;
@@ -135,7 +139,11 @@ function migrateViewSettings(v: ViewSettings): ViewSettings {
     const step = MIGRATIONS[version];
     if (step) display = step(display);
   }
-  return { version: STORAGE_VERSION, camera: v.camera, display: display as DisplaySettings };
+  const migrated = display as DisplaySettings;
+  // Earth modes used to be stored as image paths; map those (and any mode
+  // since removed) onto current ids. Not version-gated: v2 records hold both.
+  migrated.earthTexture = normalizeEarthTextureMode(migrated.earthTexture) ?? DEFAULT_EARTH_MODE;
+  return { version: STORAGE_VERSION, camera: v.camera, display: migrated };
 }
 
 export function loadLastView(): ViewSettings | null {
