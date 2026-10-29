@@ -15,6 +15,7 @@ import {
   FileCog,
   Check,
   FileText,
+  Database,
 } from "lucide-react";
 import ConstellationEditorDialog from "./ConstellationEditorDialog";
 import SatelliteTomlEditorDialog from "./SatelliteTomlEditorDialog";
@@ -34,6 +35,9 @@ interface Props {
   onStartTextChange: (text: string) => void;
   onImportClick: () => void;
   onFilingImportClick: () => void;
+  onCatalogClick: () => void;
+  /** Satellites in large catalog layers (outside the TOML editor). */
+  catalogCount: number;
   onUpdate: () => void;
   updateFeedback: "idle" | "success";
   onSaveBundle: () => void;
@@ -79,6 +83,8 @@ export default function EditorTab({
   onStartTextChange,
   onImportClick,
   onFilingImportClick,
+  onCatalogClick,
+  catalogCount,
   onUpdate,
   updateFeedback,
   onSaveBundle,
@@ -158,6 +164,15 @@ export default function EditorTab({
         >
           <FileText className="h-4 w-4" />
           ITU申請からインポート
+        </Button>
+        <Button
+          variant="outline"
+          className="w-full h-9 gap-2 bg-raised hover:bg-raised-hover border-2 border-line-strong hover:border-brand text-fg"
+          onClick={onCatalogClick}
+        >
+          <Database className="h-4 w-4" />
+          大規模カタログ
+          {catalogCount > 0 && <span className="text-xs text-fg-muted">{catalogCount.toLocaleString()}機</span>}
         </Button>
       </PanelSection>
 

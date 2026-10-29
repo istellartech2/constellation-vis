@@ -1,6 +1,7 @@
 import katex from "katex";
 import "katex/dist/katex.min.css";
 import type { SatelliteSpec } from "../../lib/satellites";
+import { catalogSpecAt, type SatelliteCatalog } from "../../lib/satelliteCatalog";
 import * as satellite from "satellite.js";
 import {
   calculateDetailedPerturbationRates,
@@ -25,6 +26,8 @@ const EARTH_RADIUS_KM = 6378.137;
 
 interface Props {
   satellites: SatelliteSpec[];
+  /** Large catalog drawn after `satellites`; indexes continue from `satellites.length`. */
+  catalog?: SatelliteCatalog | null;
   selectedIdx: number | null;
   simTime: Date;
   showPerturbation: boolean;
@@ -87,6 +90,7 @@ function Stat({ label, value }: { label: ReactNode; value: ReactNode }) {
 
 export default function SatelliteInfo({
   satellites,
+  catalog,
   selectedIdx,
   simTime,
   showPerturbation,
@@ -98,7 +102,9 @@ export default function SatelliteInfo({
   const [expanded, setExpanded] = useState(() => !window.matchMedia("(max-width: 768px)").matches);
   if (selectedIdx === null) return null;
 
-  const spec = satellites[selectedIdx];
+  const catalogIdx = selectedIdx - satellites.length;
+  const spec = catalogIdx < 0 ? satellites[selectedIdx]
+    : catalog && catalogIdx < catalog.count ? catalogSpecAt(catalog, catalogIdx) : undefined;
   if (!spec) return null;
 
   const meta = spec.meta;
