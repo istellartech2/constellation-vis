@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Copy, Check, Eye, EyeOff, LoaderCircle, PlugZap, Unplug } from "lucide-react";
+import { Copy, Check, Eye, EyeOff, LoaderCircle, Sparkles, Unplug, ArrowRight } from "lucide-react";
 import { Button } from "./button";
 import { commitRemoteScenario, type RemoteScenario } from "../../lib/remoteScenario";
 import { sessionRequest, SessionClientError, type SessionCredentials, type SessionSnapshot } from "../../lib/sessionClient";
@@ -102,18 +102,19 @@ export default function AiSessionPanel({ getScenario, onApply }: Props) {
     "GETでapplicationStatusがappliedになったことを確認してください。409の場合はGETし直してください。",
   ].join("\n") : "";
   return (
-    <section className="mb-5 rounded-xl border border-line bg-surface-solid p-4 text-fg" aria-label="AI連携">
+    <section className="mb-5 overflow-hidden rounded-2xl border border-line bg-raised text-fg" aria-label="AI連携">
+      <div className="p-4">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="flex items-center gap-2 text-sm font-semibold"><PlugZap aria-hidden="true" className="size-4 text-info" />AI連携</h3>
+        <h3 className="flex items-center gap-3 text-sm font-semibold"><span className="flex size-9 items-center justify-center rounded-xl bg-brand-soft text-brand-text"><Sparkles aria-hidden="true" className="size-4" /></span><span>AIと連携<span className="mt-0.5 block text-[11px] font-normal text-fg-subtle">シナリオを一緒に編集</span></span></h3>
         {session && <span className="flex items-center gap-1.5 rounded-full bg-success-soft px-2 py-1 text-xs font-medium text-success"><span className="size-1.5 rounded-full bg-success" aria-hidden="true" />連携中</span>}
       </div>
-      <p className="mt-2 text-sm leading-relaxed text-fg-muted">
+      <p className="mt-4 text-sm leading-relaxed text-fg-muted">
         {session ? "接続情報をコピーして、AIのチャットに貼り付けてください。" : "AIから、この画面のシナリオと表示設定を操作できます。"}
       </p>
-      {!session && <p className="mt-2 text-xs text-fg-muted">連携を開始 → 接続情報をAIに渡す</p>}
+      {!session && <div className="mt-4 flex items-center gap-2 text-xs text-fg-muted"><span className="rounded-md bg-sunken px-2 py-1">1. 連携を開始</span><ArrowRight className="size-3 text-fg-subtle" aria-hidden="true" /><span className="rounded-md bg-sunken px-2 py-1">2. AIに貼り付け</span></div>}
       <div className="mt-4">
         {session ? <>
-          <Button className="h-11 w-full cursor-pointer bg-info text-white shadow-sm hover:bg-info focus-visible:ring-info" disabled={busy} onClick={async () => {
+          <Button className="h-11 w-full cursor-pointer bg-brand text-brand-fg shadow-sm hover:bg-brand-hover focus-visible:ring-brand" disabled={busy} onClick={async () => {
             try { await navigator.clipboard.writeText(instructions); setCopyFeedback("copied"); }
             catch { setShowCredentials(true); setCopyFeedback("manual"); }
           }}>
@@ -131,14 +132,15 @@ export default function AiSessionPanel({ getScenario, onApply }: Props) {
               {busy ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Unplug aria-hidden="true" />}{busy ? "終了中…" : "連携を終了"}
             </Button>
           </div>
-        </> : <Button className="h-11 w-full cursor-pointer bg-info text-white shadow-sm hover:bg-info focus-visible:ring-info" disabled={busy} onClick={() => void start()}>
-          {busy ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <PlugZap aria-hidden="true" />}{busy ? "開始中…" : "AI連携を開始"}
+        </> : <Button className="h-11 w-full cursor-pointer bg-brand text-brand-fg shadow-sm hover:bg-brand-hover focus-visible:ring-brand" disabled={busy} onClick={() => void start()}>
+          {busy ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Sparkles aria-hidden="true" />}{busy ? "開始中…" : "AI連携を開始"}
         </Button>}
       </div>
       {showCredentials && session && <textarea id="ai-session-credentials" aria-label="AI用の接続情報（秘密）" readOnly value={instructions} onFocus={(e) => e.target.select()} className="mt-3 h-40 w-full rounded-md border border-line-strong bg-sunken p-3 font-mono text-xs text-fg focus-visible:outline-2 focus-visible:outline-info" />}
       {status && <p role="status" className="mt-3 text-xs leading-relaxed text-fg-muted">{status}</p>}
       {session && <p className="mt-2 text-xs text-fg-muted">{new Date(session.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}まで有効 · この画面を開いたままお使いください</p>}
-      <details className="mt-3 border-t border-line pt-3 text-xs text-fg-muted">
+      </div>
+      <details className="border-t border-line px-4 py-3 text-xs text-fg-muted">
         <summary className="w-fit cursor-pointer rounded hover:text-fg focus-visible:outline-2 focus-visible:outline-info">データの保存と連携の終了について</summary>
         <p className="mt-2 leading-relaxed">設定は非公開の一時データとして保存され、1時間で自動削除されます。「連携を終了」でも削除できます。終了後も画面の表示は残ります。再読み込みした場合は、もう一度連携を開始してください。</p>
       </details>

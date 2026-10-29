@@ -1,4 +1,5 @@
-import type { ChangeEvent } from "react";
+import { useState, type ChangeEvent } from "react";
+import NoticeDialog from "./NoticeDialog";
 import type { ConstellationShell } from "../../lib/constellationTypes";
 import { computeShellDerived } from "../../lib/constellationPatterns";
 import {
@@ -24,6 +25,7 @@ function presetSatelliteCount(item: ConstellationPresetItem): number {
 
 /** Native `<select>` for adding a shell from a ready-made constellation template. */
 export default function ConstellationTemplateMenu({ onSelect, className }: Props) {
+  const [pending, setPending] = useState<ConstellationPresetItem | null>(null);
   const handleChange = (e: ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
     e.target.value = "";
@@ -35,16 +37,15 @@ export default function ConstellationTemplateMenu({ onSelect, className }: Props
 
     const satelliteCount = presetSatelliteCount(item);
     if (satelliteCount > PRESET_HEAVY_SATELLITE_COUNT) {
-      const confirmed = window.confirm(
-        `${satelliteCount}機を生成します。描画が重くなる場合があります。よろしいですか？`,
-      );
-      if (!confirmed) return;
+      setPending(item);
+      return;
     }
 
     onSelect(createShellFromPreset(item), item.note);
   };
 
   return (
+    <>
     <select
       value=""
       onChange={handleChange}
@@ -61,5 +62,7 @@ export default function ConstellationTemplateMenu({ onSelect, className }: Props
         </optgroup>
       ))}
     </select>
+    <NoticeDialog open={pending !== null} onClose={() => setPending(null)} title="大規模なテンプレートを追加" description={`${pending ? presetSatelliteCount(pending) : 0}機を生成します。描画が重くなる場合があります。`} confirmLabel="追加する" onConfirm={() => { if (pending) onSelect(createShellFromPreset(pending), pending.note); }} />
+    </>
   );
 }

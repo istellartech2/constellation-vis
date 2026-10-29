@@ -13,6 +13,7 @@ import {
 import { buildConstellation } from "../../lib/tomlParsers";
 import EditorTab from "./EditorTab";
 import AiSessionPanel from "./AiSessionPanel";
+import NoticeDialog from "./NoticeDialog";
 import AnalysisTab, { type AnalysisType } from "./AnalysisTab";
 import OptionTab from "./OptionTab";
 import IslTab from "./IslTab";
@@ -273,6 +274,7 @@ export default function SatelliteEditor({
     return () => window.removeEventListener("resize", update);
   }, [open]);
   const [tab, setTab] = useState<"editor" | "analysis" | "option" | "isl">("editor");
+  const [notice, setNotice] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
@@ -323,15 +325,15 @@ export default function SatelliteEditor({
         if (result.stopImport) break;
       }
       if (imported.length === 0) {
-        alert(notes.join("\n\n") || "インポートできる衛星データがありませんでした。");
+        setNotice(notes.join("\n\n") || "インポートできる衛星データがありませんでした。");
         return;
       }
       setSatText(satellitesToToml(mergeImportedSatellites(base, imported)));
-      if (notes.length > 0) alert(notes.join("\n\n"));
+      if (notes.length > 0) setNotice(notes.join("\n\n"));
       setImportOpen(false);
       setSelectedGroups([]);
     } catch (e) {
-      alert("衛星のインポートに失敗しました: " + (e as Error).message);
+      setNotice("衛星のインポートに失敗しました: " + (e as Error).message);
     } finally {
       setImporting(false);
     }
@@ -401,7 +403,7 @@ export default function SatelliteEditor({
       });
       setUpdateFeedback("success");
     } catch (e) {
-      alert("ファイルの解析に失敗しました: " + (e as Error).message);
+      setNotice("ファイルの解析に失敗しました: " + (e as Error).message);
     }
   };
 
@@ -427,12 +429,13 @@ export default function SatelliteEditor({
       setGsText(parsed.gsText);
       setStartText(parsed.startTime.toISOString().slice(0, 16));
     } catch (e) {
-      alert("ファイルが不正です: " + (e as Error).message);
+      setNotice("ファイルが不正です: " + (e as Error).message);
     }
   }
 
   return (
     <>
+      <NoticeDialog open={notice !== null} onClose={() => setNotice(null)} title="お知らせ" description={notice ?? ""} />
       <ImportDialog
         open={importOpen}
         importing={importing}

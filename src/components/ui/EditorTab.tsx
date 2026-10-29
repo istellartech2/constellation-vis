@@ -20,6 +20,7 @@ import SatelliteTomlEditorDialog from "./SatelliteTomlEditorDialog";
 import GroundStationEditorDialog from "./GroundStationEditorDialog";
 import PanelSection from "./PanelSection";
 import EntryButton from "./EntryButton";
+import NoticeDialog from "./NoticeDialog";
 
 interface Props {
   satText: string;
@@ -81,6 +82,7 @@ export default function EditorTab({
   onLoadBundle,
 }: Props) {
   const bundleInputRef = useRef<HTMLInputElement | null>(null);
+  const [clearOpen, setClearOpen] = useState(false);
   const [constEditorOpen, setConstEditorOpen] = useState(false);
   const [satEditorOpen, setSatEditorOpen] = useState(false);
   const [gsEditorOpen, setGsEditorOpen] = useState(false);
@@ -99,21 +101,15 @@ export default function EditorTab({
   );
 
   const handleClearAll = () => {
-    if (
-      window.confirm(
-        "衛星・コンステレーション・地上局のデータをすべて削除します。よろしいですか？",
-      )
-    ) {
-      onSatTextChange("");
-      onConstTextChange("");
-      onGsTextChange("");
-    }
+    onSatTextChange("");
+    onConstTextChange("");
+    onGsTextChange("");
   };
 
   const clearAllAction = (
     <button
       type="button"
-      onClick={handleClearAll}
+      onClick={() => setClearOpen(true)}
       className="flex items-center gap-1 text-[11px] text-fg-muted hover:text-danger transition-colors px-1.5 py-0.5 rounded"
       title="衛星・コンステレーション・地上局をすべて削除"
     >
@@ -124,6 +120,7 @@ export default function EditorTab({
 
   return (
     <>
+      <NoticeDialog open={clearOpen} onClose={() => setClearOpen(false)} title="すべて削除しますか？" description="衛星・コンステレーション・地上局の編集内容を削除します。3Dビューへの反映には更新が必要です。" confirmLabel="すべて削除" onConfirm={handleClearAll} destructive />
       <PanelSection title="シミュレーション対象" icon={<Pencil />} action={clearAllAction}>
         <EntryButton
           icon={<Satellite className="h-4 w-4" />}

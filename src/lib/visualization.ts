@@ -1,3 +1,4 @@
+import { SimulationClock } from "./simulationClock";
 // High-level wrapper around the Three.js scene used by the visualizer.
 // Moved from useSatelliteScene for better organization.
 
@@ -268,8 +269,7 @@ export default class SatelliteScene {
   private islLastConfiguredSettings: IslSettings | null = null;
   private islLastConfiguredShellRanges: IslShellRange[] | null = null;
 
-  private readonly startReal: number;
-  private readonly startSim: number;
+  private readonly simulationClock: SimulationClock;
   private lastSimTimeNotificationMs: number | null = null;
   private pointerDownActive = false;
   private pointerDownId: number | null = null;
@@ -683,8 +683,7 @@ export default class SatelliteScene {
       this.renderer.domElement.removeEventListener("wheel", handleWheel);
     });
 
-    this.startReal = Date.now();
-    this.startSim = this.params.startTime.getTime();
+    this.simulationClock = new SimulationClock(this.params.startTime.getTime(), performance.now(), this.params.speedRef.current);
 
     const handleResize = () => {
       this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -1288,9 +1287,8 @@ export default class SatelliteScene {
   private animate = () => {
     this.animationFrameId = requestAnimationFrame(this.animate);
     this.updateViewInset();
-    const nowReal = Date.now();
-    const simDeltaMs = (nowReal - this.startReal) * this.params.speedRef.current;
-    const simDate = new Date(this.startSim + simDeltaMs);
+    const nowReal = performance.now();
+    const simDate = this.simulationClock.tick(nowReal, this.params.speedRef.current);
     this.currentSimDate = simDate;
     if (
       this.lastSimTimeNotificationMs === null ||
