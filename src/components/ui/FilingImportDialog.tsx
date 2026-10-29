@@ -1,40 +1,55 @@
 import { useEffect, useRef, useState } from "react";
-import { ExternalLink, FileUp, Loader2, Diamond, Check, ArrowRight, ShieldCheck, Download } from "lucide-react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./dialog";
+import { ArrowLeft, Download, ExternalLink, FileUp, Info, Loader2, ShieldCheck } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./dialog";
 import { Button } from "./button";
-import { cn } from "../../lib/utils";
 import { AI_FILING, FILING_CATALOG } from "../../lib/filings/catalog";
 import { MAX_FILING_EXTRACT_BYTES, filingExtractFilename, parseFilingExtract, type FilingExtract } from "../../lib/filings/extract";
-import type { FilingDataset, FilingWorkerResponse } from "../../lib/filings/types";
+import type { FilingConfiguration, FilingDataset, FilingWorkerResponse } from "../../lib/filings/types";
 import { downloadFile } from "../../lib/config";
 
+/** A filing already placed in the scenario, keyed by filingKey. */
+export interface PlacedFiling { configuration: string; count: number }
 interface Props {
   open: boolean;
+  /** Scenario start time ("YYYY-MM-DDTHH:mm", UTC); the default placement epoch. */
+  defaultEpoch: string;
+  placed: Record<string, PlacedFiling>;
   onClose: () => void;
   onApply: (dataset: FilingDataset, configuration: string, epoch: Date) => void;
 }
 function configurationLabel(id: string) { return id === "default" ? "単一構成" : `構成 ${id}`; }
+function summarize(config: FilingConfiguration) {
+  const counts = new Map<number, number>();
+  config.planes.forEach(p => counts.set(p.inclination, (counts.get(p.inclination) ?? 0) + p.satellites));
+  const inclination = [...counts].sort((a, b) => b[1] - a[1])[0][0];
+  const low = Math.min(...config.planes.map(p => p.perigee));
+  const high = Math.max(...config.planes.map(p => p.apogee));
+  return { inclination, altitude: `${low.toLocaleString()}${low !== high ? `–${high.toLocaleString()}` : ""} km` };
+}
 
-export default function FilingImportDialog({ open, onClose, onApply }: Props) {
-  const [catalogId, setCatalogId] = useState<string>(FILING_CATALOG[0].id);
-  const [datasets, setDatasets] = useState<FilingDataset[]>([]);
-  const [extracts, setExtracts] = useState<Record<string, FilingExtract>>({});
-  const [selectedHash, setSelectedHash] = useState("");
+export default function FilingImportDialog({ open, defaultEpoch, placed, onClose, onApply }: Props) {
+  const [dataset, setDataset] = useState<FilingDataset | null>(null);
+  const [extract, setExtract] = useState<FilingExtract | null>(null);
   const [configuration, setConfiguration] = useState("");
-  const [epoch, setEpoch] = useState(() => new Date().toISOString().slice(0, 10) + "T00:00");
+  const [epoch, setEpoch] = useState(defaultEpoch);
   const [busy, setBusy] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [appliedHash, setAppliedHash] = useState("");
   const workerRef = useRef<Worker | null>(null);
   const generation = useRef(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const resultRef = useRef<HTMLElement>(null);
-  const catalog = FILING_CATALOG.find(item => item.id === catalogId)!;
-  const dataset = datasets.find(item => item.sha256 === selectedHash);
   const config = dataset?.configurations.find(item => item.id === configuration);
-  const extract = dataset ? extracts[dataset.sha256] : undefined;
-  const canApply = Boolean(config && !busy && epoch && Number.isFinite(new Date(epoch + "Z").valueOf()));
+  const existing = dataset ? placed[dataset.key] : undefined;
+  const epochDate = new Date(epoch + "Z");
+  const canApply = Boolean(config && !busy && Number.isFinite(epochDate.valueOf()));
+
+  useEffect(() => { if (open) setEpoch(defaultEpoch); }, [open, defaultEpoch]);
+  useEffect(() => () => {
+    generation.current++;
+    workerRef.current?.terminate();
+    if (timerRef.current) clearTimeout(timerRef.current);
+  }, []);
 
   function stop() {
     generation.current++;
@@ -44,40 +59,18 @@ export default function FilingImportDialog({ open, onClose, onApply }: Props) {
     timerRef.current = null;
     setBusy(false);
   }
-  useEffect(() => () => {
-    generation.current++;
-    workerRef.current?.terminate();
-    if (timerRef.current) clearTimeout(timerRef.current);
-  }, []);
-  useEffect(() => {
-    if (open && selectedHash) resultRef.current?.scrollIntoView({ block: "start" });
-  }, [open, selectedHash]);
-  function selectDataset(next: FilingDataset) {
-    setSelectedHash(next.sha256);
-    setConfiguration(next.preferredConfiguration);
+  function show(next: FilingDataset, nextExtract: FilingExtract) {
+    setDataset(next);
+    setExtract(nextExtract);
+    setConfiguration(placed[next.key]?.configuration ?? next.preferredConfiguration);
     setError(null);
-  }
-  function selectCatalog(id: string) {
-    setCatalogId(id);
-    setError(null);
-    const item = FILING_CATALOG.find(c => c.id === id)!;
-    const loaded = datasets.find(d => d.sourceUrl === item.url);
-    if (loaded) selectDataset(loaded);
-    else { setSelectedHash(""); setConfiguration(""); }
-  }
-  function addDataset(next: FilingDataset, nextExtract: FilingExtract) {
-    setDatasets(prev => [...prev.filter(d => d.key !== next.key), next]);
-    setExtracts(prev => ({ ...prev, [next.sha256]: nextExtract }));
-    selectDataset(next);
-    const matched = FILING_CATALOG.find(item => item.url === next.sourceUrl);
-    if (matched) setCatalogId(matched.id);
   }
   async function loadExtract(file: File) {
     if (file.size > MAX_FILING_EXTRACT_BYTES) { setError("抽出ファイルが大きすぎます（上限16 MB）。"); return; }
     const token = generation.current;
     try {
       const result = parseFilingExtract(await file.text());
-      if (token === generation.current) addDataset(result.dataset, result.extract);
+      if (token === generation.current) show(result.dataset, result.extract);
     } catch (cause) {
       if (token === generation.current) setError(cause instanceof Error ? cause.message : "抽出ファイルを読み込めませんでした。");
     }
@@ -86,7 +79,7 @@ export default function FilingImportDialog({ open, onClose, onApply }: Props) {
     stop();
     setError(null);
     if (/\.json$/i.test(file.name)) { await loadExtract(file); return; }
-    if (!/\.mdb$/i.test(file.name)) { setError("ZIPは展開してから、SNS形式の .mdb ファイルか、保存した抽出ファイル（.filing.json）を選んでください。PDF・GIMS・マスク用MDBは読み込めません。"); return; }
+    if (!/\.mdb$/i.test(file.name)) { setError("SNS形式の .mdb か、保存した抽出ファイル（.filing.json）を選んでください。ZIPは先に展開してください。PDF・GIMS・マスク用MDBは読み込めません。"); return; }
     if (file.size > 128 * 1024 * 1024) { setError("ファイル上限は128 MBです。全体DBではなく、個別申請のSNS MDBを選んでください。"); return; }
     setBusy(true);
     const token = generation.current;
@@ -101,7 +94,7 @@ export default function FilingImportDialog({ open, onClose, onApply }: Props) {
         stop();
         const result = event.data;
         if (!result.ok) { setError(result.message); return; }
-        addDataset(result.dataset, result.extract);
+        show(result.dataset, result.extract);
       };
       worker.onerror = () => fail("MDBの解析に失敗しました。ファイルが破損していないか、SNS形式かを確認してください。");
       timerRef.current = setTimeout(() => fail("解析を中止しました。個別申請のSNS MDBを選び直してください。"), 60000);
@@ -111,94 +104,135 @@ export default function FilingImportDialog({ open, onClose, onApply }: Props) {
       stop(); setError(cause instanceof Error ? cause.message : "ファイルを読み込めませんでした。");
     }
   }
+  function back() { stop(); setDataset(null); setExtract(null); setError(null); }
   function close() { stop(); onClose(); }
   function apply() {
     if (!dataset || !canApply) return;
     try {
-      onApply(dataset, configuration, new Date(epoch + "Z"));
-      setAppliedHash(dataset.sha256);
+      onApply(dataset, configuration, epochDate);
       close();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "配置を反映できませんでした。"); }
   }
+
+  const applyLabel = !config ? "構成を選んでください"
+    : !existing ? `${config.count.toLocaleString()} 機をシナリオに追加`
+    : existing.configuration === configuration ? "配置を更新"
+    : `${configurationLabel(configuration)}に置き換え`;
+  const applyHint = !config ? "" : existing
+    ? `シナリオ内の「${dataset!.name}」${existing.count.toLocaleString()}機（${configurationLabel(existing.configuration)}）を置き換えます。他の衛星はそのままです。`
+    : "既存の衛星はそのまま残り、3Dビューに反映されます。";
+
   return (
     <Dialog open={open} onOpenChange={value => { if (!value) close(); }}>
-      <DialogContent className="!max-w-4xl !w-[96vw] max-h-[92dvh] flex flex-col gap-0 overflow-hidden p-0 bg-surface-solid text-fg border-line">
-        <DialogHeader className="border-b border-line px-5 py-4 pr-12 text-left">
-          <DialogTitle className="flex items-center gap-2 text-base"><Diamond className="size-4 text-amber-400" />申請・計画から探す</DialogTitle>
-          <DialogDescription className="text-xs text-fg-muted">まだ運用されていない配置も、出典を確認しながら地球上で比較できます。</DialogDescription>
-        </DialogHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="grid md:grid-cols-[240px_1fr]">
-            <aside className="border-b md:border-b-0 md:border-r md:sticky md:top-0 md:self-start border-line bg-sunken/50 p-3 space-y-2" aria-label="公式申請のカタログ">
-              <p className="px-2 text-[10px] font-semibold tracking-widest text-fg-subtle">ITU · 公開申請</p>
-              <label className="block text-xs text-fg-muted md:hidden">公式申請を選ぶ<select aria-label="公式申請を選ぶ" className="mt-1 block w-full rounded border border-line bg-raised p-2 text-fg" value={catalogId} onChange={event => selectCatalog(event.target.value)}>{FILING_CATALOG.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-              <div className="hidden md:block space-y-2">
-              {FILING_CATALOG.map(item => (
-                <button key={item.id} type="button" aria-pressed={catalogId === item.id} onClick={() => selectCatalog(item.id)} className={cn("w-full rounded-lg border p-3 text-left transition-colors", catalogId === item.id ? "border-amber-400/60 bg-amber-400/10" : "border-transparent hover:bg-raised")}>
-                  <span className="flex items-center justify-between gap-2 text-sm font-medium">{item.name}<span className="text-[10px] text-fg-muted">{item.country}</span></span>
-                  <span className="mt-1 block text-[11px] leading-relaxed text-fg-muted">{item.description}</span>
-                </button>
-              ))}
-              </div>
-              <div className="border-t border-line pt-3 px-2 text-[11px] text-fg-muted">
-                <a href={AI_FILING.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-fg hover:underline">{AI_FILING.name}<ExternalLink className="size-3" /></a>
-                <details className="mt-1 md:hidden"><summary className="cursor-pointer">この構想について</summary><p className="mt-1 leading-relaxed">{AI_FILING.description}</p></details>
-                <p className="mt-1 hidden md:block leading-relaxed">{AI_FILING.description}</p>
-              </div>
-            </aside>
-            <main className="p-4 md:p-5 space-y-5">
-              <section>
-                <h3 className="text-sm font-semibold">1. 公式サイトでデータを取得</h3>
-                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-raised p-3">
-                  <div><p className="text-sm font-medium">{catalog.name}</p><p className="text-[11px] text-fg-muted">{catalog.reference} · {catalog.date} 受領</p></div>
-                  <a href={catalog.url} target="_blank" rel="noopener noreferrer" className="analysis-button inline-flex items-center gap-1.5 text-xs">公式申請を開く<ExternalLink className="size-3" /></a>
-                </div>
-                <p className="mt-2 text-xs leading-relaxed text-fg-muted">添付一覧の <strong className="text-fg">SNS(MDB) As Received Copy</strong> をダウンロードします。GIMS・MASKSは別のデータです。ZIPを取得した場合は先に展開してください。一度読み込んで抽出ファイルを保存すれば、次回からはMDBの取得は不要です。</p>
-              </section>
-              <section>
-                <h3 className="text-sm font-semibold">2. 取得したMDBか抽出ファイルをこの端末で開く</h3>
-                <div onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); const file = event.dataTransfer.files[0]; if (file && !busy) void loadFile(file); }} className="mt-2 rounded-lg border border-dashed border-line-strong bg-sunken/50 p-4 text-center">
-                  <input ref={inputRef} type="file" accept=".mdb,.json" className="hidden" aria-label="申請のSNS MDBまたは抽出ファイル" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void loadFile(file); }} />
-                  <Button type="button" variant="outline" disabled={busy} onClick={() => inputRef.current?.click()} className="gap-2">{busy ? <Loader2 className="size-4 animate-spin" /> : <FileUp className="size-4" />}{busy ? "端末内で解析中…" : "SNS MDBを選択"}</Button>
-                  <p className="mt-2 text-[11px] text-fg-muted">ここにドロップもできます · MDBは最大128 MB · 抽出ファイル（.filing.json）も可</p>
-                  <p className="mt-2 flex items-center justify-center gap-1 text-[11px] text-fg-muted"><ShieldCheck className="size-3" />ファイルはサーバーに送信しません</p>
-                  {busy && <button type="button" onClick={stop} className="mt-2 text-xs underline">解析を中止</button>}
-                </div>
-              </section>
-              {datasets.length > 1 && <label className="block text-xs text-fg-muted">読み込み済みの申請<select aria-label="読み込み済みの申請" className="mt-1 block w-full rounded border border-line bg-raised p-2 text-fg" value={selectedHash} onChange={event => { const next = datasets.find(d => d.sha256 === event.target.value); if (next) selectDataset(next); }}><option value="" disabled>読み込んだ申請を選択</option>{datasets.map(d => <option key={d.sha256} value={d.sha256}>{d.name}</option>)}</select></label>}
-              {dataset && <section ref={resultRef} className="space-y-3 scroll-mt-3">
-                <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-semibold">3. 表示する構成を選ぶ</h3><span className="text-[10px] text-fg-muted">{dataset.fromExtract ? "抽出ファイルから読み込み" : dataset.reference ? "確認済みの申請版" : "添付注記の確認が必要"}</span></div>
-                <div className="rounded-lg border border-line p-3"><p className="text-sm font-medium break-all">{dataset.name}</p><p className="text-[11px] text-fg-muted break-all">{dataset.filename}</p><div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">{dataset.sourceUrl && <a href={dataset.sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-brand-text underline">このファイルの出典<ExternalLink className="size-3" /></a>}{extract && <button type="button" onClick={() => downloadFile(filingExtractFilename(dataset), JSON.stringify(extract))} className="inline-flex items-center gap-1 text-xs underline" title="軌道に必要な値だけをこの端末に保存します。ITUの利用条件に従い、再配布には注意してください。"><Download className="size-3" />抽出ファイルを保存{!dataset.fromExtract && <span className="text-fg-muted no-underline">（次回はMDB不要）</span>}</button>}</div></div>
-                <div role="group" aria-label="配置の構成" className="grid gap-2 sm:grid-cols-3">
-                  {dataset.configurations.map(item => {
-                    const inclinations = [...new Set(item.planes.map(p => p.inclination))].sort((a,b) => a-b);
-                    const counts = new Map<number, number>();
-                    item.planes.forEach(p => counts.set(p.inclination, (counts.get(p.inclination) ?? 0) + p.satellites));
-                    const mainInclination = [...counts].sort((a, b) => b[1] - a[1])[0][0];
-                    const low = Math.min(...item.planes.map(p => p.perigee));
-                    const high = Math.max(...item.planes.map(p => p.apogee));
-                    return <button key={item.id} type="button" aria-pressed={configuration === item.id} onClick={() => setConfiguration(item.id)} className={cn("rounded-lg border p-3 text-left transition-colors", configuration === item.id ? "border-amber-400 bg-amber-400/10" : "border-line hover:border-line-strong")}>
-                      <span className="flex items-center justify-between text-xs">{configurationLabel(item.id)}{configuration === item.id && <Check className="size-3 text-amber-400" />}</span>
-                      <span className="mt-1 block text-lg font-semibold tabular-nums">{item.count.toLocaleString()}<span className="ml-1 text-xs font-normal text-fg-muted">機</span></span>
-                      <span className="block text-[11px] text-fg-muted" title={`全傾斜角: ${inclinations.join(" / ")}°`}>{item.planes.length}軌道面 · 主傾斜 {mainInclination}°</span>
-                      <span className="block text-[11px] text-fg-muted">高度 {low.toLocaleString()}{low !== high ? `–${high.toLocaleString()}` : ""} km</span>
-                      {item.hasSuppressedRows && <span className="mt-1 block text-[10px] text-amber-400">削除フラグあり・注記を確認</span>}
-                    </button>;
-                  })}
-                </div>
-                {dataset.configurations.length > 1 && <p className="text-[11px] text-fg-muted">構成は合計せず、選んだ1案だけを表示します。切り替えると同じ申請の前の配置を置き換えます。</p>}
-                {dataset.note && <p className="rounded-lg border border-amber-400/30 bg-amber-400/5 p-3 text-xs leading-relaxed">{dataset.note}</p>}
-                <label className="block text-xs font-medium">仮配置の基準日時（UTC）<input type="datetime-local" value={epoch} onChange={event => setEpoch(event.target.value)} className="mt-1 block w-full rounded border border-line bg-sunken p-2 text-sm text-fg" /></label>
-                <details className="text-xs text-fg-muted"><summary className="cursor-pointer py-1">出典の注意点と、配置を描くための仮定</summary><ul className="mt-2 list-disc space-y-1 pl-4 leading-relaxed">{dataset.warnings.map(w => <li key={w}>{w}</li>)}<li>この日時は表示のための仮の基準です。申請の受領日を軌道の元期として扱いません。</li><li>昇交点の経度をこの日時の地球の向きに合わせ、位相を緯度引数として解釈します。欠損値は等間隔で補い、運用位置を再現するものではありません。</li><li>元ファイルと他の構成はこの画面のメモリ内にのみ保持されます。再読み込み後に構成を切り替えるには、MDBか保存した抽出ファイルを開き直してください。抽出ファイルは端末にだけ保存され、アプリやサーバーには送信されません。選んだ仮配置と出典は設定ファイルに保存できます。</li></ul></details>
-              </section>}
-              {error && <p role="alert" className="rounded-lg border border-red-400/40 bg-red-400/10 p-3 text-xs leading-relaxed text-red-300">{error}</p>}
-            </main>
+      <DialogContent className="dialog-flush !w-[95vw] !max-w-2xl !max-h-[90vh] max-md:overflow-hidden max-md:h-[100dvh] max-md:rounded-none max-md:border-0 flex flex-col gap-0 p-0 bg-surface-solid text-fg border-line">
+        <DialogHeader className="px-4 pt-3 pb-2 border-b border-line max-md:pr-12 max-md:py-3 shrink-0">
+          <div className="flex items-center gap-2 pr-8">
+            {dataset && <button type="button" onClick={back} aria-label="ファイルを選び直す" title="ファイルを選び直す" className="-ml-1 inline-flex size-7 items-center justify-center rounded-md text-fg-muted hover:bg-raised-hover hover:text-fg"><ArrowLeft className="size-4" /></button>}
+            <DialogTitle className="text-fg text-base max-md:text-left">ITU申請からインポート</DialogTitle>
           </div>
+          <DialogDescription className="sr-only">ITUの申請ファイルを端末内で読み込み、申請上の配置をシナリオに追加します。</DialogDescription>
+        </DialogHeader>
+
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3 space-y-4">
+          {!dataset ? <>
+            <div
+              onDragOver={event => { event.preventDefault(); setDragging(true); }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={event => { event.preventDefault(); setDragging(false); const file = event.dataTransfer.files[0]; if (file && !busy) void loadFile(file); }}
+              className={`rounded-lg border-2 border-dashed p-5 text-center transition-colors ${dragging ? "border-brand bg-brand-soft" : "border-line-strong bg-sunken"}`}
+            >
+              <input ref={inputRef} type="file" accept=".mdb,.json" className="hidden" aria-label="申請ファイル" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void loadFile(file); }} />
+              <p className="text-sm font-semibold">申請ファイルを開く</p>
+              <p className="mt-1 text-xs text-fg-muted">SNS MDB（.mdb）または保存した抽出ファイル（.filing.json）</p>
+              <Button type="button" disabled={busy} onClick={() => inputRef.current?.click()} className="mt-3 h-9 gap-2 bg-brand hover:bg-brand-hover text-white font-semibold">
+                {busy ? <Loader2 className="size-4 animate-spin" /> : <FileUp className="size-4" />}{busy ? "端末内で解析中…" : "ファイルを選択"}
+              </Button>
+              {busy ? <button type="button" onClick={stop} className="mt-2 block w-full text-xs text-fg-muted underline">解析を中止</button>
+                : <p className="mt-2 flex items-center justify-center gap-1 text-[11px] text-fg-subtle"><ShieldCheck className="size-3" />ドロップも可 · 端末内で解析し、送信しません</p>}
+            </div>
+
+            <section>
+              <h3 className="text-sm font-semibold">ファイルの入手先</h3>
+              <p className="mt-0.5 mb-2 text-xs text-fg-muted">ITUの申請ページで、添付の「SNS(MDB) As Received Copy」をダウンロードします（ZIPは展開）。</p>
+              <ul className="space-y-1.5">
+                {FILING_CATALOG.map(item => (
+                  <li key={item.id} className="flex items-center gap-3 rounded-md border border-line bg-raised px-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">{item.name}<span className="ml-2 text-[11px] font-normal text-fg-subtle">{item.country} · {item.date}</span></p>
+                      <p className="truncate text-[11px] text-fg-muted" title={item.description}>{item.description}</p>
+                    </div>
+                    <a href={item.url} target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center gap-1 text-xs text-brand-text hover:underline">ITUで開く<ExternalLink className="size-3" /></a>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-[11px] text-fg-subtle">
+                参考（配置データなし）：<a href={AI_FILING.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-fg-muted hover:text-fg hover:underline">{AI_FILING.name}<ExternalLink className="size-3" /></a>
+              </p>
+            </section>
+          </> : <>
+            <section className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold break-all">{dataset.name}
+                  {dataset.fromExtract ? <span className="ml-2 rounded bg-raised px-1.5 py-0.5 text-[10px] font-normal text-fg-muted">抽出ファイル</span>
+                    : !dataset.reference && <span className="ml-2 rounded bg-warning-soft px-1.5 py-0.5 text-[10px] font-normal text-warning">未レビュー</span>}
+                </p>
+                <p className="text-[11px] text-fg-muted break-all">{[dataset.reference, dataset.sourceDate && `${dataset.sourceDate} 受領`, dataset.filename].filter(Boolean).join(" · ")}</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-3 text-xs">
+                {dataset.sourceUrl && <a href={dataset.sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-brand-text hover:underline">申請ページ<ExternalLink className="size-3" /></a>}
+                {extract && !dataset.fromExtract && <button type="button" onClick={() => downloadFile(filingExtractFilename(dataset), JSON.stringify(extract))} className="inline-flex items-center gap-1 text-fg-muted hover:text-fg" title="軌道に必要な値だけを端末に保存し、次回はMDBなしで開けます。再配布はITUの利用条件に従ってください。"><Download className="size-3" />抽出ファイルを保存</button>}
+              </div>
+            </section>
+
+            <section>
+              <h3 className="text-sm font-semibold">構成を選ぶ</h3>
+              {dataset.configurations.length > 1 && <p className="mt-0.5 text-xs text-fg-muted">代替案は合計せず、1つだけを配置します。</p>}
+              <div role="radiogroup" aria-label="配置の構成" className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                {dataset.configurations.map(item => {
+                  const { inclination, altitude } = summarize(item);
+                  const selected = configuration === item.id;
+                  return (
+                    <button key={item.id} type="button" role="radio" aria-checked={selected} onClick={() => setConfiguration(item.id)}
+                      className={`flex items-start gap-2.5 rounded-md border px-3 py-2 text-left transition-colors ${selected ? "border-brand bg-brand-soft" : "border-line bg-raised hover:bg-raised-hover hover:border-line-strong"}`}>
+                      <span className={`mt-1 size-3.5 shrink-0 rounded-full border-2 ${selected ? "border-brand bg-brand shadow-[inset_0_0_0_2px_var(--surface-solid)]" : "border-line-strong"}`} aria-hidden="true" />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-baseline justify-between gap-2 text-sm">
+                          <span className="font-medium">{configurationLabel(item.id)}</span>
+                          <span className="tabular-nums"><span className="font-semibold">{item.count.toLocaleString()}</span><span className="ml-0.5 text-xs text-fg-muted">機</span></span>
+                        </span>
+                        <span className="block text-[11px] text-fg-muted">{item.planes.length}軌道面 · 傾斜角 {inclination}° · 高度 {altitude}</span>
+                        {existing?.configuration === item.id && <span className="block text-[11px] text-fg-subtle">シナリオに配置中</span>}
+                        {item.hasSuppressedRows && <span className="block text-[11px] text-warning">削除フラグ（S）あり · 注記を確認</span>}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            {dataset.note && <p className="flex gap-2 rounded-md border border-line bg-sunken p-2.5 text-xs leading-relaxed text-fg-muted"><Info className="mt-0.5 size-3.5 shrink-0 text-info" />{dataset.note}</p>}
+
+            <details className="rounded-md border border-line px-3 py-2 text-xs text-fg-muted">
+              <summary className="cursor-pointer text-fg">配置の基準日時と仮定</summary>
+              <label className="mt-2 block">基準日時（UTC）<input type="datetime-local" value={epoch} onChange={event => setEpoch(event.target.value)} className="mt-1 block w-full rounded border-2 border-line-strong bg-sunken px-2 py-1 text-sm text-fg outline-none focus:border-brand" /></label>
+              <p className="mt-1 text-[11px]">初期値はシナリオの開始時刻です。反映すると開始時刻もこの日時に合わせます。</p>
+              <ul className="mt-2 list-disc space-y-1 pl-4 leading-relaxed">
+                {dataset.warnings.map(w => <li key={w}>{w}</li>)}
+                <li>昇交点の経度を基準日時の地球の向きに合わせ、位相を緯度引数として解釈します。欠損値は等間隔で補います。申請の幾何を示す概念配置で、運用位置の再現ではありません。</li>
+                <li>3Dでは中抜きの円で、実在の衛星と区別して表示します。</li>
+              </ul>
+            </details>
+          </>}
+          {error && <p role="alert" className="rounded-md border border-danger/40 bg-danger-soft p-2.5 text-xs leading-relaxed text-danger">{error}</p>}
         </div>
-        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line bg-sunken/50 px-5 py-3">
-          <p className="flex items-center gap-2 text-[11px] text-fg-muted"><Diamond className="size-4 text-amber-400" />琥珀色の中抜きダイヤ = 申請上の仮配置</p>
-          <Button disabled={!canApply} onClick={apply} className="gap-2">{dataset && appliedHash === selectedHash ? "選んだ構成に切り替えて表示" : "選んだ構成を3D表示"}<ArrowRight className="size-4" /></Button>
-        </footer>
+
+        <DialogFooter className="px-4 py-3 border-t border-line gap-2 sm:gap-3 flex-col sm:flex-row sm:items-center shrink-0">
+          {dataset && <p className="text-[11px] leading-snug text-fg-muted sm:flex-1">{applyHint}</p>}
+          <div className={`flex gap-2 ${dataset ? "" : "sm:ml-auto"}`}>
+            <Button variant="outline" onClick={close} className="h-10 max-md:h-11 bg-sunken border-line-strong text-fg hover:bg-raised-hover hover:text-fg">{dataset ? "キャンセル" : "閉じる"}</Button>
+            {dataset && <Button onClick={apply} disabled={!canApply} className="h-10 max-md:h-11 max-md:flex-1 bg-brand hover:bg-brand-hover text-white font-semibold disabled:opacity-50">{applyLabel}</Button>}
+          </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

@@ -182,8 +182,8 @@ export default function SatelliteInfo({
         </button>
         </div>
       </header>
-      {meta?.dataStatus === "filing" && <div className="rounded-lg border border-amber-400/40 bg-amber-400/10 p-2 text-xs leading-relaxed">
-        <p className="font-medium text-amber-400">◇ 申請上の仮配置 · 構成 {meta.filingConfiguration === "default" ? "単一" : meta.filingConfiguration}</p>
+      {meta?.dataStatus === "filing" && <div className="rounded-lg border border-line bg-sunken p-2 text-xs leading-relaxed">
+        <p className="flex items-center gap-1.5 font-medium text-fg"><span className="size-2.5 shrink-0 rounded-full border-2 border-fg-muted" aria-hidden="true" />申請上の仮配置 · {meta.filingConfiguration === "default" ? "単一構成" : `構成 ${meta.filingConfiguration}`}</p>
         <p className="text-fg-muted">基準日時・位相の解釈に仮定を含みます。実際の位置や運用を示しません。</p>
         {meta.filingSource?.startsWith("https://www.itu.int/") && <a href={meta.filingSource} target="_blank" rel="noopener noreferrer" className="text-brand-text underline">公式申請を確認</a>}
       </div>}

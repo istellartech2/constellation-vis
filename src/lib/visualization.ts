@@ -3,7 +3,6 @@ import { SimulationClock } from "./simulationClock";
 // Moved from useSatelliteScene for better organization.
 
 import * as THREE from "three";
-import { FILING_COLOR } from "./filings/metadata";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import * as satellite from "satellite.js";
 import { toSatrec } from "./satellites";
@@ -217,7 +216,6 @@ export default class SatelliteScene {
   private readonly satelliteVisibleColor: THREE.Color;
   private readonly satelliteHiddenColor: THREE.Color;
   private readonly satelliteSelectedColor: THREE.Color;
-  private readonly filingColor = new THREE.Color(FILING_COLOR);
   private readonly fovConeMinHeight: number;
   private linkMaterial: THREE.LineBasicMaterial;
 
@@ -418,22 +416,25 @@ export default class SatelliteScene {
       sizeAttenuation: true,
       vertexColors: true,
     });
-    // Preserve the same point/index mapping for picking; only declared filings
-    // get a larger hollow diamond. Existing point texture remains unchanged.
+    // Preserve the same point/index mapping for picking. Declared filings keep
+    // the normal visibility colours but draw as a hollow ring, like a planned
+    // object on a map, so they never read as a tracked satellite.
     this.satMaterial.onBeforeCompile = shader => {
       shader.vertexShader = "attribute float filingMarker; varying float vFilingMarker;\n" + shader.vertexShader;
-      shader.vertexShader = shader.vertexShader.replace("gl_PointSize = size;", "vFilingMarker = filingMarker; gl_PointSize = size * (filingMarker > 0.5 ? 1.8 : 1.0);");
+      shader.vertexShader = shader.vertexShader.replace("gl_PointSize = size;", "vFilingMarker = filingMarker; gl_PointSize = size * (filingMarker > 0.5 ? 1.35 : 1.0);");
       shader.fragmentShader = "varying float vFilingMarker;\n" + shader.fragmentShader;
       shader.fragmentShader = shader.fragmentShader.replace("#include <map_particle_fragment>", `
         if (vFilingMarker > 0.5) {
-          float diamond = abs(gl_PointCoord.x - 0.5) + abs(gl_PointCoord.y - 0.5);
-          if (diamond > 0.5 || diamond < 0.27) discard;
+          float d = length(gl_PointCoord - 0.5);
+          float ring = smoothstep(0.5, 0.42, d) * smoothstep(0.24, 0.32, d);
+          if (ring < 0.01) discard;
+          diffuseColor.a *= ring;
         } else {
           #include <map_particle_fragment>
         }
       `);
     };
-    this.satMaterial.customProgramCacheKey = () => "filing-hollow-diamond-v1";
+    this.satMaterial.customProgramCacheKey = () => "filing-hollow-ring-v1";
     const satPoints = new THREE.Points(this.satGeometry, this.satMaterial);
 
     const groundPositions = new Float32Array(this.satRecs.length * 3);
@@ -1452,8 +1453,6 @@ export default class SatelliteScene {
             }
           }
           this.satColorAttr.setXYZ(i, this.satelliteSelectedColor.r, this.satelliteSelectedColor.g, this.satelliteSelectedColor.b);
-        } else if (this.params.satellites[i].meta?.dataStatus === "filing") {
-          this.satColorAttr.setXYZ(i, this.filingColor.r, this.filingColor.g, this.filingColor.b);
         } else if (anyVisible) {
           this.satColorAttr.setXYZ(i, this.satelliteVisibleColor.r, this.satelliteVisibleColor.g, this.satelliteVisibleColor.b);
         } else {
