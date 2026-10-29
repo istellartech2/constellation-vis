@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
+import { localSessionPlugin } from './server/localSessionPlugin'
 import { thirdPartyNotices } from './scripts/third-party-notices'
 
 // https://vite.dev/config/
@@ -12,7 +13,7 @@ const base = env?.BASE_URL || '/';
 const port = env?.PORT ? Number(env.PORT) : undefined;
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), thirdPartyNotices()],
+  plugins: [react(), tailwindcss(), thirdPartyNotices(), localSessionPlugin()],
   worker: { plugins: () => [thirdPartyNotices(true)] },
   base,
   server: port ? { port } : undefined,
