@@ -313,14 +313,14 @@ export default function SatelliteEditor({
       for (const g of selectedGroups) {
         const result = await fetchCelestrakGroup(g);
         if (result.note) notes.push(result.note);
-        if (!result.data) continue;
-        for (const entry of result.data) {
+        for (const entry of result.data ?? []) {
           try {
             imported.push(celestrakEntryToSat(entry));
           } catch (e) {
             console.warn(`「${g}」のデータ変換に失敗しました:`, e);
           }
         }
+        if (result.stopImport) break;
       }
       if (imported.length === 0) {
         alert(notes.join("\n\n") || "インポートできる衛星データがありませんでした。");

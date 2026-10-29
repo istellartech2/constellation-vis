@@ -1,3 +1,5 @@
+# Historical ISS and NOAA 15 TLEs obtained from CelesTrak (https://celestrak.org/).
+# Review CelesTrak's data usage policy: https://celestrak.org/usage-policy.php
 [[satellites]]
 type = "tle"
 line1 = "1 25544U 98067A   25140.43166667  .00016717  00000+0  10270-3 0  9997"

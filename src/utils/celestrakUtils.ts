@@ -190,6 +190,8 @@ export interface CelestrakFetchResult {
   data?: CelestrakEntry[];
   /** Human-readable note to surface to the user (errors, cache fallback). */
   note?: string;
+  /** Stop the current import after an HTTP error, per CelesTrak's usage policy. */
+  stopImport?: boolean;
 }
 
 const CACHE_MAX_AGE_MS = 2 * 60 * 60 * 1000;
@@ -224,10 +226,10 @@ async function fetchGroup(group: string): Promise<CelestrakFetchResult> {
     ? { data: cached.data, note: `「${group}」: ${reason}。前回保存（${new Date(cached.fetchedAt).toLocaleString()}）のキャッシュを使用しました。` }
     : { note: `「${group}」: ${reason}` };
   try {
-    const resp = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+    const resp = await fetch(url, { signal: AbortSignal.timeout(30_000), redirect: "manual" });
     const text = (await resp.text()).trim();
 
-    if (resp.ok && !text.startsWith("Invalid query:") && !text.startsWith("Error:")) {
+    if (resp.status === 200 && !text.startsWith("Invalid query:") && !text.startsWith("Error:")) {
       let parsed: unknown;
       try {
         parsed = JSON.parse(text);
@@ -259,7 +261,12 @@ async function fetchGroup(group: string): Promise<CelestrakFetchResult> {
     }
 
     // Either non-OK status or an error body. Try cache as fallback.
-    return failure(describeFailure(resp.status, text));
+    const result = failure(describeFailure(resp.status, text));
+    if (resp.status !== 200) {
+      result.stopImport = true;
+      result.note += "。CelesTrak の利用方針に従い、残りの取得を中止しました。原因を確認してください";
+    }
+    return result;
   } catch (e) {
     return failure(`通信に失敗しました（${(e as Error).message}）`);
   }

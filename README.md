@@ -4,6 +4,10 @@
 
 A web application that visualizes satellite constellations in Earth orbit.
 
+## License and third-party material
+
+Copyright 2026 Interstellar Technologies Inc. Project-authored material is licensed under [Apache-2.0](LICENSE). Third-party dependencies, map data, and assets retain their own terms; see [THIRD-PARTY.md](THIRD-PARTY.md) and the web build’s `third-party-licenses.txt`.
+
 [constellation-viewer-demo.webm](https://github.com/user-attachments/assets/5389ebab-c38b-4a5f-9e25-4042f1ca3824)
 
 ## Features
@@ -68,7 +72,7 @@ bun run build
 
 Live build: https://constellation-vis-rho.vercel.app/
 
-Hosted in the Interstellar Technologies Inc Vercel team. The GitHub repository is connected to Vercel: pushes to `main` deploy production; other branches receive preview deployments. `vercel.json` runs lint, the Bun test suite, TypeScript and Vite before publishing, so a failed check prevents release. GitHub Actions independently runs CI (including the native CLI build). The previous GitHub Pages workflow is retained for manual legacy deployments only.
+Hosted in the Interstellar Technologies Inc Vercel team. The GitHub repository is connected to Vercel: pushes to `main` deploy production; other branches receive preview deployments. `vercel.json` runs lint, the Bun test suite, TypeScript and Vite before publishing, so a failed check prevents release. GitHub Actions independently runs CI (including the CLI build). The previous GitHub Pages workflow is retained for manual legacy deployments only.
 
 The root Vite base path is `/`; manual GitHub Pages builds explicitly set `BASE_URL=/constellation-vis/`.
 

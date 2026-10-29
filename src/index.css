@@ -371,10 +371,29 @@ a:hover {
 }
 
 .solar-panel {
+  min-width: 0;
   background: var(--raised);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 12px;
+}
+
+.analysis-split > div:last-child {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.analysis-chart-pair {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)) !important;
+}
+
+.analysis-chart-pair > div {
+  min-width: 0;
+}
+
+@media (max-width: 1024px) {
+  .analysis-split {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
 }
 
 .solar-panel-header,

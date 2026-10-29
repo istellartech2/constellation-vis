@@ -1,11 +1,11 @@
 ---
 name: constelation-cli
-description: Build, run, validate, or interpret the repository's constelation-cli native command-line analyzer for LEO satellite-to-ground service and feeder links. Use for TOML scenarios containing TLEs, orbital elements, constellation shells, UEs, or gateways; for JSON/CSV contact windows and duty results; and for geometric Doppler, slant-range, range-rate, or propagation-delay analysis.
+description: Build, run, validate, or interpret the repository's constelation-cli command-line analyzer for LEO satellite-to-ground service and feeder links. Use for TOML scenarios containing TLEs, orbital elements, constellation shells, UEs, or gateways; for JSON/CSV contact windows and duty results; and for geometric Doppler, slant-range, range-rate, or propagation-delay analysis.
 ---
 
 # Constelation CLI
 
-Use the repository-native `constelation-cli` to calculate geometrically available LEO ground links. Treat its results as contact opportunities rather than scheduled traffic or an RF link budget.
+Use the repository-provided `constelation-cli` to calculate geometrically available LEO ground links. Treat its results as contact opportunities rather than scheduled traffic or an RF link budget.
 
 ## Build and verify
 
@@ -19,7 +19,7 @@ bun run build
 bun run build:cli
 ```
 
-Use the generated executable at `dist/constelation-cli`. Do not commit `dist/`.
+Use the generated script at `dist/constelation-cli` with Bun ≥ 1.3.11 installed. The distribution does not include the Bun runtime. Keep `LICENSE` and `third-party-licenses.txt` with the script when redistributing it. Do not commit `dist/`.
 
 For source-mode iteration, use:
 

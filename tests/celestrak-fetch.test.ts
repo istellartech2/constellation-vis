@@ -55,6 +55,7 @@ describe("CelesTrak downloads", () => {
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(result.data).toEqual([entry]);
       expect(result.note).toContain("前回保存");
+      expect(result.stopImport ?? false).toBe(status !== 200);
     });
   }
 

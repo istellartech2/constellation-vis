@@ -195,6 +195,8 @@ function createAltitudeTimelineOption(result: MaintenanceAnalysisResult): ECBasi
       data: result.timeline.map((point) => formatNumber(point.elapsedYears, 1)),
       axisLabel: { color: t.fgMuted },
       name: "経過年 [yr]",
+      nameLocation: "middle",
+      nameGap: 30,
       nameTextStyle: { color: t.fgMuted },
     },
     yAxis: {
@@ -214,6 +216,7 @@ function createAltitudeTimelineOption(result: MaintenanceAnalysisResult): ECBasi
         areaStyle: { color: "rgba(99, 179, 237, 0.12)" },
         markLine: {
           symbol: "none",
+          label: { position: "insideEndTop" },
           data: [{ yAxis: result.analysisInput.deorbitAltitudeKm, name: "寿命判定高度", lineStyle: { color: "#e53e3e", type: "dashed" } }],
         },
       },
