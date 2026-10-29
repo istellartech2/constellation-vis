@@ -80,8 +80,8 @@ Browser-created sessions include `scenario.display`, a snapshot of the current d
 
 | Fields | Accepted values |
 | --- | --- |
-| `showGraticule`, `showEcliptic`, `showGeoOrbit`, `showSunDirection`, `ecef`, `showPerturbation`, `brightEarth`, `whiteBackground`, `showGroundStationCones`, `showSatelliteFovCones` | Boolean |
-| `earthTexture` | `./assets/earth01.webp`, `./assets/earth02.webp`, `blue-marble`, `high-resolution`, `dark-monochrome`, `paper-atlas` |
+| `showCountryBorders`, `showClouds`, `showGraticule`, `showEcliptic`, `showGeoOrbit`, `showSunDirection`, `ecef`, `showPerturbation`, `brightEarth`, `whiteBackground`, `showGroundStationCones`, `showSatelliteFovCones` | Boolean |
+| `earthTexture` | `blue-marble` (satellite photo), `natural-earth` (colored map), `dark-monochrome`, `paper-atlas`. Older values `high-resolution`, `./assets/earth01.webp` and `./assets/earth02.webp` are still accepted and rewritten. |
 | `satRadius` | 0.01–0.05 Earth radii (UI sizes: 0.01, 0.02, 0.03, 0.05) |
 | `groundConeMinElevationDeg` | 0–85 degrees |
 | `groundConeDistanceKm` | 100–20000 km |

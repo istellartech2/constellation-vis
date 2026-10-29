@@ -1,10 +1,10 @@
-import { EARTH_TEXTURE_OPTIONS } from "./earthTextures";
+import { normalizeEarthTextureMode } from "./earthTextures";
 import type { DisplaySettings } from "./viewState";
 
 /** Scalar rendering settings; camera framing and ISL configuration stay local. */
 export type RemoteDisplaySettings = Partial<Omit<DisplaySettings, "isl">>;
 const booleans = new Set([
-  "showGraticule", "showEcliptic", "showGeoOrbit", "showSunDirection", "ecef",
+  "showCountryBorders", "showClouds", "showGraticule", "showEcliptic", "showGeoOrbit", "showSunDirection", "ecef",
   "showPerturbation", "brightEarth", "whiteBackground",
   "showGroundStationCones", "showSatelliteFovCones",
 ]);
@@ -16,7 +16,6 @@ const ranges: Record<string, readonly [number, number]> = {
   fovConeHalfAngleDeg: [1, 80], fovConeAlongTrackDeg: [-60, 60], fovConeCrossTrackDeg: [-60, 60],
   speedExp: [0, Math.log10(600)],
 };
-const textures = new Set<string>(EARTH_TEXTURE_OPTIONS.map(({ value }) => value));
 
 export function validateRemoteDisplay(value: unknown): RemoteDisplaySettings {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("display must be an object");
@@ -27,6 +26,13 @@ export function validateRemoteDisplay(value: unknown): RemoteDisplaySettings {
       continue;
     }
     result[key] = v;
+    if (key === "earthTexture") {
+      // Old image-path values are still accepted and rewritten to the mode id.
+      const mode = normalizeEarthTextureMode(v);
+      if (!mode) throw new Error("Unknown earthTexture");
+      result[key] = mode;
+      continue;
+    }
     if (booleans.has(key)) {
       if (typeof v !== "boolean") throw new Error(`${key} must be boolean`);
     } else if (colors.has(key)) {
@@ -34,8 +40,6 @@ export function validateRemoteDisplay(value: unknown): RemoteDisplaySettings {
     } else if (Object.hasOwn(ranges, key)) {
       const [min, max] = ranges[key];
       if (typeof v !== "number" || !Number.isFinite(v) || v < min || v > max) throw new Error(`${key} must be ${min}–${max}`);
-    } else if (key === "earthTexture") {
-      if (typeof v !== "string" || !textures.has(v)) throw new Error("Unknown earthTexture");
     } else throw new Error(`Unknown display field: ${key}`);
   }
   return result as RemoteDisplaySettings;

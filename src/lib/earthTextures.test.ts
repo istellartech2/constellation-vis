@@ -1,69 +1,65 @@
 import { describe, it, expect } from "bun:test";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import {
   BLUE_MARBLE_EARTH_MODE,
   DARK_MONOCHROME_EARTH_MODE,
-  PAPER_ATLAS_EARTH_MODE,
+  EARTH_ASSETS,
   EARTH_TEXTURE_OPTIONS,
-  HIGH_RESOLUTION_EARTH_MODE,
-  LAYERED_EARTH_ASSETS,
+  NATURAL_EARTH_MODE,
+  PAPER_ATLAS_EARTH_MODE,
   isLayeredEarthMode,
+  isMonochromeEarthMode,
+  normalizeEarthTextureMode,
   resolveLayeredEarthAssets,
 } from "./earthTextures";
+
+const publicPath = (asset: string) => join(import.meta.dir, "../../public", asset);
 
 describe("earthTextures", () => {
   it("includes the expected selector options", () => {
     expect(EARTH_TEXTURE_OPTIONS.map((option) => option.value)).toEqual([
-      "./assets/earth01.webp",
-      "./assets/earth02.webp",
       BLUE_MARBLE_EARTH_MODE,
-      HIGH_RESOLUTION_EARTH_MODE,
+      NATURAL_EARTH_MODE,
       DARK_MONOCHROME_EARTH_MODE,
       PAPER_ATLAS_EARTH_MODE,
     ]);
   });
 
-  it("defines all required blue marble assets", () => {
-    expect(LAYERED_EARTH_ASSETS[BLUE_MARBLE_EARTH_MODE]).toEqual({
-      dayMap16k: expect.stringContaining("earth_day_blue_marble_16000.webp"),
-      dayMap8k: expect.stringContaining("earth_day_blue_marble_8192.webp"),
-      dayMap4k: expect.stringContaining("earth_day_blue_marble_4096.webp"),
-      normalMap4k: expect.stringContaining("earth_surface_normal_4096.webp"),
-      normalMap2k: expect.stringContaining("earth_surface_normal_2048.webp"),
-      oceanMask8k: expect.stringContaining("earth_ocean_mask_8192.webp"),
-      oceanMask2k: expect.stringContaining("earth_ocean_mask_2048.webp"),
-      lightsMap8k: expect.stringContaining("earth_night_lights_8192.webp"),
-      lightsMap2k: expect.stringContaining("earth_night_lights_2048.webp"),
-      cloudsMap8k: expect.stringContaining("earth_clouds_8192.webp"),
-      cloudsMap2k: expect.stringContaining("earth_clouds_2048.webp"),
+  it("points every asset at a file in public/", () => {
+    const paths = Object.values(EARTH_ASSETS).flatMap((asset) =>
+      typeof asset === "string" ? [asset] : [asset.low, asset.high],
+    );
+    for (const path of paths) expect(existsSync(publicPath(path))).toBe(true);
+  });
+
+  it("classifies every mode exactly once", () => {
+    for (const { value } of EARTH_TEXTURE_OPTIONS) {
+      expect(isLayeredEarthMode(value)).toBe(!isMonochromeEarthMode(value));
+    }
+  });
+
+  it("normalizes legacy and unknown values", () => {
+    expect(normalizeEarthTextureMode("./assets/earth01.webp")).toBe(BLUE_MARBLE_EARTH_MODE);
+    expect(normalizeEarthTextureMode("./assets/earth02.webp")).toBe(NATURAL_EARTH_MODE);
+    expect(normalizeEarthTextureMode("high-resolution")).toBe(NATURAL_EARTH_MODE);
+    expect(normalizeEarthTextureMode(BLUE_MARBLE_EARTH_MODE)).toBe(BLUE_MARBLE_EARTH_MODE);
+    expect(normalizeEarthTextureMode("https://example.com/earth.webp")).toBeUndefined();
+    expect(normalizeEarthTextureMode(42)).toBeUndefined();
+  });
+
+  it("starts at 4k and upgrades to 8k only when the GPU allows it", () => {
+    const high = resolveLayeredEarthAssets(BLUE_MARBLE_EARTH_MODE, 16384);
+    expect(high.qualityTier).toBe("8k");
+    expect(high.dayMap).toEqual({
+      initial: EARTH_ASSETS.dayBlueMarble.low,
+      upgrade: EARTH_ASSETS.dayBlueMarble.high,
     });
-  });
+    expect(high.cloudsMap).toBe(EARTH_ASSETS.clouds);
 
-  it("defines all required high resolution assets", () => {
-    expect(LAYERED_EARTH_ASSETS[HIGH_RESOLUTION_EARTH_MODE]).toEqual({
-      dayMap16k: expect.stringContaining("earth_day_natural_16000.webp"),
-      dayMap8k: expect.stringContaining("earth_day_natural_8192.webp"),
-      dayMap4k: expect.stringContaining("earth_day_natural_4096.webp"),
-      normalMap4k: expect.stringContaining("earth_surface_normal_4096.webp"),
-      normalMap2k: expect.stringContaining("earth_surface_normal_2048.webp"),
-      oceanMask8k: expect.stringContaining("earth_ocean_mask_8192.webp"),
-      oceanMask2k: expect.stringContaining("earth_ocean_mask_2048.webp"),
-      lightsMap8k: expect.stringContaining("earth_night_lights_8192.webp"),
-      lightsMap2k: expect.stringContaining("earth_night_lights_2048.webp"),
-      cloudsMap8k: expect.stringContaining("earth_clouds_8192.webp"),
-      cloudsMap2k: expect.stringContaining("earth_clouds_2048.webp"),
-    });
-  });
-
-  it("identifies layered earth modes", () => {
-    expect(isLayeredEarthMode(BLUE_MARBLE_EARTH_MODE)).toBe(true);
-    expect(isLayeredEarthMode(HIGH_RESOLUTION_EARTH_MODE)).toBe(true);
-    expect(isLayeredEarthMode("./assets/earth01.webp")).toBe(false);
-    expect(isLayeredEarthMode(PAPER_ATLAS_EARTH_MODE)).toBe(false);
-  });
-
-  it("resolves texture tiers for both layered modes", () => {
-    expect(resolveLayeredEarthAssets(BLUE_MARBLE_EARTH_MODE, 16384).qualityTier).toBe("16k");
-    expect(resolveLayeredEarthAssets(BLUE_MARBLE_EARTH_MODE, 8192).qualityTier).toBe("8k");
-    expect(resolveLayeredEarthAssets(HIGH_RESOLUTION_EARTH_MODE, 4096).qualityTier).toBe("4k");
+    const low = resolveLayeredEarthAssets(NATURAL_EARTH_MODE, 4096);
+    expect(low.qualityTier).toBe("4k");
+    expect(low.dayMap).toEqual({ initial: EARTH_ASSETS.dayNatural.low });
+    expect(low.lightsMap.upgrade).toBeUndefined();
   });
 });

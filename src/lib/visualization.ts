@@ -33,12 +33,14 @@ import { KMLRenderer } from "./kmlRenderer";
 import { loadKMLFromURL } from "./kml";
 import { computeFovConeQuaternion, computeTiltedConeHeight } from "./orbitalCoordinates";
 import {
-  BLUE_MARBLE_EARTH_MODE,
   DARK_MONOCHROME_EARTH_MODE,
+  EARTH_ASSETS,
   PAPER_ATLAS_EARTH_MODE,
   isLayeredEarthMode,
   resolveLayeredEarthAssets,
+  resolveProgressiveTexture,
   type EarthTextureMode,
+  type ProgressiveTexture,
 } from "./earthTextures";
 import type { CameraSnapshot } from "./viewState";
 import type { IslEndpoint, IslPathResult, IslSettings, IslShellRange } from "./isl/types";
@@ -123,6 +125,12 @@ type EarthAnimationBinding = {
   sunDirectionUniform?: THREE.Vector3;
 };
 
+type ProgressiveTextureLoader = (
+  source: ProgressiveTexture,
+  apply: (texture: THREE.Texture) => void,
+  colorSpace?: THREE.ColorSpace,
+) => THREE.Texture;
+
 export type SatelliteCameraMode = "free" | "earthCenter" | "thirdPerson";
 
 export interface SatelliteSceneParams {
@@ -141,6 +149,9 @@ export interface SatelliteSceneParams {
   groundStations: GroundStation[];
   satRadius: number;
   earthTexture: EarthTextureMode;
+  showCountryBorders: boolean;
+  /** Decorative procedural clouds; only image-based globes draw them. */
+  showClouds: boolean;
   showGraticule: boolean;
   showEcliptic: boolean;
   showGeoOrbit: boolean;
@@ -218,6 +229,8 @@ export default class SatelliteScene {
   private readonly earthGroup: THREE.Group;
   private readonly earthResourceDisposers: (() => void)[];
   private readonly earthAnimationBindings: EarthAnimationBinding[];
+  private readonly setCountryBordersVisible: (visible: boolean) => void;
+  private readonly setCloudsVisible: (visible: boolean) => void;
   private readonly graticule: THREE.LineSegments;
   private readonly ecliptic: THREE.Line;
   private readonly geoOrbit: THREE.Line;
@@ -413,6 +426,10 @@ export default class SatelliteScene {
     this.earthGroup = earth.group;
     this.earthResourceDisposers = earth.disposeFns;
     this.earthAnimationBindings = earth.animatedMaterials;
+    this.setCountryBordersVisible = earth.setCountryBordersVisible;
+    this.setCountryBordersVisible(params.showCountryBorders);
+    this.setCloudsVisible = earth.setCloudsVisible;
+    this.setCloudsVisible(params.showClouds);
     this.earthGroup.scale.set(1, EARTH_FLATTENING, 1);
     this.scene.add(this.earthGroup);
 
@@ -894,6 +911,8 @@ export default class SatelliteScene {
 
     // Visibility of objects the animate loop does not touch.
     this.graticule.visible = next.showGraticule;
+    this.setCountryBordersVisible(next.showCountryBorders);
+    this.setCloudsVisible(next.showClouds);
     this.ecliptic.visible = next.showEcliptic;
     this.geoOrbit.visible = next.showGeoOrbit;
     this.sunDot.visible = next.showSunDirection;
@@ -2000,6 +2019,11 @@ export default class SatelliteScene {
     const disposeFns: (() => void)[] = [];
     const animatedMaterials: EarthAnimationBinding[] = [];
 
+    let disposed = false;
+    disposeFns.push(() => {
+      disposed = true;
+    });
+
     const loadTexture = (
       path: string,
       colorSpace: THREE.ColorSpace = THREE.NoColorSpace,
@@ -2011,6 +2035,30 @@ export default class SatelliteScene {
       return texture;
     };
 
+    // Show the small texture right away, then swap in the large one once it
+    // has downloaded. `apply` must point every material slot at the new one.
+    const loadProgressiveTexture = (
+      source: ProgressiveTexture,
+      apply: (texture: THREE.Texture) => void,
+      colorSpace: THREE.ColorSpace = THREE.NoColorSpace,
+    ) => {
+      const initial = loadTexture(source.initial, colorSpace);
+      if (source.upgrade) {
+        textureLoader.load(source.upgrade, (upgraded) => {
+          if (disposed) {
+            upgraded.dispose();
+            return;
+          }
+          upgraded.colorSpace = colorSpace;
+          upgraded.anisotropy = initial.anisotropy;
+          disposeFns.push(() => upgraded.dispose());
+          apply(upgraded);
+          initial.dispose();
+        });
+      }
+      return initial;
+    };
+
     const darkMonochrome = this.params.earthTexture === DARK_MONOCHROME_EARTH_MODE;
     const paperAtlas = this.params.earthTexture === PAPER_ATLAS_EARTH_MODE;
     const layeredEarthMode = isLayeredEarthMode(this.params.earthTexture)
@@ -2020,25 +2068,46 @@ export default class SatelliteScene {
       ? resolveLayeredEarthAssets(layeredEarthMode, this.renderer.capabilities.maxTextureSize)
       : null;
 
-    const surfaceMesh = darkMonochrome || paperAtlas
-      ? this.createMonochromeSurface(geometry, group, loadTexture, paperAtlas)
-      : layeredAssets
-        ? this.createLayeredEarthSurface(geometry, group, layeredAssets, loadTexture)
-        : this.createBasicEarthSurface(geometry, group, loadTexture);
+    const surfaceMesh = layeredAssets
+      ? this.createLayeredEarthSurface(geometry, group, layeredAssets, loadProgressiveTexture)
+      : this.createMonochromeSurface(geometry, group, loadTexture, loadProgressiveTexture, paperAtlas);
+
+    // Optional overlays are built on first use, so their images are only
+    // downloaded when someone turns them on.
+    const lazyOverlay = (create: () => THREE.Mesh) => {
+      let mesh: THREE.Mesh | null = null;
+      return (visible: boolean) => {
+        if (!visible && !mesh) return;
+        if (!mesh) {
+          const created = create();
+          disposeFns.push(() => {
+            created.geometry.dispose();
+            (created.material as THREE.Material).dispose();
+          });
+          mesh = created;
+        }
+        mesh.visible = visible;
+      };
+    };
+
+    let setCountryBordersVisible: (visible: boolean) => void;
+    let setCloudsVisible: (visible: boolean) => void = () => {};
+    if (layeredAssets) {
+      setCountryBordersVisible = lazyOverlay(() => this.createCountryBorders(geometry, group, loadTexture));
+      setCloudsVisible = lazyOverlay(() => this.createEarthClouds(geometry, group, layeredAssets, loadTexture));
+    } else {
+      const showBorders = (surfaceMesh.material as THREE.ShaderMaterial).uniforms.showBorders;
+      setCountryBordersVisible = (visible) => {
+        showBorders.value = visible;
+      };
+    }
 
     if (darkMonochrome || paperAtlas) {
       animatedMaterials.push(surfaceMesh.userData.shaderEntry);
     }
 
     if (layeredAssets) {
-      const cloudMesh = this.createEarthClouds(geometry, group, layeredAssets, loadTexture);
-      if (cloudMesh) {
-        disposeFns.push(() => {
-          cloudMesh!.geometry.dispose();
-          (cloudMesh!.material as THREE.Material).dispose();
-        });
-      }
-      const nightLights = this.createNightLights(geometry, group, layeredAssets, loadTexture);
+      const nightLights = this.createNightLights(geometry, group, layeredAssets, loadProgressiveTexture);
       disposeFns.push(() => {
         nightLights.geometry.dispose();
         (nightLights.material as THREE.Material).dispose();
@@ -2072,17 +2141,27 @@ export default class SatelliteScene {
       group,
       disposeFns,
       animatedMaterials,
+      setCountryBordersVisible,
+      setCloudsVisible,
     };
   }
 
-  private createBasicEarthSurface(
-    geometry: THREE.SphereGeometry,
+  private createCountryBorders(
+    baseGeometry: THREE.SphereGeometry,
     group: THREE.Group,
     loadTexture: (path: string, colorSpace?: THREE.ColorSpace) => THREE.Texture,
   ) {
-    const texture = loadTexture(this.params.earthTexture, THREE.SRGBColorSpace);
-    const material = new THREE.MeshPhongMaterial({ map: texture, shininess: 1 });
+    const geometry = baseGeometry.clone();
+    // Unlit so the lines stay readable on the night side, like the graticule.
+    const material = new THREE.MeshBasicMaterial({
+      color: this.params.whiteBackground ? 0x2b3440 : 0xe6edf5,
+      alphaMap: loadTexture(EARTH_ASSETS.countryBorders),
+      transparent: true,
+      opacity: 0.55,
+      depthWrite: false,
+    });
     const mesh = new THREE.Mesh(geometry, material);
+    mesh.scale.setScalar(1.0005);
     group.add(mesh);
     return mesh;
   }
@@ -2091,16 +2170,22 @@ export default class SatelliteScene {
     geometry: THREE.SphereGeometry,
     group: THREE.Group,
     loadTexture: (path: string, colorSpace?: THREE.ColorSpace) => THREE.Texture,
+    loadProgressiveTexture: ProgressiveTextureLoader,
     paperAtlas: boolean,
   ) {
     // Reuse the data mask without loading day imagery, clouds, or city lights.
-    const assets = resolveLayeredEarthAssets(
-      BLUE_MARBLE_EARTH_MODE, this.renderer.capabilities.maxTextureSize,
+    const oceanMask: THREE.IUniform<THREE.Texture> = { value: null! };
+    oceanMask.value = loadProgressiveTexture(
+      resolveProgressiveTexture(EARTH_ASSETS.oceanMask, this.renderer.capabilities.maxTextureSize),
+      (texture) => {
+        oceanMask.value = texture;
+      },
     );
     const material = new THREE.ShaderMaterial({
       uniforms: {
-        oceanMask: { value: loadTexture(assets.oceanMask) },
-        borderMask: { value: loadTexture("./assets/earth_country_borders_4096.webp") },
+        oceanMask,
+        borderMask: { value: loadTexture(EARTH_ASSETS.countryBorders) },
+        showBorders: { value: true },
         borderColor: { value: new THREE.Color(paperAtlas ? "#88939c" : "#b6c4d6") },
         oceanColor: { value: new THREE.Color(paperAtlas ? "#f6f7f7" : "#03050a") },
         landColor: { value: new THREE.Color(paperAtlas ? "#c4cacd" : "#727984") },
@@ -2124,6 +2209,7 @@ export default class SatelliteScene {
       fragmentShader: `
         uniform sampler2D oceanMask;
         uniform sampler2D borderMask;
+        uniform bool showBorders;
         uniform vec3 borderColor;
         uniform vec3 oceanColor;
         uniform vec3 landColor;
@@ -2140,7 +2226,7 @@ export default class SatelliteScene {
           float daylight = max(dot(normalize(vWorldNormal), normalize(sunDirection)), 0.0);
           // Keep the continents legible on the night side, too.
           float shade = brightEarth ? 1.0 : 0.55 + 0.45 * daylight;
-          float border = texture2D(borderMask, vUv).r * (1.0 - water);
+          float border = showBorders ? texture2D(borderMask, vUv).r * (1.0 - water) : 0.0;
           vec3 land = mix(landColor, borderColor, border * (paperAtlas ? 0.26 : 0.4));
           vec3 surface = mix(land * shade, oceanColor, water);
           if (paperAtlas) {
@@ -2168,21 +2254,22 @@ export default class SatelliteScene {
     geometry: THREE.SphereGeometry,
     group: THREE.Group,
     assets: ReturnType<typeof resolveLayeredEarthAssets>,
-    loadTexture: (path: string, colorSpace?: THREE.ColorSpace) => THREE.Texture,
+    loadProgressiveTexture: ProgressiveTextureLoader,
   ) {
-    const dayMap = loadTexture(assets.dayMap, THREE.SRGBColorSpace);
-    const normalMap = loadTexture(assets.normalMap);
-    const oceanMask = loadTexture(assets.oceanMask);
     const material = new THREE.MeshPhongMaterial({
-      map: dayMap,
       emissive: new THREE.Color("#394754"),
-      emissiveMap: dayMap,
       emissiveIntensity: this.params.brightEarth ? 0.04 : 0.1,
-      normalMap,
-      normalScale: new THREE.Vector2(0.32, 0.32),
-      specularMap: oceanMask,
       specular: new THREE.Color("#1e2833"),
       shininess: 85,
+    });
+    const dayMap = loadProgressiveTexture(assets.dayMap, (texture) => {
+      material.map = texture;
+      material.emissiveMap = texture;
+    }, THREE.SRGBColorSpace);
+    material.map = dayMap;
+    material.emissiveMap = dayMap;
+    material.specularMap = loadProgressiveTexture(assets.oceanMask, (texture) => {
+      material.specularMap = texture;
     });
     const mesh = new THREE.Mesh(geometry, material);
     group.add(mesh);
@@ -2217,13 +2304,16 @@ export default class SatelliteScene {
     baseGeometry: THREE.SphereGeometry,
     group: THREE.Group,
     assets: ReturnType<typeof resolveLayeredEarthAssets>,
-    loadTexture: (path: string, colorSpace?: THREE.ColorSpace) => THREE.Texture,
+    loadProgressiveTexture: ProgressiveTextureLoader,
   ) {
     const geometry = baseGeometry.clone();
-    const lightsMap = loadTexture(assets.lightsMap, THREE.SRGBColorSpace);
+    const lightsMap: THREE.IUniform<THREE.Texture> = { value: null! };
+    lightsMap.value = loadProgressiveTexture(assets.lightsMap, (texture) => {
+      lightsMap.value = texture;
+    }, THREE.SRGBColorSpace);
     const material = new THREE.ShaderMaterial({
       uniforms: {
-        lightsMap: { value: lightsMap },
+        lightsMap,
         sunDirection: { value: new THREE.Vector3(1, 0, 0) },
         intensity: { value: this.params.brightEarth ? 0.16 : 0.95 },
       },

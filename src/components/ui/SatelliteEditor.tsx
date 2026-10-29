@@ -59,6 +59,10 @@ interface Props {
   /** Called when earth texture is changed */
   onEarthTextureChange: (t: EarthTextureMode) => void;
   /** Show or hide graticule */
+  showCountryBorders: boolean;
+  onShowCountryBordersChange: (v: boolean) => void;
+  showClouds: boolean;
+  onShowCloudsChange: (v: boolean) => void;
   showGraticule: boolean;
   /** Called when graticule visibility changes */
   onShowGraticuleChange: (v: boolean) => void;
@@ -194,6 +198,10 @@ export default function SatelliteEditor({
   onSatRadiusChange,
   earthTexture,
   onEarthTextureChange,
+  showCountryBorders,
+  onShowCountryBordersChange,
+  showClouds,
+  onShowCloudsChange,
   showGraticule,
   onShowGraticuleChange,
   showEcliptic,
@@ -637,6 +645,10 @@ export default function SatelliteEditor({
                 onSatRadiusChange={onSatRadiusChange}
                 earthTexture={earthTexture}
                 onEarthTextureChange={onEarthTextureChange}
+                showCountryBorders={showCountryBorders}
+                onShowCountryBordersChange={onShowCountryBordersChange}
+                showClouds={showClouds}
+                onShowCloudsChange={onShowCloudsChange}
                 showGraticule={showGraticule}
                 onShowGraticuleChange={onShowGraticuleChange}
                 showEcliptic={showEcliptic}

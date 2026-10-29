@@ -40,7 +40,7 @@ const CAMERA: CameraSnapshot = {
 
 const DISPLAY: DisplaySettings = {
   satRadius: 0.02,
-  earthTexture: "./assets/earth01.webp",
+  earthTexture: "blue-marble",
   showGraticule: true,
   showEcliptic: false,
   showGeoOrbit: false,
@@ -159,5 +159,21 @@ describe("viewState persistence", () => {
     expect(loaded!.display.isl.gslColor).toBe("#123456");
     expect(loaded!.display.isl.islColor).toBe("#abcdef");
     expect((loaded!.display as unknown as { islGslColor?: string }).islGslColor).toBeUndefined();
+  });
+
+  it("maps legacy earth texture paths and unknown modes onto current ids", () => {
+    for (const [stored, expected] of [
+      ["./assets/earth01.webp", "blue-marble"],
+      ["./assets/earth02.webp", "natural-earth"],
+      ["high-resolution", "natural-earth"],
+      ["paper-atlas", "paper-atlas"],
+      ["./assets/removed.webp", "blue-marble"],
+    ]) {
+      localStorage.setItem(
+        "constellation-vis:lastView",
+        JSON.stringify({ version: 2, display: { ...DISPLAY, earthTexture: stored }, camera: CAMERA }),
+      );
+      expect(loadLastView()!.display.earthTexture).toBe(expected as DisplaySettings["earthTexture"]);
+    }
   });
 });
