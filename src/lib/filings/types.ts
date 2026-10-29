@@ -1,3 +1,4 @@
+import type { FilingExtract } from "./extract";
 export interface FilingPlane {
   id: number;
   satellites: number;
@@ -27,7 +28,9 @@ export interface FilingDataset {
   configurations: FilingConfiguration[];
   preferredConfiguration: string;
   warnings: string[];
+  /** Loaded from a saved .filing.json rather than the original MDB. */
+  fromExtract?: boolean;
 }
 export type FilingRow = Record<string, unknown>;
 export interface FilingTables { notice: FilingRow[]; non_geo: FilingRow[]; orbit: FilingRow[]; phase: FilingRow[] }
-export type FilingWorkerResponse = { ok: true; dataset: FilingDataset } | { ok: false; message: string };
+export type FilingWorkerResponse = { ok: true; dataset: FilingDataset; extract: FilingExtract } | { ok: false; message: string };
