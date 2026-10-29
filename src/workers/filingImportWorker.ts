@@ -2,6 +2,7 @@
 import { Buffer } from "buffer";
 import process from "process";
 import { parseFilingTables } from "../lib/filings/parse";
+import { createFilingExtract } from "../lib/filings/extract";
 import type { FilingRow, FilingWorkerResponse } from "../lib/filings/types";
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
 ctx.onmessage = async (event: MessageEvent<{ buffer: ArrayBuffer; filename: string }>) => {
@@ -22,8 +23,9 @@ ctx.onmessage = async (event: MessageEvent<{ buffer: ArrayBuffer; filename: stri
       if (table.rowCount > 100000) throw new Error("単一申請として大きすぎるテーブルです。個別申請のSNS MDBを選んでください。");
       return table.getData() as FilingRow[];
     };
-    const dataset = parseFilingTables({ notice: rows("notice"), non_geo: rows("non_geo"), orbit: rows("orbit"), phase: rows("phase") }, filename, sha256);
-    ctx.postMessage({ ok: true, dataset } satisfies FilingWorkerResponse);
+    const tables = { notice: rows("notice"), non_geo: rows("non_geo"), orbit: rows("orbit"), phase: rows("phase") };
+    const dataset = parseFilingTables(tables, filename, sha256);
+    ctx.postMessage({ ok: true, dataset, extract: createFilingExtract(tables, filename, sha256) } satisfies FilingWorkerResponse);
   } catch (error) {
     ctx.postMessage({ ok: false, message: error instanceof Error ? error.message : "MDBを読み込めませんでした。" } satisfies FilingWorkerResponse);
   }

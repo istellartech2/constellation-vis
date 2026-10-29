@@ -1,5 +1,5 @@
 import { remoteDisplaySnapshot, type RemoteDisplaySettings } from "../../lib/remoteDisplay";
-import { useEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import type { SatelliteSpec } from "../../lib/satellites";
 import type { CommittedScenario } from "../../lib/scenario";
 import type SatelliteScene from "../../lib/visualization";
@@ -18,7 +18,7 @@ import AnalysisTab, { type AnalysisType } from "./AnalysisTab";
 import OptionTab from "./OptionTab";
 import IslTab from "./IslTab";
 import ImportDialog from "./ImportDialog";
-import FilingImportDialog from "./FilingImportDialog";
+import FilingImportDialog, { type PlacedFiling } from "./FilingImportDialog";
 import { replaceFilingText } from "../../lib/filings/replace";
 import type { FilingDataset } from "../../lib/filings/types";
 import type { IslPathResult, IslSettings, IslShellRange } from "../../lib/isl/types";
@@ -128,10 +128,6 @@ interface Props {
   showPerturbation: boolean;
   /** Called when perturbation visibility changes */
   onShowPerturbationChange: (v: boolean) => void;
-  /** Show derived satellite information */
-  showDerivedSatelliteInfo: boolean;
-  /** Called when derived satellite visibility changes */
-  onShowDerivedSatelliteInfoChange: (v: boolean) => void;
   /** Show bright earth (uniform lighting) */
   brightEarth: boolean;
   /** Called when bright earth mode changes */
@@ -216,8 +212,6 @@ export default function SatelliteEditor({
   onEcefChange,
   showPerturbation,
   onShowPerturbationChange,
-  showDerivedSatelliteInfo,
-  onShowDerivedSatelliteInfoChange,
   brightEarth,
   onBrightEarthChange,
   whiteBackground,
@@ -437,6 +431,20 @@ export default function SatelliteEditor({
     }
   }
 
+  const placedFilings = useMemo(() => {
+    const placed: Record<string, PlacedFiling> = {};
+    if (!filingOpen) return placed;
+    try {
+      for (const sat of parseSatellitesToml(satText)) {
+        const key = sat.meta?.dataStatus === "filing" ? sat.meta.filingKey : undefined;
+        if (!key) continue;
+        placed[key] ??= { configuration: sat.meta?.filingConfiguration ?? "", count: 0 };
+        placed[key].count++;
+      }
+    } catch { /* an invalid draft has no placed filings to replace */ }
+    return placed;
+  }, [filingOpen, satText]);
+
   function applyFiling(dataset: FilingDataset, configuration: string, epoch: Date) {
     const nextText = replaceFilingText(satText, dataset, configuration, epoch);
     const base = parseSatellitesToml(nextText);
@@ -454,7 +462,7 @@ export default function SatelliteEditor({
   return (
     <>
       <NoticeDialog open={notice !== null} onClose={() => setNotice(null)} title="お知らせ" description={notice ?? ""} />
-      <FilingImportDialog open={filingOpen} onClose={() => setFilingOpen(false)} onApply={applyFiling} />
+      <FilingImportDialog open={filingOpen} defaultEpoch={startText} placed={placedFilings} onClose={() => setFilingOpen(false)} onApply={applyFiling} />
       <ImportDialog
         open={importOpen}
         importing={importing}
@@ -618,8 +626,6 @@ export default function SatelliteEditor({
                 onEcefChange={onEcefChange}
                 showPerturbation={showPerturbation}
                 onShowPerturbationChange={onShowPerturbationChange}
-                showDerivedSatelliteInfo={showDerivedSatelliteInfo}
-                onShowDerivedSatelliteInfoChange={onShowDerivedSatelliteInfoChange}
                 brightEarth={brightEarth}
                 onBrightEarthChange={onBrightEarthChange}
                 whiteBackground={whiteBackground}

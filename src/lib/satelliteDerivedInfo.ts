@@ -12,7 +12,10 @@ export interface SatelliteDerivedInfo {
   orbitsPerDay: number;
   perigeeAltitudeKm: number;
   apogeeAltitudeKm: number;
+  /** Radius minus the equatorial radius (orbit-sizing reference). */
   currentAltitudeKm: number | null;
+  /** Height above the WGS-72 ellipsoid, i.e. altitude over the surface below. */
+  geodeticAltitudeKm: number | null;
   eciSpeedKmPerSec: number | null;
   latitudeDeg: number | null;
   longitudeDeg: number | null;
@@ -219,6 +222,7 @@ export function getSatelliteDerivedInfo(spec: SatelliteSpec, at: Date): Satellit
 
   const state = propagateState(rec, at);
   const currentAltitudeKm = state ? magnitude(state.position) - EARTH_RADIUS_KM : null;
+  const geodeticAltitudeKm = state ? state.geodetic.height : null;
   const eciSpeedKmPerSec = state?.velocity ? magnitude(state.velocity) : null;
   const latitudeDeg = state ? satellite.radiansToDegrees(state.geodetic.latitude) : null;
   const longitudeDeg = state ? normalizeLongitudeDeg(satellite.radiansToDegrees(state.geodetic.longitude)) : null;
@@ -229,6 +233,7 @@ export function getSatelliteDerivedInfo(spec: SatelliteSpec, at: Date): Satellit
     perigeeAltitudeKm,
     apogeeAltitudeKm,
     currentAltitudeKm,
+    geodeticAltitudeKm,
     eciSpeedKmPerSec,
     latitudeDeg,
     longitudeDeg,

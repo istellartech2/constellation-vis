@@ -70,9 +70,6 @@ function App() {
   const [showSunDirection, setShowSunDirection] = useState(SAVED_DISPLAY?.showSunDirection ?? true);
   const [ecef, setEcef] = useState(SAVED_DISPLAY?.ecef ?? false);
   const [showPerturbation, setShowPerturbation] = useState(SAVED_DISPLAY?.showPerturbation ?? false);
-  const [showDerivedSatelliteInfo, setShowDerivedSatelliteInfo] = useState(
-    SAVED_DISPLAY?.showDerivedSatelliteInfo ?? false,
-  );
   const [brightEarth, setBrightEarth] = useState(SAVED_DISPLAY?.brightEarth ?? false);
   const [whiteBackground, setWhiteBackground] = useState(SAVED_DISPLAY?.whiteBackground ?? false);
   const [showGroundStationCones, setShowGroundStationCones] = useState(
@@ -184,7 +181,6 @@ function App() {
     showSunDirection,
     ecef,
     showPerturbation,
-    showDerivedSatelliteInfo,
     brightEarth,
     whiteBackground,
     showGroundStationCones,
@@ -232,7 +228,6 @@ function App() {
     showSunDirection,
     ecef,
     showPerturbation,
-    showDerivedSatelliteInfo,
     brightEarth,
     whiteBackground,
     showGroundStationCones,
@@ -323,7 +318,6 @@ function App() {
     if (d.showSunDirection !== undefined) setShowSunDirection(d.showSunDirection);
     if (d.ecef !== undefined) setEcef(d.ecef);
     if (d.showPerturbation !== undefined) setShowPerturbation(d.showPerturbation);
-    if (d.showDerivedSatelliteInfo !== undefined) setShowDerivedSatelliteInfo(d.showDerivedSatelliteInfo);
     if (d.brightEarth !== undefined) setBrightEarth(d.brightEarth);
     if (d.whiteBackground !== undefined) setWhiteBackground(d.whiteBackground);
     if (d.showGroundStationCones !== undefined) setShowGroundStationCones(d.showGroundStationCones);
@@ -382,17 +376,16 @@ function App() {
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
       <div ref={mountRef} style={{ width: "100%", height: "100%" }} />
       {satellites.some(s => s.meta?.dataStatus === "filing") && (
-        <div className="pointer-events-none absolute top-3 left-1/2 z-10 max-w-[75vw] -translate-x-1/2 rounded-lg border border-amber-400/40 bg-surface-solid/95 px-3 py-2 text-center text-xs text-fg shadow-lg" role="status">
-          <span className="mr-1.5 text-amber-400" aria-hidden="true">◇</span>
+        <div className="glass pointer-events-none absolute top-3 left-1/2 z-10 flex max-w-[75vw] -translate-x-1/2 items-center gap-2 rounded-full px-3 py-1 text-xs text-fg" role="status" title="実際の衛星位置・配備状況を示しません">
+          <span className="size-2.5 shrink-0 rounded-full border-2 border-fg-muted" aria-hidden="true" />
           申請上の仮配置 {satellites.filter(s => s.meta?.dataStatus === "filing").length.toLocaleString()}機
-          <span className="mt-0.5 block text-[10px] text-fg-muted">実際の衛星位置・配備状況を示しません</span>
+          <span className="text-fg-subtle max-sm:hidden">· 実位置ではありません</span>
         </div>
       )}
       <SatelliteInfo
         satellites={satellites}
         selectedIdx={selectedIdx}
         simTime={simTime}
-        showDerivedInfo={showDerivedSatelliteInfo}
         showPerturbation={showPerturbation}
         cameraMode={cameraMode}
         onCameraModeChange={setCameraMode}
@@ -473,8 +466,6 @@ function App() {
         onEcefChange={setEcef}
         showPerturbation={showPerturbation}
         onShowPerturbationChange={setShowPerturbation}
-        showDerivedSatelliteInfo={showDerivedSatelliteInfo}
-        onShowDerivedSatelliteInfoChange={setShowDerivedSatelliteInfo}
         brightEarth={brightEarth}
         onBrightEarthChange={setBrightEarth}
         whiteBackground={whiteBackground}

@@ -4,4 +4,3 @@ export function serializeFilingMetadata(meta?: SatelliteMetadata): string[] {
   if (meta?.dataStatus !== "filing") return [];
   return FILING_METADATA_KEYS.flatMap(key => meta[key] ? [`${key} = ${JSON.stringify(meta[key])}`] : []);
 }
-export const FILING_COLOR = "#fbbf24";

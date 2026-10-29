@@ -3,7 +3,6 @@ import { SimulationClock } from "./simulationClock";
 // Moved from useSatelliteScene for better organization.
 
 import * as THREE from "three";
-import { FILING_COLOR } from "./filings/metadata";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import * as satellite from "satellite.js";
 import { toSatrec } from "./satellites";
@@ -46,8 +45,13 @@ const EARTH_RADIUS_POLAR_KM = 6356.7523142;
 /** Geostationary orbit radius (from Earth's centre) in kilometres. */
 const GEO_RADIUS_KM = 42164;
 
-/** Maximum number of shadow trail points to keep in memory */
-const MAX_SHADOW_COORDS = 144000; // 100 days at 1 minute intervals
+/** Sim-time spacing of ground-track samples. */
+const GROUND_TRACK_STEP_MS = 30_000;
+/** Maximum number of ground-track samples kept in memory. */
+const MAX_GROUND_TRACK_POINTS = 288_000; // 100 days at 30 s intervals
+const INITIAL_GROUND_TRACK_CAPACITY = 4096;
+/** Ground-track height above the surface, lifted slightly to avoid z-fighting. */
+const GROUND_TRACK_HEIGHT_KM = EARTH_RADIUS_EQUATOR_KM * 0.001;
 
 const STATION_CONE_SEGMENTS = 32;
 const FOV_CONE_SEGMENTS = 32;
@@ -196,11 +200,16 @@ export default class SatelliteScene {
   private selectedIndex: number | null = null;
   private selectedStationIndex: number | null = null;
   private orbitLine: THREE.Line | null = null;
-  private shadowLine: THREE.Line | null = null;
-  private shadowStartDate: Date | null = null;
+  /**
+   * Trail of the selected satellite's sub-satellite point. Vertices are stored
+   * Earth-fixed and the line is rotated with the Earth each frame, so past
+   * samples never need re-projecting; only the live tip vertex moves.
+   */
+  private groundTrackLine: THREE.Line | null = null;
+  private groundTrackPositions = new Float32Array(0);
+  private groundTrackCount = 0;
+  private groundTrackNextSampleMs = 0;
   private currentSimDate: Date;
-  private shadowMinutes = 0;
-  private shadowCoords: { longitude: number; latitude: number }[] = [];
   private animationFrameId: number | null = null;
 
   // Store references for proper disposal
@@ -217,7 +226,6 @@ export default class SatelliteScene {
   private readonly satelliteVisibleColor: THREE.Color;
   private readonly satelliteHiddenColor: THREE.Color;
   private readonly satelliteSelectedColor: THREE.Color;
-  private readonly filingColor = new THREE.Color(FILING_COLOR);
   private readonly fovConeMinHeight: number;
   private linkMaterial: THREE.LineBasicMaterial;
 
@@ -377,7 +385,7 @@ export default class SatelliteScene {
     this.earthGroup.scale.set(1, EARTH_FLATTENING, 1);
     this.scene.add(this.earthGroup);
 
-    this.graticule = createGraticule(20, 0.001, !!params.whiteBackground);
+    this.graticule = createGraticule(10, 0.001, !!params.whiteBackground);
     this.graticule.visible = this.params.showGraticule;
     this.scene.add(this.graticule);
 
@@ -418,22 +426,25 @@ export default class SatelliteScene {
       sizeAttenuation: true,
       vertexColors: true,
     });
-    // Preserve the same point/index mapping for picking; only declared filings
-    // get a larger hollow diamond. Existing point texture remains unchanged.
+    // Preserve the same point/index mapping for picking. Declared filings keep
+    // the normal visibility colours but draw as a hollow ring, like a planned
+    // object on a map, so they never read as a tracked satellite.
     this.satMaterial.onBeforeCompile = shader => {
       shader.vertexShader = "attribute float filingMarker; varying float vFilingMarker;\n" + shader.vertexShader;
-      shader.vertexShader = shader.vertexShader.replace("gl_PointSize = size;", "vFilingMarker = filingMarker; gl_PointSize = size * (filingMarker > 0.5 ? 1.8 : 1.0);");
+      shader.vertexShader = shader.vertexShader.replace("gl_PointSize = size;", "vFilingMarker = filingMarker; gl_PointSize = size * (filingMarker > 0.5 ? 1.35 : 1.0);");
       shader.fragmentShader = "varying float vFilingMarker;\n" + shader.fragmentShader;
       shader.fragmentShader = shader.fragmentShader.replace("#include <map_particle_fragment>", `
         if (vFilingMarker > 0.5) {
-          float diamond = abs(gl_PointCoord.x - 0.5) + abs(gl_PointCoord.y - 0.5);
-          if (diamond > 0.5 || diamond < 0.27) discard;
+          float d = length(gl_PointCoord - 0.5);
+          float ring = smoothstep(0.5, 0.42, d) * smoothstep(0.24, 0.32, d);
+          if (ring < 0.01) discard;
+          diffuseColor.a *= ring;
         } else {
           #include <map_particle_fragment>
         }
       `);
     };
-    this.satMaterial.customProgramCacheKey = () => "filing-hollow-diamond-v1";
+    this.satMaterial.customProgramCacheKey = () => "filing-hollow-ring-v1";
     const satPoints = new THREE.Points(this.satGeometry, this.satMaterial);
 
     const groundPositions = new Float32Array(this.satRecs.length * 3);
@@ -929,36 +940,106 @@ export default class SatelliteScene {
     this.params.onSelectStation?.(idx);
   }
 
-  private resetShadowTrack() {
-    this.shadowStartDate = this.currentSimDate;
-    this.shadowMinutes = 0;
-    this.shadowCoords = [];
-    if (this.shadowLine) {
-      this.shadowLine.geometry.dispose();
-      this.scene.remove(this.shadowLine);
-    }
-    const mat = new THREE.LineBasicMaterial({ color: 0x00ffff });
-    this.shadowLine = new THREE.Line(new THREE.BufferGeometry(), mat);
-    this.scene.add(this.shadowLine);
-    this.updateShadow();
+  private resetGroundTrack() {
+    this.clearGroundTrack();
+    const material = new THREE.LineBasicMaterial({ color: 0x00ffff });
+    this.groundTrackLine = new THREE.Line(new THREE.BufferGeometry(), material);
+    this.groundTrackLine.frustumCulled = false;
+    this.groundTrackPositions = new Float32Array(INITIAL_GROUND_TRACK_CAPACITY * 3);
+    this.groundTrackCount = 0;
+    this.groundTrackNextSampleMs = this.currentSimDate.getTime();
+    this.bindGroundTrackBuffer();
+    this.scene.add(this.groundTrackLine);
+    this.updateGroundTrack(satellite.gstime(this.currentSimDate));
   }
 
-  private clearShadowTrack() {
-    this.shadowStartDate = null;
-    this.shadowMinutes = 0;
-    this.shadowCoords = [];
-    if (this.shadowLine) {
-      this.shadowLine.geometry.dispose();
-      this.scene.remove(this.shadowLine);
-      this.shadowLine = null;
+  private clearGroundTrack() {
+    if (this.groundTrackLine) {
+      this.groundTrackLine.geometry.dispose();
+      (this.groundTrackLine.material as THREE.Material).dispose();
+      this.scene.remove(this.groundTrackLine);
+      this.groundTrackLine = null;
     }
+    this.groundTrackPositions = new Float32Array(0);
+    this.groundTrackCount = 0;
+  }
+
+  private bindGroundTrackBuffer() {
+    if (!this.groundTrackLine) return;
+    const attr = new THREE.BufferAttribute(this.groundTrackPositions, 3);
+    attr.setUsage(THREE.DynamicDrawUsage);
+    this.groundTrackLine.geometry.dispose();
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", attr);
+    this.groundTrackLine.geometry = geometry;
+  }
+
+  /** Write the Earth-fixed sub-satellite point at `date` into vertex `index`. */
+  private writeGroundTrackVertex(rec: satellite.SatRec, date: Date, index: number): boolean {
+    const pv = satellite.propagate(rec, date);
+    if (!pv?.position) return false;
+    const geo = satellite.eciToGeodetic(pv.position, satellite.gstime(date));
+    const ecf = satellite.geodeticToEcf({
+      longitude: geo.longitude,
+      latitude: geo.latitude,
+      height: GROUND_TRACK_HEIGHT_KM,
+    });
+    const o = index * 3;
+    this.groundTrackPositions[o] = ecf.x / EARTH_RADIUS_EQUATOR_KM;
+    this.groundTrackPositions[o + 1] = ecf.z / EARTH_RADIUS_POLAR_KM;
+    this.groundTrackPositions[o + 2] = -ecf.y / EARTH_RADIUS_EQUATOR_KM;
+    return true;
+  }
+
+  /** Make room for at least `needed` vertices, growing or dropping the oldest half. */
+  private ensureGroundTrackCapacity(needed: number) {
+    const capacity = this.groundTrackPositions.length / 3;
+    if (needed <= capacity) return;
+    if (capacity < MAX_GROUND_TRACK_POINTS + 1) {
+      const next = new Float32Array(Math.min(capacity * 2, MAX_GROUND_TRACK_POINTS + 1) * 3);
+      next.set(this.groundTrackPositions);
+      this.groundTrackPositions = next;
+      this.bindGroundTrackBuffer();
+      return;
+    }
+    const drop = Math.floor(this.groundTrackCount / 2);
+    this.groundTrackPositions.copyWithin(0, drop * 3, this.groundTrackCount * 3);
+    this.groundTrackCount -= drop;
+  }
+
+  /**
+   * Append any samples due since the last frame and move the live tip to the
+   * exact current position, so the trail grows continuously rather than in
+   * sample-sized steps.
+   */
+  private updateGroundTrack(gmst: number) {
+    const line = this.groundTrackLine;
+    if (!line || this.selectedIndex === null) return;
+    const rec = this.satRecs[this.selectedIndex];
+    const nowMs = this.currentSimDate.getTime();
+    // Time moved backwards (seek/reverse): restart the trail from here.
+    if (this.groundTrackCount > 0 && nowMs < this.groundTrackNextSampleMs - GROUND_TRACK_STEP_MS) {
+      this.groundTrackCount = 0;
+      this.groundTrackNextSampleMs = nowMs;
+    }
+    while (this.groundTrackNextSampleMs <= nowMs) {
+      this.ensureGroundTrackCapacity(this.groundTrackCount + 2);
+      const sampleDate = new Date(this.groundTrackNextSampleMs);
+      if (this.writeGroundTrackVertex(rec, sampleDate, this.groundTrackCount)) this.groundTrackCount += 1;
+      this.groundTrackNextSampleMs += GROUND_TRACK_STEP_MS;
+    }
+    this.ensureGroundTrackCapacity(this.groundTrackCount + 1);
+    const hasTip = this.writeGroundTrackVertex(rec, this.currentSimDate, this.groundTrackCount);
+    line.geometry.setDrawRange(0, this.groundTrackCount + (hasTip ? 1 : 0));
+    line.geometry.getAttribute("position").needsUpdate = true;
+    line.rotation.y = gmst;
   }
 
   private selectSatellite(idx: number) {
     this.selectedIndex = idx;
     this.params.onSelect?.(idx);
     this.updateTrack();
-    this.resetShadowTrack();
+    this.resetGroundTrack();
   }
 
   private clearSatelliteSelection() {
@@ -967,7 +1048,7 @@ export default class SatelliteScene {
     this.hasCachedVelocity = false;
     this.params.onSelect?.(null);
     this.updateTrack();
-    this.clearShadowTrack();
+    this.clearGroundTrack();
   }
 
   private clearSelections() {
@@ -1002,44 +1083,12 @@ export default class SatelliteScene {
     }
     const geom = new THREE.BufferGeometry().setFromPoints(points);
     const mat = new THREE.LineBasicMaterial({
-      color: this.params.whiteBackground ? 0x111827 : 0xffffff,
+      // Slate on the light theme: dark enough for the white sky, light
+      // enough to stay visible where the orbit crosses the dark Earth.
+      color: this.params.whiteBackground ? 0x64748b : 0xffffff,
     });
     this.orbitLine = new THREE.Line(geom, mat);
     this.scene.add(this.orbitLine);
-  }
-
-  private updateShadow() {
-    if (!this.shadowLine || this.selectedIndex === null || !this.shadowStartDate) return;
-    const rec = this.satRecs[this.selectedIndex];
-    const totalMinutes = Math.ceil((this.currentSimDate.getTime() - this.shadowStartDate.getTime()) / 60000);
-    for (let m = this.shadowMinutes; m <= totalMinutes; m += 1) {
-      const d = new Date(this.shadowStartDate.getTime() + m * 60000);
-      const pv = satellite.propagate(rec, d);
-      if (pv?.position) {
-        const gmst = satellite.gstime(d);
-        const geo = satellite.eciToGeodetic(pv.position, gmst);
-        this.shadowCoords.push({ longitude: geo.longitude, latitude: geo.latitude });
-        
-        // Limit the array size to prevent unbounded growth
-        if (this.shadowCoords.length > MAX_SHADOW_COORDS) {
-          this.shadowCoords.shift(); // Remove oldest point
-        }
-      }
-    }
-    this.shadowMinutes = totalMinutes;
-    const gmstNow = satellite.gstime(this.currentSimDate);
-    const pts = this.shadowCoords.map((gd) => {
-      const ecf = satellite.geodeticToEcf({
-        longitude: gd.longitude,
-        latitude: gd.latitude,
-        height: EARTH_RADIUS_EQUATOR_KM * 0.001,
-      });
-      const eci = satellite.ecfToEci(ecf, gmstNow);
-      return new THREE.Vector3(eci.x / EARTH_RADIUS_EQUATOR_KM, eci.z / EARTH_RADIUS_POLAR_KM, -eci.y / EARTH_RADIUS_EQUATOR_KM);
-    });
-    const geom = new THREE.BufferGeometry().setFromPoints(pts);
-    this.shadowLine.geometry.dispose();
-    this.shadowLine.geometry = geom;
   }
 
   // Reused across calls: avoids allocating a fresh observer literal
@@ -1452,8 +1501,6 @@ export default class SatelliteScene {
             }
           }
           this.satColorAttr.setXYZ(i, this.satelliteSelectedColor.r, this.satelliteSelectedColor.g, this.satelliteSelectedColor.b);
-        } else if (this.params.satellites[i].meta?.dataStatus === "filing") {
-          this.satColorAttr.setXYZ(i, this.filingColor.r, this.filingColor.g, this.filingColor.b);
         } else if (anyVisible) {
           this.satColorAttr.setXYZ(i, this.satelliteVisibleColor.r, this.satelliteVisibleColor.g, this.satelliteVisibleColor.b);
         } else {
@@ -1550,7 +1597,7 @@ export default class SatelliteScene {
     this.satGeometry.computeBoundingSphere();
     this.groundGeometry.computeBoundingSphere();
 
-    this.updateShadow();
+    this.updateGroundTrack(gmst);
     this.updateIslMarkersAndPath(simDate, gmst, nowReal);
 
     if (this.params.timeRef.current) this.params.timeRef.current.textContent = this.formatTime(simDate);
@@ -1759,14 +1806,7 @@ export default class SatelliteScene {
     if (this.orbitLine) {
       this.orbitLine.geometry.dispose();
     }
-    if (this.shadowLine) {
-      this.shadowLine.geometry.dispose();
-      this.scene.remove(this.shadowLine);
-      this.shadowLine = null;
-    }
-    
-    this.shadowMinutes = 0;
-    this.shadowCoords = [];
+    this.clearGroundTrack();
     
     // Dispose KML renderer
     this.kmlRenderer.dispose();

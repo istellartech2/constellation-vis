@@ -4,6 +4,7 @@ import { filingSatellites } from "../src/lib/filings/geometry";
 import { replaceFilingText } from "../src/lib/filings/replace";
 import { buildConfigBundle, parseConfigBundle, parseSatellitesToml } from "../src/lib/config";
 import { parseSatelliteEditorConfig, serializeSatelliteEditorConfig } from "../src/lib/satelliteEditorSerializer";
+import { createFilingExtract, filingExtractFilename, parseFilingExtract } from "../src/lib/filings/extract";
 import type { FilingTables } from "../src/lib/filings/types";
 import { mergeImportedSatellites } from "../src/utils/celestrakUtils";
 
@@ -87,5 +88,43 @@ describe("local filing import", () => {
     const restored = parseConfigBundle(saved);
     expect(restored.satellites.filter(s => s.meta?.dataStatus === "filing")).toHaveLength(3);
     expect(restored.satellites[1].meta?.filingSha256).toBe("unreviewed");
+  });
+});
+
+describe("saved filing extracts", () => {
+  const sha = "a".repeat(64);
+  function saved(tables: FilingTables = fixture()) { return JSON.stringify(createFilingExtract(tables, "test.mdb", sha)); }
+  it("round-trips through the MDB parser with the same configurations", () => {
+    const original = parseFilingTables(fixture(), "test.mdb", sha);
+    const { dataset: restored, extract } = parseFilingExtract(saved());
+    expect(restored.configurations).toEqual(original.configurations);
+    expect(restored.key).toBe(original.key);
+    expect(restored.sourceDate).toBe("2026-10-29");
+    expect(restored.filename).toBe("test.mdb");
+    expect(restored.fromExtract).toBe(true);
+    expect(restored.warnings.some(w => w.includes("抽出ファイル"))).toBe(true);
+    expect(JSON.parse(JSON.stringify(extract))).toEqual(JSON.parse(saved()));
+    expect(filingExtractFilename(restored)).toBe("TEST-FILING-aaaaaaaa.filing.json");
+  });
+  it("keeps only the columns needed for the declared geometry", () => {
+    const tables = fixture();
+    tables.orbit[0].freq_min = 10.7;
+    tables.notice[0].sat_emis = "secret";
+    const extract = JSON.parse(saved(tables));
+    expect(Object.keys(extract.tables).sort()).toEqual(["non_geo", "notice", "orbit", "phase"]);
+    expect(extract.tables.orbit[0].freq_min).toBeUndefined();
+    expect(extract.tables.notice[0].sat_emis).toBeUndefined();
+    expect(extract.tables.notice[0].d_rcv).toBe(epoch.toISOString());
+  });
+  it("rejects foreign, future or tampered extracts", () => {
+    const valid = JSON.parse(saved());
+    expect(() => parseFilingExtract("{")).toThrow("JSON");
+    expect(() => parseFilingExtract(JSON.stringify({ ...valid, format: "other" }))).toThrow(".filing.json");
+    expect(() => parseFilingExtract(JSON.stringify({ ...valid, version: 2 }))).toThrow("未対応");
+    expect(() => parseFilingExtract(JSON.stringify({ ...valid, source: { filename: "x", sha256: "nope" } }))).toThrow("元MDB");
+    expect(() => parseFilingExtract(JSON.stringify({ ...valid, tables: { ...valid.tables, phase: "x" } }))).toThrow("phase");
+    const tampered = structuredClone(valid);
+    tampered.tables.orbit[0].nbr_sat_pl = 10001;
+    expect(() => parseFilingExtract(JSON.stringify(tampered))).toThrow("対応範囲外");
   });
 });

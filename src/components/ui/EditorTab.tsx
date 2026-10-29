@@ -14,7 +14,7 @@ import {
   Clock,
   FileCog,
   Check,
-  Diamond,
+  FileText,
 } from "lucide-react";
 import ConstellationEditorDialog from "./ConstellationEditorDialog";
 import SatelliteTomlEditorDialog from "./SatelliteTomlEditorDialog";
@@ -151,9 +151,13 @@ export default function EditorTab({
           <Globe className="h-4 w-4" />
           CelesTrak からインポート
         </Button>
-        <Button variant="outline" className="w-full h-auto min-h-10 gap-2 border-amber-400/40 bg-amber-400/5 text-fg hover:bg-amber-400/10" onClick={onFilingImportClick}>
-          <Diamond className="h-4 w-4 shrink-0 text-amber-400" />
-          <span className="text-left"><span className="block text-sm">申請・計画から探す</span><span className="block text-[10px] font-normal text-fg-muted">ITUの公式データを取得して仮配置を比較</span></span>
+        <Button
+          variant="outline"
+          className="w-full h-9 gap-2 bg-raised hover:bg-raised-hover border-2 border-line-strong hover:border-brand text-fg"
+          onClick={onFilingImportClick}
+        >
+          <FileText className="h-4 w-4" />
+          ITU申請からインポート
         </Button>
       </PanelSection>
 

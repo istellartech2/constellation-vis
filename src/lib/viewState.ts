@@ -41,7 +41,6 @@ export interface DisplaySettings {
   showSunDirection: boolean;
   ecef: boolean;
   showPerturbation: boolean;
-  showDerivedSatelliteInfo: boolean;
   brightEarth: boolean;
   whiteBackground: boolean;
   showGroundStationCones: boolean;
