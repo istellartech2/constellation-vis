@@ -68,8 +68,6 @@ interface Props {
   onEcefChange: (v: boolean) => void;
   showPerturbation: boolean;
   onShowPerturbationChange: (v: boolean) => void;
-  showDerivedSatelliteInfo: boolean;
-  onShowDerivedSatelliteInfoChange: (v: boolean) => void;
   brightEarth: boolean;
   onBrightEarthChange: (v: boolean) => void;
   whiteBackground: boolean;
@@ -141,8 +139,6 @@ export default function OptionTab(props: Props) {
     onEcefChange,
     showPerturbation,
     onShowPerturbationChange,
-    showDerivedSatelliteInfo,
-    onShowDerivedSatelliteInfoChange,
     brightEarth,
     onBrightEarthChange,
     whiteBackground,
@@ -357,16 +353,10 @@ export default function OptionTab(props: Props) {
       <PanelSection title="衛星の見た目" icon={<Satellite />}>
         <SatelliteSizeControl value={satRadius} onChange={onSatRadiusChange} />
         <CheckboxItem
-          id="derivedSatelliteInfo"
-          checked={showDerivedSatelliteInfo}
-          onChange={onShowDerivedSatelliteInfoChange}
-          label="選択衛星の詳細情報を表示"
-        />
-        <CheckboxItem
           id="perturbation"
           checked={showPerturbation}
           onChange={onShowPerturbationChange}
-          label="摂動・軌道変化情報を表示"
+          label="選択衛星の摂動 (J₂/J₃) を表示"
         />
       </PanelSection>
 

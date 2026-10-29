@@ -9,11 +9,9 @@ import {
 } from "../../lib/perturbation";
 import {
   formatDurationMinutes,
-  formatLatitude,
-  formatLongitude,
   getSatelliteDerivedInfo,
 } from "../../lib/satelliteDerivedInfo";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ChevronDown, X } from "lucide-react";
 import type { SatelliteCameraMode } from "../../lib/visualization";
 
@@ -23,11 +21,12 @@ const CAMERA_VIEW_OPTIONS: { mode: SatelliteCameraMode; label: string }[] = [
   { mode: "thirdPerson", label: "後方追跡" },
 ];
 
+const EARTH_RADIUS_KM = 6378.137;
+
 interface Props {
   satellites: SatelliteSpec[];
   selectedIdx: number | null;
   simTime: Date;
-  showDerivedInfo: boolean;
   showPerturbation: boolean;
   cameraMode: SatelliteCameraMode;
   onCameraModeChange: (mode: SatelliteCameraMode) => void;
@@ -51,22 +50,19 @@ function renderMath(expression: string): string {
 }
 
 function formatNumber(value: number | null, digits = 1, suffix = ""): string {
-  if (value === null || !Number.isFinite(value)) return "N/A";
+  if (value === null || !Number.isFinite(value)) return "—";
   return `${value.toFixed(digits)}${suffix}`;
 }
 
-function Section({
-  title,
-  rows,
-}: {
-  title: string;
-  rows: InfoRow[];
-}) {
-  if (rows.length === 0) return null;
+function SectionTitle({ children }: { children: ReactNode }) {
+  return <h4 className="mb-1.5 text-[11px] font-semibold tracking-wider text-fg-subtle">{children}</h4>;
+}
 
+function Section({ title, rows }: { title: string; rows: InfoRow[] }) {
+  if (rows.length === 0) return null;
   return (
     <section className="border-t border-line pt-2.5">
-      <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">{title}</h4>
+      <SectionTitle>{title}</SectionTitle>
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
         {rows.map((row) => (
           <div key={row.label} className="contents">
@@ -79,17 +75,26 @@ function Section({
   );
 }
 
+/** One live reading: small label, prominent value. */
+function Stat({ label, value }: { label: ReactNode; value: ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[11px] text-fg-subtle">{label}</div>
+      <div className="truncate font-mono text-[15px] font-semibold tabular-nums text-fg">{value}</div>
+    </div>
+  );
+}
+
 export default function SatelliteInfo({
   satellites,
   selectedIdx,
   simTime,
-  showDerivedInfo,
   showPerturbation,
   cameraMode,
   onCameraModeChange,
   onClose,
 }: Props) {
-  // Phones start with the details folded so the card doesn't hide the globe.
+  // Phones start with the orbit details folded so the card doesn't hide the globe.
   const [expanded, setExpanded] = useState(() => !window.matchMedia("(max-width: 768px)").matches);
   if (selectedIdx === null) return null;
 
@@ -97,15 +102,6 @@ export default function SatelliteInfo({
   if (!spec) return null;
 
   const meta = spec.meta;
-  const metaRows: InfoRow[] = [];
-  if (meta) {
-    if (meta.objectName) metaRows.push({ label: "OBJECT_NAME", value: meta.objectName });
-    if (meta.objectId) metaRows.push({ label: "OBJECT_ID", value: meta.objectId });
-    if (meta.noradCatId !== undefined) metaRows.push({ label: "NORAD_CAT_ID", value: String(meta.noradCatId) });
-  }
-
-  const EARTH_RADIUS_KM = 6378.137;
-
   const e = (() => {
     if (spec.type === "elements") {
       return spec.elements;
@@ -122,41 +118,44 @@ export default function SatelliteInfo({
     };
   })();
 
-  const derived = showDerivedInfo ? getSatelliteDerivedInfo(spec, simTime) : null;
+  const derived = getSatelliteDerivedInfo(spec, simTime);
 
-  const orbitalRows: InfoRow[] = [
-    { label: "satnum", value: String(e.satnum) },
-    { label: "a (半長軸)", value: `${e.semiMajorAxisKm.toFixed(1)} km` },
-    { label: "e (離心率)", value: e.eccentricity.toFixed(6) },
-    { label: "i (傾斜角)", value: `${e.inclinationDeg.toFixed(1)} deg` },
-    { label: "Ω (昇交点赤経)", value: `${e.raanDeg.toFixed(1)} deg` },
-    { label: "ω (近地点引数)", value: `${e.argPerigeeDeg.toFixed(1)} deg` },
-    { label: "M (平均近点角)", value: `${e.meanAnomalyDeg.toFixed(1)} deg` },
-  ];
-
-  const derivedRows: InfoRow[] = derived ? [
-    { label: "軌道周期", value: formatDurationMinutes(derived.periodMinutes) },
-    { label: "1日あたり周回数", value: `${derived.orbitsPerDay.toFixed(2)} rev/day` },
-    { label: "近地点高度", value: formatNumber(derived.perigeeAltitudeKm, 1, " km") },
-    { label: "遠地点高度", value: formatNumber(derived.apogeeAltitudeKm, 1, " km") },
-    { label: "現在高度", value: formatNumber(derived.currentAltitudeKm, 1, " km") },
-    { label: "ECI速度", value: formatNumber(derived.eciSpeedKmPerSec, 3, " km/s") },
-    { label: "緯度", value: formatLatitude(derived.latitudeDeg) },
-    { label: "経度", value: formatLongitude(derived.longitudeDeg) },
-    { label: "日陰時間", value: formatDurationMinutes(derived.eclipseMinutes) },
-    { label: "日陰率", value: derived.eclipseRatio === null ? "N/A" : `${(derived.eclipseRatio * 100).toFixed(1)} %` },
-    { label: "次の日陰開始まで", value: formatDurationMinutes(derived.timeToNextEclipseStartMinutes) },
-    { label: "次の日照復帰まで", value: formatDurationMinutes(derived.timeToNextSunlightReturnMinutes) },
-  ] : [];
-
+  const identifiers = [
+    meta?.noradCatId !== undefined ? `NORAD ${meta.noradCatId}` : null,
+    meta?.objectId ?? null,
+    meta?.noradCatId === undefined ? `satnum ${e.satnum}` : null,
+  ].filter(Boolean).join(" · ");
   const title = meta?.objectName ?? `衛星 #${selectedIdx + 1}`;
+
+  // Below ~5 km the perigee/apogee split is noise from near-zero eccentricity.
+  const isCircular = derived.apogeeAltitudeKm - derived.perigeeAltitudeKm < 5;
+  const orbitRows: InfoRow[] = [
+    { label: "周期", value: `${derived.periodMinutes.toFixed(1)} min · ${derived.orbitsPerDay.toFixed(2)} 周/日` },
+    isCircular
+      ? { label: "軌道高度", value: `${((derived.perigeeAltitudeKm + derived.apogeeAltitudeKm) / 2).toFixed(1)} km` }
+      : { label: "近地点 / 遠地点", value: `${derived.perigeeAltitudeKm.toFixed(0)} / ${derived.apogeeAltitudeKm.toFixed(0)} km` },
+    { label: "傾斜角 i", value: `${e.inclinationDeg.toFixed(2)}°` },
+    { label: "昇交点赤経 Ω", value: `${e.raanDeg.toFixed(2)}°` },
+    { label: "離心率 e", value: e.eccentricity.toFixed(6) },
+    { label: "近地点引数 ω", value: `${e.argPerigeeDeg.toFixed(2)}°` },
+    { label: "平均近点角 M", value: `${e.meanAnomalyDeg.toFixed(2)}°` },
+    { label: "半長軸 a", value: `${e.semiMajorAxisKm.toFixed(1)} km` },
+  ];
+  const eclipseRows: InfoRow[] = [
+    {
+      label: "1周あたり",
+      value: derived.eclipseMinutes === 0
+        ? "日陰なし"
+        : `${formatDurationMinutes(derived.eclipseMinutes)}${derived.eclipseRatio === null ? "" : ` (${(derived.eclipseRatio * 100).toFixed(0)}%)`}`,
+    },
+  ];
 
   return (
     <div className="hud-card glass satellite-info">
       <header className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-[11px] font-medium text-fg-subtle">選択中の衛星</div>
           <div className="truncate text-[15px] font-semibold text-fg">{title}</div>
+          {identifiers && <div className="truncate font-mono text-[11px] text-fg-subtle">{identifiers}</div>}
         </div>
         <div className="-mr-1 -mt-0.5 flex shrink-0 items-center">
         <button
@@ -164,8 +163,8 @@ export default function SatelliteInfo({
           data-slot="icon-button"
           onClick={() => setExpanded((v) => !v)}
           aria-expanded={expanded}
-          aria-label={expanded ? "詳細を閉じる" : "詳細を表示"}
-          title={expanded ? "詳細を閉じる" : "詳細を表示"}
+          aria-label={expanded ? "軌道の詳細を閉じる" : "軌道の詳細を表示"}
+          title={expanded ? "軌道の詳細を閉じる" : "軌道の詳細を表示"}
           className="inline-flex size-7 items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-raised-hover hover:text-fg"
         >
           <ChevronDown className={`size-4 transition-transform ${expanded ? "" : "rotate-180"}`} />
@@ -187,6 +186,10 @@ export default function SatelliteInfo({
         <p className="text-fg-muted">基準日時・位相の解釈に仮定を含みます。実際の位置や運用を示しません。</p>
         {meta.filingSource?.startsWith("https://www.itu.int/") && <a href={meta.filingSource} target="_blank" rel="noopener noreferrer" className="text-brand-text underline">公式申請を確認</a>}
       </div>}
+      <div className="grid grid-cols-2 gap-x-4">
+        <Stat label="高度 (地表から)" value={formatNumber(derived.geodeticAltitudeKm, 1, " km")} />
+        <Stat label="速度" value={formatNumber(derived.eciSpeedKmPerSec, 2, " km/s")} />
+      </div>
       <div role="radiogroup" aria-label="カメラ" className="grid grid-cols-3 gap-1 rounded-lg border border-line bg-sunken p-[3px]">
         {CAMERA_VIEW_OPTIONS.map((option) => {
           const selected = cameraMode === option.mode;
@@ -207,14 +210,13 @@ export default function SatelliteInfo({
           );
         })}
       </div>
-      {expanded && (<>
+      {expanded && (
       <div className="satellite-info-body">
-        <Section title="基本情報" rows={metaRows} />
-        <Section title="軌道要素" rows={orbitalRows} />
-        {showDerivedInfo && <Section title="運用指標" rows={derivedRows} />}
+        <Section title="軌道 (元期)" rows={orbitRows} />
+        <Section title="日陰" rows={eclipseRows} />
         {showPerturbation && (
           <section className="border-t border-line pt-2.5">
-            <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">摂動</h4>
+            <SectionTitle>摂動 (永年変化)</SectionTitle>
             {(() => {
               const detailedRates = calculateDetailedPerturbationRates({
                 semiMajorAxisKm: e.semiMajorAxisKm,
@@ -250,10 +252,7 @@ export default function SatelliteInfo({
           </section>
         )}
       </div>
-      </>)}
-      <p className="text-[11px] text-fg-subtle max-md:hidden">
-        {cameraMode === "thirdPerson" ? "ホイールで拡大、上下ドラッグで角度調整" : "ホイールで拡大・縮小"}
-      </p>
+      )}
     </div>
   );
 }

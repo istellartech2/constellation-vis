@@ -128,10 +128,6 @@ interface Props {
   showPerturbation: boolean;
   /** Called when perturbation visibility changes */
   onShowPerturbationChange: (v: boolean) => void;
-  /** Show derived satellite information */
-  showDerivedSatelliteInfo: boolean;
-  /** Called when derived satellite visibility changes */
-  onShowDerivedSatelliteInfoChange: (v: boolean) => void;
   /** Show bright earth (uniform lighting) */
   brightEarth: boolean;
   /** Called when bright earth mode changes */
@@ -216,8 +212,6 @@ export default function SatelliteEditor({
   onEcefChange,
   showPerturbation,
   onShowPerturbationChange,
-  showDerivedSatelliteInfo,
-  onShowDerivedSatelliteInfoChange,
   brightEarth,
   onBrightEarthChange,
   whiteBackground,
@@ -632,8 +626,6 @@ export default function SatelliteEditor({
                 onEcefChange={onEcefChange}
                 showPerturbation={showPerturbation}
                 onShowPerturbationChange={onShowPerturbationChange}
-                showDerivedSatelliteInfo={showDerivedSatelliteInfo}
-                onShowDerivedSatelliteInfoChange={onShowDerivedSatelliteInfoChange}
                 brightEarth={brightEarth}
                 onBrightEarthChange={onBrightEarthChange}
                 whiteBackground={whiteBackground}

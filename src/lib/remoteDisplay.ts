@@ -5,9 +5,11 @@ import type { DisplaySettings } from "./viewState";
 export type RemoteDisplaySettings = Partial<Omit<DisplaySettings, "isl">>;
 const booleans = new Set([
   "showGraticule", "showEcliptic", "showGeoOrbit", "showSunDirection", "ecef",
-  "showPerturbation", "showDerivedSatelliteInfo", "brightEarth", "whiteBackground",
+  "showPerturbation", "brightEarth", "whiteBackground",
   "showGroundStationCones", "showSatelliteFovCones",
 ]);
+/** Retired fields still accepted (and dropped) so older clients keep working. */
+const legacyBooleans = new Set(["showDerivedSatelliteInfo"]);
 const colors = new Set(["groundConeColor", "fovConeColor", "satelliteVisibleColor", "satelliteHiddenColor", "satelliteSelectedColor"]);
 const ranges: Record<string, readonly [number, number]> = {
   satRadius: [0.01, 0.05], groundConeMinElevationDeg: [0, 85], groundConeDistanceKm: [100, 20000],
@@ -18,7 +20,13 @@ const textures = new Set<string>(EARTH_TEXTURE_OPTIONS.map(({ value }) => value)
 
 export function validateRemoteDisplay(value: unknown): RemoteDisplaySettings {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("display must be an object");
+  const result: Record<string, unknown> = {};
   for (const [key, v] of Object.entries(value)) {
+    if (legacyBooleans.has(key)) {
+      if (typeof v !== "boolean") throw new Error(`${key} must be boolean`);
+      continue;
+    }
+    result[key] = v;
     if (booleans.has(key)) {
       if (typeof v !== "boolean") throw new Error(`${key} must be boolean`);
     } else if (colors.has(key)) {
@@ -30,7 +38,7 @@ export function validateRemoteDisplay(value: unknown): RemoteDisplaySettings {
       if (typeof v !== "string" || !textures.has(v)) throw new Error("Unknown earthTexture");
     } else throw new Error(`Unknown display field: ${key}`);
   }
-  return { ...value } as RemoteDisplaySettings;
+  return result as RemoteDisplaySettings;
 }
 
 export function remoteDisplaySnapshot(display: DisplaySettings): RemoteDisplaySettings {

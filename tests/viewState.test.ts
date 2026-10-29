@@ -47,7 +47,6 @@ const DISPLAY: DisplaySettings = {
   showSunDirection: true,
   ecef: true,
   showPerturbation: false,
-  showDerivedSatelliteInfo: false,
   brightEarth: false,
   whiteBackground: true,
   showGroundStationCones: true,

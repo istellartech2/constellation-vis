@@ -70,9 +70,6 @@ function App() {
   const [showSunDirection, setShowSunDirection] = useState(SAVED_DISPLAY?.showSunDirection ?? true);
   const [ecef, setEcef] = useState(SAVED_DISPLAY?.ecef ?? false);
   const [showPerturbation, setShowPerturbation] = useState(SAVED_DISPLAY?.showPerturbation ?? false);
-  const [showDerivedSatelliteInfo, setShowDerivedSatelliteInfo] = useState(
-    SAVED_DISPLAY?.showDerivedSatelliteInfo ?? false,
-  );
   const [brightEarth, setBrightEarth] = useState(SAVED_DISPLAY?.brightEarth ?? false);
   const [whiteBackground, setWhiteBackground] = useState(SAVED_DISPLAY?.whiteBackground ?? false);
   const [showGroundStationCones, setShowGroundStationCones] = useState(
@@ -184,7 +181,6 @@ function App() {
     showSunDirection,
     ecef,
     showPerturbation,
-    showDerivedSatelliteInfo,
     brightEarth,
     whiteBackground,
     showGroundStationCones,
@@ -232,7 +228,6 @@ function App() {
     showSunDirection,
     ecef,
     showPerturbation,
-    showDerivedSatelliteInfo,
     brightEarth,
     whiteBackground,
     showGroundStationCones,
@@ -323,7 +318,6 @@ function App() {
     if (d.showSunDirection !== undefined) setShowSunDirection(d.showSunDirection);
     if (d.ecef !== undefined) setEcef(d.ecef);
     if (d.showPerturbation !== undefined) setShowPerturbation(d.showPerturbation);
-    if (d.showDerivedSatelliteInfo !== undefined) setShowDerivedSatelliteInfo(d.showDerivedSatelliteInfo);
     if (d.brightEarth !== undefined) setBrightEarth(d.brightEarth);
     if (d.whiteBackground !== undefined) setWhiteBackground(d.whiteBackground);
     if (d.showGroundStationCones !== undefined) setShowGroundStationCones(d.showGroundStationCones);
@@ -392,7 +386,6 @@ function App() {
         satellites={satellites}
         selectedIdx={selectedIdx}
         simTime={simTime}
-        showDerivedInfo={showDerivedSatelliteInfo}
         showPerturbation={showPerturbation}
         cameraMode={cameraMode}
         onCameraModeChange={setCameraMode}
@@ -473,8 +466,6 @@ function App() {
         onEcefChange={setEcef}
         showPerturbation={showPerturbation}
         onShowPerturbationChange={setShowPerturbation}
-        showDerivedSatelliteInfo={showDerivedSatelliteInfo}
-        onShowDerivedSatelliteInfoChange={setShowDerivedSatelliteInfo}
         brightEarth={brightEarth}
         onBrightEarthChange={setBrightEarth}
         whiteBackground={whiteBackground}

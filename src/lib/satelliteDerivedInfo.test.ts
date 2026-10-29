@@ -61,6 +61,11 @@ describe("satelliteDerivedInfo", () => {
     expect(result.apogeeAltitudeKm).toBeGreaterThan(result.perigeeAltitudeKm);
     expect(result.apogeeAltitudeKm).toBeLessThan(520);
     expect(result.currentAltitudeKm).not.toBeNull();
+    // Geodetic altitude stays within the orbit's perigee/apogee band, allowing
+    // for the ellipsoid being up to ~21 km lower than the equatorial radius.
+    expect(result.geodeticAltitudeKm).not.toBeNull();
+    expect(result.geodeticAltitudeKm!).toBeGreaterThan(result.perigeeAltitudeKm - 5);
+    expect(result.geodeticAltitudeKm!).toBeLessThan(result.apogeeAltitudeKm + 25);
     expect(result.eciSpeedKmPerSec).not.toBeNull();
     expect(result.latitudeDeg).not.toBeNull();
     expect(result.longitudeDeg).not.toBeNull();
