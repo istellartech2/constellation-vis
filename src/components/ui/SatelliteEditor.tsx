@@ -183,7 +183,7 @@ function ScopeNote({ editorCount, catalogCount }: { editorCount: number; catalog
   if (catalogCount === 0 && editorCount <= MASS_MODE_THRESHOLD) return null;
   return (
     <p className="mb-2 rounded border border-line bg-raised px-3 py-2 text-[11px] text-fg-muted" role="note">
-      {catalogCount > 0 && <>表示レイヤー（{catalogCount.toLocaleString()}機）は対象外です。シナリオの衛星{editorCount.toLocaleString()}機のみを扱います。</>}
+      {catalogCount > 0 && <>表示レイヤー（{catalogCount.toLocaleString()}機）は対象外です。シミュレーション対象の衛星{editorCount.toLocaleString()}機のみを扱います。</>}
       {editorCount > MASS_MODE_THRESHOLD && <>エディタの衛星が{MASS_MODE_THRESHOLD.toLocaleString()}機を超えているため、計算に時間がかかります。</>}
     </p>
   );

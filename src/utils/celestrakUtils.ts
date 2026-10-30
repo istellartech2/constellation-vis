@@ -7,11 +7,12 @@ export interface CelestrakGroupNode {
   id: string;
   label: string;
   urlGroup?: string;
-  /** "gp" (default) uses gp.php?GROUP=; "supplemental" uses supplemental/sup-gp.php?FILE=. */
-  source?: "gp" | "supplemental";
+  /** "gp" (default) uses gp.php?GROUP=; "special" uses gp.php?SPECIAL=; "supplemental" uses supplemental/sup-gp.php?FILE=. */
+  source?: "gp" | "special" | "supplemental";
   children?: CelestrakGroupNode[];
 }
 
+// Mirrors the groups listed on https://celestrak.org/NORAD/elements/ (checked 2026-10).
 export const CELESTRAK_GROUP_TREE: CelestrakGroupNode[] = [
   {
     id: "special",
@@ -19,9 +20,9 @@ export const CELESTRAK_GROUP_TREE: CelestrakGroupNode[] = [
     children: [
       { id: "last-30-days", label: "過去30日間の打ち上げ" },
       { id: "stations", label: "宇宙ステーション" },
-      { id: "active", label: "運用中衛星" },
-      { id: "geo", label: "運用中GEO" },
-      { id: "cubesat", label: "キューブサット" },
+      { id: "visual", label: "明るい衛星（肉眼で見える）" },
+      { id: "active", label: "運用中衛星（すべて）" },
+      { id: "analyst", label: "所属不明の追跡物体（Analyst）" },
     ],
   },
   {
@@ -29,6 +30,10 @@ export const CELESTRAK_GROUP_TREE: CelestrakGroupNode[] = [
     label: "気象・地球観測",
     children: [
       { id: "weather", label: "気象衛星" },
+      { id: "resource", label: "地球資源・光学観測" },
+      { id: "sar", label: "合成開口レーダ（SAR）" },
+      { id: "sarsat", label: "捜索救難（SARSAT）" },
+      { id: "dmc", label: "災害監視（DMC）" },
       { id: "planet", label: "Planet" },
       { id: "spire", label: "Spire" },
     ],
@@ -37,26 +42,33 @@ export const CELESTRAK_GROUP_TREE: CelestrakGroupNode[] = [
     id: "communications",
     label: "通信",
     children: [
+      { id: "geo", label: "運用中GEO" },
+      { id: "gpz", label: "GEO保護域内の全物体", source: "special" },
+      { id: "gpz-plus", label: "GEO保護域＋周辺の全物体", source: "special" },
       { id: "starlink", label: "Starlink" },
       { id: "oneweb", label: "OneWeb" },
+      { id: "kuiper", label: "Kuiper" },
+      { id: "qianfan", label: "Qianfan" },
+      { id: "hulianwang", label: "Hulianwang Digui" },
+      { id: "telesat", label: "Telesat" },
       { id: "intelsat", label: "Intelsat" },
       { id: "ses", label: "SES" },
       { id: "eutelsat", label: "Eutelsat" },
-      { id: "telesat", label: "Telesat" },
-      { id: "hulianwang", label: "Hulianwang Digui" },
-      { id: "qianfan", label: "Qianfan" },
-      { id: "kuiper", label: "Kuiper" },
       { id: "iridium", label: "Iridium NEXT", urlGroup: "iridium-NEXT" },
       { id: "orbcomm", label: "Orbcomm" },
-      { id: "kineis", label: "Kineis (ARGOS DCS)", urlGroup: "argos" },
       { id: "globalstar", label: "Globalstar" },
-      { id: "amateur", label: "Amateur Radio" },
       {
         id: "ast-spacemobile",
         label: "AST SpaceMobile",
         urlGroup: "ast",
         source: "supplemental",
       },
+      { id: "kineis", label: "Kineis (ARGOS DCS)", urlGroup: "argos" },
+      { id: "tdrss", label: "データ中継（TDRSS）" },
+      { id: "amateur", label: "アマチュア無線" },
+      { id: "satnogs", label: "SatNOGS" },
+      { id: "x-comm", label: "実験通信" },
+      { id: "other-comm", label: "その他の通信" },
     ],
   },
   {
@@ -72,13 +84,25 @@ export const CELESTRAK_GROUP_TREE: CelestrakGroupNode[] = [
     ],
   },
   {
+    id: "science-misc",
+    label: "科学・その他",
+    children: [
+      { id: "science", label: "宇宙・地球科学" },
+      { id: "geodetic", label: "測地" },
+      { id: "engineering", label: "技術試験" },
+      { id: "education", label: "教育" },
+      { id: "cubesat", label: "キューブサット" },
+      { id: "military", label: "軍事（その他）" },
+      { id: "radar", label: "レーダ較正" },
+    ],
+  },
+  {
     id: "debris",
     label: "デブリ",
     children: [
-      { id: "cosmos-1408-debris", label: "COSMOS 1408 Debris" },
       { id: "fengyun-1c-debris", label: "Fengyun 1C Debris" },
-      { id: "iridium-33-debris", label: "Iridium 33 Debris" },
       { id: "cosmos-2251-debris", label: "COSMOS 2251 Debris" },
+      { id: "iridium-33-debris", label: "Iridium 33 Debris" },
     ],
   },
 ] as const;
@@ -86,7 +110,7 @@ export const CELESTRAK_GROUP_TREE: CelestrakGroupNode[] = [
 type CelestrakGroupEntry = {
   label: string;
   urlGroup: string;
-  source: "gp" | "supplemental";
+  source: "gp" | "special" | "supplemental";
 };
 
 const CELESTRAK_GROUP_INDEX = new Map<string, CelestrakGroupEntry>();
@@ -180,6 +204,9 @@ export function getCelestrakUrl(group: string): string {
   const urlGroup = encodeURIComponent(entry?.urlGroup ?? group);
   if (entry?.source === "supplemental") {
     return `https://celestrak.org/NORAD/elements/supplemental/sup-gp.php?FILE=${urlGroup}&FORMAT=json`;
+  }
+  if (entry?.source === "special") {
+    return `https://celestrak.org/NORAD/elements/gp.php?SPECIAL=${urlGroup}&FORMAT=json`;
   }
   return `https://celestrak.org/NORAD/elements/gp.php?GROUP=${urlGroup}&FORMAT=json`;
 }

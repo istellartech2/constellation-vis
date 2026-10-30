@@ -15,6 +15,20 @@ describe('CelesTrak Import Functionality', () => {
       expect(getCelestrakUrl('1999-025')).toBe('https://celestrak.org/NORAD/elements/gp.php?GROUP=1999-025&FORMAT=json');
     });
 
+    it('should use SPECIAL= for GEO protected zone queries', () => {
+      expect(getCelestrakUrl('gpz')).toBe('https://celestrak.org/NORAD/elements/gp.php?SPECIAL=gpz&FORMAT=json');
+      expect(getCelestrakUrl('gpz-plus')).toBe('https://celestrak.org/NORAD/elements/gp.php?SPECIAL=gpz-plus&FORMAT=json');
+    });
+
+    it('should accept six-digit catalog numbers issued since 2026-07', () => {
+      const sat = celestrakEntryToSat({
+        OBJECT_NAME: 'NEW OBJECT', OBJECT_ID: '2026-200A', EPOCH: '2026-10-29T12:00:00.000000',
+        MEAN_MOTION: 15.2, ECCENTRICITY: 0.0001, INCLINATION: 53, RA_OF_ASC_NODE: 10,
+        ARG_OF_PERICENTER: 90, MEAN_ANOMALY: 270, NORAD_CAT_ID: 101227,
+      });
+      expect(sat.elements.satnum).toBe(101227);
+    });
+
     it('should fallback to original group name for unknown groups', () => {
       expect(getCelestrakUrl('unknown-group')).toBe('https://celestrak.org/NORAD/elements/gp.php?GROUP=unknown-group&FORMAT=json');
     });
@@ -166,7 +180,7 @@ describe('CelesTrak Import Functionality', () => {
         // Navigation
         'gnss', 'gps-ops', 'glo-ops', 'galileo', 'beidou', 'sbas',
         // Debris
-        'cosmos-1408-debris', 'fengyun-1c-debris', 'iridium-33-debris', 'cosmos-2251-debris'
+        'fengyun-1c-debris', 'iridium-33-debris', 'cosmos-2251-debris'
       ];
 
       for (const group of requiredGroups) {
