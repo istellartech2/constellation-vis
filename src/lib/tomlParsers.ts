@@ -143,9 +143,9 @@ function generateFromShellsDetailed(con: ConstellationConfig, baseOffset: number
   const epoch = con.epoch instanceof Date ? con.epoch : new Date(String(con.epoch));
   // ID ranges:
   //   1-9999: Constellation generated satellites
-  //   10000-89999: NORAD catalog IDs (CelesTrak imports)
-  //   90000-99999: Manual definitions (satellites.toml)
-  // Note: TLE format only supports 5-digit satellite numbers (max 99999)
+  //   10000-: NORAD catalog IDs (CelesTrak imports; six digits since 2026-07)
+  //   910000000-999999999: Local manual/formation/filing numbers (localSatnum.ts);
+  //   older satellites.toml files may still hold local numbers in 90000-99999.
   let nextSatnum = 1;
   const sats: SatelliteSpec[] = [];
   const ranges: IslShellRange[] = [];
