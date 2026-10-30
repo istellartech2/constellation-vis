@@ -1655,6 +1655,12 @@ export default class SatelliteScene {
     } else {
       this.cameraHolder.rotation.set(0, frame === "ecef" ? rotAngle : 0, 0);
     }
+    // OrbitControls orbits in the holder's local frame, but Object3D.lookAt
+    // reads `camera.up` in world space. Keep it on the holder's +Y so a tilted
+    // (GSE) holder keeps ecliptic north up instead of re-rolling to ECI north.
+    if (this.cameraMode === "free") {
+      this.camera.up.copy(UP_AXIS).applyQuaternion(this.cameraHolder.quaternion);
+    }
 
     this.sunlight.position.set(sx * 10, sz * 10, -sy * 10);
     this.sunDot.position.set(sx, sz, -sy);
