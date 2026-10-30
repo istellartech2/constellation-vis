@@ -15,7 +15,7 @@
 
 ## はじめる
 
-[Bun](https://bun.sh/) 1.3.11 以上が必要です。
+[Bun](https://bun.sh/) 1.3.11 以上が必要です。Node.js で Vite を実行する場合は、Node.js 20.19 以上または 22.12 以上を使用してください。
 
 ```sh
 bun install
