@@ -2,9 +2,9 @@
  * Message contract for the mission-design Worker.
  *
  * Same `id`-keyed request/response union style as
- * `islRoutingWorker.types.ts` / `stationAccessWorker.types.ts`. There is no
+ * `islRoutingWorker.types.ts` / `accessGridWorker.types.ts`. There is no
  * cancel request: the owner aborts by calling `terminate()` and creating a new
- * Worker, matching `StationAccessAnalysis.tsx`.
+ * Worker, matching `useAccessGridJob.ts`.
  *
  * Everything crossing the boundary is plain structured-cloneable data
  * (`DesignRequest` in, `DesignResult`/`DesignCandidate` out) — see

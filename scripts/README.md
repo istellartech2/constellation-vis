@@ -75,6 +75,18 @@
   - `bun scripts/analysis/compute-visibility.ts`
   - `bun scripts/analysis/compute-visibility.ts ./some-constellation.toml ./some-groundstations.toml`
 
+### `bench-access.ts`
+
+- 目的:
+  - 解析タブの地上局アクセス設計・全球アクセス設計と同じ計算（[`src/lib/accessGrid.ts`](../src/lib/accessGrid.ts) の `computeAccessGrid`）を、数百〜千機規模で計測する
+- 入力:
+  - 第 1 引数: 衛星数（既定 300、15 面の Walker 配置を生成）
+  - `--reference`: 旧実装 `calculateStationAccessData` も計測する（全球は数分かかります）
+- 主な出力:
+  - 標準出力に 24 時間・10 秒刻みの計算時間（地上局 2 局 / 緯度 181 点）
+- 実行例:
+  - `bun scripts/analysis/bench-access.ts 1000`
+
 ### `compute-visibility-sweep.ts`
 
 - 目的:

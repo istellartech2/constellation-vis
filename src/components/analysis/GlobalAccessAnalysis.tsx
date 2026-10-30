@@ -1,22 +1,22 @@
 import { useMemo, useRef, useState } from "react";
 import ReactECharts from "echarts-for-react";
-import { calculateStationAccessData, averageVisibilityData } from "../../lib/visibility";
-import { parseSatellitesToml, parseConstellationToml } from "../../lib/config";
+import type { ECharts } from "echarts";
+import { gridStationCounts, gridToSamples } from "../../lib/accessGrid";
 import type { GroundStation } from "../../lib/groundStations";
 import type { StationVisibilitySample } from "../../lib/visibility";
 import { downloadPNG, downloadHTML, downloadCSV } from "./utils/downloadUtils";
 import { createGlobalAccessChartOption, type LatitudeAvailabilityRow } from "./utils/chartOptions";
 import { useCompactChart } from "./utils/useCompactChart";
 import { useChartTheme } from "./utils/chartTheme";
-import { formatNumber } from "./utils/chartBase";
+import { formatNumber, formatUtcHHMM } from "./utils/chartBase";
 import {
   areaWeightedMean,
   formatLatitude,
   latitudeRanges,
-  stationCounts,
   summarizeCounts,
 } from "./utils/accessMetrics";
-import { ChartCard, EmptyState, KpiStrip, MetricList, type Kpi } from "./AnalysisLayout";
+import { BusyOverlay, ChartCard, EmptyState, KpiStrip, MetricList, type Kpi } from "./AnalysisLayout";
+import { AnalysisCancelledError, useAccessGridJob } from "./utils/useAccessGridJob";
 
 const DURATION_HOURS = 24;
 const STEP_SECONDS = 10;
@@ -50,21 +50,37 @@ export default function GlobalAccessAnalysis({ satText, constText, startTime }: 
   const [observationLongitude, setObservationLongitude] = useState(0);
   const chartRef = useRef<InstanceType<typeof ReactECharts> | null>(null);
 
+  const job = useAccessGridJob();
+  const [hover, setHover] = useState<HeatHover | null>(null);
+  const resultRef = useRef<GlobalResult | null>(null);
+  resultRef.current = result;
+
+  // The heat layer is one bitmap, so per-cell hover is resolved from the pointer.
+  const attachHeatHover = (chart: ECharts) => {
+    const zr = chart.getZr();
+    zr.on("mousemove", (event) => {
+      const current = resultRef.current;
+      const point = [event.offsetX, event.offsetY];
+      if (!current || !chart.containPixel({ gridIndex: 0 }, point)) {
+        setHover(null);
+        return;
+      }
+      const [ti, li] = chart.convertFromPixel({ xAxisIndex: 0, yAxisIndex: 0 }, point) as number[];
+      const timeIndex = Math.round(ti);
+      const latIndex = Math.round(li);
+      if (!current.samples[timeIndex]?.stations[latIndex]) {
+        setHover(null);
+        return;
+      }
+      setHover({ x: point[0], y: point[1], timeIndex, latIndex });
+    });
+    zr.on("globalout", () => setHover(null));
+  };
+
   const analyzeGlobalCoverage = async () => {
     setIsAnalyzing(true);
     setError("");
-
-    // Allow UI to update before starting heavy computation
-    await new Promise((resolve) => setTimeout(resolve, 10));
-
     try {
-      const baseSats = satText ? parseSatellitesToml(satText) : [];
-      const constSats = constText ? parseConstellationToml(constText) : [];
-      const allSatellites = [...baseSats, ...constSats];
-      if (allSatellites.length === 0) {
-        throw new Error("衛星データがありません");
-      }
-
       // One virtual ground station per degree of latitude on the chosen meridian.
       const generatedStations: GroundStation[] = [];
       for (let lat = -90; lat <= 90; lat++) {
@@ -77,17 +93,18 @@ export default function GlobalAccessAnalysis({ satText, constText, startTime }: 
         });
       }
 
-      const visibilityData = calculateStationAccessData(
-        allSatellites,
-        generatedStations,
-        startTime,
-        DURATION_HOURS,
-        STEP_SECONDS,
-      );
+      const { grid } = await job.run({
+        satText,
+        constText,
+        stations: generatedStations,
+        startTimeIso: startTime.toISOString(),
+        durationHours: DURATION_HOURS,
+        stepSeconds: STEP_SECONDS,
+      });
 
       // Metrics come from the raw 10 s integer counts; only the heatmap is averaged.
       const rows: LatitudeAvailabilityRow[] = generatedStations.map((station, index) => {
-        const summary = summarizeCounts(stationCounts(visibilityData, index), STEP_SECONDS);
+        const summary = summarizeCounts(gridStationCounts(grid, index), STEP_SECONDS);
         return {
           latitude: station.latitudeDeg,
           availabilityPct: summary.availabilityPct,
@@ -99,14 +116,16 @@ export default function GlobalAccessAnalysis({ satText, constText, startTime }: 
       });
 
       setResult({
-        samples: averageVisibilityData(visibilityData, AVERAGE_POINTS),
+        samples: gridToSamples(grid, generatedStations.map((s) => s.name), AVERAGE_POINTS),
         latitudes: generatedStations.map((s) => s.latitudeDeg),
         rows,
         minElevationDeg: minElevationAngle,
         longitudeDeg: observationLongitude,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "解析エラーが発生しました");
+      if (!(err instanceof AnalysisCancelledError)) {
+        setError(err instanceof Error ? err.message : "解析エラーが発生しました");
+      }
     } finally {
       setIsAnalyzing(false);
     }
@@ -116,7 +135,7 @@ export default function GlobalAccessAnalysis({ satText, constText, startTime }: 
     () =>
       result
         ? createGlobalAccessChartOption(
-            { samples: result.samples, latitudes: result.latitudes, rows: result.rows, bucketMinutes: BUCKET_MINUTES },
+            { samples: result.samples, latitudes: result.latitudes, rows: result.rows },
             theme,
             compactChart,
           )
@@ -219,13 +238,7 @@ export default function GlobalAccessAnalysis({ satText, constText, startTime }: 
       </div>
 
       <div className="relative min-h-0 flex-1">
-        {isAnalyzing && (
-          <div className="analysis-loading-overlay">
-            <div className="analysis-loading-spinner" />
-            <div className="analysis-loading-text">解析中...</div>
-            <div className="analysis-loading-subtext">数秒お待ちください</div>
-          </div>
-        )}
+        {isAnalyzing && <BusyOverlay progress={job.progress} onCancel={job.cancel} />}
 
         <div className="h-full overflow-y-auto px-1 py-2">
           {!result || !option ? (
@@ -246,12 +259,16 @@ export default function GlobalAccessAnalysis({ satText, constText, startTime }: 
                   </button>
                 }
               >
-                <ReactECharts
-                  ref={chartRef}
-                  option={option}
-                  notMerge
-                  style={{ height: compactChart ? 440 : 520, width: "100%" }}
-                />
+                <div className="relative">
+                  <ReactECharts
+                    ref={chartRef}
+                    option={option}
+                    notMerge
+                    onChartReady={attachHeatHover}
+                    style={{ height: compactChart ? 440 : 520, width: "100%" }}
+                  />
+                  {hover && <HeatTooltip hover={hover} result={result} />}
+                </div>
               </ChartCard>
 
               <ChartCard title="中断の統計" caption="可用率が 0 % または 100 % の緯度は中断統計から除外。">
@@ -261,6 +278,30 @@ export default function GlobalAccessAnalysis({ satText, constText, startTime }: 
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+interface HeatHover {
+  x: number;
+  y: number;
+  timeIndex: number;
+  latIndex: number;
+}
+
+function HeatTooltip({ hover, result }: { hover: HeatHover; result: GlobalResult }) {
+  const sample = result.samples[hover.timeIndex];
+  const value = sample.stations[hover.latIndex].visibleCount;
+  return (
+    <div
+      className="pointer-events-none absolute z-10 rounded-md border border-line-strong bg-surface-solid px-2.5 py-1.5 text-xs leading-relaxed text-fg shadow-lg"
+      style={{ left: hover.x + 14, top: hover.y + 14 }}
+    >
+      <div className="font-semibold">{formatLatitude(result.latitudes[hover.latIndex])}</div>
+      <div>
+        {formatUtcHHMM(sample.timestamp)} UTC（{BUCKET_MINUTES} 分平均）
+      </div>
+      <div>平均可視数: {formatNumber(value, 2)} 機</div>
     </div>
   );
 }

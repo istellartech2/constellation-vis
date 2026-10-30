@@ -96,3 +96,25 @@ export function EmptyState({ title, children }: { title: string; children?: Reac
     </div>
   );
 }
+
+/** Covers the result area while a worker job runs; shows progress and a cancel button. */
+export function BusyOverlay({ progress, detail, onCancel }: { progress: number | null; detail?: ReactNode; onCancel?: () => void }) {
+  const pct = progress === null ? null : Math.round(progress * 100);
+  return (
+    <div className="analysis-loading-overlay" role="status" aria-live="polite">
+      <div className="analysis-loading-spinner" />
+      <div className="analysis-loading-text">解析中{pct !== null ? ` ${pct}%` : "..."}</div>
+      {pct !== null && (
+        <div className="mt-2 h-1.5 w-56 overflow-hidden rounded-full bg-raised">
+          <div className="h-full rounded-full bg-brand transition-[width] duration-150" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+      {detail && <div className="analysis-loading-subtext">{detail}</div>}
+      {onCancel && (
+        <button type="button" onClick={onCancel} className="analysis-secondary-button mt-3">
+          中止
+        </button>
+      )}
+    </div>
+  );
+}

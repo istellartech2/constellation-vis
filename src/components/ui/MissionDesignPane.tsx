@@ -50,7 +50,7 @@ const PARTIAL_FLUSH_MS = 200;
  * idle → enumerating → verifying → done state machine.
  *
  * Cancellation is `terminate()` + a fresh Worker on the next run, matching
- * `StationAccessAnalysis.tsx`; there is no cancel message in the protocol. The
+ * `useAccessGridJob.ts`; there is no cancel message in the protocol. The
  * pane stays mounted within the editing session so switching to the shell
  * list preserves the draft and results. Leaving the wizard cancels a run;
  * closing the dialog unmounts it and disposes the Worker.
