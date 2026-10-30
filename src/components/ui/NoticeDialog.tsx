@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "./button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./dialog";
@@ -13,9 +14,15 @@ interface Props {
 }
 
 export default function NoticeDialog({ open, onClose, title, description, confirmLabel, onConfirm, destructive }: Props) {
+  const confirmRef = useRef<HTMLButtonElement>(null);
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
-      <DialogContent className="sm:max-w-md" showCloseButton={false}>
+      <DialogContent
+        className="sm:max-w-md"
+        showCloseButton={false}
+        // Enter confirms: the user already chose this action by opening the dialog.
+        onOpenAutoFocus={(e) => { if (confirmRef.current) { e.preventDefault(); confirmRef.current.focus(); } }}
+      >
         <DialogHeader className="text-left">
           <div className={`mb-1 flex size-10 items-center justify-center rounded-xl ${destructive ? "bg-danger-soft text-danger" : "bg-warning-soft text-warning"}`}>
             <AlertTriangle className="size-5" aria-hidden="true" />
@@ -25,7 +32,7 @@ export default function NoticeDialog({ open, onClose, title, description, confir
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>{onConfirm ? "キャンセル" : "閉じる"}</Button>
-          {onConfirm && <Button variant={destructive ? "destructive" : "default"} onClick={() => { onConfirm(); onClose(); }}>{confirmLabel ?? "続ける"}</Button>}
+          {onConfirm && <Button ref={confirmRef} variant={destructive ? "destructive" : "default"} onClick={() => { onConfirm(); onClose(); }}>{confirmLabel ?? "続ける"}</Button>}
         </DialogFooter>
       </DialogContent>
     </Dialog>
