@@ -6,6 +6,10 @@ import {
   listSavedViews,
   saveNamedView,
   deleteNamedView,
+  defaultDisplayOptions,
+  displayOptionsFromSaved,
+  mergeDisplayOptions,
+  toDisplaySettings,
   type CameraSnapshot,
   type DisplaySettings,
 } from "../src/lib/viewState";
@@ -51,7 +55,6 @@ const DISPLAY: DisplaySettings = {
   whiteBackground: true,
   showGroundStationCones: true,
   showSatelliteFovCones: false,
-  groundConeMinElevationDeg: 25,
   groundConeDistanceKm: 1500,
   groundConeColor: "#3ec7a1",
   fovConeHalfAngleDeg: 30,
@@ -175,5 +178,34 @@ describe("viewState persistence", () => {
       );
       expect(loadLastView()!.display.earthTexture).toBe(expected as DisplaySettings["earthTexture"]);
     }
+  });
+});
+
+describe("display options", () => {
+  it("round-trips through the persisted DisplaySettings", () => {
+    const options = displayOptionsFromSaved(DISPLAY, 0.015);
+    expect(options.viewFrame).toBe("ecef");
+    expect(toDisplaySettings(options, DISPLAY.speedExp, DISPLAY.isl)).toMatchObject({
+      ...DISPLAY,
+      gse: false,
+      satPixelSize: 0,
+      satSunlitShading: false,
+      satGlint: false,
+    });
+  });
+
+  it("keeps the photo globe borderless for views saved before borders were a setting", () => {
+    expect(displayOptionsFromSaved(DISPLAY, 0.015).showCountryBorders).toBe(false);
+    expect(displayOptionsFromSaved({ ...DISPLAY, earthTexture: "dark-monochrome" }, 0.015).showCountryBorders).toBe(true);
+  });
+
+  it("merges partial updates without touching other fields", () => {
+    const prev = defaultDisplayOptions(0.015);
+    const next = mergeDisplayOptions(prev, { whiteBackground: true, satGlint: true, gse: true });
+    expect(next.whiteBackground).toBe(true);
+    expect(next.pointStyle).toEqual({ ...prev.pointStyle, glint: true });
+    expect(next.viewFrame).toBe("gse");
+    expect(next.showGraticule).toBe(prev.showGraticule);
+    expect(mergeDisplayOptions(prev, {}).pointStyle).toBe(prev.pointStyle);
   });
 });

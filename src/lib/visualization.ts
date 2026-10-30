@@ -85,6 +85,19 @@ const INITIAL_GROUND_TRACK_CAPACITY = 4096;
 const GROUND_TRACK_HEIGHT_KM = EARTH_RADIUS_EQUATOR_KM * 0.001;
 
 const STATION_CONE_SEGMENTS = 32;
+
+/**
+ * Unit-height cone (apex at the station, scaled to `heightNorm` by the mesh)
+ * opening down to `minElevationDeg` — the same elevation that colours
+ * satellites visible/hidden and limits ISL ground links.
+ */
+function stationConeGeometry(minElevationDeg: number, heightNorm: number): THREE.ConeGeometry {
+  const minEl = THREE.MathUtils.clamp(minElevationDeg, 0, 89.9);
+  const baseRadius = heightNorm * Math.tan(THREE.MathUtils.degToRad(90 - minEl));
+  const geo = new THREE.ConeGeometry(baseRadius, 1, STATION_CONE_SEGMENTS, 1, true);
+  geo.translate(0, -0.5, 0);
+  return geo;
+}
 const FOV_CONE_SEGMENTS = 32;
 const DOWN_AXIS = new THREE.Vector3(0, -1, 0);
 const UP_AXIS = new THREE.Vector3(0, 1, 0);
@@ -222,8 +235,7 @@ export interface SatelliteSceneParams {
   showSunDirection: boolean;
   showGroundStationCones: boolean;
   showSatelliteFovCones: boolean;
-  groundConeMinElevationDeg: number;
-  /** Ground cone range expressed in Earth radii */
+  /** Drawn ground-cone length in Earth radii; each cone opens at its station's own minimum elevation. */
   groundConeLength: number;
   groundConeColor: string;
   fovConeHalfAngleDeg: number;
@@ -632,19 +644,9 @@ export default class SatelliteScene {
     this.stationConeMaterials = [];
     this.stationConeMeshes = [];
     const heightNorm = Math.max(this.params.groundConeLength, 0.01);
-    this.stationMeshes = this.params.groundStations.map(() => {
+    this.stationMeshes = this.params.groundStations.map((gs) => {
       const mesh = new THREE.Mesh(this.stationGeo, this.stationMat);
-      const minEl = THREE.MathUtils.clamp(this.params.groundConeMinElevationDeg, 0, 89.9);
-      const halfAngle = THREE.MathUtils.degToRad(90 - minEl);
-      const baseRadius = heightNorm * Math.tan(halfAngle);
-      const coneGeo = new THREE.ConeGeometry(
-        baseRadius,
-        1,
-        STATION_CONE_SEGMENTS,
-        1,
-        true,
-      );
-      coneGeo.translate(0, -0.5, 0);
+      const coneGeo = stationConeGeometry(gs.minElevationDeg, heightNorm);
       const coneMat = new THREE.MeshBasicMaterial({
         color: this.groundConeColor.clone(),
         transparent: true,
@@ -1109,18 +1111,12 @@ export default class SatelliteScene {
       this.fovCones.geometry = geo;
     }
 
-    // Ground-station cone geometry depends on the min-elevation and range.
-    if (
-      next.groundConeMinElevationDeg !== prev.groundConeMinElevationDeg ||
-      next.groundConeLength !== prev.groundConeLength
-    ) {
+    // Ground-station cone geometry depends on the drawn length (the opening
+    // angle is the station's own minimum elevation, fixed for this scene).
+    if (next.groundConeLength !== prev.groundConeLength) {
       const heightNorm = Math.max(next.groundConeLength, 0.01);
-      const minEl = THREE.MathUtils.clamp(next.groundConeMinElevationDeg, 0, 89.9);
-      const halfAngle = THREE.MathUtils.degToRad(90 - minEl);
-      const baseRadius = heightNorm * Math.tan(halfAngle);
       this.stationConeMeshes.forEach((mesh, idx) => {
-        const geo = new THREE.ConeGeometry(baseRadius, 1, STATION_CONE_SEGMENTS, 1, true);
-        geo.translate(0, -0.5, 0);
+        const geo = stationConeGeometry(next.groundStations[idx].minElevationDeg, heightNorm);
         this.stationConeGeometries[idx].dispose();
         this.stationConeGeometries[idx] = geo;
         mesh.geometry = geo;

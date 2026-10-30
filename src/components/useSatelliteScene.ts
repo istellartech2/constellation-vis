@@ -109,7 +109,6 @@ export function useSatelliteScene(
     params.showSunDirection,
     params.showGroundStationCones,
     params.showSatelliteFovCones,
-    params.groundConeMinElevationDeg,
     params.groundConeLength,
     params.groundConeColor,
     params.fovConeHalfAngleDeg,

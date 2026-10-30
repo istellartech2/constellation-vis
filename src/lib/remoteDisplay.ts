@@ -10,12 +10,18 @@ const booleans = new Set([
 ]);
 /** Retired fields still accepted (and dropped) so older clients keep working. */
 const legacyBooleans = new Set(["showDerivedSatelliteInfo"]);
+/** Ground cones now follow each station's own minimum elevation. */
+const legacyRanges: Record<string, readonly [number, number]> = { groundConeMinElevationDeg: [0, 85] };
 const colors = new Set(["groundConeColor", "fovConeColor", "satelliteVisibleColor", "satelliteHiddenColor", "satelliteSelectedColor"]);
 const ranges: Record<string, readonly [number, number]> = {
-  satRadius: [0.01, 0.05], satPixelSize: [0, 3], groundConeMinElevationDeg: [0, 85], groundConeDistanceKm: [100, 20000],
+  satRadius: [0.01, 0.05], satPixelSize: [0, 3], groundConeDistanceKm: [100, 20000],
   fovConeHalfAngleDeg: [1, 80], fovConeAlongTrackDeg: [-60, 60], fovConeCrossTrackDeg: [-60, 60],
   speedExp: [0, Math.log10(600)],
 };
+
+function checkRange(key: string, v: unknown, [min, max]: readonly [number, number]) {
+  if (typeof v !== "number" || !Number.isFinite(v) || v < min || v > max) throw new Error(`${key} must be ${min}–${max}`);
+}
 
 export function validateRemoteDisplay(value: unknown): RemoteDisplaySettings {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("display must be an object");
@@ -23,6 +29,10 @@ export function validateRemoteDisplay(value: unknown): RemoteDisplaySettings {
   for (const [key, v] of Object.entries(value)) {
     if (legacyBooleans.has(key)) {
       if (typeof v !== "boolean") throw new Error(`${key} must be boolean`);
+      continue;
+    }
+    if (Object.hasOwn(legacyRanges, key)) {
+      checkRange(key, v, legacyRanges[key]);
       continue;
     }
     result[key] = v;
@@ -38,8 +48,7 @@ export function validateRemoteDisplay(value: unknown): RemoteDisplaySettings {
     } else if (colors.has(key)) {
       if (typeof v !== "string" || !/^#[0-9a-f]{6}$/i.test(v)) throw new Error(`${key} requires #RRGGBB`);
     } else if (Object.hasOwn(ranges, key)) {
-      const [min, max] = ranges[key];
-      if (typeof v !== "number" || !Number.isFinite(v) || v < min || v > max) throw new Error(`${key} must be ${min}–${max}`);
+      checkRange(key, v, ranges[key]);
     } else throw new Error(`Unknown display field: ${key}`);
   }
   return result as RemoteDisplaySettings;
