@@ -32,8 +32,10 @@ describe("local filing import", () => {
     expect(new Set(parseSatellitesToml(combined).map(s => s.meta?.filingKey)).size).toBe(2);
   });
   it("does not merge a hypothetical ID with a real NORAD object", () => {
-    const planned = filingSatellites(dataset(), "1", epoch)[0];
-    if (planned.type !== "elements") throw Error("elements expected");
+    const generated = filingSatellites(dataset(), "1", epoch)[0];
+    if (generated.type !== "elements") throw Error("elements expected");
+    // Scenarios saved before 2026-07 placed filings in the now-real 9xxxx band.
+    const planned = { ...generated, elements: { ...generated.elements, satnum: 90000 } };
     const actual = { ...planned, elements: { ...planned.elements }, meta: { objectName: "Actual object", noradCatId: 90000 } };
     const merged = mergeImportedSatellites([planned], [actual]);
     expect(merged).toHaveLength(2);

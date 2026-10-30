@@ -1,4 +1,5 @@
 import type { OrbitalElements, SatelliteMetadata } from "./satellites";
+import { LOCAL_SATNUM_MIN } from "./localSatnum";
 
 export type ManualSatelliteType = "tle" | "elements" | "geo";
 export type FormationRelativeModel = "roe" | "relativeState";
@@ -170,7 +171,7 @@ export function createDefaultManualEntry(): ManualSatelliteEntry {
     name: "",
     meta: {},
     elements: {
-      satnum: 90001,
+      satnum: LOCAL_SATNUM_MIN,
       epoch: new Date(),
       semiMajorAxisKm: 7000,
       eccentricity: 0.001,
@@ -190,7 +191,7 @@ export function createDefaultGeoEntry(): ManualSatelliteEntry {
     name: "",
     meta: {},
     geo: {
-      satnum: 90001,
+      satnum: LOCAL_SATNUM_MIN,
       epoch: new Date(),
       longitudeDeg: 0,
       inclinationDeg: 0,

@@ -4,10 +4,12 @@ import { Button } from "./button";
 import { GEO_SEMI_MAJOR_AXIS_KM, geoElementsFromLongitude } from "../../lib/astronomy";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "./dialog";
 import { Label } from "./label";
+import { LOCAL_SATNUM_MIN, nextLocalSatnum } from "../../lib/localSatnum";
 import {
   getChiefOptions,
   getEntryDisplayName,
   getFormationModeDescription,
+  manualSatnums,
   parseSatelliteEditorConfig,
   serializeSatelliteEditorConfig,
   syncFormationRepresentations,
@@ -50,14 +52,7 @@ function formatDateForInput(date?: Date): string {
 }
 
 function getNextManualSatnum(config: SatelliteEditorConfig): number {
-  const maxSatnum = config.entries
-    .filter((entry): entry is ManualSatelliteEntry => entry.kind === "manual")
-    .reduce((maxValue, entry) => {
-      if (entry.type === "elements" && entry.elements) return Math.max(maxValue, entry.elements.satnum);
-      if (entry.type === "geo" && entry.geo) return Math.max(maxValue, entry.geo.satnum);
-      return maxValue;
-    }, 90000);
-  return Math.min(maxSatnum + 1, 99999);
+  return nextLocalSatnum(manualSatnums(config));
 }
 
 function errorForField(errors: SatelliteEditorValidationError[], index: number, field: string): string | undefined {
@@ -314,7 +309,7 @@ function changeManualType(
     return { ...current, type: "tle", tle: current.tle ?? { line1: "", line2: "" } };
   }
   if (nextType === "geo") {
-    const seedSatnum = current.geo?.satnum ?? current.elements?.satnum ?? 90001;
+    const seedSatnum = current.geo?.satnum ?? current.elements?.satnum ?? LOCAL_SATNUM_MIN;
     const seedEpoch = current.geo?.epoch ?? current.elements?.epoch ?? new Date();
     return {
       ...current,

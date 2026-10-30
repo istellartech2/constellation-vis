@@ -1,7 +1,7 @@
 import type { NewCatalogLayer } from "../../../lib/useCatalogLayers";
 import type { SatelliteSpec } from "../../../lib/satellites";
 
-/** Satellites the TOML editor can hold comfortably (filings get ids 90000–99999). */
+/** Satellites the TOML editor can hold comfortably (filings get local ids from 910000000). */
 export const SCENARIO_LIMIT = 10_000;
 /** Above this, a layer is the better default (editor parse and SGP4 cost grow per satellite). */
 export const SCENARIO_RECOMMENDED_MAX = 2_000;
