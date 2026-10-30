@@ -3,20 +3,21 @@ import { Cpu, FileUp, Layers, Loader2, ShieldCheck } from "lucide-react";
 import { Button } from "../button";
 import { DialogFooter } from "../dialog";
 import { cn } from "../../../lib/utils";
-import { destinationBlock, recommendedDestination, type ImportDestination, type ImportTargets } from "./importTargets";
+import { DESTINATION_NAMES, destinationBlock, recommendedDestination, type ImportDestination, type ImportTargets } from "./importTargets";
 
+/** Chosen by what the user wants to do; each card names the side-panel section it lands in. */
 const DESTINATIONS: { id: ImportDestination; icon: ReactNode; title: string; points: string[] }[] = [
   {
     id: "scenario",
     icon: <Cpu className="size-4" />,
-    title: "シナリオに追加",
-    points: ["SGP4で精密に計算", "解析・ISLの対象", "エディタで編集・保存"],
+    title: "解析に使う",
+    points: ["可視性・ISLなどの解析の対象になります", "エディタで編集・保存できます（目安2,000機）"],
   },
   {
     id: "layer",
     icon: <Layers className="size-4" />,
-    title: "表示レイヤーに追加",
-    points: ["GPUで高速表示（J2近似）", "100万機規模まで", "表示のみ・解析の対象外"],
+    title: "表示するだけ",
+    points: ["3Dで眺めるだけで、解析には使いません", "数十万機でも軽く、レイヤーごとに消せます"],
   },
 ];
 
@@ -33,10 +34,10 @@ export function DestinationPicker({ value, onChange, count, targets, fixed }: {
   const recommended = count === null ? null : recommendedDestination(count);
   return (
     <section>
-      <h3 className="text-sm font-semibold">追加先</h3>
-      <div role="radiogroup" aria-label="追加先" className="mt-1.5 grid gap-1.5 sm:grid-cols-2">
+      <h3 className="text-sm font-semibold">使い方</h3>
+      <div role="radiogroup" aria-label="使い方" className="mt-1.5 grid gap-1.5 sm:grid-cols-2">
         {DESTINATIONS.map((d) => {
-          const block = fixed && fixed !== d.id ? "このデータはレイヤーとして追加します" : destinationBlock(d.id, count ?? 0, targets);
+          const block = fixed && fixed !== d.id ? "このデータは表示専用です" : destinationBlock(d.id, count ?? 0, targets);
           const selected = value === d.id;
           return (
             <button key={d.id} type="button" role="radio" aria-checked={selected} disabled={block !== null} onClick={() => onChange(d.id)}
@@ -50,7 +51,10 @@ export function DestinationPicker({ value, onChange, count, targets, fixed }: {
                   {d.title}
                   {recommended === d.id && block === null && <span className="rounded bg-brand px-1 py-px text-[10px] font-semibold text-brand-fg">推奨</span>}
                 </span>
-                <span className="block text-[11px] leading-snug text-fg-muted">{block ?? d.points.join(" · ")}</span>
+                {block
+                  ? <span className="block text-[11px] leading-snug text-fg-muted">{block}</span>
+                  : d.points.map((p) => <span key={p} className="block text-[11px] leading-snug text-fg-muted">{p}</span>)}
+                <span className="mt-0.5 block text-[10px] text-fg-subtle">→ 「{DESTINATION_NAMES[d.id]}」に追加</span>
               </span>
             </button>
           );

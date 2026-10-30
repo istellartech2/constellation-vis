@@ -9,10 +9,10 @@ import {
   type CelestrakEntry,
 } from "../../../utils/celestrakUtils";
 import { DestinationPicker, ImportFooter, ImportStatus, ImportSummary } from "./ImportParts";
-import { destinationBlock, recommendedDestination, type ImportDestination, type ImportTargets } from "./importTargets";
+import { DESTINATION_NAMES, destinationBlock, recommendedDestination, type ImportDestination, type ImportTargets } from "./importTargets";
 
-/** Groups that alone carry thousands of objects; selecting one suggests a layer. */
-const LARGE_GROUPS = new Set(["active", "starlink", "cubesat", "oneweb"]);
+/** Groups that alone carry over ten thousand objects (active ~17k, Starlink ~11k in 2026-10); selecting one suggests a layer. */
+const LARGE_GROUPS = new Set(["active", "starlink"]);
 
 const CATEGORIES = CELESTRAK_GROUP_TREE.map((node) => ({
   id: node.id,
@@ -125,7 +125,7 @@ export default function CelestrakPanel({ targets }: { targets: ImportTargets }) 
                       )}>
                         <Checkbox checked={checked} disabled={busy !== null} onCheckedChange={() => toggle(leaf.id)} className="size-4 shrink-0" />
                         <span className="flex-1 text-sm leading-snug">{leaf.label}</span>
-                        {LARGE_GROUPS.has(leaf.id) && <span className="text-[10px] text-fg-subtle">数千機〜</span>}
+                        {LARGE_GROUPS.has(leaf.id) && <span className="text-[10px] text-fg-subtle">1万機超</span>}
                       </label>
                     );
                   })}
@@ -149,7 +149,7 @@ export default function CelestrakPanel({ targets }: { targets: ImportTargets }) 
       </div>
       {!fetched ? (
         <ImportFooter
-          hint={selected.length === 0 ? "取得するグループを選んでください" : anyLarge ? "大きなグループを含むため、表示レイヤーへの追加をおすすめします" : undefined}
+          hint={selected.length === 0 ? "取得するグループを選んでください" : anyLarge ? "大きなグループを含むため、「表示するだけ」をおすすめします" : undefined}
           primaryLabel={selected.length === 0 ? "グループを選択" : `${selected.length} グループを取得`}
           onPrimary={() => void fetchSelected()}
           disabled={selected.length === 0}
@@ -158,8 +158,8 @@ export default function CelestrakPanel({ targets }: { targets: ImportTargets }) 
         />
       ) : (
         <ImportFooter
-          hint={destination === "scenario" ? "同じ衛星番号はエポックの新しいものに更新し、3Dビューにすぐ反映します。" : "新しい表示レイヤーとして、3Dビューにすぐ表示します。"}
-          primaryLabel={`${fetched.entries.length.toLocaleString()} 機を${destination === "scenario" ? "シナリオ" : "レイヤー"}に追加`}
+          hint={destination === "scenario" ? "同じ衛星番号はエポックの新しいものに更新し、3Dビューにすぐ反映します。" : "3Dビューにすぐ表示します。"}
+          primaryLabel={`${fetched.entries.length.toLocaleString()} 機を${DESTINATION_NAMES[destination]}に追加`}
           onPrimary={add}
           disabled={block !== null}
           onCancel={targets.close}

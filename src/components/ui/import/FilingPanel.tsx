@@ -151,14 +151,14 @@ export default function FilingPanel({ targets, placed, onApplyToScenario }: Prop
 
   const applyLabel = !dataset ? "申請ファイルを開いてください"
     : !config ? "構成を選んでください"
-    : destination === "layer" ? `${config.count.toLocaleString()} 機をレイヤーに追加`
-    : !existing ? `${config.count.toLocaleString()} 機をシナリオに追加`
+    : destination === "layer" ? `${config.count.toLocaleString()} 機を表示レイヤーに追加`
+    : !existing ? `${config.count.toLocaleString()} 機をシミュレーション対象に追加`
     : existing.configuration === configuration ? "配置を更新"
     : `${configurationLabel(configuration)}に置き換え`;
   const applyHint = !config ? "" : destination === "layer"
-    ? "新しい表示レイヤーとして、基準日時の配置で表示します。開始時刻は変えません。"
+    ? "基準日時の配置で3Dビューに表示します。開始時刻は変えません。"
     : existing
-    ? `シナリオ内の「${dataset!.name}」${existing.count.toLocaleString()}機（${configurationLabel(existing.configuration)}）を置き換えます。開始時刻を基準日時に合わせます。`
+    ? `シミュレーション対象の「${dataset!.name}」${existing.count.toLocaleString()}機（${configurationLabel(existing.configuration)}）を置き換えます。開始時刻を基準日時に合わせます。`
     : "既存の衛星はそのまま残り、3Dビューに反映されます。開始時刻を基準日時に合わせます。";
 
   return (
@@ -255,7 +255,7 @@ export default function FilingPanel({ targets, placed, onApplyToScenario }: Prop
                           <span className="tabular-nums"><span className="font-semibold">{item.count.toLocaleString()}</span><span className="ml-0.5 text-xs text-fg-muted">機</span></span>
                         </span>
                         <span className="block text-[11px] text-fg-muted">{item.planes.length}軌道面 · 傾斜角 {inclination}° · 高度 {altitude}</span>
-                        {existing?.configuration === item.id && <span className="block text-[11px] text-fg-subtle">シナリオに配置中</span>}
+                        {existing?.configuration === item.id && <span className="block text-[11px] text-fg-subtle">シミュレーション対象に配置中</span>}
                         {item.hasSuppressedRows && <span className="block text-[11px] text-warning">削除フラグ（S）あり · 注記を確認</span>}
                       </span>
                     </button>
@@ -269,7 +269,7 @@ export default function FilingPanel({ targets, placed, onApplyToScenario }: Prop
             <details className="rounded-md border border-line px-3 py-2 text-xs text-fg-muted">
               <summary className="cursor-pointer text-fg">配置の基準日時と仮定</summary>
               <label className="mt-2 block">基準日時（UTC）<input type="datetime-local" value={epoch} onChange={event => setEpoch(event.target.value)} className="mt-1 block w-full rounded border-2 border-line-strong bg-sunken px-2 py-1 text-sm text-fg outline-none focus:border-brand" /></label>
-              <p className="mt-1 text-[11px]">初期値はシナリオの開始時刻です。シナリオに追加すると開始時刻もこの日時に合わせます。</p>
+              <p className="mt-1 text-[11px]">初期値は現在の開始時刻です。「解析に使う」で追加すると開始時刻もこの日時に合わせます。</p>
               <ul className="mt-2 list-disc space-y-1 pl-4 leading-relaxed">
                 {dataset.warnings.map(w => <li key={w}>{w}</li>)}
                 <li>昇交点の経度を基準日時の地球の向きに合わせ、位相を緯度引数として解釈します。欠損値は等間隔で補います。申請の幾何を示す概念配置で、運用位置の再現ではありません。</li>
