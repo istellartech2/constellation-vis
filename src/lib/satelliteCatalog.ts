@@ -250,8 +250,7 @@ export function catalogSatrecAt(cat: SatelliteCatalog, i: number): satellite.Sat
     OBJECT_NAME: cat.names[i],
     OBJECT_ID: "",
     NORAD_CAT_ID: cat.satnum[i],
-    // satellite.js 6 appends Z itself, so give it UTC without a suffix.
-    EPOCH: new Date(cat.epochMs[i]).toISOString().slice(0, -1),
+    EPOCH: new Date(cat.epochMs[i]).toISOString(),
     MEAN_MOTION: (cat.meanMotion[i] * 1440) / TWO_PI,
     ECCENTRICITY: cat.eccentricity[i],
     INCLINATION: cat.inclination[i] / DEG,

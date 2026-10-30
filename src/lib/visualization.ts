@@ -1,3 +1,4 @@
+import { propagateAtJulianDate } from "./propagation";
 import { SimulationClock } from "./simulationClock";
 // High-level wrapper around the Three.js scene used by the visualizer.
 // Moved from useSatelliteScene for better organization.
@@ -1548,9 +1549,10 @@ export default class SatelliteScene {
     this.fovConeCount = 0;
     const satPosition = this.tempVectorB;
 
+    const julianDate = satellite.jday(simDate);
     for (let i = 0; i < this.satRecs.length; i++) {
       const rec = this.satRecs[i];
-      const pv = satellite.propagate(rec, simDate);
+      const pv = propagateAtJulianDate(rec, julianDate);
       if (pv?.position) {
         const { x, y, z } = pv.position;
         satPosition.set(

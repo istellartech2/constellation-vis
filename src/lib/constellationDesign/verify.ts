@@ -1,3 +1,4 @@
+import { propagateAtJulianDate } from "../propagation";
 /**
  * Stage 2: numeric verification with SGP4.
  *
@@ -69,13 +70,14 @@ export function createSgp4SamplerFromSpecs(specs: SatelliteSpec[], epoch: Date):
 
   const sampleAt: KernelSampler = (_stepIndex, timeSec, out) => {
     scratch.setTime(epochMs + timeSec * 1000);
+    const julianDate = satellite.jday(scratch);
     const gmst = satellite.gstime(scratch);
     const cosG = Math.cos(gmst);
     const sinG = Math.sin(gmst);
     const pos = out.positionsEcf;
     const subLat = out.subLatRad;
     for (let i = 0; i < n; i++) {
-      const pv = satellite.propagate(satRecs[i], scratch);
+      const pv = propagateAtJulianDate(satRecs[i], julianDate);
       const p = pv?.position;
       if (!p || typeof p === "boolean") {
         subLat[i] = INVALID_SUB_LATITUDE_RAD;

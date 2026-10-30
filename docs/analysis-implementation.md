@@ -24,7 +24,7 @@
 
 ## 1. 座標系と時刻系
 
-実際の衛星の伝播は `satellite.js` v6（SGP4/SDP4）。ただし設計の粗スクリーニングは円 Kepler 運動（§11.2）、長期減衰は別のレート積分（§8.2）である。座標変換は `satellite.js` のヘルパを基本とし、設計検証では同じ ECI→ECF 回転をバッファへ直接計算する。
+実際の衛星の伝播は `satellite.js` v7.1（SGP4/SDP4）。ただし設計の粗スクリーニングは円 Kepler 運動（§11.2）、長期減衰は別のレート積分（§8.2）である。座標変換は `satellite.js` のヘルパを基本とし、設計検証では同じ ECI→ECF 回転をバッファへ直接計算する。
 
 ここで ECI と呼ぶ SGP4 出力は TEME であり、J2000/GCRF ではない。GMST のみで回す ECF は極運動を含む厳密な ITRF 変換ではない。時刻は JavaScript `Date` の UTC を使い、UT1−UTC や TT/TDB への変換、地球姿勢パラメータ（EOP）は扱わない。[Vallado et al., Revisiting Spacetrack Report #3](https://celestrak.org/publications/AIAA/2006-6753/AIAA-2006-6753.pdf) が TEME と地球固定系変換の理論上の参照先。
 
@@ -73,21 +73,9 @@ Z_scene = -Y_eci / R_equator
 
 ### 1.4 太陽方向（`src/lib/astronomy.ts`）
 
-低精度級数（Astronomical Almanac 系）で黄経を求め、黄道傾斜角で回して ECI 単位ベクトルにする。
+`satellite.js` の `sunPos(jday(date)).rsun`（ECI、AU）を使う。描画用の `sunVectorECI` はこれを正規化した単位ベクトル。影判定には距離を保った AU ベクトルを渡す（§10.1）。太陽方向の自前級数は廃止した。
 
-```
-T      = (JD - 2451545.0) / 36525
-L0     = 280.460 + 36000.770*T + 0.0003032*T^2      [deg]
-g      = 357.528 + 35999.050*T - 0.0001537*T^2      [deg]
-C      = (1.914602 - 0.004817*T - 0.000014*T^2)*sin(g)
-       + (0.019993 - 0.000101*T)*sin(2g)
-       + 0.000289*sin(3g)                            [deg]
-lambda = L0 + C
-eps    = 23.4393deg - 0.0130042*T                    [deg]
-sun_eci = ( cos(lambda), cos(eps)*sin(lambda), sin(eps)*sin(lambda) )   # 単位ベクトル
-```
-
-**距離は持たない（単位ベクトル）**。太陽視差や光行差は無視。§10 の簡易日照判定に使う。太陽輻射圧や高精度な半影計算は対象外。
+ライブラリの公称精度は 1950〜2050 年で約 0.01°。v7.1 の太陽平均近点角の修正を含む。太陽輻射圧や高精度な暦の計算は対象外。
 
 ---
 
@@ -98,6 +86,23 @@ sun_eci = ( cos(lambda), cos(eps)*sin(lambda), sin(eps)*sin(lambda) )   # 単位
 ### 2.1 位置伝播と別モデルの区別
 
 衛星位置の高忠実度数値積分器は存在しない。描画・アクセス・リンク・設計の詳細検証は `satellite.js` の SGP4/SDP4 で行う。設計の粗スクリーニングには円 Kepler 運動、自然減衰にはレートのオイラー積分を使う。摂動（§8）は**別建ての解析的レートモデル**であり、伝播そのものには寄与しない。
+
+#### v7 移行と伝播性能（2026-10-30）
+
+描画ループ・ISL の `propagateAll`・設計検証の同時刻バッチは、`jday(date)` を時刻ごとに一度だけ計算し、共通ヘルパ `propagateAtJulianDate` で `sgp4(rec, (jd - rec.jdsatepoch) * 1440)` を呼ぶ。通常の `propagate` と同じ SGP4、同じ既定の減衰判定。新しい任意の `communityDecayCheckEnabled` は有効化していない。失敗は `null` として従来通り扱う。単一衛星の呼び出しは `propagate` を維持する。
+
+移行時の一時的なベンチマークで測定した。LEO・GEO・高離心率軌道を混ぜた 1,000 機、100 時刻×5 回、ウォームアップ後の中央値。初期化を除き、日時更新と各位置の読み出しを含む。
+
+| 環境 | v6.0.0 propagate | v7.1.0 propagate | v7.1.0 日時共有（採用） | v7.1.0 WASM |
+| --- | ---: | ---: | ---: | ---: |
+| Bun 1.4.4 | 0.432 ms | 0.409 ms | 0.380 ms | 0.432 ms |
+| Node 26.13.0 | 0.569 ms | 0.573 ms | 0.473 ms | 0.419 ms |
+
+旧版比で日時共有は約12%／17%の伝播時間短縮。アプリ全体やブラウザ FPS の測定ではない。WASM の初期化は約16〜41 ms、効果は環境依存で、今回は本番導入を見送った。
+
+4,000 位置（逆方向時刻を含む）の比較で v6/v7 の位置差は 0 km、JS/WASM の最大位置差は約 `2e-10 km`。同時刻共有と通常の `propagate` の位置・速度・平均要素の一致、失敗時の無効フラグと再利用バッファは `tests/propagation.test.ts` で検証する。太陽方向、全日照・本影・半影、年間の反太陽軸の有限値は `tests/illumination.test.ts`、半影での発電は `src/lib/solarPowerAnalysis.test.ts` で検証する。これらは外部暦との絶対精度検証ではない。
+
+API・モデルの一次資料: [移行ガイド](https://shashwatak.github.io/satellite-js/docs/migrating)、[一括伝播](https://shashwatak.github.io/satellite-js/docs/bulk-propagation)、[太陽位置と影](https://shashwatak.github.io/satellite-js/docs/sun-and-shadow)。
 
 ### 2.2 衛星定義の 2 形態（`src/lib/satellites.ts`）
 
@@ -489,17 +494,11 @@ RGT は設計方式（Walker 等）と直交する**横断ヘルパ**として�
 
 ### 10.1 影判定（`isInEarthShadow`, `src/lib/satelliteDerivedInfo.ts`）
 
-**円柱影モデル**。
+`src/lib/illumination.ts` の `earthShadowFraction` は `satellite.js` の `shadowFraction(sunPos(jday(date)).rsun, positionEciKm)` に委譲する。戻り値は太陽円盤の遮蔽率（0 = 全日照、1 = 本影、途中 = 半影）。地球半径はライブラリの WGS-72 球（6378.135 km）。地球扁平、大気による屈折・減光は含まない。
 
-```
-sun = sunVectorECI(date)                     # 単位ベクトル（§1.4）
-d   = r_sat . sun
-if d >= 0:  return false                     # 太陽側 → 日照
-perpSq = |r_sat|^2 - d^2                     # 太陽方向に直交な距離^2
-return perpSq <= (6378.137)^2                # 円柱内 → 食
-```
+`isInEarthShadow` は遮蔽率 **0.5 以上**を食とする。食時間・次の食入り／食出・日照率・日照／日陰の負荷切替はこの閾値を使う。半影開始から本影終了までの全時間を「食時間」とは呼ばない。発電量には連続的な日照率 `1 - shadowFraction` を使う。
 
-含まれないもの: 半影（penumbra）／本影の円錐、地球扁平、大気による屈折・減光、太陽の有限角径。食入り／食出の遷移は瞬時として扱う。
+v7.1.0 には反太陽軸や接線付近の丸め誤差で `NaN` を返す既知の問題がある。有限値は [0, 1] に制限し、非有限の場合のみ `atan2` による角距離と地球視半径で境界の全日照／本影へ補正する。通常の半影計算はライブラリのまま。年間の反太陽軸と LEO/GEO の境界を回帰テストする。
 
 ### 10.2 電力成立性（`src/lib/solarPowerAnalysis.ts`）
 
@@ -507,7 +506,7 @@ return perpSq <= (6378.137)^2                # 円柱内 → 食
 
 ```
 degradation = max(0, 1 - degradationPerYear * missionYears)
-generation  = inSunlight ? BOL * degradation * sunTrackingFactor * powerPathEfficiency : 0
+generation  = (1 - shadowFraction) * BOL * degradation * sunTrackingFactor * powerPathEfficiency
 load        = (baseLoad + payloadLoad*payloadDutyCycle + (inSunlight ? sunlightExtra : eclipseExtra))
               * (1 + designMarginPercent/100)
 net         = generation - load
@@ -526,7 +525,7 @@ SOC      = E / capacity * 100
 ```
 averageLoad = (baseLoad + payloadLoad*duty) * (1+margin)
             + (sunlightExtra*sunlightRatio + eclipseExtra*(1-sunlightRatio)) * (1+margin)
-generationFactor = degradation * sunTrackingFactor * powerPathEfficiency * sunlightRatio
+generationFactor = degradation * sunTrackingFactor * powerPathEfficiency * mean(1 - shadowFraction)
 minSolarArrayW   = averageLoad / generationFactor
 # margin = designMarginPercent/100、電力は W、sunlightRatio は 0〜1 の割合
 ```
@@ -671,7 +670,7 @@ Worker 越しに渡すものはすべて structured-clone 可能なプレーン�
 | 可用性 | 有限サンプルの評価。局アクセスは 1 機以上、設計は指定 fold 以上を数える。「全球アクセス」は単一経線 | §3・§4・[設計指標](constellation-design.md#availability-metrics) |
 | 通信経路 | 単一 A/B 間の経路コスト。帯域・輻輳・冗長経路・パケット動作を扱わず、地上リンクのデューティとも統合しない | [ISL の制限](isl-routing.md#limitations) |
 | 寿命・推進剤 | 簡易大気とレート積分。密度モデル・楕円軌道近似・刻みの誤差保証はない | §8・[摂動モデル](perturbation.md) |
-| 日照・電力 | 円柱影、固定の日照追尾係数、代表 4 日の比較。半影や年間全日の最悪条件は評価しない | §10 |
+| 日照・電力 | 太陽円盤の遮蔽率で半影を含む発電を評価。固定の日照追尾係数、代表 4 日の比較。年間全日の最悪条件は評価しない | §10 |
 | ミッション設計 | Walker Delta / Star の全球・緯度帯探索。Flower 系、任意ポリゴン、需要分布、ISL 接続性は対象外 | [設計の限界](constellation-design.md#limitations) |
 
 RGT/J2 補正と J3 は [RGT §4.1](RGTorbit.md#implemented-rates)・[摂動モデル](perturbation.md)、長期維持・電力サイジングの近似は §8・§10 を参照。エポックから離れた解析では、入力データの有効性も確認すること。

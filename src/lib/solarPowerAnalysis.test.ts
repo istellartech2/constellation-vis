@@ -60,4 +60,20 @@ describe("solarPowerAnalysis", () => {
     expect(highLoadResult.currentDay.dailyNetWh).toBeLessThan(baseResult.currentDay.dailyNetWh);
     expect(highLoadResult.currentDay.minSocPercent).toBeLessThanOrEqual(baseResult.currentDay.minSocPercent);
   });
+  it("scales generation by the visible solar disc during penumbra", () => {
+    const input = { ...createDefaultSolarPowerInput(), orbitStepSeconds: 1, sweepSteps: 2 };
+    const result = analyzeSolarPower(TEST_SATELLITE, "TestSunSat", TEST_SATELLITE.elements.epoch, input);
+    const samples = result.orbitSamples;
+    const fullPower = input.solarArrayPowerBOL_W
+      * Math.max(0, 1 - input.degradationPerYear * input.missionYears)
+      * input.sunTrackingFactor * input.powerPathEfficiency;
+    expect(samples.some((s) => s.sunlightFraction > 0 && s.sunlightFraction < 1)).toBe(true);
+    expect(samples.some((s) => s.sunlightFraction === 0)).toBe(true);
+    expect(samples.some((s) => s.sunlightFraction === 1)).toBe(true);
+    for (const sample of samples) {
+      expect(sample.generationW).toBeCloseTo(fullPower * sample.sunlightFraction, 10);
+      expect(sample.inSunlight).toBe(sample.sunlightFraction > 0.5);
+    }
+  });
+
 });

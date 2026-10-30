@@ -1,6 +1,6 @@
 import * as satellite from "satellite.js";
 import type { EciVec3, GeodeticLocation, SatRec } from "satellite.js";
-import { sunVectorECI } from "./astronomy";
+import { earthShadowFraction } from "./illumination";
 import type { SatelliteSpec } from "./satellites";
 import { toSatrec } from "./satellites";
 
@@ -61,14 +61,9 @@ function propagateState(rec: SatRec, date: Date): PropagatedState | null {
 }
 
 export function isInEarthShadow(position: EciVec3<number>, date: Date): boolean {
-  const sun = sunVectorECI(date);
-  const dot = (position.x * sun.x) + (position.y * sun.y) + (position.z * sun.z);
-  if (dot >= 0) return false;
-
-  const perpendicularSq =
-    ((position.x ** 2) + (position.y ** 2) + (position.z ** 2)) - (dot ** 2);
-
-  return perpendicularSq <= EARTH_RADIUS_KM ** 2;
+  // Eclipse timing and mode-dependent loads use the Sun's midpoint crossing.
+  // Generation uses the continuous fraction, including penumbra.
+  return earthShadowFraction(position, date) >= 0.5;
 }
 
 function refineTransitionDate(

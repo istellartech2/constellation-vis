@@ -15,7 +15,7 @@ Satellite positions use `satellite.js` SGP4/SDP4. Access and link results descri
 
 ## Get started
 
-Requires [Bun](https://bun.sh/) 1.3.11 or later. When running Vite with Node.js, use Node.js 20.19+ or 22.12+.
+Requires [Bun](https://bun.sh/) 1.3.11 or later. When running Vite with Node.js, use Node.js 20.19+, 22.13+, or 24+.
 
 ```sh
 bun install

@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { gstime, jday, radiansToDegrees } from "satellite.js";
+import { gstime, jday, radiansToDegrees, sunPos } from "satellite.js";
 import type { OrbitalElements } from "./satellites";
 
 // A grab bag of helper functions used when building the Three.js scene.
@@ -77,52 +77,15 @@ export function geoElementsFromLongitude(opts: {
   };
 }
 
-/** Convert a UTC Date to Julian Date */
-function toJulianDate(date: Date): number {
-  return jday(
-    date.getUTCFullYear(),
-    date.getUTCMonth() + 1,
-    date.getUTCDate(),
-    date.getUTCHours(),
-    date.getUTCMinutes(),
-    date.getUTCSeconds() + date.getUTCMilliseconds() / 1000
-  );
-}
-
-/** Centuries since J2000.0 */
-function julianCenturies(jd: number): number {
-  return (jd - 2451545.0) / 36525.0;
-}
-
-/** Sun's true longitude in radians */
-export function sunTrueLongitude(date: Date): number {
-  const jd = toJulianDate(date);
-  const T = julianCenturies(jd);
-  const L0 = (280.460 + 36000.770 * T + 0.0003032 * T * T) % 360;
-  const g  = (357.528 + 35999.050 * T - 0.0001537 * T * T) % 360;
-  const C  =
-    (1.914602 - 0.004817 * T - 0.000014 * T * T) * Math.sin(g * DEG2RAD) +
-    (0.019993 - 0.000101 * T) * Math.sin(2 * g * DEG2RAD) +
-    0.000289 * Math.sin(3 * g * DEG2RAD);
-  return (L0 + C) * DEG2RAD;
-}
-
-/** Sun position vector in the ECI frame */
+/** Unit Sun direction in ECI, using the same ephemeris as eclipse analysis. */
 export function sunVectorECI(date: Date): {
   x: number;
   y: number;
   z: number;
 } {
-  const jd     = toJulianDate(date);
-  const T      = julianCenturies(jd);
-  const lambda = sunTrueLongitude(date);
-  const eps    = OBLIQUITY - 0.0130042 * T * DEG2RAD;
-
-  return {
-    x: Math.cos(lambda),
-    y: Math.cos(eps) * Math.sin(lambda),
-    z: Math.sin(eps) * Math.sin(lambda),
-  };
+  const sun = sunPos(jday(date)).rsun;
+  const length = Math.hypot(sun.x, sun.y, sun.z);
+  return { x: sun.x / length, y: sun.y / length, z: sun.z / length };
 }
 
 /**

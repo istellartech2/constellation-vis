@@ -1,3 +1,4 @@
+import { propagateAtJulianDate } from "../propagation";
 /** Shared satellite propagation for one instant, used by the routing worker and the verification/bench scripts. */
 import * as satellite from "satellite.js";
 import type { Vec3 } from "./geometry";
@@ -33,8 +34,9 @@ export function propagateAll(
 ): PropagateAllResult {
   const positions: Vec3[] = out?.positions ?? new Array(satRecs.length);
   const valid: boolean[] = out?.valid ?? new Array(satRecs.length);
+  const julianDate = satellite.jday(simDate);
   for (let i = 0; i < satRecs.length; i++) {
-    const pv = satellite.propagate(satRecs[i], simDate);
+    const pv = propagateAtJulianDate(satRecs[i], julianDate);
     const p = positions[i];
     if (pv?.position) {
       if (p) {

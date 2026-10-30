@@ -88,8 +88,7 @@ export function toSatrec(spec: SatelliteSpec): satellite.SatRec {
       OBJECT_NAME: spec.meta?.objectName ?? "",
       OBJECT_ID: spec.meta?.objectId ?? "",
       NORAD_CAT_ID: el.satnum,
-      // satellite.js 6 appends Z itself, so give it UTC without a suffix.
-      EPOCH: el.epoch.toISOString().slice(0, -1),
+      EPOCH: el.epoch.toISOString(),
       MEAN_MOTION: meanMotion,
       ECCENTRICITY: el.eccentricity,
       INCLINATION: el.inclinationDeg,

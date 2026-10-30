@@ -28,7 +28,7 @@
         "react": "^19.1.0",
         "react-dom": "^19.1.0",
         "react-leaflet": "^5.0.0",
-        "satellite.js": "^6.0.0",
+        "satellite.js": "^7.1.0",
         "smol-toml": "^1.9.0",
         "stream-browserify": "^3.0.0",
         "tailwind-merge": "^3.3.1",
@@ -877,7 +877,7 @@
 
     "safe-buffer": ["safe-buffer@5.2.1", "", {}, "sha512-rp3So07KcdmmKbGvgaNxQSJr7bGVSVk5S9Eq1F+ppbRo70+YeaDxkw5Dd8NPN+GD6bjnYm2VuPuCXmpuYvmCXQ=="],
 
-    "satellite.js": ["satellite.js@6.0.0", "", {}, "sha512-A1OTZpIDgzCj1SYJZYs3aISsBuhE0jAZG3n6Pymxq5FFsScNSLIgabu8a1w0Wu56Mf1eoL+pcK4tXgaPNXtdSw=="],
+    "satellite.js": ["satellite.js@7.1.0", "", {}, "sha512-U6nRml9Nb7dV9LJPiMNPyna7U7ry+1nXYkOeCEG7K/YbojQQLHHmcjPisp03VNY+HLcbQHqbt7t4t1vQMaKCLQ=="],
 
     "scheduler": ["scheduler@0.26.0", "", {}, "sha512-NlHwttCI/l5gCPR3D1nNXtWABUmBwvZpEQiD4IXSbIDq8BzLIK/7Ir5gTFSGZDUu37K5cMNp0hFtzO38sC7gWA=="],
 

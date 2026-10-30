@@ -1,5 +1,6 @@
+import { earthShadowFraction } from "./illumination";
 import type { SatelliteSpec } from "./satellites";
-import { getSatelliteDerivedInfo, isInEarthShadow } from "./satelliteDerivedInfo";
+import { getSatelliteDerivedInfo } from "./satelliteDerivedInfo";
 import { toSatrec } from "./satellites";
 import * as satellite from "satellite.js";
 export { buildSelectableSatellites, type SelectableSatellite } from "./analysisSatellites";
@@ -40,7 +41,10 @@ export interface SolarPowerSample {
   timestamp: number;
   timeLabel: string;
   elapsedMinutes: number;
+  /** Mode flag: more than half of the solar disc is visible. */
   inSunlight: boolean;
+  /** Visible solar disc fraction, including penumbra. */
+  sunlightFraction: number;
   generationW: number;
   loadW: number;
   netPowerW: number;
@@ -169,10 +173,9 @@ function computeLoadW(input: SolarPowerAnalysisInput, inSunlight: boolean): numb
   return (input.baseLoadW + payloadLoad + sunlightLoad) * marginFactor;
 }
 
-function computeGenerationW(input: SolarPowerAnalysisInput, inSunlight: boolean): number {
-  if (!inSunlight) return 0;
+function computeGenerationW(input: SolarPowerAnalysisInput, sunlightFraction: number): number {
   const degradationFactor = computeDegradationFactor(input);
-  return input.solarArrayPowerBOL_W * degradationFactor * input.sunTrackingFactor * input.powerPathEfficiency;
+  return input.solarArrayPowerBOL_W * degradationFactor * input.sunTrackingFactor * input.powerPathEfficiency * sunlightFraction;
 }
 
 function getRepresentativeDates(startTime: Date): Array<{ key: string; label: string; start: Date }> {
@@ -207,8 +210,9 @@ function simulateSolarPower(
     const pv = satellite.propagate(rec, date);
     if (!pv?.position) continue;
 
-    const inSunlight = !isInEarthShadow(pv.position, date);
-    const generationW = computeGenerationW(input, inSunlight);
+    const sunlightFraction = 1 - earthShadowFraction(pv.position, date);
+    const inSunlight = sunlightFraction > 0.5;
+    const generationW = computeGenerationW(input, sunlightFraction);
     const loadW = computeLoadW(input, inSunlight);
     const netPowerW = generationW - loadW;
     const deltaHours = step === 0 ? 0 : stepSeconds / 3600;
@@ -232,6 +236,7 @@ function simulateSolarPower(
       timeLabel: formatSampleTime(date),
       elapsedMinutes: step * stepSeconds / 60,
       inSunlight,
+      sunlightFraction,
       generationW,
       loadW,
       netPowerW,
@@ -259,12 +264,12 @@ function computeMaxContinuousEclipseMinutes(samples: SolarPowerSample[], stepSec
   return max;
 }
 
-function computeMinSolarArrayRequirement(input: SolarPowerAnalysisInput, sunlightRatio: number): number {
-  if (sunlightRatio <= EPSILON) return Number.POSITIVE_INFINITY;
+function computeMinSolarArrayRequirement(input: SolarPowerAnalysisInput, sunlightRatio: number, effectiveSunlightRatio: number): number {
+  if (effectiveSunlightRatio <= EPSILON) return Number.POSITIVE_INFINITY;
   const averageLoadW =
     ((input.baseLoadW + input.payloadLoadW * input.payloadDutyCycle) * (1 + input.designMarginPercent / 100))
     + (input.sunlightExtraLoadW * sunlightRatio + input.eclipseExtraLoadW * (1 - sunlightRatio)) * (1 + input.designMarginPercent / 100);
-  const generationFactor = computeDegradationFactor(input) * input.sunTrackingFactor * input.powerPathEfficiency * sunlightRatio;
+  const generationFactor = computeDegradationFactor(input) * input.sunTrackingFactor * input.powerPathEfficiency * effectiveSunlightRatio;
   if (generationFactor <= EPSILON) return Number.POSITIVE_INFINITY;
   return averageLoadW / generationFactor;
 }
@@ -288,7 +293,10 @@ function computeKpi(
   const minBatteryRequiredWh = orbitEclipseMinutes > 0
     ? computeLoadW(input, false) * (orbitEclipseMinutes / 60) / Math.max(input.minSocPercent > 0 ? 1 - input.minSocPercent / 100 : 1, 0.05)
     : 0;
-  const minSolarArrayPowerRequiredW = computeMinSolarArrayRequirement(input, sunlightRatio);
+  const effectiveSunlightRatio = samples.length > 0
+    ? samples.reduce((sum, sample) => sum + sample.sunlightFraction, 0) / samples.length
+    : 0;
+  const minSolarArrayPowerRequiredW = computeMinSolarArrayRequirement(input, sunlightRatio, effectiveSunlightRatio);
   const designStatus =
     minSocPercent <= input.minSocPercent
       ? "critical"
