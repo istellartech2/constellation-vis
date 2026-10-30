@@ -28,6 +28,8 @@ interface Props {
   satellites: SatelliteSpec[];
   /** Large catalog drawn after `satellites`; indexes continue from `satellites.length`. */
   catalog?: SatelliteCatalog | null;
+  /** Name of the display layer holding catalog row `row`, for rows without an object name. */
+  layerNameAt?: (row: number) => string | undefined;
   selectedIdx: number | null;
   simTime: Date;
   showPerturbation: boolean;
@@ -91,6 +93,7 @@ function Stat({ label, value }: { label: ReactNode; value: ReactNode }) {
 export default function SatelliteInfo({
   satellites,
   catalog,
+  layerNameAt,
   selectedIdx,
   simTime,
   showPerturbation,
@@ -103,9 +106,11 @@ export default function SatelliteInfo({
   if (selectedIdx === null) return null;
 
   const catalogIdx = selectedIdx - satellites.length;
-  const spec = catalogIdx < 0 ? satellites[selectedIdx]
+  let spec = catalogIdx < 0 ? satellites[selectedIdx]
     : catalog && catalogIdx < catalog.count ? catalogSpecAt(catalog, catalogIdx) : undefined;
   if (!spec) return null;
+  const layerName = catalogIdx >= 0 ? layerNameAt?.(catalogIdx) : undefined;
+  if (layerName && !spec.meta?.objectName) spec = { ...spec, meta: { ...spec.meta, objectName: layerName } };
 
   const meta = spec.meta;
   const e = (() => {

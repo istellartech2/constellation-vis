@@ -8,20 +8,16 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import * as satellite from "satellite.js";
 import { toSatrec } from "./satellites";
 import type { SatelliteSpec } from "./satellites";
-import {
-  catalogFromSpecs,
-  catalogSatrecAt,
-  concatCatalogs,
-  isFilingRow,
-  type SatelliteCatalog,
-} from "./satelliteCatalog";
+import { catalogFromSpecs, type SatelliteCatalog } from "./satelliteCatalog";
 import {
   MASS_FOCUS_LIMIT,
   MassSatelliteLayer,
   isMassMode,
   stationSeesPoint,
+  type MassPickHit,
   type MassStation,
 } from "./massSatelliteLayer";
+import type { CatalogLayerStyle, LayerColorMode } from "./catalogLayers";
 import type { GroundStation } from "./groundStations";
 import {
   sunVectorECI,
@@ -102,13 +98,35 @@ export function screenSpaceHits(
   y: number,
   radiusPx: number,
 ): number[] {
-  const hits: { i: number; d: number }[] = [];
+  return screenSpaceHitDistances(points, x, y, radiusPx).map((h) => h.index);
+}
+
+/** {@link screenSpaceHits} with each hit's distance from the pointer. */
+export function screenSpaceHitDistances(
+  points: ({ x: number; y: number } | null)[],
+  x: number,
+  y: number,
+  radiusPx: number,
+): MassPickHit[] {
+  const hits: MassPickHit[] = [];
   points.forEach((p, i) => {
     if (!p) return;
     const d = Math.hypot(p.x - x, p.y - y);
-    if (d <= radiusPx) hits.push({ i, d });
+    if (d <= radiusPx) hits.push({ index: i, distance: d });
   });
-  return hits.sort((a, b) => a.d - b.d).map((h) => h.i);
+  return hits.sort((a, b) => a.distance - b.distance);
+}
+
+/**
+ * Merge editor-satellite hits with catalog-overlay hits (local row indexes,
+ * shifted by `catalogOffset` = editor satellite count into global indexes),
+ * nearest first.
+ */
+export function mergePickHits(editorHits: readonly MassPickHit[], catalogHits: readonly MassPickHit[], catalogOffset: number): number[] {
+  return [
+    ...editorHits,
+    ...catalogHits.map((h) => ({ index: h.index + catalogOffset, distance: h.distance })),
+  ].sort((a, b) => a.distance - b.distance).map((h) => h.index);
 }
 
 export function pickSatelliteHitIndex(
@@ -141,12 +159,18 @@ export interface SatelliteSceneParams {
   startTime: Date;
   satellites: SatelliteSpec[];
   /**
-   * Large columnar catalog (TLE/OMM files, filings placed as a catalog)
-   * drawn after `satellites`; its rows take indexes from
-   * `satellites.length` on. Once the total exceeds `MASS_MODE_THRESHOLD`
-   * every satellite is drawn by the GPU {@link MassSatelliteLayer}.
+   * Merged catalog of every display layer (CelesTrak groups, TLE/OMM files,
+   * filings, synthetic sets), hidden layers included so indexes never shift.
+   * Row r has the global satellite index `satellites.length + r`. Always
+   * drawn by a separate GPU J2 overlay, display-only: never part of link
+   * lines, FOV cones, the focus scan or ISL. Swapped live via
+   * {@link SatelliteScene.setCatalog}, without a scene rebuild.
    */
   catalog?: SatelliteCatalog | null;
+  /** Per-layer count/colour/visibility in merged order (counts sum to `catalog.count`). Applied live. Default []. */
+  catalogStyles?: CatalogLayerStyle[];
+  /** Overlay dot colouring: per layer, or by ground-station visibility. Applied live. Default "layer". */
+  layerColorMode?: LayerColorMode;
   groundStations: GroundStation[];
   satRadius: number;
   earthTexture: EarthTextureMode;
@@ -200,6 +224,19 @@ export interface SatelliteSceneParams {
   onIslError?: (message: string | null) => void;
 }
 
+/**
+ * The Three.js scene. Two independent satellite sets are drawn:
+ *   - editor satellites (`params.satellites`, global indexes 0..satCount-1):
+ *     exact SGP4 on the CPU, or the GPU {@link MassSatelliteLayer} once their
+ *     own count exceeds `MASS_MODE_THRESHOLD`. Only these get link lines, FOV
+ *     cones, the focus scan and ISL. Changing them rebuilds the scene.
+ *   - catalog layers (`params.catalog`, global index satCount + row): a
+ *     display-only GPU J2 overlay at any count, swapped live by
+ *     {@link setCatalog} and styled live (per-layer colour/visibility,
+ *     colour mode) through {@link updateParams} — never a rebuild.
+ * Picking, selection, the orbit line, ground track and follow camera work
+ * across both by routing global indexes to the right propagator.
+ */
 export default class SatelliteScene {
   private readonly scene: THREE.Scene;
   private readonly camera: THREE.PerspectiveCamera;
@@ -208,12 +245,19 @@ export default class SatelliteScene {
   private readonly cameraHolder: THREE.Group;
   private readonly disposeFns: (() => void)[] = [];
 
-  /** SGP4 records for every satellite in CPU mode; empty in mass mode. */
+  /** SGP4 records for every editor satellite in CPU mode; empty in mass mode. */
   private readonly satRecs: satellite.SatRec[];
-  /** Satellites drawn: editor `satellites` followed by `catalog` rows. */
+  /**
+   * Editor satellite count (`params.satellites.length`). Catalog rows are
+   * NOT included: they never get CPU per-satellite buffers. Global indexes
+   * at or above it address catalog rows (`index - satCount`).
+   */
   private readonly satCount: number;
-  /** GPU layer drawing every satellite when `satCount` exceeds the mass-mode threshold. */
+  /** GPU layer drawing every editor satellite when `satCount` exceeds the mass-mode threshold. */
   private readonly massLayer: MassSatelliteLayer | null;
+  /** GPU J2 overlay drawing the catalog layers (any count); replaced by {@link setCatalog}. */
+  private catalogLayer: MassSatelliteLayer | null = null;
+  private catalog: SatelliteCatalog | null = null;
   private readonly satPosAttr: THREE.BufferAttribute;
   private readonly satColorAttr: THREE.BufferAttribute;
   private readonly groundPosAttr: THREE.BufferAttribute;
@@ -457,18 +501,15 @@ export default class SatelliteScene {
       color: params.whiteBackground ? 0x2563eb : 0xffffff,
     });
 
-    const catalog = this.params.catalog ?? null;
-    this.satCount = this.params.satellites.length + (catalog?.count ?? 0);
+    // Editor satellites only: CPU mode keeps exact SGP4 for each of them;
+    // mass mode (editor count alone above the threshold) hands them to the
+    // GPU J2 layer instead. Catalog rows go to the separate overlay below.
+    this.satCount = this.params.satellites.length;
     const massMode = isMassMode(this.satCount);
-    // CPU mode keeps exact SGP4 for every satellite (catalog rows included);
-    // mass mode hands all of them to the GPU J2 layer instead.
-    this.satRecs = massMode ? [] : [
-      ...this.params.satellites.map((spec) => toSatrec(spec)),
-      ...Array.from({ length: catalog?.count ?? 0 }, (_, i) => catalogSatrecAt(catalog!, i)),
-    ];
+    this.satRecs = massMode ? [] : this.params.satellites.map((spec) => toSatrec(spec));
     this.massLayer = massMode
       ? new MassSatelliteLayer(
-        concatCatalogs([catalogFromSpecs(this.params.satellites), ...(catalog ? [catalog] : [])]),
+        catalogFromSpecs(this.params.satellites),
         this.currentSimDate.getTime(),
         this.params.satRadius,
         { visible: this.satelliteVisibleColor, hidden: this.satelliteHiddenColor, selected: this.satelliteSelectedColor },
@@ -477,8 +518,6 @@ export default class SatelliteScene {
     const filingMarkers = new Float32Array(this.satRecs.length);
     if (!massMode) {
       this.params.satellites.forEach((s, i) => { filingMarkers[i] = s.meta?.dataStatus === "filing" ? 1 : 0; });
-      const offset = this.params.satellites.length;
-      for (let i = 0; i < (catalog?.count ?? 0); i++) filingMarkers[offset + i] = isFilingRow(catalog!, i) ? 1 : 0;
     }
 
     const satPositions = new Float32Array(this.satRecs.length * 3);
@@ -643,6 +682,7 @@ export default class SatelliteScene {
       this.scene.add(this.massLayer.points);
       this.scene.add(this.massLayer.groundPoints);
     }
+    this.setCatalog(this.params.catalog ?? null);
     this.stationMeshes.forEach((m) => this.scene.add(m));
     this.scene.add(this.linkSegments);
 
@@ -691,34 +731,8 @@ export default class SatelliteScene {
       }
     };
 
-    const handlePointerUp = (event: PointerEvent) => {
-      if (!this.pointerDownActive || this.pointerDownId !== event.pointerId) return;
-      const wasDrag = this.didDragDuringPointer;
-      this.resetPointerInteraction();
-      if (wasDrag) return;
-
-      getPointerNdc(event);
-      raycaster.params.Points!.threshold = this.params.satRadius * 2;
-      raycaster.setFromCamera(pointer, this.camera);
-      const stationHits = raycaster.intersectObjects(this.stationMeshes, false);
-      if (stationHits.length > 0) {
-        const hitObj = stationHits[0].object as THREE.Object3D;
-        const idx = this.stationMeshes.findIndex((m) => m === hitObj);
-        this.selectStation(idx);
-        return;
-      }
-      // Screen-space picking: a fixed pixel radius regardless of zoom level,
-      // skipping satellites hidden behind the Earth (unit sphere at origin).
-      const rect = this.renderer.domElement.getBoundingClientRect();
-      const radius = event.pointerType === "touch" ? PICK_RADIUS_TOUCH_PX : PICK_RADIUS_MOUSE_PX;
-      if (this.massLayer) {
-        this.camera.updateMatrixWorld();
-        const hits = this.massLayer.pick(this.camera, rect, event.clientX, event.clientY, radius, this.currentSimDate.getTime());
-        const next = pickSatelliteHitIndex(hits, this.selectedIndex);
-        if (next !== null) this.selectSatellite(next);
-        else this.clearSelections();
-        return;
-      }
+    /** Screen-space hits among the CPU-drawn editor satellites. */
+    const pickCpuPoints = (rect: DOMRect, clientX: number, clientY: number, radius: number): MassPickHit[] => {
       const posAttr = this.satGeometry.getAttribute("position") as THREE.BufferAttribute;
       const camPos = this.camera.getWorldPosition(new THREE.Vector3());
       const world = new THREE.Vector3();
@@ -749,8 +763,41 @@ export default class SatelliteScene {
           y: rect.top + ((1 - ndc.y) / 2) * rect.height,
         });
       }
-      const hitIndexes = screenSpaceHits(screenPts, event.clientX, event.clientY, radius);
-      const nextIndex = pickSatelliteHitIndex(hitIndexes, this.selectedIndex);
+      return screenSpaceHitDistances(screenPts, clientX, clientY, radius);
+    };
+
+    const handlePointerUp = (event: PointerEvent) => {
+      if (!this.pointerDownActive || this.pointerDownId !== event.pointerId) return;
+      const wasDrag = this.didDragDuringPointer;
+      this.resetPointerInteraction();
+      if (wasDrag) return;
+
+      getPointerNdc(event);
+      raycaster.params.Points!.threshold = this.params.satRadius * 2;
+      raycaster.setFromCamera(pointer, this.camera);
+      const stationHits = raycaster.intersectObjects(this.stationMeshes, false);
+      if (stationHits.length > 0) {
+        const hitObj = stationHits[0].object as THREE.Object3D;
+        const idx = this.stationMeshes.findIndex((m) => m === hitObj);
+        this.selectStation(idx);
+        return;
+      }
+      // Screen-space picking: a fixed pixel radius regardless of zoom level,
+      // skipping satellites hidden behind the Earth (unit sphere at origin).
+      // Editor satellites and the catalog overlay are picked separately and
+      // merged nearest first; overlay rows map to `satCount + row`.
+      const rect = this.renderer.domElement.getBoundingClientRect();
+      const radius = event.pointerType === "touch" ? PICK_RADIUS_TOUCH_PX : PICK_RADIUS_MOUSE_PX;
+      const simMs = this.currentSimDate.getTime();
+      if (this.massLayer || this.catalogLayer) this.camera.updateMatrixWorld();
+      const editorHits = this.massLayer
+        ? this.massLayer.pick(this.camera, rect, event.clientX, event.clientY, radius, simMs)
+        : pickCpuPoints(rect, event.clientX, event.clientY, radius);
+      const overlay = this.catalogLayer;
+      const catalogHits = overlay
+        ? overlay.pick(this.camera, rect, event.clientX, event.clientY, radius, simMs, (i) => overlay.isRowVisible(i))
+        : [];
+      const nextIndex = pickSatelliteHitIndex(mergePickHits(editorHits, catalogHits, this.satCount), this.selectedIndex);
       if (nextIndex !== null) {
         this.selectSatellite(nextIndex);
       } else {
@@ -834,6 +881,37 @@ export default class SatelliteScene {
     this.params.onCameraChange?.(this.getCameraSnapshot());
   }
 
+  /**
+   * Swap the catalog-layer overlay without rebuilding the scene: the old
+   * overlay's GPU resources are freed and a new one is built at the current
+   * sim time, styled from the current `catalogStyles` / `layerColorMode`.
+   * A selected catalog row is cleared (onSelect(null)) since its index may
+   * now address a different satellite. No-op for the catalog already shown.
+   */
+  setCatalog(catalog: SatelliteCatalog | null) {
+    if (catalog === this.catalog) return;
+    if (this.selectedIndex !== null && this.selectedIndex >= this.satCount) this.clearSatelliteSelection();
+    if (this.catalogLayer) {
+      this.scene.remove(this.catalogLayer.points);
+      this.scene.remove(this.catalogLayer.groundPoints);
+      this.catalogLayer.dispose();
+      this.catalogLayer = null;
+    }
+    this.catalog = catalog;
+    if (!catalog || catalog.count === 0) return;
+    const layer = new MassSatelliteLayer(
+      catalog,
+      this.currentSimDate.getTime(),
+      this.params.satRadius,
+      { visible: this.satelliteVisibleColor, hidden: this.satelliteHiddenColor, selected: this.satelliteSelectedColor },
+    );
+    layer.setLayerStyles(this.params.catalogStyles ?? []);
+    layer.setColorMode(this.params.layerColorMode ?? "layer");
+    this.catalogLayer = layer;
+    this.scene.add(layer.points);
+    this.scene.add(layer.groundPoints);
+  }
+
   /** Capture the current camera framing for persistence. */
   getSimulationTime(): Date {
     return new Date(this.currentSimDate.getTime());
@@ -880,7 +958,8 @@ export default class SatelliteScene {
    *
    * Structural changes (satellite/ground-station lists, earth texture,
    * bright-earth lighting, white background) still require a full rebuild and
-   * are NOT handled here — see {@link useSatelliteScene}.
+   * are NOT handled here — see {@link useSatelliteScene}. The catalog itself
+   * is swapped by {@link setCatalog}; its styles and colour mode apply here.
    */
   updateParams(next: SatelliteSceneParams) {
     const prev = this.params;
@@ -922,6 +1001,18 @@ export default class SatelliteScene {
     if (next.satRadius !== prev.satRadius) {
       this.satMaterial.size = next.satRadius * 2;
       this.massLayer?.setSatRadius(next.satRadius);
+      this.catalogLayer?.setSatRadius(next.satRadius);
+    }
+
+    // Catalog-layer colour/visibility: uniform updates on the overlay only.
+    if (this.catalogLayer) {
+      if (next.catalogStyles !== prev.catalogStyles) this.catalogLayer.setLayerStyles(next.catalogStyles ?? []);
+      if (next.layerColorMode !== prev.layerColorMode) this.catalogLayer.setColorMode(next.layerColorMode ?? "layer");
+      // Hiding the layer of the selected row drops the selection.
+      const sel = this.selectedIndex;
+      if (sel !== null && sel >= this.satCount && !this.catalogLayer.isRowVisible(sel - this.satCount)) {
+        this.clearSatelliteSelection();
+      }
     }
 
     // Colors: mutate the cached Color objects in place. fovConeMaterial.color
@@ -1116,11 +1207,14 @@ export default class SatelliteScene {
   }
 
   /**
-   * ECI state (km, km/s) of satellite `i` at `date` from whichever propagator
-   * draws it — SGP4 in CPU mode, the GPU layer's J2 twin in mass mode — so
-   * orbit lines, tracks and the follow camera stay on the drawn point.
+   * ECI state (km, km/s) of global satellite index `i` at `date` from
+   * whichever propagator draws it — SGP4 for CPU-drawn editor satellites,
+   * the GPU layers' J2 twin for mass-mode editor satellites and catalog rows
+   * (`i >= satCount`) — so orbit lines, tracks and the follow camera stay on
+   * the drawn point.
    */
   private propagateIndex(i: number, date: Date): { position: Vec3; velocity: Vec3 | null } | null {
+    if (i >= this.satCount) return this.catalogLayer?.stateAt(i - this.satCount, date.getTime()) ?? null;
     if (this.massLayer) return this.massLayer.stateAt(i, date.getTime());
     const pv = satellite.propagate(this.satRecs[i], date);
     if (!pv?.position) return null;
@@ -1128,12 +1222,14 @@ export default class SatelliteScene {
   }
 
   private orbitPeriodMinutes(i: number): number {
+    if (i >= this.satCount) return this.catalogLayer?.periodMinutes(i - this.satCount) ?? 0;
     return this.massLayer ? this.massLayer.periodMinutes(i) : (2 * Math.PI) / this.satRecs[i].no;
   }
 
   private selectSatellite(idx: number) {
     this.selectedIndex = idx;
-    this.massLayer?.setSelected(idx);
+    this.massLayer?.setSelected(idx < this.satCount ? idx : null);
+    this.catalogLayer?.setSelected(idx >= this.satCount ? idx - this.satCount : null);
     this.params.onSelect?.(idx);
     this.updateTrack();
     this.resetGroundTrack();
@@ -1142,6 +1238,7 @@ export default class SatelliteScene {
   private clearSatelliteSelection() {
     this.selectedIndex = null;
     this.massLayer?.setSelected(null);
+    this.catalogLayer?.setSelected(null);
     this.hasCachedSelection = false;
     this.hasCachedVelocity = false;
     this.params.onSelect?.(null);
@@ -1610,10 +1707,34 @@ export default class SatelliteScene {
       }
     }
 
-    if (this.massLayer) {
-      const selected = this.updateMassLayer(simDate, gmst, gsEcis, gsScene, sinHalfAngle, cosHalfAngle);
-      hasSelectedSat = selected.hasSelectedSat;
-      hasSelectedVelocity = selected.hasSelectedVelocity;
+    if (this.massLayer || this.catalogLayer) {
+      const simMs = simDate.getTime();
+      const stations = this.massStations(gmst, gsEcis);
+      this.renderer.getDrawingBufferSize(this.drawingBufferSize);
+      const pointScale = this.drawingBufferSize.y / 2;
+      if (this.massLayer) this.updateMassLayer(simMs, stations, pointScale, gsScene, sinHalfAngle, cosHalfAngle);
+      this.catalogLayer?.update(simMs, stations, pointScale);
+    }
+
+    // GPU-drawn selection (mass-mode editor satellite or catalog row): only
+    // the selected satellite is propagated on the CPU. Catalog rows are
+    // display-only, so they get no FOV cone.
+    const selected = this.selectedIndex;
+    if (selected !== null && (this.massLayer || selected >= this.satCount)) {
+      const st = this.propagateIndex(selected, simDate);
+      if (st) {
+        satPosition.set(
+          st.position.x / EARTH_RADIUS_EQUATOR_KM,
+          st.position.z / EARTH_RADIUS_POLAR_KM,
+          -st.position.y / EARTH_RADIUS_EQUATOR_KM,
+        );
+        this.cacheSelectedState(satPosition, st.velocity);
+        hasSelectedSat = true;
+        hasSelectedVelocity = !!st.velocity;
+        if (this.params.showSatelliteFovCones && selected < this.satCount) {
+          this.pushFovCone(st.position, st.velocity, satPosition, sinHalfAngle, cosHalfAngle);
+        }
+      }
     }
 
     this.linkGeometry.setDrawRange(0, this.linkCount * 2);
@@ -1740,23 +1861,11 @@ export default class SatelliteScene {
 
   private readonly drawingBufferSize = new THREE.Vector2();
 
-  /**
-   * Mass mode per-frame work: GPU uniforms, plus CPU propagation of only the
-   * selected satellite and the capped focus subset (links, FOV cones).
-   */
-  private updateMassLayer(
-    simDate: Date,
-    gmst: number,
-    gsEcis: Vec3[],
-    gsScene: THREE.Vector3[],
-    sinHalfAngle: number,
-    cosHalfAngle: number,
-  ) {
-    const layer = this.massLayer!;
-    const simMs = simDate.getTime();
+  /** Ground stations in the form the GPU layers' visibility test uses. */
+  private massStations(gmst: number, gsEcis: Vec3[]): MassStation[] {
     const cosG = Math.cos(gmst);
     const sinG = Math.sin(gmst);
-    const stations: MassStation[] = this.params.groundStations.map((gs, gi) => {
+    return this.params.groundStations.map((gs, gi) => {
       const lat = THREE.MathUtils.degToRad(gs.latitudeDeg);
       const lon = THREE.MathUtils.degToRad(gs.longitudeDeg);
       const ux = Math.cos(lat) * Math.cos(lon);
@@ -1768,8 +1877,23 @@ export default class SatelliteScene {
         sinMinElevation: Math.sin(THREE.MathUtils.degToRad(gs.minElevationDeg)),
       };
     });
-    this.renderer.getDrawingBufferSize(this.drawingBufferSize);
-    layer.update(simMs, stations, this.drawingBufferSize.y / 2);
+  }
+
+  /**
+   * Mass mode per-frame work for the editor satellites: GPU uniforms, plus
+   * CPU propagation of only the capped focus subset (links, FOV cones). The
+   * selected satellite is handled in the animate loop.
+   */
+  private updateMassLayer(
+    simMs: number,
+    stations: MassStation[],
+    pointScale: number,
+    gsScene: THREE.Vector3[],
+    sinHalfAngle: number,
+    cosHalfAngle: number,
+  ) {
+    const layer = this.massLayer!;
+    layer.update(simMs, stations, pointScale);
 
     const satPosition = this.tempVectorC;
     const conesOn = this.params.showSatelliteFovCones;
@@ -1789,17 +1913,6 @@ export default class SatelliteScene {
       if (conesOn && i !== lastSat) this.pushFovCone(st.position, st.velocity, satPosition, sinHalfAngle, cosHalfAngle);
       lastSat = i;
     }
-
-    if (this.selectedIndex === null) return { hasSelectedSat: false, hasSelectedVelocity: false };
-    const st = layer.stateAt(this.selectedIndex, simMs);
-    satPosition.set(
-      st.position.x / EARTH_RADIUS_EQUATOR_KM,
-      st.position.z / EARTH_RADIUS_POLAR_KM,
-      -st.position.y / EARTH_RADIUS_EQUATOR_KM,
-    );
-    this.cacheSelectedState(satPosition, st.velocity);
-    if (conesOn) this.pushFovCone(st.position, st.velocity, satPosition, sinHalfAngle, cosHalfAngle);
-    return { hasSelectedSat: true, hasSelectedVelocity: true };
   }
 
   private updateCameraFollow(
@@ -1970,6 +2083,8 @@ export default class SatelliteScene {
     this.linkGeometry.dispose();
     this.fovCones.dispose();
     this.massLayer?.dispose();
+    this.catalogLayer?.dispose();
+    this.catalogLayer = null;
     this.islPathGeometry.dispose();
     this.islEndpointGeo.dispose();
 

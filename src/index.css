@@ -1202,7 +1202,7 @@ button:focus-visible {
       max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left)) !important;
   }
 
-  /* Dialogs that manage their own inner padding (ImportDialog). */
+  /* Dialogs that manage their own inner padding (ExternalDataDialog). */
   [data-slot="dialog-content"].dialog-flush {
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
       env(safe-area-inset-left) !important;

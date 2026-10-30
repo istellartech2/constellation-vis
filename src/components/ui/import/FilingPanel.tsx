@@ -1,26 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ChevronRight, Download, ExternalLink, FileUp, Info, Loader2, Search, ShieldCheck } from "lucide-react";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./dialog";
-import { Button } from "./button";
-import { FILING_CATALOG, hasPlacement, searchFilingCatalog, type FilingCatalogEntry } from "../../lib/filings/catalog";
-import { MAX_FILING_EXTRACT_BYTES, filingExtractFilename, parseFilingExtract, type FilingExtract } from "../../lib/filings/extract";
-import type { FilingConfiguration, FilingDataset, FilingWorkerResponse } from "../../lib/filings/types";
-import { downloadFile } from "../../lib/config";
+import { ChevronRight, Download, ExternalLink, Info, Search } from "lucide-react";
+import { FILING_CATALOG, hasPlacement, searchFilingCatalog, type FilingCatalogEntry } from "../../../lib/filings/catalog";
+import { MAX_FILING_EXTRACT_BYTES, filingExtractFilename, parseFilingExtract, type FilingExtract } from "../../../lib/filings/extract";
+import { filingCatalog } from "../../../lib/filings/geometry";
+import type { FilingConfiguration, FilingDataset, FilingWorkerResponse } from "../../../lib/filings/types";
+import { downloadFile } from "../../../lib/config";
+import { DestinationPicker, FileDropZone, ImportFooter, ImportStatus } from "./ImportParts";
+import { SCENARIO_LIMIT, destinationBlock, recommendedDestination, type ImportDestination, type ImportTargets } from "./importTargets";
 
 /** A filing already placed in the scenario, keyed by filingKey. */
 export interface PlacedFiling { configuration: string; count: number }
 interface Props {
-  open: boolean;
-  /** Scenario start time ("YYYY-MM-DDTHH:mm", UTC); the default placement epoch. */
-  defaultEpoch: string;
+  targets: ImportTargets;
   placed: Record<string, PlacedFiling>;
-  onClose: () => void;
-  onApply: (dataset: FilingDataset, configuration: string, epoch: Date) => void;
-  /** Place the configuration as a large catalog layer instead of editor TOML (no 10,000-ID limit). */
-  onApplyAsCatalog?: (dataset: FilingDataset, configuration: string, epoch: Date) => void;
+  /** Replace this filing's satellites in the editor and apply (also moves the start time to `epoch`). */
+  onApplyToScenario: (dataset: FilingDataset, configuration: string, epoch: Date) => void;
 }
-/** The editor gives filings the placeholder ids 90000–99999. */
-const EDITOR_FILING_LIMIT = 10_000;
 const COUNTRIES = [...new Set(FILING_CATALOG.map(entry => entry.country))].sort((a, b) => a.localeCompare(b, "ja"));
 function SourceRow({ item }: { item: FilingCatalogEntry }) {
   const meta = [item.satellites !== undefined && `${item.satellites.toLocaleString()}機`, item.submission, item.date, item.country].filter(Boolean).join(" · ");
@@ -47,13 +42,14 @@ function summarize(config: FilingConfiguration) {
   return { inclination, altitude: `${low.toLocaleString()}${low !== high ? `–${high.toLocaleString()}` : ""} km` };
 }
 
-export default function FilingImportDialog({ open, defaultEpoch, placed, onClose, onApply, onApplyAsCatalog }: Props) {
+export default function FilingPanel({ targets, placed, onApplyToScenario }: Props) {
+  const defaultEpoch = targets.startText;
   const [dataset, setDataset] = useState<FilingDataset | null>(null);
   const [extract, setExtract] = useState<FilingExtract | null>(null);
   const [configuration, setConfiguration] = useState("");
   const [epoch, setEpoch] = useState(defaultEpoch);
   const [busy, setBusy] = useState(false);
-  const [dragging, setDragging] = useState(false);
+  const [destination, setDestination] = useState<ImportDestination>("scenario");
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [country, setCountry] = useState("");
@@ -66,19 +62,11 @@ export default function FilingImportDialog({ open, defaultEpoch, placed, onClose
   const workerRef = useRef<Worker | null>(null);
   const generation = useRef(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
   const config = dataset?.configurations.find(item => item.id === configuration);
   const existing = dataset ? placed[dataset.key] : undefined;
   const epochDate = new Date(epoch + "Z");
-  const canPlace = Boolean(config && !busy && Number.isFinite(epochDate.valueOf()));
-  const tooLargeForEditor = (config?.count ?? 0) > EDITOR_FILING_LIMIT;
-  const canApply = canPlace && !tooLargeForEditor;
-
-  const [epochSource, setEpochSource] = useState({ open: false, defaultEpoch });
-  if (epochSource.open !== open || epochSource.defaultEpoch !== defaultEpoch) {
-    setEpochSource({ open, defaultEpoch });
-    if (open) setEpoch(defaultEpoch);
-  }
+  const block = config ? destinationBlock(destination, config.count, targets) : null;
+  const canPlace = Boolean(config && !busy && Number.isFinite(epochDate.valueOf())) && block === null;
   useEffect(() => () => {
     generation.current++;
     workerRef.current?.terminate();
@@ -96,7 +84,10 @@ export default function FilingImportDialog({ open, defaultEpoch, placed, onClose
   function show(next: FilingDataset, nextExtract: FilingExtract) {
     setDataset(next);
     setExtract(nextExtract);
-    setConfiguration(placed[next.key]?.configuration ?? next.preferredConfiguration);
+    const configId = placed[next.key]?.configuration ?? next.preferredConfiguration;
+    setConfiguration(configId);
+    const count = next.configurations.find(c => c.id === configId)?.count ?? 0;
+    setDestination(placed[next.key] ? "scenario" : count > SCENARIO_LIMIT ? "layer" : recommendedDestination(count));
     setError(null);
   }
   async function loadExtract(file: File) {
@@ -120,7 +111,7 @@ export default function FilingImportDialog({ open, defaultEpoch, placed, onClose
     try {
       const buffer = await file.arrayBuffer();
       if (token !== generation.current) return;
-      const worker = new Worker(new URL("../../workers/filingImportWorker.ts", import.meta.url), { type: "module" });
+      const worker = new Worker(new URL("../../../workers/filingImportWorker.ts", import.meta.url), { type: "module" });
       workerRef.current = worker;
       const fail = (message: string) => { if (token !== generation.current) return; stop(); setError(message); };
       worker.onmessage = (event: MessageEvent<FilingWorkerResponse>) => {
@@ -138,64 +129,43 @@ export default function FilingImportDialog({ open, defaultEpoch, placed, onClose
       stop(); setError(cause instanceof Error ? cause.message : "ファイルを読み込めませんでした。");
     }
   }
-  function applyAsCatalog() {
-    if (!dataset || !canPlace || !onApplyAsCatalog) return;
-    try {
-      onApplyAsCatalog(dataset, configuration, epochDate);
-      close();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "配置を反映できませんでした。"); }
-  }
   function back() { stop(); setDataset(null); setExtract(null); setError(null); }
-  function close() { stop(); onClose(); }
+  function close() { stop(); targets.close(); }
   function apply() {
-    if (!dataset || !canApply) return;
+    if (!dataset || !config || !canPlace) return;
     try {
-      onApply(dataset, configuration, epochDate);
+      if (destination === "scenario") {
+        onApplyToScenario(dataset, configuration, epochDate);
+      } else {
+        targets.addLayer({
+          id: `filing:${dataset.key}:${configuration}:${epochDate.toISOString()}`,
+          name: `${dataset.name}（${configurationLabel(configuration)}）`,
+          kind: "filing",
+          detail: `ITU申請上の仮配置 · 基準 ${epochDate.toISOString().slice(0, 16).replace("T", " ")} UTC`,
+          catalog: filingCatalog(dataset, configuration, epochDate),
+        });
+      }
       close();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "配置を反映できませんでした。"); }
   }
 
-  const applyLabel = !config ? "構成を選んでください"
-    : tooLargeForEditor ? "エディタ上限（1万機）超"
+  const applyLabel = !dataset ? "申請ファイルを開いてください"
+    : !config ? "構成を選んでください"
+    : destination === "layer" ? `${config.count.toLocaleString()} 機をレイヤーに追加`
     : !existing ? `${config.count.toLocaleString()} 機をシナリオに追加`
     : existing.configuration === configuration ? "配置を更新"
     : `${configurationLabel(configuration)}に置き換え`;
-  const applyHint = !config ? "" : tooLargeForEditor
-    ? `${config.count.toLocaleString()}機はエディタの上限を超えるため、大規模カタログとして配置してください（全衛星をGPUで近似表示します）。`
+  const applyHint = !config ? "" : destination === "layer"
+    ? "新しい表示レイヤーとして、基準日時の配置で表示します。開始時刻は変えません。"
     : existing
-    ? `シナリオ内の「${dataset!.name}」${existing.count.toLocaleString()}機（${configurationLabel(existing.configuration)}）を置き換えます。他の衛星はそのままです。`
-    : "既存の衛星はそのまま残り、3Dビューに反映されます。";
+    ? `シナリオ内の「${dataset!.name}」${existing.count.toLocaleString()}機（${configurationLabel(existing.configuration)}）を置き換えます。開始時刻を基準日時に合わせます。`
+    : "既存の衛星はそのまま残り、3Dビューに反映されます。開始時刻を基準日時に合わせます。";
 
   return (
-    <Dialog open={open} onOpenChange={value => { if (!value) close(); }}>
-      <DialogContent className={`dialog-flush !w-[95vw] !max-w-2xl !max-h-[90vh] ${dataset ? "" : "md:h-[min(90vh,760px)]"} max-md:overflow-hidden max-md:h-[100dvh] max-md:rounded-none max-md:border-0 flex flex-col gap-0 p-0 bg-surface-solid text-fg border-line`}>
-        <DialogHeader className="px-4 pt-3 pb-2 border-b border-line max-md:pr-12 max-md:py-3 shrink-0">
-          <div className="flex items-center gap-2 pr-8">
-            {dataset && <button type="button" onClick={back} aria-label="ファイルを選び直す" title="ファイルを選び直す" className="-ml-1 inline-flex size-7 items-center justify-center rounded-md text-fg-muted hover:bg-raised-hover hover:text-fg"><ArrowLeft className="size-4" /></button>}
-            <DialogTitle className="text-fg text-base max-md:text-left">ITU申請からインポート</DialogTitle>
-          </div>
-          <DialogDescription className="sr-only">ITUの申請ファイルを端末内で読み込み、申請上の配置をシナリオに追加します。</DialogDescription>
-        </DialogHeader>
-
+    <>
         <div className={`flex-1 min-h-0 px-4 py-3 ${dataset ? "overflow-y-auto overscroll-contain space-y-4" : "flex flex-col gap-4"}`}>
           {!dataset ? <>
-            <div
-              onDragOver={event => { event.preventDefault(); setDragging(true); }}
-              onDragLeave={() => setDragging(false)}
-              onDrop={event => { event.preventDefault(); setDragging(false); const file = event.dataTransfer.files[0]; if (file && !busy) void loadFile(file); }}
-              className={`flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border-2 border-dashed px-4 py-3 transition-colors ${dragging ? "border-brand bg-brand-soft" : "border-line-strong bg-sunken"}`}
-            >
-              <input ref={inputRef} type="file" accept=".mdb,.json" className="hidden" aria-label="申請ファイル" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void loadFile(file); }} />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold">申請ファイルを開く</p>
-                <p className="text-xs text-fg-muted">SNS MDB（.mdb）または保存した抽出ファイル（.filing.json）</p>
-                {busy ? <button type="button" onClick={stop} className="text-[11px] text-fg-muted underline">解析を中止</button>
-                  : <p className="flex items-center gap-1 text-[11px] text-fg-subtle"><ShieldCheck className="size-3" />ドロップも可 · 端末内で解析し、送信しません</p>}
-              </div>
-              <Button type="button" disabled={busy} onClick={() => inputRef.current?.click()} className="h-9 shrink-0 gap-2 bg-brand hover:bg-brand-hover text-white font-semibold max-sm:w-full">
-                {busy ? <Loader2 className="size-4 animate-spin" /> : <FileUp className="size-4" />}{busy ? "端末内で解析中…" : "ファイルを選択"}
-              </Button>
-            </div>
+            <FileDropZone accept=".mdb,.json" title="申請ファイルを開く" description="SNS MDB（.mdb）または保存した抽出ファイル（.filing.json）" busy={busy} onFile={file => void loadFile(file)} />
 
             <section className="flex min-h-0 flex-1 flex-col">
               <div className="flex items-baseline justify-between gap-2">
@@ -262,6 +232,7 @@ export default function FilingImportDialog({ open, defaultEpoch, placed, onClose
                 <p className="text-[11px] text-fg-muted break-all">{[dataset.reference, dataset.sourceDate && `${dataset.sourceDate} 受領`, dataset.filename].filter(Boolean).join(" · ")}</p>
               </div>
               <div className="flex shrink-0 items-center gap-3 text-xs">
+                <button type="button" onClick={back} className="text-fg-muted underline hover:text-fg">選び直す</button>
                 {dataset.sourceUrl && <a href={dataset.sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-brand-text hover:underline">申請ページ<ExternalLink className="size-3" /></a>}
                 {extract && !dataset.fromExtract && <button type="button" onClick={() => downloadFile(filingExtractFilename(dataset), JSON.stringify(extract))} className="inline-flex items-center gap-1 text-fg-muted hover:text-fg" title="軌道に必要な値だけを端末に保存し、次回はMDBなしで開けます。再配布はITUの利用条件に従ってください。"><Download className="size-3" />抽出ファイルを保存</button>}
               </div>
@@ -298,26 +269,18 @@ export default function FilingImportDialog({ open, defaultEpoch, placed, onClose
             <details className="rounded-md border border-line px-3 py-2 text-xs text-fg-muted">
               <summary className="cursor-pointer text-fg">配置の基準日時と仮定</summary>
               <label className="mt-2 block">基準日時（UTC）<input type="datetime-local" value={epoch} onChange={event => setEpoch(event.target.value)} className="mt-1 block w-full rounded border-2 border-line-strong bg-sunken px-2 py-1 text-sm text-fg outline-none focus:border-brand" /></label>
-              <p className="mt-1 text-[11px]">初期値はシナリオの開始時刻です。反映すると開始時刻もこの日時に合わせます。</p>
+              <p className="mt-1 text-[11px]">初期値はシナリオの開始時刻です。シナリオに追加すると開始時刻もこの日時に合わせます。</p>
               <ul className="mt-2 list-disc space-y-1 pl-4 leading-relaxed">
                 {dataset.warnings.map(w => <li key={w}>{w}</li>)}
                 <li>昇交点の経度を基準日時の地球の向きに合わせ、位相を緯度引数として解釈します。欠損値は等間隔で補います。申請の幾何を示す概念配置で、運用位置の再現ではありません。</li>
                 <li>3Dでは中抜きの円で、実在の衛星と区別して表示します。</li>
               </ul>
             </details>
+            {config && <DestinationPicker value={destination} onChange={setDestination} count={config.count} targets={targets} />}
           </>}
-          {error && <p role="alert" className="rounded-md border border-danger/40 bg-danger-soft p-2.5 text-xs leading-relaxed text-danger">{error}</p>}
+          <ImportStatus busy={busy ? "端末内で解析中…" : null} onCancel={stop} error={error} />
         </div>
-
-        <DialogFooter className="px-4 py-3 border-t border-line gap-2 sm:gap-3 flex-col sm:flex-row sm:items-center shrink-0">
-          {dataset && <p className="text-[11px] leading-snug text-fg-muted sm:flex-1">{applyHint}</p>}
-          <div className={`flex gap-2 ${dataset ? "" : "sm:ml-auto"}`}>
-            <Button variant="outline" onClick={close} className="h-10 max-md:h-11 bg-sunken border-line-strong text-fg hover:bg-raised-hover hover:text-fg">{dataset ? "キャンセル" : "閉じる"}</Button>
-            {dataset && onApplyAsCatalog && <Button variant="outline" onClick={applyAsCatalog} disabled={!canPlace} className="h-10 max-md:h-11 bg-raised border-line-strong text-fg hover:bg-raised-hover hover:text-fg">大規模カタログとして配置</Button>}
-            {dataset && <Button onClick={apply} disabled={!canApply} className="h-10 max-md:h-11 max-md:flex-1 bg-brand hover:bg-brand-hover text-white font-semibold disabled:opacity-50">{applyLabel}</Button>}
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <ImportFooter hint={dataset ? applyHint : undefined} primaryLabel={applyLabel} onPrimary={apply} disabled={!canPlace} onCancel={close} />
+    </>
   );
 }

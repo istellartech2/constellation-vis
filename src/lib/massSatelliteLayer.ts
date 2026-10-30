@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { j2AnglesAt, j2OrbitsFromCatalog, j2PeriodMinutes, j2StateAt, type J2Orbits } from "./j2Propagator";
 import { isFilingRow, type SatelliteCatalog } from "./satelliteCatalog";
+import { LAYER_PALETTE, MAX_CATALOG_LAYERS, type CatalogLayerStyle, type LayerColorMode } from "./catalogLayers";
 
 /**
  * GPU-propagated point layer for 10^4–10^6 satellites.
@@ -13,6 +14,12 @@ import { isFilingRow, type SatelliteCatalog } from "./satelliteCatalog";
  *   - propagates the selected satellite and a small capped "focus" subset
  *     (link lines, FOV cones), found by an incremental time-sliced scan,
  *   - runs a full CPU pass on click for picking.
+ *
+ * The scene uses two independent instances: one for the editor satellites
+ * when they alone exceed `MASS_MODE_THRESHOLD`, and one for the catalog layers
+ * (always, at any count). Each vertex carries a layer index, so per-layer
+ * colour and visibility are uniform updates; the editor instance has a
+ * single always-visible layer coloured by ground-station visibility.
  */
 
 /** Total satellite count above which the scene switches to this layer. */
@@ -44,11 +51,37 @@ export function massDensityScale(count: number): { size: number; alpha: number }
 /** Main-thread time per frame spent scanning for the focus subset. */
 const SCAN_BUDGET_MS = 3;
 
+/**
+ * Per-row layer index (0..MAX_CATALOG_LAYERS-1) from the layer counts, in
+ * merged order. When the counts do not add up to `count` (or there are no
+ * styles) every row falls back to layer 0.
+ */
+export function buildLayerIndexes(styles: readonly CatalogLayerStyle[], count: number, out: Uint8Array = new Uint8Array(count)): Uint8Array {
+  out.fill(0);
+  if (!layerCountsMatch(styles, count)) return out;
+  let start = 0;
+  for (let k = 0; k < styles.length; k++) {
+    const end = start + styles[k].count;
+    out.fill(Math.min(k, MAX_CATALOG_LAYERS - 1), start, end);
+    start = end;
+  }
+  return out;
+}
+
+function layerCountsMatch(styles: readonly CatalogLayerStyle[], count: number): boolean {
+  if (styles.length === 0) return false;
+  let sum = 0;
+  for (const s of styles) sum += s.count;
+  return sum === count;
+}
+
 const vertexShader = /* glsl */ `
 #define MAX_STATIONS ${MASS_MAX_STATIONS}
+#define MAX_LAYERS ${MAX_CATALOG_LAYERS}
 // position = (raan, argp, M) at the reference epoch; aRates = their rates (rad/min).
 attribute vec4 aShape; // semi-major axis km, eccentricity, inclination, filing flag
 attribute vec3 aRates;
+attribute float aLayer; // layer index (unsigned byte, read as float)
 uniform float uDt;
 uniform float uSize;
 uniform float uSelectedSize;
@@ -63,10 +96,22 @@ uniform vec3 uVisibleColor;
 uniform vec3 uHiddenColor;
 uniform vec3 uSelectedColor;
 uniform vec3 uGroundColor;
+uniform vec3 uLayerColor[MAX_LAYERS];
+uniform float uLayerVisible[MAX_LAYERS];
+uniform float uColorMode; // 1 = per-layer colour, 0 = ground-station visibility
 varying vec3 vColor;
 varying float vFiling;
 const float PI = 3.141592653589793;
 void main() {
+  int layer = int(clamp(aLayer, 0.0, float(MAX_LAYERS - 1)) + 0.5);
+  if (uLayerVisible[layer] < 0.5) {
+    // Hidden layer: park the vertex outside the clip volume with no size.
+    vColor = vec3(0.0);
+    vFiling = 0.0;
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    gl_PointSize = 0.0;
+    return;
+  }
   float a = aShape.x;
   float e = aShape.y;
   float inc = aShape.z;
@@ -94,13 +139,19 @@ void main() {
     vColor = uGroundColor;
     vFiling = 0.0;
   } else {
-    bool visible = false;
-    for (int s = 0; s < MAX_STATIONS; s++) {
-      if (s >= uStationCount) break;
-      vec3 rho = eci - uStationPos[s];
-      if (dot(rho, uStationUp[s]) > uStationSinEl[s] * length(rho)) { visible = true; break; }
+    vec3 base;
+    if (uColorMode > 0.5) {
+      base = uLayerColor[layer];
+    } else {
+      bool visible = false;
+      for (int s = 0; s < MAX_STATIONS; s++) {
+        if (s >= uStationCount) break;
+        vec3 rho = eci - uStationPos[s];
+        if (dot(rho, uStationUp[s]) > uStationSinEl[s] * length(rho)) { visible = true; break; }
+      }
+      base = visible ? uVisibleColor : uHiddenColor;
     }
-    vColor = selected ? uSelectedColor : (visible ? uVisibleColor : uHiddenColor);
+    vColor = selected ? uSelectedColor : base;
     if (vFiling > 0.5) size *= 1.35;
     if (selected) size = uSelectedSize;
   }
@@ -142,6 +193,12 @@ export interface MassLayerColors {
   selected: THREE.Color;
 }
 
+/** A screen-space pick hit: row index and distance from the pointer in CSS px. */
+export interface MassPickHit {
+  index: number;
+  distance: number;
+}
+
 export class MassSatelliteLayer {
   readonly count: number;
   readonly points: THREE.Points;
@@ -158,6 +215,12 @@ export class MassSatelliteLayer {
   private readonly scratch = new Float64Array(3);
   private readonly scratchVel = new Float64Array(3);
   private readonly density: { size: number; alpha: number };
+  /** Per-row layer index; kept on the CPU for pick filtering and in-place regrouping. */
+  private readonly layerIndexes: Uint8Array;
+  private readonly layerAttr: THREE.BufferAttribute;
+  private layerCounts: number[] = [];
+  private readonly layerColors = Array.from({ length: MAX_CATALOG_LAYERS }, () => new THREE.Color());
+  private readonly layerVisible: number[] = new Array(MAX_CATALOG_LAYERS).fill(1);
 
   // Incremental focus scan state: (satellite, station) pairs.
   private scanCursor = 0;
@@ -194,6 +257,9 @@ export class MassSatelliteLayer {
     };
     this.geometry.setAttribute("aShape", new THREE.BufferAttribute(shape, 4).onUpload(freeAfterUpload));
     this.geometry.setAttribute("aRates", new THREE.BufferAttribute(rates, 3).onUpload(freeAfterUpload));
+    this.layerIndexes = new Uint8Array(n);
+    this.layerAttr = new THREE.BufferAttribute(this.layerIndexes, 1);
+    this.geometry.setAttribute("aLayer", this.layerAttr);
     // "position" holds angles, not coordinates; give three a bounding sphere
     // that covers GEO so it never computes one from them.
     this.geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 50);
@@ -218,6 +284,9 @@ export class MassSatelliteLayer {
       uHiddenColor: { value: colors.hidden },
       uSelectedColor: { value: colors.selected },
       uGroundColor: { value: new THREE.Color(0xa9a9a9) },
+      uLayerColor: { value: this.layerColors },
+      uLayerVisible: { value: this.layerVisible },
+      uColorMode: { value: 0 },
     });
     this.material = new THREE.ShaderMaterial({ uniforms: uniforms(), vertexShader, fragmentShader, transparent: true });
     this.groundMaterial = new THREE.ShaderMaterial({ uniforms: uniforms(), vertexShader, fragmentShader, transparent: true });
@@ -236,6 +305,38 @@ export class MassSatelliteLayer {
 
   setSelected(index: number | null) {
     this.material.uniforms.uSelected.value = index ?? -1;
+  }
+
+  /**
+   * Per-layer colour and visibility (merged order, counts summing to
+   * `count`). Uniform-only unless the layer counts changed, in which case the
+   * small per-row index buffer is rewritten in place. Empty styles mean one
+   * visible layer in the first palette colour.
+   */
+  setLayerStyles(styles: readonly CatalogLayerStyle[]) {
+    const counts = styles.map((s) => s.count);
+    if (counts.length !== this.layerCounts.length || counts.some((c, k) => c !== this.layerCounts[k])) {
+      buildLayerIndexes(styles, this.count, this.layerIndexes);
+      this.layerAttr.needsUpdate = true;
+      this.layerCounts = counts;
+    }
+    const grouped = layerCountsMatch(styles, this.count);
+    for (let k = 0; k < MAX_CATALOG_LAYERS; k++) {
+      // Without matching counts every row is layer 0: first entry's colour, always shown.
+      const style = grouped || k === 0 ? styles[k] : undefined;
+      this.layerColors[k].set(style?.color ?? LAYER_PALETTE[k % LAYER_PALETTE.length]);
+      this.layerVisible[k] = grouped && style && !style.visible ? 0 : 1;
+    }
+  }
+
+  /** Colour dots per layer, or by ground-station visibility (the default). */
+  setColorMode(mode: LayerColorMode) {
+    this.material.uniforms.uColorMode.value = mode === "layer" ? 1 : 0;
+  }
+
+  /** Whether row `i` belongs to a visible layer (hidden rows are neither drawn nor pickable). */
+  isRowVisible(i: number): boolean {
+    return this.layerVisible[this.layerIndexes[i]] > 0.5;
   }
 
   /**
@@ -277,17 +378,27 @@ export class MassSatelliteLayer {
   }
 
   /**
-   * Indexes of satellites within `radiusPx` of the pointer, nearest first,
-   * skipping ones behind the camera or hidden by the Earth (unit sphere).
-   * A single allocation-free CPU pass (~10^6 Kepler solves) run only on click.
+   * Satellites within `radiusPx` of the pointer, nearest first, skipping
+   * ones behind the camera, hidden by the Earth (unit sphere) or rejected by
+   * `include` (e.g. rows of hidden layers). A single allocation-free CPU pass
+   * (~10^6 Kepler solves) run only on click.
    */
-  pick(camera: THREE.Camera, rect: { left: number; top: number; width: number; height: number }, x: number, y: number, radiusPx: number, simMs: number): number[] {
+  pick(
+    camera: THREE.Camera,
+    rect: { left: number; top: number; width: number; height: number },
+    x: number,
+    y: number,
+    radiusPx: number,
+    simMs: number,
+    include?: (i: number) => boolean,
+  ): MassPickHit[] {
     const m = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).elements;
     const cam = camera.getWorldPosition(new THREE.Vector3());
     const camLenSq = cam.lengthSq() - 1;
     const p = this.scratch;
-    const hits: { i: number; d: number }[] = [];
+    const hits: MassPickHit[] = [];
     for (let i = 0; i < this.count; i++) {
+      if (include && !include(i)) continue;
       j2StateAt(this.orbits, i, simMs, p);
       const wx = p[0] / EARTH_RADIUS_EQUATOR_KM;
       const wy = p[2] / EARTH_RADIUS_POLAR_KM;
@@ -307,9 +418,9 @@ export class MassSatelliteLayer {
       const disc = b * b - camLenSq;
       const tHit = disc > 0 ? -b - Math.sqrt(disc) : Infinity;
       if (tHit > 0 && tHit < dist) continue;
-      hits.push({ i, d });
+      hits.push({ index: i, distance: d });
     }
-    return hits.sort((a, b) => a.d - b.d).map((h) => h.i);
+    return hits.sort((a, b) => a.distance - b.distance);
   }
 
   /**

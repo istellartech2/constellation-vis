@@ -14,7 +14,7 @@ import {
   Clock,
   FileCog,
   Check,
-  FileText,
+  Plus,
   Database,
 } from "lucide-react";
 import ConstellationEditorDialog from "./ConstellationEditorDialog";
@@ -23,6 +23,8 @@ import GroundStationEditorDialog from "./GroundStationEditorDialog";
 import PanelSection from "./PanelSection";
 import EntryButton from "./EntryButton";
 import NoticeDialog from "./NoticeDialog";
+import LayerList from "./LayerList";
+import type { CatalogLayer, LayerColorMode } from "../../lib/catalogLayers";
 
 interface Props {
   satText: string;
@@ -33,11 +35,13 @@ interface Props {
   onConstTextChange: (text: string) => void;
   onGsTextChange: (text: string) => void;
   onStartTextChange: (text: string) => void;
+  /** Opens the unified external-data dialog. */
   onImportClick: () => void;
-  onFilingImportClick: () => void;
-  onCatalogClick: () => void;
-  /** Satellites in large catalog layers (outside the TOML editor). */
-  catalogCount: number;
+  layers: CatalogLayer[];
+  layerColorMode: LayerColorMode;
+  onLayerColorModeChange: (mode: LayerColorMode) => void;
+  onLayerChange: (id: string, patch: Partial<Pick<CatalogLayer, "visible" | "color">>) => void;
+  onLayerRemove: (id: string) => void;
   onUpdate: () => void;
   updateFeedback: "idle" | "success";
   onSaveBundle: () => void;
@@ -64,10 +68,10 @@ function countConstellationSatellites(text: string): number {
   return total;
 }
 
-function CountBadge({ value }: { value: number }) {
+function CountBadge({ value, unit = "件" }: { value: number; unit?: string }) {
   return (
-    <span className="text-[11px] font-medium text-brand-text bg-brand-soft border border-brand/40 rounded-full px-2 py-0.5 leading-none">
-      {value} 件
+    <span className="text-[11px] font-medium text-brand-text bg-brand-soft border border-brand/40 rounded-full px-2 py-0.5 leading-none tabular-nums">
+      {value.toLocaleString()} {unit}
     </span>
   );
 }
@@ -82,9 +86,11 @@ export default function EditorTab({
   onGsTextChange,
   onStartTextChange,
   onImportClick,
-  onFilingImportClick,
-  onCatalogClick,
-  catalogCount,
+  layers,
+  layerColorMode,
+  onLayerColorModeChange,
+  onLayerChange,
+  onLayerRemove,
   onUpdate,
   updateFeedback,
   onSaveBundle,
@@ -120,7 +126,7 @@ export default function EditorTab({
       type="button"
       onClick={() => setClearOpen(true)}
       className="flex items-center gap-1 text-[11px] text-fg-muted hover:text-danger transition-colors px-1.5 py-0.5 rounded"
-      title="衛星・コンステレーション・地上局をすべて削除"
+      title="エディタの衛星・コンステレーション・地上局をすべて削除（表示レイヤーは残ります）"
     >
       <Trash2 className="h-3 w-3" />
       すべて削除
@@ -129,7 +135,7 @@ export default function EditorTab({
 
   return (
     <>
-      <NoticeDialog open={clearOpen} onClose={() => setClearOpen(false)} title="すべて削除しますか？" description="衛星・コンステレーション・地上局の編集内容を削除します。3Dビューへの反映には更新が必要です。" confirmLabel="すべて削除" onConfirm={handleClearAll} destructive />
+      <NoticeDialog open={clearOpen} onClose={() => setClearOpen(false)} title="すべて削除しますか？" description="衛星・コンステレーション・地上局の編集内容を削除します。表示レイヤーは残ります（レイヤーごとに削除できます）。3Dビューへの反映には更新が必要です。" confirmLabel="すべて削除" onConfirm={handleClearAll} destructive />
       <PanelSection title="シミュレーション対象" icon={<Pencil />} action={clearAllAction}>
         <EntryButton
           icon={<Satellite className="h-4 w-4" />}
@@ -153,28 +159,19 @@ export default function EditorTab({
           variant="outline"
           className="w-full h-9 gap-2 bg-raised hover:bg-raised-hover border-2 border-line-strong hover:border-brand text-fg"
           onClick={onImportClick}
+          title="CelesTrak・ITU申請・TLE/OMMファイル・合成カタログ"
         >
-          <Globe className="h-4 w-4" />
-          CelesTrak からインポート
-        </Button>
-        <Button
-          variant="outline"
-          className="w-full h-9 gap-2 bg-raised hover:bg-raised-hover border-2 border-line-strong hover:border-brand text-fg"
-          onClick={onFilingImportClick}
-        >
-          <FileText className="h-4 w-4" />
-          ITU申請からインポート
-        </Button>
-        <Button
-          variant="outline"
-          className="w-full h-9 gap-2 bg-raised hover:bg-raised-hover border-2 border-line-strong hover:border-brand text-fg"
-          onClick={onCatalogClick}
-        >
-          <Database className="h-4 w-4" />
-          大規模カタログ
-          {catalogCount > 0 && <span className="text-xs text-fg-muted">{catalogCount.toLocaleString()}機</span>}
+          <Plus className="h-4 w-4" />
+          外部データを追加
+          <span className="flex items-center gap-1 text-fg-subtle" aria-hidden="true"><Globe className="h-3 w-3" /><Database className="h-3 w-3" /></span>
         </Button>
       </PanelSection>
+
+      {layers.length > 0 && (
+        <PanelSection title="表示レイヤー" icon={<Layers />} action={<CountBadge value={layers.reduce((sum, l) => sum + l.catalog.count, 0)} unit="機" />}>
+          <LayerList layers={layers} colorMode={layerColorMode} onColorModeChange={onLayerColorModeChange} onChange={onLayerChange} onRemove={onLayerRemove} />
+        </PanelSection>
+      )}
 
       <PanelSection title="開始時刻" icon={<Clock />}>
         <input

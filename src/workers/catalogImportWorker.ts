@@ -1,10 +1,11 @@
 /// <reference lib="webworker" />
-import { parseCatalogText, syntheticCatalog, type CatalogFormat } from "../lib/catalogParsers";
+import { parseCatalogText, type CatalogFormat } from "../lib/catalogParsers";
+import { syntheticCatalog, type SyntheticPreset } from "../lib/syntheticCatalogs";
 import { catalogTransferables, type SatelliteCatalog } from "../lib/satelliteCatalog";
 
 export type CatalogImportRequest =
   | { kind: "file"; file: File }
-  | { kind: "synthetic"; count: number; epochMs: number };
+  | { kind: "synthetic"; preset: SyntheticPreset; count: number; epochMs: number };
 
 export type CatalogImportResponse =
   | { ok: true; catalog: SatelliteCatalog; format: CatalogFormat | "synthetic"; skipped: number }
@@ -19,7 +20,7 @@ ctx.onmessage = async (event: MessageEvent<CatalogImportRequest>) => {
     const req = event.data;
     const result = req.kind === "file"
       ? parseCatalogText(await req.file.text())
-      : { catalog: syntheticCatalog(req.count, req.epochMs), format: "synthetic" as const, skipped: 0 };
+      : { catalog: syntheticCatalog(req.preset, req.count, req.epochMs), format: "synthetic" as const, skipped: 0 };
     const response: CatalogImportResponse = { ok: true, ...result };
     ctx.postMessage(response, catalogTransferables(result.catalog));
   } catch (cause) {

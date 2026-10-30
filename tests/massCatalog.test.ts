@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import * as satellite from "satellite.js";
-import { parseCatalogText, syntheticCatalog } from "../src/lib/catalogParsers";
+import { parseCatalogText } from "../src/lib/catalogParsers";
+import { syntheticCatalog } from "../src/lib/syntheticCatalogs";
 import { j2AnglesAt, j2OrbitsFromCatalog, j2StateAt, writeKeplerState } from "../src/lib/j2Propagator";
 import {
   catalogFromSpecs,
@@ -87,7 +88,7 @@ describe("catalog parsing", () => {
       elements: { satnum: 9, epoch: new Date(0), semiMajorAxisKm: 7000, eccentricity: 0, inclinationDeg: 0, raanDeg: 0, argPerigeeDeg: 0, meanAnomalyDeg: 0 },
       meta: { dataStatus: "filing", filingName: "F" },
     };
-    const merged = concatCatalogs([catalogFromSpecs([filing]), catalogFromSpecs([filing]), syntheticCatalog(3, 0)]);
+    const merged = concatCatalogs([catalogFromSpecs([filing]), catalogFromSpecs([filing]), syntheticCatalog("walker-mix", 3, 0)]);
     expect(merged.count).toBe(5);
     expect(isFilingRow(merged, 0)).toBe(true);
     expect(isFilingRow(merged, 1)).toBe(true);
@@ -116,7 +117,7 @@ describe("J2 secular propagator", () => {
   });
 
   it("gives the same position from rebased float32 angles (GPU path)", () => {
-    const cat = syntheticCatalog(2000, Date.UTC(2024, 0, 1));
+    const cat = syntheticCatalog("walker-mix", 2000, Date.UTC(2024, 0, 1));
     const orbits = j2OrbitsFromCatalog(cat);
     const refMs = Date.UTC(2024, 5, 1);
     const angles = new Float32Array(cat.count * 3);
