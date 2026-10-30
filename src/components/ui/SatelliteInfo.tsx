@@ -32,7 +32,9 @@ interface Props {
   layerNameAt?: (row: number) => string | undefined;
   selectedIdx: number | null;
   simTime: Date;
+  /** Whether the J2/J3 secular-rate section is unfolded (remembered with the view). */
   showPerturbation: boolean;
+  onShowPerturbationChange: (v: boolean) => void;
   cameraMode: SatelliteCameraMode;
   onCameraModeChange: (mode: SatelliteCameraMode) => void;
   onClose: () => void;
@@ -97,6 +99,7 @@ export default function SatelliteInfo({
   selectedIdx,
   simTime,
   showPerturbation,
+  onShowPerturbationChange,
   cameraMode,
   onCameraModeChange,
   onClose,
@@ -225,10 +228,18 @@ export default function SatelliteInfo({
       <div className="satellite-info-body">
         <Section title="軌道 (元期)" rows={orbitRows} />
         <Section title="日陰" rows={eclipseRows} />
-        {showPerturbation && (
-          <section className="border-t border-line pt-2.5">
-            <SectionTitle>摂動 (永年変化)</SectionTitle>
-            {(() => {
+        <section className="border-t border-line pt-2.5">
+          <button
+            type="button"
+            data-slot="button"
+            onClick={() => onShowPerturbationChange(!showPerturbation)}
+            aria-expanded={showPerturbation}
+            className="flex w-full items-center justify-between bg-transparent p-0 text-left"
+          >
+            <SectionTitle>摂動 J₂/J₃ (永年変化)</SectionTitle>
+            <ChevronDown className={`size-3.5 text-fg-muted transition-transform ${showPerturbation ? "rotate-180" : ""}`} />
+          </button>
+          {showPerturbation && (() => {
               const detailedRates = calculateDetailedPerturbationRates({
                 semiMajorAxisKm: e.semiMajorAxisKm,
                 eccentricity: e.eccentricity,
@@ -260,8 +271,7 @@ export default function SatelliteInfo({
                 </>
               );
             })()}
-          </section>
-        )}
+        </section>
       </div>
       )}
     </div>

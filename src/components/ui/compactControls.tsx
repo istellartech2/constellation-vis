@@ -1,6 +1,8 @@
-import { useId, useRef, useState } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Info } from "lucide-react";
+import { Checkbox } from "./checkbox";
+import { Label } from "./label";
 
 /**
  * Compact control primitives shared by the 通信 / 表示 tabs.
@@ -180,5 +182,42 @@ export function SegmentedControl<T extends string>({
         );
       })}
     </div>
+  );
+}
+
+/** Checkbox + label row; `trailing` (e.g. a colour swatch) sits at the right edge. */
+export function CheckRow({
+  id,
+  checked,
+  onChange,
+  label,
+  trailing,
+}: {
+  id: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+  trailing?: ReactNode;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <Checkbox id={id} checked={checked} onCheckedChange={(v) => onChange(v === true)} />
+      <Label htmlFor={id} className="min-w-0 flex-1 cursor-pointer text-sm font-normal text-fg">
+        {label}
+      </Label>
+      {trailing}
+    </div>
+  );
+}
+
+/** Marks a section whose values change analysis and visibility results, not just the look. */
+export function AnalysisBadge() {
+  return (
+    <span
+      className="shrink-0 rounded-full bg-brand-soft px-1.5 py-0.5 text-[10px] leading-none text-brand-text"
+      title="この値は解析・可視判定の結果に影響します"
+    >
+      解析に使用
+    </span>
   );
 }

@@ -1,4 +1,4 @@
-import type { IslPathResult, IslSettings } from "../../lib/isl/types";
+import { isSameEndpoint, type IslPathResult, type IslSettings } from "../../lib/isl/types";
 
 interface Props {
   islSettings: IslSettings;
@@ -32,6 +32,8 @@ export default function IslHud({ islSettings, islResult, islSwitchCount, onClick
       </div>
       {!endpointsSet ? (
         <div className="text-xs text-brand-text">地点を選択してください</div>
+      ) : isSameEndpoint(islSettings.endpointA, islSettings.endpointB) ? (
+        <div className="text-xs text-brand-text">A と B が同じ地点です</div>
       ) : !islResult ? (
         <div className="text-xs text-fg-muted">計算中…</div>
       ) : !islResult.reachable ? (

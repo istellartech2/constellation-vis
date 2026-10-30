@@ -24,7 +24,7 @@ import PanelSection from "./PanelSection";
 import EntryButton from "./EntryButton";
 import NoticeDialog from "./NoticeDialog";
 import LayerList from "./LayerList";
-import type { CatalogLayer, LayerColorMode } from "../../lib/catalogLayers";
+import type { CatalogLayer } from "../../lib/catalogLayers";
 
 interface Props {
   satText: string;
@@ -38,8 +38,6 @@ interface Props {
   /** Opens the unified external-data dialog. */
   onImportClick: () => void;
   layers: CatalogLayer[];
-  layerColorMode: LayerColorMode;
-  onLayerColorModeChange: (mode: LayerColorMode) => void;
   onLayerChange: (id: string, patch: Partial<Pick<CatalogLayer, "visible" | "color">>) => void;
   onLayerRemove: (id: string) => void;
   onUpdate: () => void;
@@ -89,8 +87,6 @@ export default function EditorTab({
   onStartTextChange,
   onImportClick,
   layers,
-  layerColorMode,
-  onLayerColorModeChange,
   onLayerChange,
   onLayerRemove,
   onUpdate,
@@ -166,7 +162,7 @@ export default function EditorTab({
 
       {layers.length > 0 && (
         <PanelSection title="表示レイヤー" icon={<Layers />} action={<CountBadge value={layers.reduce((sum, l) => sum + l.catalog.count, 0)} unit="機" />}>
-          <LayerList layers={layers} colorMode={layerColorMode} onColorModeChange={onLayerColorModeChange} onChange={onLayerChange} onRemove={onLayerRemove} />
+          <LayerList layers={layers} onChange={onLayerChange} onRemove={onLayerRemove} />
         </PanelSection>
       )}
 

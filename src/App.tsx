@@ -11,18 +11,17 @@ import { layerIndexOfRow, type LayerColorMode } from "./lib/catalogLayers";
 import { useCatalogLayers } from "./lib/useCatalogLayers";
 import { isMassMode } from "./lib/massSatelliteLayer";
 import { formatGroundStationInfo } from "./lib/formatGroundStationInfo";
-import { DEFAULT_EARTH_MODE, isMonochromeEarthMode, type EarthTextureMode } from "./lib/earthTextures";
 import { type SatelliteCameraMode } from "./lib/visualization";
-import { DEFAULT_POINT_STYLE, type SatellitePointStyle } from "./lib/satellitePointStyle";
 import {
   loadLastView,
   saveLastView,
   buildViewSettings,
-  nextViewFrame,
+  displayOptionsFromSaved,
+  mergeDisplayOptions,
+  toDisplaySettings,
   type CameraSnapshot,
-  type DisplaySettings,
+  type DisplayOptions,
   type ViewSettings,
-  type ViewFrame,
 } from "./lib/viewState";
 import {
   createDefaultIslSettings,
@@ -63,66 +62,14 @@ function App() {
   );
   const [simTime, setSimTime] = useState(() => new Date());
 
-  const [pointStyle, setPointStyle] = useState<SatellitePointStyle>(() => ({
-    pixelSize: SAVED_DISPLAY?.satPixelSize ?? DEFAULT_POINT_STYLE.pixelSize,
-    sunlitShading: SAVED_DISPLAY?.satSunlitShading ?? DEFAULT_POINT_STYLE.sunlitShading,
-    glint: SAVED_DISPLAY?.satGlint ?? DEFAULT_POINT_STYLE.glint,
-  }));
-  const [satRadius, setSatRadius] = useState(
-    () => SAVED_DISPLAY?.satRadius ?? (window.innerWidth <= 600 ? 0.02 : 0.015),
+  const [display, setDisplay] = useState<DisplayOptions>(() =>
+    displayOptionsFromSaved(SAVED_DISPLAY, window.innerWidth <= 600 ? 0.02 : 0.015),
   );
-
-  const [earthTexture, setEarthTexture] = useState<EarthTextureMode>(
-    SAVED_DISPLAY?.earthTexture ?? DEFAULT_EARTH_MODE,
+  const updateDisplay = useCallback(
+    (patch: Partial<DisplayOptions>) => setDisplay((prev) => ({ ...prev, ...patch })),
+    [],
   );
-  // Monochrome globes have always drawn borders and photo globes have not;
-  // keep that look for views saved before borders became a setting.
-  const [showCountryBorders, setShowCountryBorders] = useState(
-    SAVED_DISPLAY?.showCountryBorders ??
-      isMonochromeEarthMode(SAVED_DISPLAY?.earthTexture ?? DEFAULT_EARTH_MODE),
-  );
-  const [showClouds, setShowClouds] = useState(SAVED_DISPLAY?.showClouds ?? false);
-  const [showGraticule, setShowGraticule] = useState(SAVED_DISPLAY?.showGraticule ?? true);
-  const [showEcliptic, setShowEcliptic] = useState(SAVED_DISPLAY?.showEcliptic ?? true);
-  const [showGeoOrbit, setShowGeoOrbit] = useState(SAVED_DISPLAY?.showGeoOrbit ?? false);
-  const [showSunDirection, setShowSunDirection] = useState(SAVED_DISPLAY?.showSunDirection ?? true);
-  const [viewFrame, setViewFrame] = useState<ViewFrame>(() => nextViewFrame("eci", SAVED_DISPLAY ?? {}));
-  const [showPerturbation, setShowPerturbation] = useState(SAVED_DISPLAY?.showPerturbation ?? false);
-  const [brightEarth, setBrightEarth] = useState(SAVED_DISPLAY?.brightEarth ?? false);
-  const [whiteBackground, setWhiteBackground] = useState(SAVED_DISPLAY?.whiteBackground ?? false);
-  const [showGroundStationCones, setShowGroundStationCones] = useState(
-    SAVED_DISPLAY?.showGroundStationCones ?? false,
-  );
-  const [showSatelliteFovCones, setShowSatelliteFovCones] = useState(
-    SAVED_DISPLAY?.showSatelliteFovCones ?? false,
-  );
-  const [groundConeMinElevationDeg, setGroundConeMinElevationDeg] = useState(
-    SAVED_DISPLAY?.groundConeMinElevationDeg ?? 30,
-  );
-  const [groundConeDistanceKm, setGroundConeDistanceKm] = useState(
-    SAVED_DISPLAY?.groundConeDistanceKm ?? 1000,
-  );
-  const [groundConeColor, setGroundConeColor] = useState(SAVED_DISPLAY?.groundConeColor ?? "#3ec7a1");
-  const [fovConeHalfAngleDeg, setFovConeHalfAngleDeg] = useState(
-    SAVED_DISPLAY?.fovConeHalfAngleDeg ?? 30,
-  );
-  const [fovConeColor, setFovConeColor] = useState(SAVED_DISPLAY?.fovConeColor ?? "#3388ff");
   const fovConeMinHeight = 0.02;
-  const [fovConeAlongTrackDeg, setFovConeAlongTrackDeg] = useState(
-    SAVED_DISPLAY?.fovConeAlongTrackDeg ?? 0,
-  );
-  const [fovConeCrossTrackDeg, setFovConeCrossTrackDeg] = useState(
-    SAVED_DISPLAY?.fovConeCrossTrackDeg ?? 0,
-  );
-  const [satelliteVisibleColor, setSatelliteVisibleColor] = useState(
-    SAVED_DISPLAY?.satelliteVisibleColor ?? "#00ff00",
-  );
-  const [satelliteHiddenColor, setSatelliteHiddenColor] = useState(
-    SAVED_DISPLAY?.satelliteHiddenColor ?? "#ff0000",
-  );
-  const [satelliteSelectedColor, setSatelliteSelectedColor] = useState(
-    SAVED_DISPLAY?.satelliteSelectedColor ?? "#00ffff",
-  );
   const [islSettings, setIslSettings] = useState<IslSettings>(
     SAVED_DISPLAY?.isl ?? createDefaultIslSettings(),
   );
@@ -190,38 +137,7 @@ function App() {
 
   // Current display settings, assembled fresh each render so the persistence
   // effect and named-view saving always see the latest values.
-  const currentDisplay: DisplaySettings = {
-    satRadius,
-    satPixelSize: pointStyle.pixelSize,
-    satSunlitShading: pointStyle.sunlitShading,
-    satGlint: pointStyle.glint,
-    earthTexture,
-    showCountryBorders,
-    showClouds,
-    showGraticule,
-    showEcliptic,
-    showGeoOrbit,
-    showSunDirection,
-    ecef: viewFrame === "ecef",
-    gse: viewFrame === "gse",
-    showPerturbation,
-    brightEarth,
-    whiteBackground,
-    showGroundStationCones,
-    showSatelliteFovCones,
-    groundConeMinElevationDeg,
-    groundConeDistanceKm,
-    groundConeColor,
-    fovConeHalfAngleDeg,
-    fovConeColor,
-    fovConeAlongTrackDeg,
-    fovConeCrossTrackDeg,
-    satelliteVisibleColor,
-    satelliteHiddenColor,
-    satelliteSelectedColor,
-    speedExp,
-    isl: islSettings,
-  };
+  const currentDisplay = toDisplaySettings(display, speedExp, islSettings);
   // Mirror into a ref so the (stable) camera callback can read it without
   // being recreated on every settings change.
   const displayRef = useRef(currentDisplay);
@@ -243,35 +159,7 @@ function App() {
       buildViewSettings(displayRef.current, cameraSnapshotRef.current ?? fallbackCamera),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    satRadius,
-    pointStyle,
-    earthTexture,
-    showCountryBorders,
-    showClouds,
-    showGraticule,
-    showEcliptic,
-    showGeoOrbit,
-    showSunDirection,
-    viewFrame,
-    showPerturbation,
-    brightEarth,
-    whiteBackground,
-    showGroundStationCones,
-    showSatelliteFovCones,
-    groundConeMinElevationDeg,
-    groundConeDistanceKm,
-    groundConeColor,
-    fovConeHalfAngleDeg,
-    fovConeColor,
-    fovConeAlongTrackDeg,
-    fovConeCrossTrackDeg,
-    satelliteVisibleColor,
-    satelliteHiddenColor,
-    satelliteSelectedColor,
-    speedExp,
-    islSettings,
-  ]);
+  }, [display, speedExp, islSettings]);
 
   // Stable handler: scene reports its framing on drag/zoom-end and mode changes.
   const handleCameraChange = useCallback((snap: CameraSnapshot) => {
@@ -315,7 +203,7 @@ function App() {
     setIsPaused(false);
   };
 
-  const groundConeLength = Math.max(groundConeDistanceKm, 100) / EARTH_RADIUS_KM;
+  const groundConeLength = Math.max(display.groundConeDistanceKm, 100) / EARTH_RADIUS_KM;
 
   const sceneRef = useSatelliteScene({
     mountRef,
@@ -327,32 +215,31 @@ function App() {
     catalogStyles,
     layerColorMode,
     groundStations,
-    satRadius,
-    pointStyle,
-    earthTexture,
-    showCountryBorders,
-    showClouds,
-    showGraticule,
-    showEcliptic,
-    showGeoOrbit,
-    showSunDirection,
-    showGroundStationCones,
-    showSatelliteFovCones,
-    groundConeMinElevationDeg,
+    satRadius: display.satRadius,
+    pointStyle: display.pointStyle,
+    earthTexture: display.earthTexture,
+    showCountryBorders: display.showCountryBorders,
+    showClouds: display.showClouds,
+    showGraticule: display.showGraticule,
+    showEcliptic: display.showEcliptic,
+    showGeoOrbit: display.showGeoOrbit,
+    showSunDirection: display.showSunDirection,
+    showGroundStationCones: display.showGroundStationCones,
+    showSatelliteFovCones: display.showSatelliteFovCones,
     groundConeLength,
-    groundConeColor,
-    fovConeHalfAngleDeg,
-    fovConeColor,
+    groundConeColor: display.groundConeColor,
+    fovConeHalfAngleDeg: display.fovConeHalfAngleDeg,
+    fovConeColor: display.fovConeColor,
     fovConeMinHeight,
-    fovConeAlongTrackDeg,
-    fovConeCrossTrackDeg,
-    satelliteVisibleColor,
-    satelliteHiddenColor,
-    satelliteSelectedColor,
+    fovConeAlongTrackDeg: display.fovConeAlongTrackDeg,
+    fovConeCrossTrackDeg: display.fovConeCrossTrackDeg,
+    satelliteVisibleColor: display.satelliteVisibleColor,
+    satelliteHiddenColor: display.satelliteHiddenColor,
+    satelliteSelectedColor: display.satelliteSelectedColor,
     cameraMode,
-    viewFrame,
-    brightEarth,
-    whiteBackground,
+    viewFrame: display.viewFrame,
+    brightEarth: display.brightEarth,
+    whiteBackground: display.whiteBackground,
     onSelect: handleSelectSatellite,
     onSelectStation: setSelectedGsIdx,
     onSimTimeChange: setSimTime,
@@ -365,37 +252,7 @@ function App() {
   }, { cameraSnapshotRef });
 
   const applyDisplay = useCallback((d: RemoteDisplaySettings) => {
-    if (d.satRadius !== undefined) setSatRadius(d.satRadius);
-    if (d.satPixelSize !== undefined || d.satSunlitShading !== undefined || d.satGlint !== undefined) {
-      setPointStyle((prev) => ({
-        pixelSize: d.satPixelSize ?? prev.pixelSize,
-        sunlitShading: d.satSunlitShading ?? prev.sunlitShading,
-        glint: d.satGlint ?? prev.glint,
-      }));
-    }
-    if (d.earthTexture !== undefined) setEarthTexture(d.earthTexture);
-    if (d.showCountryBorders !== undefined) setShowCountryBorders(d.showCountryBorders);
-    if (d.showClouds !== undefined) setShowClouds(d.showClouds);
-    if (d.showGraticule !== undefined) setShowGraticule(d.showGraticule);
-    if (d.showEcliptic !== undefined) setShowEcliptic(d.showEcliptic);
-    if (d.showGeoOrbit !== undefined) setShowGeoOrbit(d.showGeoOrbit);
-    if (d.showSunDirection !== undefined) setShowSunDirection(d.showSunDirection);
-    if (d.ecef !== undefined || d.gse !== undefined) setViewFrame((prev) => nextViewFrame(prev, d));
-    if (d.showPerturbation !== undefined) setShowPerturbation(d.showPerturbation);
-    if (d.brightEarth !== undefined) setBrightEarth(d.brightEarth);
-    if (d.whiteBackground !== undefined) setWhiteBackground(d.whiteBackground);
-    if (d.showGroundStationCones !== undefined) setShowGroundStationCones(d.showGroundStationCones);
-    if (d.showSatelliteFovCones !== undefined) setShowSatelliteFovCones(d.showSatelliteFovCones);
-    if (d.groundConeMinElevationDeg !== undefined) setGroundConeMinElevationDeg(d.groundConeMinElevationDeg);
-    if (d.groundConeDistanceKm !== undefined) setGroundConeDistanceKm(d.groundConeDistanceKm);
-    if (d.groundConeColor !== undefined) setGroundConeColor(d.groundConeColor);
-    if (d.fovConeHalfAngleDeg !== undefined) setFovConeHalfAngleDeg(d.fovConeHalfAngleDeg);
-    if (d.fovConeColor !== undefined) setFovConeColor(d.fovConeColor);
-    if (d.fovConeAlongTrackDeg !== undefined) setFovConeAlongTrackDeg(d.fovConeAlongTrackDeg);
-    if (d.fovConeCrossTrackDeg !== undefined) setFovConeCrossTrackDeg(d.fovConeCrossTrackDeg);
-    if (d.satelliteVisibleColor !== undefined) setSatelliteVisibleColor(d.satelliteVisibleColor);
-    if (d.satelliteHiddenColor !== undefined) setSatelliteHiddenColor(d.satelliteHiddenColor);
-    if (d.satelliteSelectedColor !== undefined) setSatelliteSelectedColor(d.satelliteSelectedColor);
+    setDisplay((prev) => mergeDisplayOptions(prev, d));
     if (d.speedExp !== undefined) setSpeedExp(d.speedExp);
   }, []);
 
@@ -471,7 +328,8 @@ function App() {
         layerNameAt={(row) => catalogLayers[layerIndexOfRow(catalogStyles, row)]?.name}
         selectedIdx={selectedIdx}
         simTime={simTime}
-        showPerturbation={showPerturbation}
+        showPerturbation={display.showPerturbation}
+        onShowPerturbationChange={(v) => updateDisplay({ showPerturbation: v })}
         cameraMode={cameraMode}
         onCameraModeChange={setCameraMode}
         onClose={() => handleSelectSatellite(null)}
@@ -479,7 +337,7 @@ function App() {
       {gsInfoText && (
         <pre
           ref={gsInfoRef}
-          className={`hud-text${whiteBackground ? " hud-text-on-white" : ""}`}
+          className={`hud-text${display.whiteBackground ? " hud-text-on-white" : ""}`}
           style={{
             position: "fixed",
             left: 0,
@@ -510,57 +368,10 @@ function App() {
         }
       />
       <SatelliteEditor
-        satRadius={satRadius}
-        onSatRadiusChange={setSatRadius}
-        pointStyle={pointStyle}
-        onPointStyleChange={setPointStyle}
-        earthTexture={earthTexture}
-        onEarthTextureChange={setEarthTexture}
-        showCountryBorders={showCountryBorders}
-        onShowCountryBordersChange={setShowCountryBorders}
-        showClouds={showClouds}
-        onShowCloudsChange={setShowClouds}
-        showGraticule={showGraticule}
-        onShowGraticuleChange={setShowGraticule}
-        showEcliptic={showEcliptic}
-        onShowEclipticChange={setShowEcliptic}
-        showGeoOrbit={showGeoOrbit}
-        onShowGeoOrbitChange={setShowGeoOrbit}
-        showSunDirection={showSunDirection}
-        onShowSunDirectionChange={setShowSunDirection}
-        showGroundStationCones={showGroundStationCones}
-        onShowGroundStationConesChange={setShowGroundStationCones}
-        showSatelliteFovCones={showSatelliteFovCones}
-        onShowSatelliteFovConesChange={setShowSatelliteFovCones}
-        groundConeMinElevationDeg={groundConeMinElevationDeg}
-        onGroundConeMinElevationDegChange={setGroundConeMinElevationDeg}
-        groundConeDistanceKm={groundConeDistanceKm}
-        onGroundConeDistanceKmChange={setGroundConeDistanceKm}
-        groundConeColor={groundConeColor}
-        onGroundConeColorChange={setGroundConeColor}
-        fovConeHalfAngleDeg={fovConeHalfAngleDeg}
-        onFovConeHalfAngleDegChange={setFovConeHalfAngleDeg}
-        fovConeColor={fovConeColor}
-        onFovConeColorChange={setFovConeColor}
+        display={display}
+        onDisplayChange={updateDisplay}
         fovConeMinHeight={fovConeMinHeight}
-        fovConeAlongTrackDeg={fovConeAlongTrackDeg}
-        onFovConeAlongTrackDegChange={setFovConeAlongTrackDeg}
-        fovConeCrossTrackDeg={fovConeCrossTrackDeg}
-        onFovConeCrossTrackDegChange={setFovConeCrossTrackDeg}
-        satelliteVisibleColor={satelliteVisibleColor}
-        onSatelliteVisibleColorChange={setSatelliteVisibleColor}
-        satelliteHiddenColor={satelliteHiddenColor}
-        onSatelliteHiddenColorChange={setSatelliteHiddenColor}
-        satelliteSelectedColor={satelliteSelectedColor}
-        onSatelliteSelectedColorChange={setSatelliteSelectedColor}
-        viewFrame={viewFrame}
-        onViewFrameChange={setViewFrame}
-        showPerturbation={showPerturbation}
-        onShowPerturbationChange={setShowPerturbation}
-        brightEarth={brightEarth}
-        onBrightEarthChange={setBrightEarth}
-        whiteBackground={whiteBackground}
-        onWhiteBackgroundChange={setWhiteBackground}
+        groundStations={groundStations}
         sceneRef={sceneRef}
         onUpdate={(scenario) => {
           scenarioCommittedRef.current = true;

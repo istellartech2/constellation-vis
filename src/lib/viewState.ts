@@ -1,6 +1,7 @@
-import { DEFAULT_EARTH_MODE, normalizeEarthTextureMode, type EarthTextureMode } from "./earthTextures";
+import { DEFAULT_EARTH_MODE, isMonochromeEarthMode, normalizeEarthTextureMode, type EarthTextureMode } from "./earthTextures";
 import type { SatelliteCameraMode } from "./visualization";
 import { createDefaultIslSettings, DEFAULT_GSL_COLOR, DEFAULT_ISL_COLOR, type IslSettings } from "./isl/types";
+import { DEFAULT_POINT_STYLE, type SatellitePointStyle } from "./satellitePointStyle";
 
 /**
  * Persistence of the current "view" — camera framing plus display settings —
@@ -72,7 +73,6 @@ export interface DisplaySettings {
   whiteBackground: boolean;
   showGroundStationCones: boolean;
   showSatelliteFovCones: boolean;
-  groundConeMinElevationDeg: number;
   groundConeDistanceKm: number;
   groundConeColor: string;
   fovConeHalfAngleDeg: number;
@@ -84,6 +84,138 @@ export interface DisplaySettings {
   satelliteSelectedColor: string;
   speedExp: number;
   isl: IslSettings;
+}
+
+/**
+ * The display settings App keeps as one piece of React state: the persisted
+ * {@link DisplaySettings} in UI-friendly form (one frame instead of the
+ * ecef/gse flags, the point style as one object), without the playback speed
+ * and ISL settings, which have their own state.
+ */
+export interface DisplayOptions {
+  satRadius: number;
+  pointStyle: SatellitePointStyle;
+  earthTexture: EarthTextureMode;
+  showCountryBorders: boolean;
+  showClouds: boolean;
+  showGraticule: boolean;
+  showEcliptic: boolean;
+  showGeoOrbit: boolean;
+  showSunDirection: boolean;
+  viewFrame: ViewFrame;
+  showPerturbation: boolean;
+  brightEarth: boolean;
+  whiteBackground: boolean;
+  showGroundStationCones: boolean;
+  showSatelliteFovCones: boolean;
+  groundConeDistanceKm: number;
+  groundConeColor: string;
+  fovConeHalfAngleDeg: number;
+  fovConeColor: string;
+  fovConeAlongTrackDeg: number;
+  fovConeCrossTrackDeg: number;
+  satelliteVisibleColor: string;
+  satelliteHiddenColor: string;
+  satelliteSelectedColor: string;
+}
+
+/** Apply a partial (saved, remote or named-view) display record onto `prev`. */
+export function mergeDisplayOptions(
+  prev: DisplayOptions,
+  d: Partial<Omit<DisplaySettings, "isl" | "speedExp">>,
+): DisplayOptions {
+  const pick = <K extends keyof DisplayOptions & keyof DisplaySettings>(key: K): DisplayOptions[K] =>
+    (d[key] ?? prev[key]) as DisplayOptions[K];
+  return {
+    satRadius: pick("satRadius"),
+    pointStyle:
+      d.satPixelSize === undefined && d.satSunlitShading === undefined && d.satGlint === undefined
+        ? prev.pointStyle
+        : {
+            pixelSize: d.satPixelSize ?? prev.pointStyle.pixelSize,
+            sunlitShading: d.satSunlitShading ?? prev.pointStyle.sunlitShading,
+            glint: d.satGlint ?? prev.pointStyle.glint,
+          },
+    earthTexture: pick("earthTexture"),
+    showCountryBorders: pick("showCountryBorders"),
+    showClouds: pick("showClouds"),
+    showGraticule: pick("showGraticule"),
+    showEcliptic: pick("showEcliptic"),
+    showGeoOrbit: pick("showGeoOrbit"),
+    showSunDirection: pick("showSunDirection"),
+    viewFrame: nextViewFrame(prev.viewFrame, d),
+    showPerturbation: pick("showPerturbation"),
+    brightEarth: pick("brightEarth"),
+    whiteBackground: pick("whiteBackground"),
+    showGroundStationCones: pick("showGroundStationCones"),
+    showSatelliteFovCones: pick("showSatelliteFovCones"),
+    groundConeDistanceKm: pick("groundConeDistanceKm"),
+    groundConeColor: pick("groundConeColor"),
+    fovConeHalfAngleDeg: pick("fovConeHalfAngleDeg"),
+    fovConeColor: pick("fovConeColor"),
+    fovConeAlongTrackDeg: pick("fovConeAlongTrackDeg"),
+    fovConeCrossTrackDeg: pick("fovConeCrossTrackDeg"),
+    satelliteVisibleColor: pick("satelliteVisibleColor"),
+    satelliteHiddenColor: pick("satelliteHiddenColor"),
+    satelliteSelectedColor: pick("satelliteSelectedColor"),
+  };
+}
+
+/** Defaults for a first visit; `satRadius` depends on the screen, so the caller passes it. */
+export function defaultDisplayOptions(satRadius: number): DisplayOptions {
+  return {
+    satRadius,
+    pointStyle: DEFAULT_POINT_STYLE,
+    earthTexture: DEFAULT_EARTH_MODE,
+    // Monochrome globes have always drawn borders and photo globes have not.
+    showCountryBorders: isMonochromeEarthMode(DEFAULT_EARTH_MODE),
+    showClouds: false,
+    showGraticule: true,
+    showEcliptic: true,
+    showGeoOrbit: false,
+    showSunDirection: true,
+    viewFrame: "eci",
+    showPerturbation: false,
+    brightEarth: false,
+    whiteBackground: false,
+    showGroundStationCones: false,
+    showSatelliteFovCones: false,
+    groundConeDistanceKm: 1000,
+    groundConeColor: "#3ec7a1",
+    fovConeHalfAngleDeg: 30,
+    fovConeColor: "#3388ff",
+    fovConeAlongTrackDeg: 0,
+    fovConeCrossTrackDeg: 0,
+    satelliteVisibleColor: "#00ff00",
+    satelliteHiddenColor: "#ff0000",
+    satelliteSelectedColor: "#00ffff",
+  };
+}
+
+/** Restore saved display settings over the defaults. */
+export function displayOptionsFromSaved(saved: DisplaySettings | null, defaultSatRadius: number): DisplayOptions {
+  const defaults = defaultDisplayOptions(defaultSatRadius);
+  if (!saved) return defaults;
+  return mergeDisplayOptions(
+    // Keep the border look of views saved before borders became a setting.
+    { ...defaults, showCountryBorders: isMonochromeEarthMode(saved.earthTexture) },
+    saved,
+  );
+}
+
+/** The persisted form of the current display state. */
+export function toDisplaySettings(o: DisplayOptions, speedExp: number, isl: IslSettings): DisplaySettings {
+  const { pointStyle, viewFrame, ...rest } = o;
+  return {
+    ...rest,
+    satPixelSize: pointStyle.pixelSize,
+    satSunlitShading: pointStyle.sunlitShading,
+    satGlint: pointStyle.glint,
+    ecef: viewFrame === "ecef",
+    gse: viewFrame === "gse",
+    speedExp,
+    isl,
+  };
 }
 
 export interface ViewSettings {

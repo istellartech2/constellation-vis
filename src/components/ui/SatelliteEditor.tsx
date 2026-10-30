@@ -16,7 +16,7 @@ import AiSessionPanel from "./AiSessionPanel";
 import NoticeDialog from "./NoticeDialog";
 import AnalysisTab, { type AnalysisType } from "./AnalysisTab";
 import OptionTab from "./OptionTab";
-import IslTab from "./IslTab";
+import CommTab from "./CommTab";
 import ExternalDataDialog, { type ImportSource } from "./ExternalDataDialog";
 import type { PlacedFiling } from "./import/FilingPanel";
 import { type NewLayer } from "./import/importTargets";
@@ -29,11 +29,11 @@ import { mergeImportedIntoScenarioText } from "../../lib/scenarioImport";
 import { validateSatellites, validateGroundStations } from "../../utils/validators";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./tabs";
 import { Button } from "./button";
-import { Menu, X } from "lucide-react";
+import { Menu, Moon, Sun, X } from "lucide-react";
+import { useUiTheme } from "../../lib/uiTheme";
 import { useSheetDrag } from "./useSheetDrag";
-import type { EarthTextureMode } from "../../lib/earthTextures";
-import type { ViewFrame, ViewSettings } from "../../lib/viewState";
-import type { SatellitePointStyle } from "../../lib/satellitePointStyle";
+import type { DisplayOptions, ViewSettings } from "../../lib/viewState";
+import type { GroundStation } from "../../lib/groundStations";
 
 /**
  * Editor side panel allowing the user to load, edit and save TOML files
@@ -45,102 +45,13 @@ import type { SatellitePointStyle } from "../../lib/satellitePointStyle";
 interface Props {
   /** Called when the user clicks Update, with the newly committed scenario. */
   onUpdate: (scenario: CommittedScenario) => void;
-  /** Current satellite draw radius */
-  satRadius: number;
-  /** Called when satellite size is changed */
-  onSatRadiusChange: (r: number) => void;
-  /** Fixed-pixel dots, shadow dimming and glint */
-  pointStyle: SatellitePointStyle;
-  onPointStyleChange: (style: SatellitePointStyle) => void;
-  /** Current earth texture URL */
-  earthTexture: EarthTextureMode;
-  /** Called when earth texture is changed */
-  onEarthTextureChange: (t: EarthTextureMode) => void;
-  /** Show or hide graticule */
-  showCountryBorders: boolean;
-  onShowCountryBordersChange: (v: boolean) => void;
-  showClouds: boolean;
-  onShowCloudsChange: (v: boolean) => void;
-  showGraticule: boolean;
-  /** Called when graticule visibility changes */
-  onShowGraticuleChange: (v: boolean) => void;
-  /** Show or hide ecliptic plane */
-  showEcliptic: boolean;
-  /** Called when ecliptic visibility changes */
-  onShowEclipticChange: (v: boolean) => void;
-  /** Show or hide the geostationary orbit circle */
-  showGeoOrbit: boolean;
-  /** Called when geostationary orbit visibility changes */
-  onShowGeoOrbitChange: (v: boolean) => void;
-  /** Show or hide sun direction marker */
-  showSunDirection: boolean;
-  /** Called when sun direction visibility changes */
-  onShowSunDirectionChange: (v: boolean) => void;
-  /** Show or hide ground station visibility cones */
-  showGroundStationCones: boolean;
-  /** Called when ground station cone visibility changes */
-  onShowGroundStationConesChange: (v: boolean) => void;
-  /** Show or hide satellite FOV cones */
-  showSatelliteFovCones: boolean;
-  /** Called when satellite FOV cone visibility changes */
-  onShowSatelliteFovConesChange: (v: boolean) => void;
-  /** Minimum elevation for ground station visibility cones (degrees) */
-  groundConeMinElevationDeg: number;
-  /** Called when ground station cone min elevation changes */
-  onGroundConeMinElevationDegChange: (v: number) => void;
-  /** Ground station visibility cone cutoff distance in kilometres */
-  groundConeDistanceKm: number;
-  /** Called when ground cone distance changes */
-  onGroundConeDistanceKmChange: (v: number) => void;
-  /** Color for ground station visibility cones */
-  groundConeColor: string;
-  /** Called when ground cone color changes */
-  onGroundConeColorChange: (color: string) => void;
-  /** Half-angle for satellite FOV cones (degrees) */
-  fovConeHalfAngleDeg: number;
-  /** Called when satellite FOV cone angle changes */
-  onFovConeHalfAngleDegChange: (v: number) => void;
-  /** Color for satellite FOV cones */
-  fovConeColor: string;
-  /** Called when satellite FOV cone color changes */
-  onFovConeColorChange: (color: string) => void;
+  /** Display settings shown on the 表示 and 通信 tabs */
+  display: DisplayOptions;
+  onDisplayChange: (patch: Partial<DisplayOptions>) => void;
   /** Minimum satellite FOV cone height (Earth radii) */
   fovConeMinHeight: number;
-  /** FOV cone along-track angle offset (degrees) */
-  fovConeAlongTrackDeg: number;
-  /** Called when FOV cone along-track angle changes */
-  onFovConeAlongTrackDegChange: (v: number) => void;
-  /** FOV cone cross-track angle offset (degrees) */
-  fovConeCrossTrackDeg: number;
-  /** Called when FOV cone cross-track angle changes */
-  onFovConeCrossTrackDegChange: (v: number) => void;
-  /** Satellite color when visible from a ground station */
-  satelliteVisibleColor: string;
-  /** Called when satellite visible color changes */
-  onSatelliteVisibleColorChange: (color: string) => void;
-  /** Satellite color when not visible */
-  satelliteHiddenColor: string;
-  /** Called when satellite hidden color changes */
-  onSatelliteHiddenColorChange: (color: string) => void;
-  /** Satellite color when selected */
-  satelliteSelectedColor: string;
-  /** Called when satellite selected color changes */
-  onSatelliteSelectedColorChange: (color: string) => void;
-  /** Scene reference frame (ECI / ECEF / GSE) */
-  viewFrame: ViewFrame;
-  onViewFrameChange: (frame: ViewFrame) => void;
-  /** Show perturbation information */
-  showPerturbation: boolean;
-  /** Called when perturbation visibility changes */
-  onShowPerturbationChange: (v: boolean) => void;
-  /** Show bright earth (uniform lighting) */
-  brightEarth: boolean;
-  /** Called when bright earth mode changes */
-  onBrightEarthChange: (v: boolean) => void;
-  /** Use white background */
-  whiteBackground: boolean;
-  /** Called when white background mode changes */
-  onWhiteBackgroundChange: (v: boolean) => void;
+  /** Ground stations of the committed scenario (what the 3D view and visibility use) */
+  groundStations: GroundStation[];
   /** Called when analysis is started (to pause animation) */
   onAnalysisStart?: () => void;
   /** Called when analysis is closed (to resume animation) */
@@ -194,57 +105,10 @@ function ScopeNote({ editorCount, catalogCount }: { editorCount: number; catalog
 
 export default function SatelliteEditor({
   onUpdate,
-  satRadius,
-  onSatRadiusChange,
-  pointStyle,
-  onPointStyleChange,
-  earthTexture,
-  onEarthTextureChange,
-  showCountryBorders,
-  onShowCountryBordersChange,
-  showClouds,
-  onShowCloudsChange,
-  showGraticule,
-  onShowGraticuleChange,
-  showEcliptic,
-  onShowEclipticChange,
-  showGeoOrbit,
-  onShowGeoOrbitChange,
-  showSunDirection,
-  onShowSunDirectionChange,
-  showGroundStationCones,
-  onShowGroundStationConesChange,
-  showSatelliteFovCones,
-  onShowSatelliteFovConesChange,
-  groundConeMinElevationDeg,
-  onGroundConeMinElevationDegChange,
-  groundConeDistanceKm,
-  onGroundConeDistanceKmChange,
-  groundConeColor,
-  onGroundConeColorChange,
-  fovConeHalfAngleDeg,
-  onFovConeHalfAngleDegChange,
-  fovConeColor,
-  onFovConeColorChange,
+  display,
+  onDisplayChange,
   fovConeMinHeight,
-  fovConeAlongTrackDeg,
-  onFovConeAlongTrackDegChange,
-  fovConeCrossTrackDeg,
-  onFovConeCrossTrackDegChange,
-  satelliteVisibleColor,
-  onSatelliteVisibleColorChange,
-  satelliteHiddenColor,
-  onSatelliteHiddenColorChange,
-  satelliteSelectedColor,
-  onSatelliteSelectedColorChange,
-  viewFrame,
-  onViewFrameChange,
-  showPerturbation,
-  onShowPerturbationChange,
-  brightEarth,
-  onBrightEarthChange,
-  whiteBackground,
-  onWhiteBackgroundChange,
+  groundStations,
   onAnalysisStart,
   onAnalysisEnd,
   sceneRef,
@@ -269,6 +133,7 @@ export default function SatelliteEditor({
   onLayerColorModeChange,
 }: Props) {
   const [importSource, setImportSource] = useState<ImportSource>("celestrak");
+  const [uiTheme, setUiTheme] = useUiTheme();
   const catalogCount = catalogLayers.reduce((sum, l) => sum + l.catalog.count, 0);
   const remoteAppliedRef = useRef(false);
   const remoteStartTimeRef = useRef<string | null>(null);
@@ -311,17 +176,20 @@ export default function SatelliteEditor({
   const [tab, setTab] = useState<"editor" | "analysis" | "option" | "isl">("editor");
   const [notice, setNotice] = useState<string | null>(null);
   const [updateFeedback, setUpdateFeedback] = useState<"idle" | "success">("idle");
-  // Analysis-modal open request forwarded to AnalysisTab (e.g. 「タイムライン解析を開く」 from IslTab)
+  // Analysis-modal open request forwarded to AnalysisTab (e.g. 「タイムライン解析を開く」 from the 通信 tab)
   const [analysisRequest, setAnalysisRequest] = useState<{ type: AnalysisType; nonce: number } | null>(
     null,
   );
 
+  const [islFocusRequested, setIslFocusRequested] = useState(false);
   const [handledTabRequest, setHandledTabRequest] = useState<typeof openTabRequest>(undefined);
   if (openTabRequest !== handledTabRequest) {
     setHandledTabRequest(openTabRequest);
     if (openTabRequest) {
       setOpen(true);
       setTab(openTabRequest.tab);
+      // The ISL HUD opens the 通信 tab for its route: bring that part into view.
+      if (openTabRequest.tab === "isl") setIslFocusRequested(true);
     }
   }
 
@@ -538,6 +406,16 @@ export default function SatelliteEditor({
             variant="ghost"
             size="icon"
             className="size-9 shrink-0"
+            onClick={() => setUiTheme(uiTheme === "dark" ? "light" : "dark")}
+            aria-label={uiTheme === "dark" ? "ライトテーマに切り替え" : "ダークテーマに切り替え"}
+            title={uiTheme === "dark" ? "ライトテーマに切り替え" : "ダークテーマに切り替え"}
+          >
+            {uiTheme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-9 shrink-0"
             onClick={() => setOpen(false)}
             aria-label="閉じる"
           >
@@ -558,8 +436,6 @@ export default function SatelliteEditor({
                 onStartTextChange={setStartText}
                 onImportClick={() => setImportOpen(true)}
                 layers={catalogLayers}
-                layerColorMode={layerColorMode}
-                onLayerColorModeChange={onLayerColorModeChange}
                 onLayerChange={onCatalogLayerChange}
                 onLayerRemove={onCatalogLayerRemove}
                 onUpdate={handleUpdate}
@@ -577,9 +453,9 @@ export default function SatelliteEditor({
                 constText={constText}
                 gsText={gsText}
                 startTime={new Date(startText)}
-                fovConeHalfAngleDeg={fovConeHalfAngleDeg}
-                fovConeAlongTrackDeg={fovConeAlongTrackDeg}
-                fovConeCrossTrackDeg={fovConeCrossTrackDeg}
+                fovConeHalfAngleDeg={display.fovConeHalfAngleDeg}
+                fovConeAlongTrackDeg={display.fovConeAlongTrackDeg}
+                fovConeCrossTrackDeg={display.fovConeCrossTrackDeg}
                 satellites={satellites}
                 islSettings={islSettings}
                 islShellRanges={islShellRanges}
@@ -591,8 +467,17 @@ export default function SatelliteEditor({
             </TabsContent>
 
             <TabsContent value="isl" className="mt-0">
-              <ScopeNote editorCount={satellites.length} catalogCount={catalogCount} />
-              <IslTab
+              <CommTab
+                islFocusRequested={islFocusRequested}
+                onIslFocusHandled={() => setIslFocusRequested(false)}
+                islScopeNote={<ScopeNote editorCount={satellites.length} catalogCount={catalogCount} />}
+                display={display}
+                onDisplayChange={onDisplayChange}
+                fovConeMinHeight={fovConeMinHeight}
+                groundStations={groundStations}
+                hasLayers={catalogLayers.length > 0}
+                layerColorMode={layerColorMode}
+                onLayerColorModeChange={onLayerColorModeChange}
                 gsText={gsText}
                 islSettings={islSettings}
                 onIslSettingsChange={onIslSettingsChange}
@@ -609,62 +494,13 @@ export default function SatelliteEditor({
                   }));
                   setTab("analysis");
                 }}
-                showGroundStationCones={showGroundStationCones}
-                onShowGroundStationConesChange={onShowGroundStationConesChange}
-                groundConeMinElevationDeg={groundConeMinElevationDeg}
-                onGroundConeMinElevationDegChange={onGroundConeMinElevationDegChange}
-                groundConeDistanceKm={groundConeDistanceKm}
-                onGroundConeDistanceKmChange={onGroundConeDistanceKmChange}
-                groundConeColor={groundConeColor}
-                onGroundConeColorChange={onGroundConeColorChange}
               />
             </TabsContent>
 
             <TabsContent value="option" className="mt-0">
               <OptionTab
-                satRadius={satRadius}
-                onSatRadiusChange={onSatRadiusChange}
-                pointStyle={pointStyle}
-                onPointStyleChange={onPointStyleChange}
-                earthTexture={earthTexture}
-                onEarthTextureChange={onEarthTextureChange}
-                showCountryBorders={showCountryBorders}
-                onShowCountryBordersChange={onShowCountryBordersChange}
-                showClouds={showClouds}
-                onShowCloudsChange={onShowCloudsChange}
-                showGraticule={showGraticule}
-                onShowGraticuleChange={onShowGraticuleChange}
-                showEcliptic={showEcliptic}
-                onShowEclipticChange={onShowEclipticChange}
-                showGeoOrbit={showGeoOrbit}
-                onShowGeoOrbitChange={onShowGeoOrbitChange}
-                showSunDirection={showSunDirection}
-                onShowSunDirectionChange={onShowSunDirectionChange}
-                showSatelliteFovCones={showSatelliteFovCones}
-                onShowSatelliteFovConesChange={onShowSatelliteFovConesChange}
-                fovConeHalfAngleDeg={fovConeHalfAngleDeg}
-                onFovConeHalfAngleDegChange={onFovConeHalfAngleDegChange}
-                fovConeColor={fovConeColor}
-                onFovConeColorChange={onFovConeColorChange}
-                fovConeMinHeight={fovConeMinHeight}
-                fovConeAlongTrackDeg={fovConeAlongTrackDeg}
-                onFovConeAlongTrackDegChange={onFovConeAlongTrackDegChange}
-                fovConeCrossTrackDeg={fovConeCrossTrackDeg}
-                onFovConeCrossTrackDegChange={onFovConeCrossTrackDegChange}
-                satelliteVisibleColor={satelliteVisibleColor}
-                onSatelliteVisibleColorChange={onSatelliteVisibleColorChange}
-                satelliteHiddenColor={satelliteHiddenColor}
-                onSatelliteHiddenColorChange={onSatelliteHiddenColorChange}
-                satelliteSelectedColor={satelliteSelectedColor}
-                onSatelliteSelectedColorChange={onSatelliteSelectedColorChange}
-                viewFrame={viewFrame}
-                onViewFrameChange={onViewFrameChange}
-                showPerturbation={showPerturbation}
-                onShowPerturbationChange={onShowPerturbationChange}
-                brightEarth={brightEarth}
-                onBrightEarthChange={onBrightEarthChange}
-                whiteBackground={whiteBackground}
-                onWhiteBackgroundChange={onWhiteBackgroundChange}
+                display={display}
+                onDisplayChange={onDisplayChange}
                 sceneRef={sceneRef}
                 getCurrentView={getCurrentView}
                 onApplyView={onApplyView}

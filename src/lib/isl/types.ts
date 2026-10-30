@@ -14,7 +14,7 @@ export interface IslEndpoint {
 /**
  * Converts a saved ground station into a "station"-kind ISL endpoint.
  * Previously copy-pasted as a 5-field object literal at both the initial
- * mode-switch and the station-reselect call sites in `IslTab.tsx`.
+ * mode-switch and the station-reselect call sites in the ISL endpoint picker.
  */
 export function stationEndpoint(gs: GroundStation): IslEndpoint {
   return {
@@ -25,6 +25,13 @@ export function stationEndpoint(gs: GroundStation): IslEndpoint {
     heightKm: gs.heightKm,
     minElevationDeg: gs.minElevationDeg,
   };
+}
+
+/** True when both endpoints are set and sit on the same spot (a route to itself). */
+export function isSameEndpoint(a: IslEndpoint | null, b: IslEndpoint | null): boolean {
+  if (!a || !b) return false;
+  if (a.kind === "station" && b.kind === "station") return a.name === b.name;
+  return a.latitudeDeg === b.latitudeDeg && a.longitudeDeg === b.longitudeDeg && a.heightKm === b.heightKm;
 }
 
 function reconcileEndpoint(

@@ -1,8 +1,7 @@
 import { Eye, EyeOff, FileText, FileUp, FlaskConical, Globe, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "../../lib/utils";
-import type { CatalogLayer, CatalogLayerKind, LayerColorMode } from "../../lib/catalogLayers";
-import { SegmentedControl } from "./compactControls";
+import type { CatalogLayer, CatalogLayerKind } from "../../lib/catalogLayers";
 
 const KIND_ICON: Record<CatalogLayerKind, ReactNode> = {
   celestrak: <Globe className="size-3" />,
@@ -13,14 +12,12 @@ const KIND_ICON: Record<CatalogLayerKind, ReactNode> = {
 
 interface Props {
   layers: CatalogLayer[];
-  colorMode: LayerColorMode;
-  onColorModeChange: (mode: LayerColorMode) => void;
   onChange: (id: string, patch: Partial<Pick<CatalogLayer, "visible" | "color">>) => void;
   onRemove: (id: string) => void;
 }
 
 /** Display layers, styled like the editor entries; every action applies to the 3D view at once. */
-export default function LayerList({ layers, colorMode, onColorModeChange, onChange, onRemove }: Props) {
+export default function LayerList({ layers, onChange, onRemove }: Props) {
   return (
     <div className="space-y-1.5">
       <ul className="divide-y divide-line overflow-hidden rounded-md border border-line bg-raised">
@@ -49,15 +46,6 @@ export default function LayerList({ layers, colorMode, onColorModeChange, onChan
           </li>
         ))}
       </ul>
-      <div className="flex items-center gap-2 text-[11px] text-fg-muted">
-        <span className="shrink-0">色分け</span>
-        <SegmentedControl<LayerColorMode>
-          ariaLabel="レイヤーの色分け"
-          value={colorMode}
-          onChange={onColorModeChange}
-          options={[{ value: "layer", label: "レイヤー別" }, { value: "visibility", label: "地上局から可視" }]}
-        />
-      </div>
       <p className="text-[10px] leading-snug text-fg-subtle">GPUのJ2近似で表示し、解析・ISLの対象外です。ブラウザに保存され、設定ファイルには含まれません。</p>
     </div>
   );

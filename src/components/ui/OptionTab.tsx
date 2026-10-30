@@ -1,40 +1,21 @@
 import { useState, type RefObject } from "react";
 import SatelliteSizeControl from "./SatelliteSizeControl";
-import type { SatellitePointStyle } from "../../lib/satellitePointStyle";
 import EarthTextureSelector from "./EarthTextureSelector";
-import { Checkbox } from "./checkbox";
-import { Label } from "./label";
 import { Button } from "./button";
-import {
-  FileInput,
-  Trash2,
-  Globe,
-  Satellite,
-  Sun,
-  Radio,
-  Palette,
-  FolderOpen,
-  Bookmark,
-  Save,
-  Plus,
-  X,
-  SunMoon,
-} from "lucide-react";
+import { FileInput, Trash2, Globe, Satellite, Compass, Layers, FolderOpen, Bookmark, Save, Plus, X } from "lucide-react";
 import PanelSection from "./PanelSection";
-import { ColorChip, HelpTip, InlineSlider, SegmentedControl } from "./compactControls";
-import { useUiTheme } from "../../lib/uiTheme";
+import { CheckRow, ColorChip, HelpTip, SegmentedControl } from "./compactControls";
 import type SatelliteScene from "../../lib/visualization";
-import { isLayeredEarthMode, type EarthTextureMode } from "../../lib/earthTextures";
+import { isLayeredEarthMode } from "../../lib/earthTextures";
 import {
   listSavedViews,
   saveNamedView,
   deleteNamedView,
+  type DisplayOptions,
   type NamedView,
   type ViewFrame,
   type ViewSettings,
 } from "../../lib/viewState";
-
-const EARTH_RADIUS_KM = 6378.137;
 
 const VIEW_FRAME_NOTES: Record<ViewFrame, string> = {
   eci: "慣性系。星に対して静止し、軌道の形が見やすい。",
@@ -43,49 +24,8 @@ const VIEW_FRAME_NOTES: Record<ViewFrame, string> = {
 };
 
 interface Props {
-  satRadius: number;
-  onSatRadiusChange: (r: number) => void;
-  pointStyle: SatellitePointStyle;
-  onPointStyleChange: (style: SatellitePointStyle) => void;
-  earthTexture: EarthTextureMode;
-  onEarthTextureChange: (t: EarthTextureMode) => void;
-  showCountryBorders: boolean;
-  onShowCountryBordersChange: (v: boolean) => void;
-  showClouds: boolean;
-  onShowCloudsChange: (v: boolean) => void;
-  showGraticule: boolean;
-  onShowGraticuleChange: (v: boolean) => void;
-  showEcliptic: boolean;
-  onShowEclipticChange: (v: boolean) => void;
-  showGeoOrbit: boolean;
-  onShowGeoOrbitChange: (v: boolean) => void;
-  showSunDirection: boolean;
-  onShowSunDirectionChange: (v: boolean) => void;
-  showSatelliteFovCones: boolean;
-  onShowSatelliteFovConesChange: (v: boolean) => void;
-  fovConeHalfAngleDeg: number;
-  onFovConeHalfAngleDegChange: (v: number) => void;
-  fovConeMinHeight: number;
-  fovConeColor: string;
-  onFovConeColorChange: (color: string) => void;
-  fovConeAlongTrackDeg: number;
-  onFovConeAlongTrackDegChange: (v: number) => void;
-  fovConeCrossTrackDeg: number;
-  onFovConeCrossTrackDegChange: (v: number) => void;
-  satelliteVisibleColor: string;
-  onSatelliteVisibleColorChange: (color: string) => void;
-  satelliteHiddenColor: string;
-  onSatelliteHiddenColorChange: (color: string) => void;
-  satelliteSelectedColor: string;
-  onSatelliteSelectedColorChange: (color: string) => void;
-  viewFrame: ViewFrame;
-  onViewFrameChange: (frame: ViewFrame) => void;
-  showPerturbation: boolean;
-  onShowPerturbationChange: (v: boolean) => void;
-  brightEarth: boolean;
-  onBrightEarthChange: (v: boolean) => void;
-  whiteBackground: boolean;
-  onWhiteBackgroundChange: (v: boolean) => void;
+  display: DisplayOptions;
+  onDisplayChange: (patch: Partial<DisplayOptions>) => void;
   sceneRef?: RefObject<SatelliteScene | null>;
   /** Capture the current view (camera + display settings) on demand */
   getCurrentView: () => ViewSettings;
@@ -93,82 +33,12 @@ interface Props {
   onApplyView: (settings: ViewSettings) => void;
 }
 
-function CheckboxItem({
-  id,
-  checked,
-  onChange,
-  label,
-}: {
-  id: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  label: string;
-}) {
-  return (
-    <div className="flex items-center space-x-2">
-      <Checkbox
-        id={id}
-        checked={checked}
-        onCheckedChange={(v) => onChange(!!v)}
-      />
-      <Label htmlFor={id} className="text-sm font-normal cursor-pointer text-fg">
-        {label}
-      </Label>
-    </div>
-  );
-}
-
-export default function OptionTab(props: Props) {
-  const {
-    satRadius,
-    onSatRadiusChange,
-    pointStyle,
-    onPointStyleChange,
-    earthTexture,
-    onEarthTextureChange,
-    showCountryBorders,
-    onShowCountryBordersChange,
-    showClouds,
-    onShowCloudsChange,
-    showGraticule,
-    onShowGraticuleChange,
-    showEcliptic,
-    onShowEclipticChange,
-    showGeoOrbit,
-    onShowGeoOrbitChange,
-    showSunDirection,
-    onShowSunDirectionChange,
-    showSatelliteFovCones,
-    onShowSatelliteFovConesChange,
-    fovConeHalfAngleDeg,
-    onFovConeHalfAngleDegChange,
-    fovConeMinHeight,
-    fovConeColor,
-    onFovConeColorChange,
-    fovConeAlongTrackDeg,
-    onFovConeAlongTrackDegChange,
-    fovConeCrossTrackDeg,
-    onFovConeCrossTrackDegChange,
-    satelliteVisibleColor,
-    onSatelliteVisibleColorChange,
-    satelliteHiddenColor,
-    onSatelliteHiddenColorChange,
-    satelliteSelectedColor,
-    onSatelliteSelectedColorChange,
-    viewFrame,
-    onViewFrameChange,
-    showPerturbation,
-    onShowPerturbationChange,
-    brightEarth,
-    onBrightEarthChange,
-    whiteBackground,
-    onWhiteBackgroundChange,
-    sceneRef,
-    getCurrentView,
-    onApplyView,
-  } = props;
-  const [uiTheme, setUiTheme] = useUiTheme();
-
+/**
+ * 表示タブ: 触っても計算結果が変わらない見た目の設定だけを置く。
+ * 判定・解析に効く値(最低仰角・センサ視野など)は通信タブ。
+ */
+export default function OptionTab({ display, onDisplayChange, sceneRef, getCurrentView, onApplyView }: Props) {
+  const set = onDisplayChange;
   const [loadedKMLs, setLoadedKMLs] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -256,19 +126,25 @@ export default function OptionTab(props: Props) {
 
   return (
     <div>
-      {/* 0. ビュー(画角・表示設定)の保存と呼び出し */}
+      {/* ビュー(画角・表示設定)の保存と呼び出し。このタブのプリセットとして先頭に置く */}
       <PanelSection
-        title="ビュー保存"
+        title="保存したビュー"
         icon={<Bookmark />}
         action={
-          savedViews.length > 0 ? (
-            <span className="rounded-full bg-raised px-1.5 py-0.5 text-[10px] text-fg-muted">
-              {savedViews.length}
-            </span>
-          ) : undefined
+          !addingView && (
+            <button
+              type="button"
+              data-slot="button"
+              onClick={() => setAddingView(true)}
+              className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-fg-muted hover:bg-raised-hover hover:text-fg"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              現在のビューを保存
+            </button>
+          )
         }
       >
-        {addingView ? (
+        {addingView && (
           <div className="flex gap-1.5">
             <input
               autoFocus
@@ -299,15 +175,6 @@ export default function OptionTab(props: Props) {
               <X className="w-4 h-4" />
             </button>
           </div>
-        ) : (
-          <Button
-            onClick={() => setAddingView(true)}
-            variant="secondary"
-            className="w-full h-8 justify-center gap-1.5 text-xs bg-raised text-fg border border-line-strong hover:bg-raised-hover hover:text-fg"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            現在のビューを保存
-          </Button>
         )}
 
         {savedViews.length > 0 ? (
@@ -340,207 +207,86 @@ export default function OptionTab(props: Props) {
         ) : (
           !addingView && (
             <p className="text-[11px] text-fg-muted leading-snug">
-              画角と表示設定に名前を付けて保存できます。
+              画角と表示設定に名前を付けて保存し、ワンクリックで呼び出せます。
             </p>
           )
         )}
       </PanelSection>
 
-      {/* A. 地球の見た目 */}
-      <PanelSection title="地球の見た目" icon={<Globe />}>
-        <EarthTextureSelector value={earthTexture} onChange={onEarthTextureChange} />
-        <CheckboxItem
-          id="countryBorders"
-          checked={showCountryBorders}
-          onChange={onShowCountryBordersChange}
-          label="国境線を表示"
-        />
-        {isLayeredEarthMode(earthTexture) && (
-          <CheckboxItem
-            id="clouds"
-            checked={showClouds}
-            onChange={onShowCloudsChange}
-            label="雲を表示（装飾・実際の雲ではありません）"
-          />
-        )}
-        <CheckboxItem
-          id="graticule"
-          checked={showGraticule}
-          onChange={onShowGraticuleChange}
-          label="経緯線を表示"
-        />
-        <CheckboxItem
+      <PanelSection title="地球" icon={<Globe />}>
+        <EarthTextureSelector value={display.earthTexture} onChange={(t) => set({ earthTexture: t })} />
+        <CheckRow
           id="brightEarth"
-          checked={brightEarth}
-          onChange={onBrightEarthChange}
-          label="地球を明るく表示"
+          checked={display.brightEarth}
+          onChange={(v) => set({ brightEarth: v })}
+          label="地球を明るく表示（昼夜の陰影なし）"
         />
-        <CheckboxItem
+        <CheckRow
           id="whiteBackground"
-          checked={whiteBackground}
-          onChange={onWhiteBackgroundChange}
+          checked={display.whiteBackground}
+          onChange={(v) => set({ whiteBackground: v })}
           label="背景を白にする"
         />
       </PanelSection>
 
-      {/* B. 衛星の見た目 */}
-      <PanelSection title="衛星の見た目" icon={<Satellite />}>
-        <SatelliteSizeControl
-          radius={satRadius}
-          pixelSize={pointStyle.pixelSize}
-          onRadiusChange={(r) => { onSatRadiusChange(r); onPointStyleChange({ ...pointStyle, pixelSize: 0 }); }}
-          onPixelSizeChange={(px) => onPointStyleChange({ ...pointStyle, pixelSize: px })}
-        />
-        <CheckboxItem
-          id="sat-sunlit-shading"
-          checked={pointStyle.sunlitShading}
-          onChange={(v) => onPointStyleChange({ ...pointStyle, sunlitShading: v })}
-          label="地球の影に入った衛星を暗くする"
-        />
-        <CheckboxItem
-          id="sat-glint"
-          checked={pointStyle.glint}
-          onChange={(v) => onPointStyleChange({ ...pointStyle, glint: v })}
-          label="太陽光の反射できらめかせる"
-        />
-        <CheckboxItem
-          id="perturbation"
-          checked={showPerturbation}
-          onChange={onShowPerturbationChange}
-          label="選択衛星の摂動 (J₂/J₃) を表示"
-        />
-      </PanelSection>
-
-      {/* C. 座標系と補助表示(ECI/ECEF・太陽・黄道面・GEO) */}
-      <PanelSection title="座標系・補助表示" icon={<Sun />}>
-        <div className="space-y-1">
-          <div className="text-sm text-fg">表示する座標系</div>
-          <SegmentedControl
-            ariaLabel="座標系の選択"
-            value={viewFrame}
-            options={[
-              { value: "eci", label: "ECI" },
-              { value: "ecef", label: "ECEF" },
-              { value: "gse", label: "GSE" },
-            ]}
-            onChange={onViewFrameChange}
+      <PanelSection title="重ねて表示" icon={<Layers />}>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+          <CheckRow id="graticule" checked={display.showGraticule} onChange={(v) => set({ showGraticule: v })} label="経緯線" />
+          <CheckRow
+            id="countryBorders"
+            checked={display.showCountryBorders}
+            onChange={(v) => set({ showCountryBorders: v })}
+            label="国境線"
           />
-          <p className="text-[11px] text-fg-subtle leading-snug">
-            {VIEW_FRAME_NOTES[viewFrame]}
-          </p>
-        </div>
-        <CheckboxItem
-          id="ecliptic"
-          checked={showEcliptic && showSunDirection}
-          onChange={(v) => {
-            onShowEclipticChange(v);
-            onShowSunDirectionChange(v);
-          }}
-          label="太陽方向と黄道面を表示"
-        />
-        <CheckboxItem
-          id="geoOrbit"
-          checked={showGeoOrbit}
-          onChange={onShowGeoOrbitChange}
-          label="静止軌道（GEO）を表示"
-        />
-      </PanelSection>
-
-      {/* D. 衛星の視野(センサ)定義。地上局の通信範囲コーンは通信タブへ移設。
-          半角・傾きは 3D コーンと地上局アクセス解析の共通定義なので、
-          コーン表示の ON/OFF とは独立に常に編集できるようにしてある。 */}
-      <PanelSection title="衛星の視野（センサ定義）" icon={<Radio />} collapsible defaultOpen={showSatelliteFovCones}>
-        <p className="text-[11px] text-fg-subtle">
-          ここで決めた視野半角と傾きは、3D のコーン表示と「地上局アクセス設計」解析の
-          視野条件で共通に使われます。
-        </p>
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="satelliteFovCones"
-            checked={showSatelliteFovCones}
-            onCheckedChange={(v) => onShowSatelliteFovConesChange(!!v)}
-          />
-          <Label
-            htmlFor="satelliteFovCones"
-            className="text-sm font-normal cursor-pointer text-fg flex-1"
-          >
-            3D にコーンを表示
-          </Label>
-          {showSatelliteFovCones && (
-            <input
-              type="color"
-              className="option-color-input"
-              value={fovConeColor}
-              onChange={(e) => onFovConeColorChange(e.target.value)}
-              title="表示カラー"
-              aria-label="表示カラー"
-            />
+          <CheckRow id="sunDirection" checked={display.showSunDirection} onChange={(v) => set({ showSunDirection: v })} label="太陽方向" />
+          <CheckRow id="ecliptic" checked={display.showEcliptic} onChange={(v) => set({ showEcliptic: v })} label="黄道面" />
+          <CheckRow id="geoOrbit" checked={display.showGeoOrbit} onChange={(v) => set({ showGeoOrbit: v })} label="静止軌道" />
+          {isLayeredEarthMode(display.earthTexture) && (
+            <CheckRow id="clouds" checked={display.showClouds} onChange={(v) => set({ showClouds: v })} label="雲（装飾）" />
           )}
         </div>
-        <InlineSlider
-          label="視野半角"
-          labelW="w-24"
-          value={fovConeHalfAngleDeg}
-          min={1}
-          max={80}
-          step={1}
-          format={(v) => `${v.toFixed(0)}°`}
-          help="センサ視野の半頂角。地上局アクセス解析の視野条件でもこの値を使います。"
-          onChange={onFovConeHalfAngleDegChange}
-        />
-        <InlineSlider
-          label="Along-track"
-          labelW="w-24"
-          value={fovConeAlongTrackDeg}
-          min={-60}
-          max={60}
-          step={1}
-          format={(v) => `${v.toFixed(0)}°`}
-          help="視野の傾き(進行方向)。正で進行方向へ傾斜します。"
-          onChange={onFovConeAlongTrackDegChange}
-        />
-        <InlineSlider
-          label="Cross-track"
-          labelW="w-24"
-          value={fovConeCrossTrackDeg}
-          min={-60}
-          max={60}
-          step={1}
-          format={(v) => `${v.toFixed(0)}°`}
-          help="視野の傾き(直交方向)。正で軌道面左方向へ傾斜します。"
-          onChange={onFovConeCrossTrackDegChange}
-        />
-        {showSatelliteFovCones && (
-          <p className="text-[11px] text-fg-subtle">
-            円錐最小高さ {fovConeMinHeight.toFixed(2)}R<sub>⊕</sub>(約{" "}
-            {Math.round(fovConeMinHeight * EARTH_RADIUS_KM).toLocaleString()} km)—
-            衛星高度に応じた固定スケール
-          </p>
-        )}
       </PanelSection>
 
-      {/* E. 衛星ポイントカラー */}
-      <PanelSection title="衛星ポイントカラー" icon={<Palette />} collapsible defaultOpen={false}>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-          <ColorChip
-            label="リンク可視"
-            value={satelliteVisibleColor}
-            onChange={onSatelliteVisibleColorChange}
-          />
-          <ColorChip
-            label="リンク不可"
-            value={satelliteHiddenColor}
-            onChange={onSatelliteHiddenColorChange}
-          />
-          <ColorChip
-            label="選択中"
-            value={satelliteSelectedColor}
-            onChange={onSatelliteSelectedColorChange}
-          />
-        </div>
+      <PanelSection title="衛星" icon={<Satellite />}>
+        <SatelliteSizeControl
+          radius={display.satRadius}
+          pixelSize={display.pointStyle.pixelSize}
+          onRadiusChange={(r) => set({ satRadius: r, pointStyle: { ...display.pointStyle, pixelSize: 0 } })}
+          onPixelSizeChange={(px) => set({ pointStyle: { ...display.pointStyle, pixelSize: px } })}
+        />
+        <CheckRow
+          id="sat-sunlit-shading"
+          checked={display.pointStyle.sunlitShading}
+          onChange={(v) => set({ pointStyle: { ...display.pointStyle, sunlitShading: v } })}
+          label="地球の影に入った衛星を暗くする"
+        />
+        <CheckRow
+          id="sat-glint"
+          checked={display.pointStyle.glint}
+          onChange={(v) => set({ pointStyle: { ...display.pointStyle, glint: v } })}
+          label="太陽光の反射できらめかせる"
+        />
+        <ColorChip
+          label="選択中の衛星の色"
+          value={display.satelliteSelectedColor}
+          onChange={(c) => set({ satelliteSelectedColor: c })}
+        />
       </PanelSection>
 
-      {/* F. KML */}
+      <PanelSection title="座標系" icon={<Compass />}>
+        <SegmentedControl
+          ariaLabel="座標系の選択"
+          value={display.viewFrame}
+          options={[
+            { value: "eci", label: "ECI" },
+            { value: "ecef", label: "ECEF" },
+            { value: "gse", label: "GSE" },
+          ]}
+          onChange={(frame) => set({ viewFrame: frame })}
+        />
+        <p className="text-[11px] text-fg-subtle leading-snug">{VIEW_FRAME_NOTES[display.viewFrame]}</p>
+      </PanelSection>
+
       <PanelSection
         title="KML 重ね合わせ"
         icon={<FolderOpen />}
@@ -584,18 +330,6 @@ export default function OptionTab(props: Props) {
           </ul>
         )}
       </PanelSection>
-      <PanelSection title="画面テーマ" icon={<SunMoon />}>
-        <SegmentedControl
-          ariaLabel="画面テーマ"
-          value={uiTheme}
-          options={[
-            { value: "dark", label: "ダーク" },
-            { value: "light", label: "ライト" },
-          ]}
-          onChange={setUiTheme}
-        />
-      </PanelSection>
-
     </div>
   );
 }

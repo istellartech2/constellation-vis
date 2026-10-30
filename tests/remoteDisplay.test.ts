@@ -24,4 +24,9 @@ describe("validateRemoteDisplay", () => {
   it("accepts the border and cloud toggles", () => {
     expect(validateRemoteDisplay({ showCountryBorders: true, showClouds: false })).toEqual({ showCountryBorders: true, showClouds: false });
   });
+
+  it("accepts and drops the retired groundConeMinElevationDeg (cones follow each station)", () => {
+    expect(validateRemoteDisplay({ groundConeMinElevationDeg: 30, showGraticule: true })).toEqual({ showGraticule: true });
+    expect(() => validateRemoteDisplay({ groundConeMinElevationDeg: 120 })).toThrow("0–85");
+  });
 });

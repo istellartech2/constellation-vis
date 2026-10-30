@@ -1,6 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import {
   createDefaultIslSettings,
+  isSameEndpoint,
   reconcileIslEndpoints,
   stationEndpoint,
   type IslEndpoint,
@@ -56,5 +57,19 @@ describe("reconcileIslEndpoints", () => {
       endpointB: adhoc,
     };
     expect(reconcileIslEndpoints(settings, stations)).toBe(settings);
+  });
+});
+
+describe("isSameEndpoint", () => {
+  it("matches stations by name and ad-hoc points by position", () => {
+    expect(isSameEndpoint(stationEndpoint(gs("Tokyo", 35)), stationEndpoint(gs("Tokyo", 35)))).toBe(true);
+    expect(isSameEndpoint(stationEndpoint(gs("Tokyo", 35)), stationEndpoint(gs("Sydney", -33)))).toBe(false);
+    expect(isSameEndpoint(adhoc, { ...adhoc, name: "別名" })).toBe(true);
+    expect(isSameEndpoint(adhoc, { ...adhoc, latitudeDeg: 9 })).toBe(false);
+  });
+
+  it("is false while either endpoint is unset", () => {
+    expect(isSameEndpoint(null, adhoc)).toBe(false);
+    expect(isSameEndpoint(null, null)).toBe(false);
   });
 });

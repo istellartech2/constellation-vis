@@ -85,8 +85,7 @@ Browser-created sessions include `scenario.display`, a snapshot of the current d
 | `earthTexture` | `blue-marble` (satellite photo), `natural-earth` (colored map), `dark-monochrome`, `paper-atlas`. Older values `high-resolution`, `./assets/earth01.webp` and `./assets/earth02.webp` are still accepted and rewritten. |
 | `satRadius` | 0.01–0.05 Earth radii (UI sizes: 0.01, 0.02, 0.03, 0.05) |
 | `satPixelSize` | 0–3 CSS px. 0 draws satellites at `satRadius`; 1–3 keeps every dot that many pixels regardless of zoom. `satSunlitShading` dims satellites in the Earth's shadow; `satGlint` adds brief sun-glint flashes. |
-| `groundConeMinElevationDeg` | 0–85 degrees |
-| `groundConeDistanceKm` | 100–20000 km |
+| `groundConeDistanceKm` | 100–20000 km; drawn length of each ground-station cone (display only). Each cone opens at that station's own `minElevationDeg` from the ground-station TOML, the same value that decides satellite visibility. The retired `groundConeMinElevationDeg` (0–85) is still accepted and ignored. |
 | `fovConeHalfAngleDeg` | 1–80 degrees |
 | `fovConeAlongTrackDeg`, `fovConeCrossTrackDeg` | −60–60 degrees |
 | `groundConeColor`, `fovConeColor`, `satelliteVisibleColor`, `satelliteHiddenColor`, `satelliteSelectedColor` | `#RRGGBB` |
