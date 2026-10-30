@@ -132,6 +132,11 @@ export function parseOmmJson(text: string): Omit<CatalogParseResult, "format"> {
     : parsed && typeof parsed === "object" && Array.isArray((parsed as { data?: unknown }).data)
       ? (parsed as { data: unknown[] }).data
       : [parsed];
+  return catalogFromOmmRecords(records);
+}
+
+/** OMM records already parsed (e.g. a CelesTrak JSON response) into a catalog. */
+export function catalogFromOmmRecords(records: readonly unknown[]): Omit<CatalogParseResult, "format"> {
   const cat = createCatalog(records.length);
   let row = 0;
   for (const rec of records) {
@@ -178,59 +183,4 @@ export function parseOmmCsv(text: string): Omit<CatalogParseResult, "format"> {
     else skipped++;
   }
   return { catalog: truncateCatalog(cat, row), skipped };
-}
-
-/** Small deterministic PRNG so synthetic catalogs are reproducible. */
-function mulberry32(seed: number) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-const SYNTHETIC_SHELLS = [
-  { altKm: 340, incDeg: 53, share: 0.2 },
-  { altKm: 550, incDeg: 53, share: 0.25 },
-  { altKm: 570, incDeg: 70, share: 0.15 },
-  { altKm: 560, incDeg: 97.6, share: 0.15 },
-  { altKm: 1100, incDeg: 87.9, share: 0.15 },
-  { altKm: 1200, incDeg: 40, share: 0.1 },
-];
-
-/**
- * Walker-like synthetic mega-constellation for load testing: several shells,
- * evenly phased planes, no names (names dominate memory at 10^6).
- */
-export function syntheticCatalog(count: number, epochMs: number, seed = 1): SatelliteCatalog {
-  const cat = createCatalog(count);
-  const rand = mulberry32(seed);
-  let row = 0;
-  SYNTHETIC_SHELLS.forEach((shell, s) => {
-    const n = s === SYNTHETIC_SHELLS.length - 1 ? count - row : Math.round(count * shell.share);
-    if (n <= 0) return;
-    const planes = Math.max(1, Math.round(Math.sqrt(n / 2)));
-    const perPlane = Math.ceil(n / planes);
-    const a = 6378.137 + shell.altKm;
-    const meanMotionRevDay = (Math.sqrt(398600.4418 / a ** 3) * 86400) / (2 * Math.PI);
-    for (let k = 0; k < n && row < count; k++) {
-      const p = Math.floor(k / perPlane);
-      const j = k % perPlane;
-      setCatalogRow(cat, row, {
-        satnum: 800_000_000 + row,
-        epochMs,
-        meanMotionRevDay,
-        eccentricity: 0.0001 + rand() * 0.0009,
-        inclinationDeg: shell.incDeg,
-        raanDeg: (360 * p) / planes,
-        argPerigeeDeg: 0,
-        meanAnomalyDeg: ((360 * j) / perPlane + (360 * p) / (planes * perPlane) + rand() * 0.5) % 360,
-      });
-      row++;
-    }
-  });
-  return cat;
 }

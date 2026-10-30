@@ -17,21 +17,15 @@ import NoticeDialog from "./NoticeDialog";
 import AnalysisTab, { type AnalysisType } from "./AnalysisTab";
 import OptionTab from "./OptionTab";
 import IslTab from "./IslTab";
-import ImportDialog from "./ImportDialog";
-import FilingImportDialog, { type PlacedFiling } from "./FilingImportDialog";
-import CatalogLayerDialog from "./CatalogLayerDialog";
-import type { CatalogLayer } from "../../lib/catalogLayers";
-import { filingCatalog } from "../../lib/filings/geometry";
+import ExternalDataDialog, { type ImportSource } from "./ExternalDataDialog";
+import type { PlacedFiling } from "./import/FilingPanel";
+import { type NewLayer } from "./import/importTargets";
+import { MAX_CATALOG_LAYERS, type CatalogLayer, type LayerColorMode } from "../../lib/catalogLayers";
 import { MASS_MODE_THRESHOLD } from "../../lib/massSatelliteLayer";
 import { replaceFilingText } from "../../lib/filings/replace";
 import type { FilingDataset } from "../../lib/filings/types";
 import type { IslPathResult, IslSettings, IslShellRange } from "../../lib/isl/types";
-import {
-  celestrakEntryToSat,
-  satellitesToToml,
-  fetchCelestrakGroup,
-  mergeImportedSatellites,
-} from "../../utils/celestrakUtils";
+import { satellitesToToml, mergeImportedSatellites } from "../../utils/celestrakUtils";
 import { validateSatellites, validateGroundStations } from "../../utils/validators";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./tabs";
 import { Button } from "./button";
@@ -175,10 +169,13 @@ interface Props {
   currentSimMs: number;
   /** External request to open the panel on a specific tab (e.g. from the ISL HUD). */
   openTabRequest?: { tab: "editor" | "analysis" | "isl" | "option"; nonce: number } | null;
-  /** Large catalogs drawn after the editor satellites (see CatalogLayerDialog). */
+  /** Display layers drawn by the GPU overlay after the editor satellites. */
   catalogLayers: CatalogLayer[];
-  onCatalogLayerAdd: (layer: CatalogLayer) => void;
+  onCatalogLayerAdd: (layer: NewLayer) => void;
+  onCatalogLayerChange: (id: string, patch: Partial<Pick<CatalogLayer, "visible" | "color">>) => void;
   onCatalogLayerRemove: (id: string) => void;
+  layerColorMode: LayerColorMode;
+  onLayerColorModeChange: (mode: LayerColorMode) => void;
 }
 
 /** Analyses and ISL routing only see editor satellites; say so when that matters. */
@@ -186,7 +183,7 @@ function ScopeNote({ editorCount, catalogCount }: { editorCount: number; catalog
   if (catalogCount === 0 && editorCount <= MASS_MODE_THRESHOLD) return null;
   return (
     <p className="mb-2 rounded border border-line bg-raised px-3 py-2 text-[11px] text-fg-muted" role="note">
-      {catalogCount > 0 && <>大規模カタログ（{catalogCount.toLocaleString()}機）は対象外です。エディタの衛星{editorCount.toLocaleString()}機のみを扱います。</>}
+      {catalogCount > 0 && <>表示レイヤー（{catalogCount.toLocaleString()}機）は対象外です。シナリオの衛星{editorCount.toLocaleString()}機のみを扱います。</>}
       {editorCount > MASS_MODE_THRESHOLD && <>エディタの衛星が{MASS_MODE_THRESHOLD.toLocaleString()}機を超えているため、計算に時間がかかります。</>}
     </p>
   );
@@ -261,14 +258,17 @@ export default function SatelliteEditor({
   openTabRequest,
   catalogLayers,
   onCatalogLayerAdd,
+  onCatalogLayerChange,
   onCatalogLayerRemove,
+  layerColorMode,
+  onLayerColorModeChange,
 }: Props) {
-  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [importSource, setImportSource] = useState<ImportSource>("celestrak");
   const catalogCount = catalogLayers.reduce((sum, l) => sum + l.catalog.count, 0);
   const remoteAppliedRef = useRef(false);
   const remoteStartTimeRef = useRef<string | null>(null);
   const [satText, setSatText] = useState("");
-  const [filingOpen, setFilingOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [constText, setConstText] = useState("");
   const [gsText, setGsText] = useState("");
   const [startText, setStartText] = useState(() => {
@@ -305,9 +305,6 @@ export default function SatelliteEditor({
   }, [open]);
   const [tab, setTab] = useState<"editor" | "analysis" | "option" | "isl">("editor");
   const [notice, setNotice] = useState<string | null>(null);
-  const [importOpen, setImportOpen] = useState(false);
-  const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
-  const [importing, setImporting] = useState(false);
   const [updateFeedback, setUpdateFeedback] = useState<"idle" | "success">("idle");
   // Analysis-modal open request forwarded to AnalysisTab (e.g. 「タイムライン解析を開く」 from IslTab)
   const [analysisRequest, setAnalysisRequest] = useState<{ type: AnalysisType; nonce: number } | null>(
@@ -329,50 +326,6 @@ export default function SatelliteEditor({
     const timer = window.setTimeout(() => setUpdateFeedback("idle"), 1400);
     return () => window.clearTimeout(timer);
   }, [updateFeedback]);
-
-
-  function toggleGroup(g: string) {
-    setSelectedGroups((prev) =>
-      prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g],
-    );
-  }
-
-  // Fetch orbital data for the selected CelesTrak groups and merge it
-  // with whatever the user already has in the satellites text area.
-  async function handleImport() {
-    setImporting(true);
-    const notes: string[] = [];
-    try {
-      const base = parseSatellitesToml(satText);
-      const imported: SatelliteSpec[] = [];
-      for (const g of selectedGroups) {
-        const result = await fetchCelestrakGroup(g);
-        if (result.note) notes.push(result.note);
-        for (const entry of result.data ?? []) {
-          try {
-            imported.push(celestrakEntryToSat(entry));
-          } catch (e) {
-            console.warn(`「${g}」のデータ変換に失敗しました:`, e);
-          }
-        }
-        if (result.stopImport) break;
-      }
-      if (imported.length === 0) {
-        setNotice(notes.join("\n\n") || "インポートできる衛星データがありませんでした。");
-        return;
-      }
-      setSatText(satellitesToToml(mergeImportedSatellites(base, imported)));
-      if (notes.length > 0) setNotice(notes.join("\n\n"));
-      setImportOpen(false);
-      setSelectedGroups([]);
-    } catch (e) {
-      setNotice("衛星のインポートに失敗しました: " + (e as Error).message);
-    } finally {
-      setImporting(false);
-    }
-  }
-
-
 
 
   useEffect(() => {
@@ -468,7 +421,7 @@ export default function SatelliteEditor({
 
   const placedFilings = useMemo(() => {
     const placed: Record<string, PlacedFiling> = {};
-    if (!filingOpen) return placed;
+    if (!importOpen) return placed;
     try {
       for (const sat of parseSatellitesToml(satText)) {
         const key = sat.meta?.dataStatus === "filing" ? sat.meta.filingKey : undefined;
@@ -478,45 +431,53 @@ export default function SatelliteEditor({
       }
     } catch { /* an invalid draft has no placed filings to replace */ }
     return placed;
-  }, [filingOpen, satText]);
+  }, [importOpen, satText]);
 
-  function applyFiling(dataset: FilingDataset, configuration: string, epoch: Date) {
-    const nextText = replaceFilingText(satText, dataset, configuration, epoch);
+  /**
+   * Imports into the scenario apply at once, like layers do: validate the
+   * new satellite text together with the current constellation and ground
+   * stations, push it to the 3D view, then keep it in the editor.
+   */
+  function commitSatText(nextText: string, startTime = new Date(startText + "Z")) {
     const base = parseSatellitesToml(nextText);
     const { satellites: con, ranges } = constText ? buildConstellation(constText, base.length) : { satellites: [], ranges: [] };
     const groundStations = parseGroundStationsToml(gsText);
     validateSatellites(base);
     validateSatellites(con);
     validateGroundStations(groundStations);
-    onUpdate({ satellites: [...base, ...con], groundStations, startTime: epoch, islShellRanges: ranges });
+    onUpdate({ satellites: [...base, ...con], groundStations, startTime, islShellRanges: ranges });
     setSatText(nextText);
-    setStartText(epoch.toISOString().slice(0, 16));
+    setStartText(startTime.toISOString().slice(0, 16));
     setUpdateFeedback("success");
   }
 
-  function applyFilingAsCatalog(dataset: FilingDataset, configuration: string, epoch: Date) {
-    const catalog = filingCatalog(dataset, configuration, epoch);
-    onCatalogLayerAdd({
-      id: `filing:${dataset.key}:${configuration}:${epoch.toISOString()}`,
-      name: `${dataset.name}（${configuration === "default" ? "単一構成" : `構成 ${configuration}`}）`,
-      kind: "filing",
-      detail: `ITU申請上の仮配置 · 基準 ${epoch.toISOString().slice(0, 16).replace("T", " ")} UTC`,
-      catalog,
-    });
+  function applyFiling(dataset: FilingDataset, configuration: string, epoch: Date) {
+    commitSatText(replaceFilingText(satText, dataset, configuration, epoch), epoch);
+  }
+
+  function addToScenario(specs: SatelliteSpec[]) {
+    if (specs.length === 0) throw new Error("追加できる衛星がありません");
+    commitSatText(satellitesToToml(mergeImportedSatellites(parseSatellitesToml(satText), specs)));
   }
 
   return (
     <>
       <NoticeDialog open={notice !== null} onClose={() => setNotice(null)} title="お知らせ" description={notice ?? ""} />
-      <FilingImportDialog open={filingOpen} defaultEpoch={startText} placed={placedFilings} onClose={() => setFilingOpen(false)} onApply={applyFiling} onApplyAsCatalog={applyFilingAsCatalog} />
-      <CatalogLayerDialog open={catalogOpen} layers={catalogLayers} editorCount={satellites.length} startTime={new Date(startText + "Z")} onAdd={onCatalogLayerAdd} onRemove={onCatalogLayerRemove} onClose={() => setCatalogOpen(false)} />
-      <ImportDialog
+      <ExternalDataDialog
         open={importOpen}
-        importing={importing}
-        selectedGroups={selectedGroups}
-        onToggleGroup={toggleGroup}
-        onImport={handleImport}
+        source={importSource}
+        onSourceChange={setImportSource}
         onClose={() => setImportOpen(false)}
+        targets={{
+          editorCount: satellites.length,
+          layerCount: catalogLayers.length,
+          layerLimit: MAX_CATALOG_LAYERS,
+          startText,
+          addToScenario,
+          addLayer: onCatalogLayerAdd,
+        }}
+        placedFilings={placedFilings}
+        onApplyFiling={applyFiling}
       />
       {!open && (
         <button
@@ -582,9 +543,11 @@ export default function SatelliteEditor({
                 onGsTextChange={setGsText}
                 onStartTextChange={setStartText}
                 onImportClick={() => setImportOpen(true)}
-                onFilingImportClick={() => setFilingOpen(true)}
-                onCatalogClick={() => setCatalogOpen(true)}
-                catalogCount={catalogCount}
+                layers={catalogLayers}
+                layerColorMode={layerColorMode}
+                onLayerColorModeChange={onLayerColorModeChange}
+                onLayerChange={onCatalogLayerChange}
+                onLayerRemove={onCatalogLayerRemove}
                 onUpdate={handleUpdate}
                 updateFeedback={updateFeedback}
                 onSaveBundle={handleSaveBundle}

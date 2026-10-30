@@ -17,8 +17,10 @@ interface UseSatelliteSceneOptions {
 
 /**
  * React hook creating and managing the underlying Three.js scene. The heavy
- * lifting lives in {@link SatelliteScene}. This hook simply instantiates the
- * scene and disposes it when parameters change or the component unmounts.
+ * lifting lives in {@link SatelliteScene}. This hook instantiates the scene,
+ * rebuilds it only for structural parameter changes, applies everything else
+ * live (including swapping the catalog-layer overlay), and disposes it on
+ * unmount.
  */
 export function useSatelliteScene(
   params: SatelliteSceneParams,
@@ -28,6 +30,13 @@ export function useSatelliteScene(
   const { cameraSnapshotRef } = options;
   const previousDomain = useRef<Pick<SatelliteSceneParams, "startTime" | "satellites" | "groundStations"> | null>(null);
   const preservedTime = useRef<Date | null>(null);
+  // Latest params, for the deferred construction below: live-only params
+  // (catalog, styles, colours…) may change during the 10 ms delay, while any
+  // structural change cancels the pending construction and schedules another.
+  const latestParams = useRef(params);
+  useEffect(() => {
+    latestParams.current = params;
+  });
 
   useEffect(() => {
     sceneRef.current?.setCameraMode(params.cameraMode);
@@ -39,11 +48,12 @@ export function useSatelliteScene(
     // Use a small delay to ensure proper cleanup timing
     let scene: SatelliteScene | null = null;
     const timeout = setTimeout(() => {
+      const current = latestParams.current;
       const previous = previousDomain.current;
-      const sameDomain = previous?.startTime === params.startTime
-        && previous.satellites === params.satellites && previous.groundStations === params.groundStations;
-      scene = new SatelliteScene(sameDomain && preservedTime.current ? { ...params, startTime: preservedTime.current } : params);
-      previousDomain.current = { startTime: params.startTime, satellites: params.satellites, groundStations: params.groundStations };
+      const sameDomain = previous?.startTime === current.startTime
+        && previous.satellites === current.satellites && previous.groundStations === current.groundStations;
+      scene = new SatelliteScene(sameDomain && preservedTime.current ? { ...current, startTime: preservedTime.current } : current);
+      previousDomain.current = { startTime: current.startTime, satellites: current.satellites, groundStations: current.groundStations };
       sceneRef.current = scene;
       // Restore the saved camera framing on (re)build so reloads and
       // setting-driven rebuilds keep the user's viewpoint.
@@ -51,7 +61,7 @@ export function useSatelliteScene(
       if (snap) scene.applyCameraSnapshot(snap);
       // No saved framing yet: report the scene's own default (fitted to the
       // screen) so the placeholder camera in App is never persisted.
-      else params.onCameraChange?.(scene.getCameraSnapshot());
+      else current.onCameraChange?.(scene.getCameraSnapshot());
     }, 10);
     
     return () => {
@@ -74,7 +84,6 @@ export function useSatelliteScene(
     params.speedRef,
     params.startTime,
     params.satellites,
-    params.catalog,
     params.groundStations,
     params.earthTexture,
     params.brightEarth,
@@ -112,7 +121,17 @@ export function useSatelliteScene(
     params.ecef,
     params.islSettings,
     params.islShellRanges,
+    params.catalogStyles,
+    params.layerColorMode,
   ]);
+
+  // Swap the catalog-layer overlay live (after updateParams above, so the new
+  // overlay picks up the current styles). Skipped while the scene is being
+  // (re)built: construction reads the latest catalog itself, and setCatalog
+  // is a no-op for the catalog the scene already holds.
+  useEffect(() => {
+    sceneRef.current?.setCatalog(params.catalog ?? null);
+  }, [params.catalog]);
 
   return sceneRef;
 }
