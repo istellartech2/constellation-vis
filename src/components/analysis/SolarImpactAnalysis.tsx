@@ -1,12 +1,13 @@
 import { useMemo, useRef, useState } from "react";
 import ReactECharts from "echarts-for-react";
-import type { ECBasicOption } from "echarts/types/dist/shared";
 import {
   analyzeSolarPower,
   buildSelectableSatellites,
   createDefaultSolarPowerInput,
   type SolarPowerAnalysisInput,
   type SolarPowerAnalysisResult,
+  type SolarPowerKpi,
+  type SolarPowerSample,
   type SolarSweepParameter,
 } from "../../lib/solarPowerAnalysis";
 import {
@@ -15,7 +16,31 @@ import {
   downloadMultiChartHTML,
   downloadPNG,
 } from "./utils/downloadUtils";
-import { getChartTheme } from "./utils/chartTheme";
+import { useChartTheme, type ChartTheme } from "./utils/chartTheme";
+import {
+  bandMarkArea,
+  barSeries,
+  baseOption,
+  categoryAxis,
+  formatNumber,
+  gridBase,
+  legendBase,
+  lineSeries,
+  thresholdMarkLine,
+  timeAxis,
+  tooltipBase,
+  valueAxis,
+  valueXAxis,
+} from "./utils/chartBase";
+import {
+  ChartCard,
+  EmptyState,
+  KpiStrip,
+  MetricList,
+  Verdict,
+  type Kpi,
+  type VerdictTone,
+} from "./AnalysisLayout";
 
 interface Props {
   satText: string;
@@ -182,315 +207,330 @@ const INPUT_FIELDS: InputFieldDefinition[] = [
   },
 ];
 
-function formatNumber(value: number, digits = 1): string {
-  return Number.isFinite(value) ? value.toFixed(digits) : "N/A";
+type ChartRef = InstanceType<typeof ReactECharts>;
+
+interface TooltipParam {
+  dataIndex: number;
+  seriesName?: string;
+  marker?: string;
+  value?: unknown;
 }
 
-function formatEngineeringValue(value: number, unit: string, digits = 1): string {
-  return `${formatNumber(value, digits)} ${unit}`;
+/** Signed value with a real minus sign, e.g. "+12.3" / "−923.0". */
+function formatSigned(value: number, digits = 1): string {
+  if (!Number.isFinite(value)) return "—";
+  const magnitude = formatNumber(Math.abs(value), digits);
+  if (value > 0) return `+${magnitude}`;
+  if (value < 0) return `−${magnitude}`;
+  return magnitude;
 }
 
-function getTooltipValue(value: unknown): number | null {
-  if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  if (Array.isArray(value)) {
-    const candidate = value.at(-1);
-    return typeof candidate === "number" && Number.isFinite(candidate) ? candidate : null;
+function statusTone(status: SolarPowerKpi["designStatus"]): VerdictTone {
+  switch (status) {
+    case "critical":
+      return "ng";
+    case "warning":
+      return "warn";
+    default:
+      return "ok";
   }
-  if (value == null) return null;
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric : null;
 }
 
-function createPowerTimelineOption(result: SolarPowerAnalysisResult): ECBasicOption {
-  const t = getChartTheme();
-  return {
-    title: {
-      text: "周回電力タイムライン",
-      textStyle: { color: t.fg, fontSize: 14 },
-      left: "center",
-    },
-    backgroundColor: "transparent",
-    textStyle: { color: t.fg },
-    legend: {
-      top: 28,
-      textStyle: { color: t.fgMuted },
-      data: ["発電電力", "消費電力", "正味電力"],
-    },
-    tooltip: { backgroundColor: t.surface, borderColor: t.lineStrong, textStyle: { color: t.fg },
-      trigger: "axis",
-      formatter: (params: Array<{ axisValueLabel?: string; seriesName?: string; value?: unknown }>) => {
-        const lines = params
-          .map((param) => {
-            const numericValue = getTooltipValue(param.value);
-            if (numericValue === null) return null;
-            return `${param.seriesName}: ${formatEngineeringValue(numericValue, "W", 1)}`;
-          })
-          .filter(Boolean);
-        return [`時刻: ${params[0]?.axisValueLabel ?? ""}`, ...lines].join("<br/>");
-      },
-    },
-    grid: { left: 50, right: 20, top: 80, bottom: 45 },
-    xAxis: {
-      type: "category",
-      data: result.orbitSamples.map((sample) => sample.timeLabel.slice(0, 5)),
-      axisLabel: { color: t.fgMuted },
-      name: "時刻 (UTC)",
-      nameTextStyle: { color: t.fgMuted },
-    },
-    yAxis: {
-      type: "value",
-      axisLabel: { color: t.fgMuted },
-      name: "電力 [W]",
-      nameTextStyle: { color: t.fgMuted },
-    },
-    series: [
-      {
-        name: "発電電力",
-        type: "line",
-        smooth: true,
-        data: result.orbitSamples.map((sample) => sample.generationW),
-        lineStyle: { color: "#38a169", width: 2 },
-        itemStyle: { color: "#38a169" },
-        areaStyle: { color: "rgba(56, 161, 105, 0.15)" },
-      },
-      {
-        name: "消費電力",
-        type: "line",
-        smooth: true,
-        data: result.orbitSamples.map((sample) => sample.loadW),
-        lineStyle: { color: "#ed8936", width: 2 },
-        itemStyle: { color: "#ed8936" },
-      },
-      {
-        name: "正味電力",
-        type: "line",
-        smooth: true,
-        data: result.orbitSamples.map((sample) => sample.netPowerW),
-        lineStyle: { color: "#63b3ed", width: 2 },
-        itemStyle: { color: "#63b3ed" },
-      },
-    ],
-  };
+function statusLabel(status: SolarPowerKpi["designStatus"]): string {
+  switch (status) {
+    case "critical":
+      return "不成立";
+    case "warning":
+      return "要注意";
+    default:
+      return "成立";
+  }
 }
 
-function createSocTimelineOption(result: SolarPowerAnalysisResult): ECBasicOption {
-  const t = getChartTheme();
+/** One sentence explaining the verdict, mirroring the lib's status criteria. */
+function verdictDetail(result: SolarPowerAnalysisResult): string {
+  const kpi = result.currentDay;
+  const minSoc = result.analysisInput.minSocPercent;
+  let detail: string;
+  if (kpi.designStatus === "critical") {
+    detail = `最小SOC ${formatNumber(kpi.minSocPercent)} % ≤ 下限 ${formatNumber(minSoc, 0)} %`;
+  } else if (kpi.designStatus === "warning") {
+    detail = `正味収支 ${formatSigned(kpi.dailyNetWh)} Wh/day（発電が消費を下回る）`;
+  } else {
+    detail = `最小SOC ${formatNumber(kpi.minSocPercent)} %（下限 ${formatNumber(minSoc, 0)} %）・正味収支 ${formatSigned(kpi.dailyNetWh)} Wh/day`;
+  }
+  const worst = result.worstRepresentativeDay;
+  if (worst.kpi.designStatus !== "nominal" && worst.kpi.designStatus !== kpi.designStatus) {
+    detail += ` ／ 最悪代表日 ${worst.label}: ${statusLabel(worst.kpi.designStatus)}`;
+  }
+  return detail;
+}
+
+/** Eclipse intervals [start, end] in epoch ms from consecutive !inSunlight samples. */
+function eclipseBands(samples: SolarPowerSample[]): Array<[number, number]> {
+  const bands: Array<[number, number]> = [];
+  let start: number | null = null;
+  for (const sample of samples) {
+    if (!sample.inSunlight && start === null) {
+      start = sample.timestamp;
+    } else if (sample.inSunlight && start !== null) {
+      bands.push([start, sample.timestamp]);
+      start = null;
+    }
+  }
+  const last = samples.at(-1);
+  if (start !== null && last) bands.push([start, last.timestamp]);
+  return bands;
+}
+
+function sampleHeader(sample: SolarPowerSample | undefined): string {
+  if (!sample) return "";
+  return `${sample.timeLabel.slice(0, 5)} UTC・${sample.inSunlight ? "日照" : "日陰"}`;
+}
+
+function createSocOption(result: SolarPowerAnalysisResult, t: ChartTheme) {
+  const samples = result.daySamples;
+  const minSoc = result.analysisInput.minSocPercent;
   return {
-    title: {
-      text: "24時間SOC推移",
-      textStyle: { color: t.fg, fontSize: 14 },
-      left: "center",
-    },
-    backgroundColor: "transparent",
-    textStyle: { color: t.fg },
-    tooltip: { backgroundColor: t.surface, borderColor: t.lineStrong, textStyle: { color: t.fg },
-      trigger: "axis",
-      formatter: (params: Array<{ axisValueLabel?: string; seriesName?: string; value?: unknown }>) => {
-        const lines = params
-          .map((param) => {
-            const numericValue = getTooltipValue(param.value);
-            if (numericValue === null) return null;
-            return `${param.seriesName}: ${formatEngineeringValue(numericValue, "%", 1)}`;
-          })
-          .filter(Boolean);
-        return [`時刻: ${params[0]?.axisValueLabel ?? ""}`, ...lines].join("<br/>");
+    ...baseOption(t),
+    grid: gridBase({ top: 32, bottom: 8 }),
+    tooltip: {
+      ...tooltipBase(t),
+      formatter: (params: TooltipParam[]) => {
+        const first = params[0];
+        const sample = first ? samples[first.dataIndex] : undefined;
+        if (!sample) return "";
+        return `${sampleHeader(sample)}<br/>SOC: <b>${formatNumber(sample.socPercent)} %</b>`;
       },
     },
-    grid: { left: 50, right: 20, top: 50, bottom: 45 },
-    xAxis: {
-      type: "category",
-      data: result.daySamples.map((sample) => sample.timeLabel.slice(0, 5)),
-      axisLabel: { color: t.fgMuted },
-      name: "時刻 (UTC)",
-      nameTextStyle: { color: t.fgMuted },
-    },
-    yAxis: {
-      type: "value",
-      min: 0,
-      max: 100,
-      axisLabel: { color: t.fgMuted },
-      name: "SOC [%]",
-      nameTextStyle: { color: t.fgMuted },
-    },
+    xAxis: timeAxis(t, {
+      min: samples[0]?.timestamp,
+      max: samples.at(-1)?.timestamp,
+    }),
+    yAxis: valueAxis(t, { name: "SOC [%]", min: 0, max: 100, interval: 25 }),
+    // A piecewise visualMap on a time-axis line crashes ECharts' gradient
+    // builder, so the below-limit stretches are a second, red overlay series.
     series: [
-      {
+      lineSeries(t.series[0], {
         name: "SOC",
-        type: "line",
-        smooth: true,
-        data: result.daySamples.map((sample) => sample.socPercent),
-        lineStyle: { color: "#9f7aea", width: 2 },
-        itemStyle: { color: "#9f7aea" },
-        areaStyle: { color: "rgba(159, 122, 234, 0.18)" },
-        markLine: {
-          symbol: "none",
-          lineStyle: { color: "#e53e3e", type: "dashed" },
-          data: [{ yAxis: result.analysisInput.minSocPercent, name: "最低SOC" }],
-        },
-      },
+        data: samples.map((sample) => [sample.timestamp, sample.socPercent]),
+        markLine: thresholdMarkLine(t, minSoc, `下限 ${formatNumber(minSoc, 0)} %`),
+        markArea: bandMarkArea(t, eclipseBands(samples)),
+      }),
+      lineSeries(t.danger, {
+        name: "下限以下",
+        silent: true,
+        tooltip: { show: false },
+        data: samples.map((sample) => [sample.timestamp, sample.socPercent <= minSoc ? sample.socPercent : null]),
+      }),
     ],
   };
 }
 
-function createComparisonOption(result: SolarPowerAnalysisResult, mode: ComparisonMode): ECBasicOption {
-  const t = getChartTheme();
-  if (mode === "sweep") {
-    return {
-      title: {
-        text: "感度解析",
-        textStyle: { color: t.fg, fontSize: 14 },
-        left: "center",
-      },
-      backgroundColor: "transparent",
-      textStyle: { color: t.fg },
-      legend: {
-        top: 28,
-        textStyle: { color: t.fgMuted },
-        data: ["最小SOC", "正味収支"],
-      },
-      tooltip: { backgroundColor: t.surface, borderColor: t.lineStrong, textStyle: { color: t.fg },
-        trigger: "axis",
-        formatter: (params: Array<{ axisValueLabel?: string; seriesName?: string; value?: unknown }>) => {
-          const lines = params
-            .map((param) => {
-              const numericValue = getTooltipValue(param.value);
-              if (numericValue === null) return null;
-              const unit = param.seriesName === "最小SOC" ? "%" : "Wh/day";
-              const digits = param.seriesName === "最小SOC" ? 1 : 1;
-              return `${param.seriesName}: ${formatEngineeringValue(numericValue, unit, digits)}`;
-            })
-            .filter(Boolean);
-          return [`${SWEEP_LABELS[result.analysisInput.sweepParameter]}: ${params[0]?.axisValueLabel ?? ""}`, ...lines].join("<br/>");
-        },
-      },
-      grid: { left: 50, right: 50, top: 80, bottom: 55 },
-      xAxis: {
-        type: "category",
-        data: result.sweep.map((point) => formatNumber(point.inputValue, 1)),
-        axisLabel: { color: t.fgMuted },
-        name: SWEEP_LABELS[result.analysisInput.sweepParameter],
-        nameLocation: "middle",
-        nameGap: 35,
-        nameTextStyle: { color: t.fgMuted },
-      },
-      yAxis: [
-        {
-          type: "value",
-          min: 0,
-          max: 100,
-          axisLabel: { color: t.fgMuted },
-          name: "最小SOC [%]",
-          nameTextStyle: { color: t.fgMuted },
-        },
-        {
-          type: "value",
-          axisLabel: { color: t.fgMuted },
-          name: "正味収支 [Wh/day]",
-          nameTextStyle: { color: t.fgMuted },
-        },
-      ],
-      series: [
-        {
-          name: "最小SOC",
-          type: "line",
-          smooth: true,
-          data: result.sweep.map((point) => point.minSocPercent),
-          lineStyle: { color: "#63b3ed", width: 2 },
-          itemStyle: { color: "#63b3ed" },
-        },
-        {
-          name: "正味収支",
-          type: "line",
-          smooth: true,
-          yAxisIndex: 1,
-          data: result.sweep.map((point) => point.dailyNetWh),
-          lineStyle: { color: "#38a169", width: 2 },
-          itemStyle: { color: "#38a169" },
-        },
-      ],
-    };
-  }
-
+function createPowerOption(result: SolarPowerAnalysisResult, t: ChartTheme) {
+  const samples = result.orbitSamples;
+  const toSeries = (pick: (sample: SolarPowerSample) => number) =>
+    samples.map((sample) => [sample.timestamp, pick(sample)]);
   return {
-    title: {
-      text: "年代表点比較",
-      textStyle: { color: t.fg, fontSize: 14 },
-      left: "center",
-    },
-    backgroundColor: "transparent",
-    textStyle: { color: t.fg },
-    legend: {
-      top: 28,
-      textStyle: { color: t.fgMuted },
-      data: ["最小SOC", "正味収支"],
-    },
-    tooltip: { backgroundColor: t.surface, borderColor: t.lineStrong, textStyle: { color: t.fg },
-      trigger: "axis",
-      formatter: (params: Array<{ axisValueLabel?: string; seriesName?: string; value?: unknown }>) => {
-        const lines = params
-          .map((param) => {
-            const numericValue = getTooltipValue(param.value);
-            if (numericValue === null) return null;
-            const unit = param.seriesName === "最小SOC" ? "%" : "Wh/day";
-            return `${param.seriesName}: ${formatEngineeringValue(numericValue, unit, 1)}`;
-          })
-          .filter(Boolean);
-        return [`代表日: ${params[0]?.axisValueLabel ?? ""}`, ...lines].join("<br/>");
+    ...baseOption(t),
+    grid: gridBase({ top: 32, bottom: 32 }),
+    legend: legendBase(t),
+    tooltip: {
+      ...tooltipBase(t),
+      formatter: (params: TooltipParam[]) => {
+        const first = params[0];
+        const sample = first ? samples[first.dataIndex] : undefined;
+        if (!sample) return "";
+        const lines = params.map((param) => {
+          const value = Array.isArray(param.value) ? Number(param.value[1]) : Number.NaN;
+          return `${param.marker ?? ""}${param.seriesName}: ${formatNumber(value)} W`;
+        });
+        return [sampleHeader(sample), ...lines].join("<br/>");
       },
     },
-    grid: { left: 50, right: 50, top: 80, bottom: 45 },
-    xAxis: {
-      type: "category",
-      data: result.representativeDays.map((entry) => entry.label),
-      axisLabel: { color: t.fgMuted },
-    },
-    yAxis: [
-      {
-        type: "value",
-        min: 0,
-        max: 100,
-        axisLabel: { color: t.fgMuted },
-        name: "最小SOC [%]",
-        nameTextStyle: { color: t.fgMuted },
-      },
-      {
-        type: "value",
-        axisLabel: { color: t.fgMuted },
-        name: "正味収支 [Wh/day]",
-        nameTextStyle: { color: t.fgMuted },
-      },
-    ],
+    xAxis: timeAxis(t, {
+      min: samples[0]?.timestamp,
+      max: samples.at(-1)?.timestamp,
+      axisLine: { onZero: false, lineStyle: { color: t.lineStrong } },
+    }),
+    yAxis: valueAxis(t, { name: "電力 [W]" }),
     series: [
-      {
+      lineSeries(t.series[0], {
+        name: "発電電力",
+        data: toSeries((sample) => sample.generationW),
+        markArea: bandMarkArea(t, eclipseBands(samples)),
+      }),
+      lineSeries(t.series[1], {
+        name: "消費電力",
+        data: toSeries((sample) => sample.loadW),
+      }),
+      lineSeries(t.series[2], {
+        name: "正味電力",
+        data: toSeries((sample) => sample.netPowerW),
+        markLine: zeroMarkLine(t),
+      }),
+    ],
+  };
+}
+
+/** Unlabelled zero baseline for charts whose values can go negative. */
+function zeroMarkLine(t: ChartTheme) {
+  return {
+    symbol: "none",
+    silent: true,
+    label: { show: false },
+    lineStyle: { color: t.fgSubtle, type: "solid", width: 1 },
+    data: [{ yAxis: 0 }],
+  };
+}
+
+/** Bars coloured per datum (threshold / sign) without losing the bar defaults. */
+function coloredBars(values: number[], colorOf: (value: number) => string) {
+  return values.map((value) => ({ value, itemStyle: { color: colorOf(value) } }));
+}
+
+function createRepresentativeMinSocOption(result: SolarPowerAnalysisResult, t: ChartTheme) {
+  const minSoc = result.analysisInput.minSocPercent;
+  const days = result.representativeDays;
+  return {
+    ...baseOption(t),
+    grid: gridBase({ top: 32 }),
+    tooltip: {
+      ...tooltipBase(t),
+      axisPointer: { type: "shadow" },
+      formatter: (params: TooltipParam[]) => {
+        const day = params[0] ? days[params[0].dataIndex] : undefined;
+        if (!day) return "";
+        return `${day.label}<br/>最小SOC: <b>${formatNumber(day.kpi.minSocPercent)} %</b>（${statusLabel(day.kpi.designStatus)}）`;
+      },
+    },
+    xAxis: categoryAxis(t, days.map((day) => day.label)),
+    yAxis: valueAxis(t, { name: "最小SOC [%]", min: 0, max: 100, interval: 25 }),
+    series: [
+      barSeries(t.series[0], {
         name: "最小SOC",
-        type: "bar",
-        data: result.representativeDays.map((entry) => entry.kpi.minSocPercent),
-        itemStyle: { color: "#63b3ed" },
+        data: coloredBars(
+          days.map((day) => day.kpi.minSocPercent),
+          (value) => (value <= minSoc ? t.danger : t.series[0]),
+        ),
+        markLine: thresholdMarkLine(t, minSoc, `下限 ${formatNumber(minSoc, 0)} %`),
+      }),
+    ],
+  };
+}
+
+function createRepresentativeNetOption(result: SolarPowerAnalysisResult, t: ChartTheme) {
+  const days = result.representativeDays;
+  return {
+    ...baseOption(t),
+    grid: gridBase({ top: 32 }),
+    tooltip: {
+      ...tooltipBase(t),
+      axisPointer: { type: "shadow" },
+      formatter: (params: TooltipParam[]) => {
+        const day = params[0] ? days[params[0].dataIndex] : undefined;
+        if (!day) return "";
+        return `${day.label}<br/>正味収支: <b>${formatSigned(day.kpi.dailyNetWh)} Wh/day</b>`;
       },
-      {
+    },
+    xAxis: categoryAxis(t, days.map((day) => day.label), {
+      axisLine: { onZero: false, lineStyle: { color: t.lineStrong } },
+    }),
+    yAxis: valueAxis(t, { name: "正味収支 [Wh/day]" }),
+    series: [
+      barSeries(t.series[0], {
         name: "正味収支",
-        type: "line",
-        smooth: true,
-        yAxisIndex: 1,
-        data: result.representativeDays.map((entry) => entry.kpi.dailyNetWh),
-        lineStyle: { color: "#38a169", width: 2 },
-        itemStyle: { color: "#38a169" },
+        data: coloredBars(
+          days.map((day) => day.kpi.dailyNetWh),
+          (value) => (value < 0 ? t.danger : t.success),
+        ),
+        markLine: zeroMarkLine(t),
+      }),
+    ],
+  };
+}
+
+function sweepDesignValue(result: SolarPowerAnalysisResult): number | null {
+  const input = result.analysisInput;
+  const value = input[input.sweepParameter];
+  const lo = Math.min(input.sweepStart, input.sweepEnd);
+  const hi = Math.max(input.sweepStart, input.sweepEnd);
+  return Number.isFinite(value) && value >= lo && value <= hi ? value : null;
+}
+
+function createSweepOption(
+  result: SolarPowerAnalysisResult,
+  t: ChartTheme,
+  metric: "minSoc" | "net",
+) {
+  const input = result.analysisInput;
+  const xName = SWEEP_LABELS[input.sweepParameter];
+  const designValue = sweepDesignValue(result);
+  const isSoc = metric === "minSoc";
+  const unit = isSoc ? "%" : "Wh/day";
+  const markLineData: Array<Record<string, unknown>> = [];
+  if (designValue !== null) {
+    markLineData.push({
+      xAxis: designValue,
+      lineStyle: { color: t.fgMuted, type: "dashed", width: 1 },
+      label: { formatter: "現設計", position: "insideEndTop", color: t.fgMuted, fontSize: 11 },
+    });
+  }
+  if (isSoc) {
+    markLineData.push({
+      yAxis: input.minSocPercent,
+      lineStyle: { color: t.danger, type: "solid", width: 1 },
+      label: { formatter: `下限 ${formatNumber(input.minSocPercent, 0)} %`, position: "insideEndTop", color: t.danger, fontSize: 11 },
+    });
+  } else {
+    markLineData.push({
+      yAxis: 0,
+      lineStyle: { color: t.fgSubtle, type: "solid", width: 1 },
+      label: { show: false },
+    });
+  }
+  return {
+    ...baseOption(t),
+    grid: gridBase({ top: 32, bottom: 28 }),
+    tooltip: {
+      ...tooltipBase(t),
+      formatter: (params: TooltipParam[]) => {
+        const point = params[0] ? result.sweep[params[0].dataIndex] : undefined;
+        if (!point) return "";
+        const value = isSoc ? formatNumber(point.minSocPercent) : formatSigned(point.dailyNetWh);
+        return `${xName}: ${formatNumber(point.inputValue)}<br/>${isSoc ? "最小SOC" : "正味収支"}: <b>${value} ${unit}</b>`;
       },
+    },
+    xAxis: valueXAxis(t, { name: xName, scale: true }),
+    yAxis: isSoc
+      ? valueAxis(t, { name: "最小SOC [%]", min: 0, max: 100, interval: 25 })
+      : valueAxis(t, { name: "正味収支 [Wh/day]" }),
+    series: [
+      lineSeries(isSoc ? t.series[0] : t.series[2], {
+        name: isSoc ? "最小SOC" : "正味収支",
+        showSymbol: true,
+        symbolSize: 5,
+        data: result.sweep.map((point) => [point.inputValue, isSoc ? point.minSocPercent : point.dailyNetWh]),
+        markLine: { symbol: "none", silent: true, data: markLineData },
+      }),
     ],
   };
 }
 
 function createSummaryHtml(result: SolarPowerAnalysisResult): string {
+  const kpi = result.currentDay;
   const rows = [
+    ["判定", `${statusLabel(kpi.designStatus)}（${verdictDetail(result)}）`],
     ["衛星", result.satelliteLabel],
-    ["日陰時間/周回", `${formatNumber(result.currentDay.eclipseMinutesPerOrbit, 1)} min`],
-    ["日照率", `${formatNumber(result.currentDay.sunlightRatio * 100, 1)} %`],
-    ["1日発電量", `${formatNumber(result.currentDay.dailyGenerationWh, 1)} Wh`],
-    ["1日消費量", `${formatNumber(result.currentDay.dailyLoadWh, 1)} Wh`],
-    ["正味収支", `${formatNumber(result.currentDay.dailyNetWh, 1)} Wh/day`],
-    ["最小SOC", `${formatNumber(result.currentDay.minSocPercent, 1)} %`],
-    ["推奨最小バッテリ", `${formatNumber(result.currentDay.minBatteryRequiredWh, 1)} Wh`],
-    ["推奨最小太陽電池出力", `${formatNumber(result.currentDay.minSolarArrayPowerRequiredW, 1)} W`],
-    ["最悪代表日", result.worstRepresentativeDay.label],
+    ["最小SOC", `${formatNumber(kpi.minSocPercent)} %（下限 ${formatNumber(result.analysisInput.minSocPercent, 0)} %）`],
+    ["正味収支", `${formatSigned(kpi.dailyNetWh)} Wh/day`],
+    ["日陰時間/周回", `${formatNumber(kpi.eclipseMinutesPerOrbit)} min`],
+    ["日照率", `${formatNumber(kpi.sunlightRatio * 100)} %`],
+    ["1日発電量", `${formatNumber(kpi.dailyGenerationWh)} Wh`],
+    ["1日消費量", `${formatNumber(kpi.dailyLoadWh)} Wh`],
+    ["推奨最小バッテリ", `${formatNumber(kpi.minBatteryRequiredWh)} Wh`],
+    ["推奨最小太陽電池出力", `${formatNumber(kpi.minSolarArrayPowerRequiredW)} W`],
+    ["最悪代表日", `${result.worstRepresentativeDay.label}（${statusLabel(result.worstRepresentativeDay.kpi.designStatus)}）`],
   ];
 
   return `
@@ -504,17 +544,57 @@ function createSummaryHtml(result: SolarPowerAnalysisResult): string {
     </table>`;
 }
 
-function statusLabel(status: SolarPowerAnalysisResult["currentDay"]["designStatus"]): string {
-  switch (status) {
-    case "nominal":
-      return "成立";
-    case "warning":
-      return "要調整";
-    case "critical":
-      return "不成立";
-    default:
-      return status;
-  }
+function buildKpis(result: SolarPowerAnalysisResult): Kpi[] {
+  const kpi = result.currentDay;
+  const input = result.analysisInput;
+  const socLow = kpi.minSocPercent <= input.minSocPercent;
+  const batteryShort = kpi.minBatteryRequiredWh > input.batteryCapacityWh;
+  return [
+    {
+      label: "最小SOC",
+      value: formatNumber(kpi.minSocPercent),
+      unit: "%",
+      hint: `下限 ${formatNumber(input.minSocPercent, 0)} %`,
+      tone: socLow ? "ng" : undefined,
+    },
+    {
+      label: "正味収支/日",
+      value: formatSigned(kpi.dailyNetWh),
+      unit: "Wh",
+      hint: `発電 ${formatNumber(kpi.dailyGenerationWh, 0)} / 消費 ${formatNumber(kpi.dailyLoadWh, 0)} Wh`,
+      tone: kpi.dailyNetWh < 0 ? "warn" : undefined,
+    },
+    {
+      label: "日陰/周回",
+      value: formatNumber(kpi.eclipseMinutesPerOrbit),
+      unit: "min",
+      hint: `周期 ${formatNumber(kpi.orbitPeriodMinutes)} min`,
+    },
+    {
+      label: "必要電池",
+      value: formatNumber(kpi.minBatteryRequiredWh, 0),
+      unit: "Wh",
+      hint: `搭載 ${formatNumber(input.batteryCapacityWh, 0)} Wh`,
+      tone: batteryShort ? "warn" : undefined,
+    },
+  ];
+}
+
+function buildMetrics(result: SolarPowerAnalysisResult): Array<[string, string]> {
+  const kpi = result.currentDay;
+  const worst = result.worstRepresentativeDay;
+  return [
+    ["衛星", result.satelliteLabel],
+    ["日照率", `${formatNumber(kpi.sunlightRatio * 100)} %`],
+    ["最大連続日陰", `${formatNumber(kpi.maxContinuousEclipseMinutes)} min`],
+    ["発電量/日", `${formatNumber(kpi.dailyGenerationWh)} Wh`],
+    ["消費量/日", `${formatNumber(kpi.dailyLoadWh)} Wh`],
+    ["エネルギー不足/日", `${formatNumber(kpi.energyDeficitWh)} Wh`],
+    ["最大SOC", `${formatNumber(kpi.maxSocPercent)} %`],
+    ["24h後SOC", `${formatNumber(kpi.endSocPercent)} %`],
+    ["必要太陽電池", `${formatNumber(kpi.minSolarArrayPowerRequiredW)} W（BOL ${formatNumber(result.analysisInput.solarArrayPowerBOL_W, 0)} W）`],
+    ["最悪代表日", `${worst.label}（${statusLabel(worst.kpi.designStatus)}・最小SOC ${formatNumber(worst.kpi.minSocPercent)} %）`],
+  ];
 }
 
 function HelpLabel({ label, help }: { label: string; help: string }) {
@@ -558,6 +638,10 @@ function NumberInputRow({
   );
 }
 
+const SOC_CHART_HEIGHT = 280;
+const POWER_CHART_HEIGHT = 260;
+const SMALL_CHART_HEIGHT = 220;
+
 export default function SolarImpactAnalysis({ satText, constText, startTime }: Props) {
   const satellites = useMemo(() => buildSelectableSatellites(satText, constText), [satText, constText]);
   const [selectedSatelliteId, setSelectedSatelliteId] = useState<string>(satellites[0]?.id ?? "");
@@ -566,9 +650,11 @@ export default function SolarImpactAnalysis({ satText, constText, startTime }: P
   const [error, setError] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [comparisonMode, setComparisonMode] = useState<ComparisonMode>("representative");
-  const powerChartRef = useRef<InstanceType<typeof ReactECharts> | null>(null);
-  const socChartRef = useRef<InstanceType<typeof ReactECharts> | null>(null);
-  const comparisonChartRef = useRef<InstanceType<typeof ReactECharts> | null>(null);
+  const theme = useChartTheme();
+  const socChartRef = useRef<ChartRef | null>(null);
+  const powerChartRef = useRef<ChartRef | null>(null);
+  const compareSocChartRef = useRef<ChartRef | null>(null);
+  const compareNetChartRef = useRef<ChartRef | null>(null);
 
   const selectedSatellite = satellites.find((item) => item.id === selectedSatelliteId) ?? satellites[0];
 
@@ -582,24 +668,6 @@ export default function SolarImpactAnalysis({ satText, constText, startTime }: P
     解析設定: INPUT_FIELDS.filter((field) => field.section === "解析設定"),
     感度解析: INPUT_FIELDS.filter((field) => field.section === "感度解析"),
   }), []);
-
-  const primaryKpis = result ? [
-    ["日陰/周回", `${formatNumber(result.currentDay.eclipseMinutesPerOrbit, 1)} min`],
-    ["日照率", `${formatNumber(result.currentDay.sunlightRatio * 100, 1)} %`],
-    ["発電量/日", `${formatNumber(result.currentDay.dailyGenerationWh, 1)} Wh`],
-    ["消費量/日", `${formatNumber(result.currentDay.dailyLoadWh, 1)} Wh`],
-    ["正味収支", `${formatNumber(result.currentDay.dailyNetWh, 1)} Wh/day`],
-    ["最小SOC", `${formatNumber(result.currentDay.minSocPercent, 1)} %`],
-  ] : [];
-
-  const secondaryKpis = result ? [
-    ["軌道周期", `${formatNumber(result.currentDay.orbitPeriodMinutes, 1)} min`],
-    ["最大連続日陰", `${formatNumber(result.currentDay.maxContinuousEclipseMinutes, 1)} min`],
-    ["必要電池", `${formatNumber(result.currentDay.minBatteryRequiredWh, 1)} Wh`],
-    ["必要太陽電池", `${formatNumber(result.currentDay.minSolarArrayPowerRequiredW, 1)} W`],
-    ["最悪代表日", result.worstRepresentativeDay.label],
-    ["状態", statusLabel(result.currentDay.designStatus)],
-  ] : [];
 
   const updateInput = <K extends keyof SolarPowerAnalysisInput>(field: K, value: SolarPowerAnalysisInput[K]) => {
     setInput((current) => ({
@@ -628,14 +696,19 @@ export default function SolarImpactAnalysis({ satText, constText, startTime }: P
     }
   };
 
+  const dateStr = startTime.toISOString().slice(0, 10);
+
+  const mountedCharts = (): ChartRef[] =>
+    [socChartRef, powerChartRef, compareSocChartRef, compareNetChartRef]
+      .map((ref) => ref.current)
+      .filter((chart): chart is ChartRef => chart !== null);
+
   const downloadChartSetAsHTML = () => {
-    if (!powerChartRef.current || !socChartRef.current || !comparisonChartRef.current || !result) return;
+    if (!result) return;
+    const charts = mountedCharts();
+    if (charts.length === 0) return;
     downloadMultiChartHTML(
-      [
-        powerChartRef.current.getEchartsInstance().getOption(),
-        socChartRef.current.getEchartsInstance().getOption(),
-        comparisonChartRef.current.getEchartsInstance().getOption(),
-      ],
+      charts.map((chart) => chart.getEchartsInstance().getOption()),
       "太陽光影響解析",
       `solar-impact-analysis-${dateStr}.html`,
       createSummaryHtml(result),
@@ -669,22 +742,36 @@ export default function SolarImpactAnalysis({ satText, constText, startTime }: P
     downloadCSV(headers, rows, `solar-impact-data-${dateStr}.csv`);
   };
 
-  const dateStr = startTime.toISOString().slice(0, 10);
-
   const downloadReportJson = () => {
     if (!result) return;
     downloadJSON(result, `solar-impact-report-${dateStr}.json`);
   };
 
   const handleDownloadPng = () => {
-    downloadPNG(powerChartRef, `solar-power-orbit-${dateStr}.png`);
+    const suffix = comparisonMode === "representative" ? "seasons" : "sweep";
     downloadPNG(socChartRef, `solar-power-soc-${dateStr}.png`);
-    downloadPNG(comparisonChartRef, `solar-power-comparison-${dateStr}.png`);
+    downloadPNG(powerChartRef, `solar-power-orbit-${dateStr}.png`);
+    downloadPNG(compareSocChartRef, `solar-power-${suffix}-min-soc-${dateStr}.png`);
+    downloadPNG(compareNetChartRef, `solar-power-${suffix}-net-${dateStr}.png`);
   };
 
-  const powerOption = useMemo(() => result ? createPowerTimelineOption(result) : { backgroundColor: "transparent" }, [result]);
-  const socOption = useMemo(() => result ? createSocTimelineOption(result) : { backgroundColor: "transparent" }, [result]);
-  const comparisonOption = useMemo(() => result ? createComparisonOption(result, comparisonMode) : { backgroundColor: "transparent" }, [result, comparisonMode]);
+  const socOption = useMemo(() => (result ? createSocOption(result, theme) : null), [result, theme]);
+  const powerOption = useMemo(() => (result ? createPowerOption(result, theme) : null), [result, theme]);
+  const compareSocOption = useMemo(() => {
+    if (!result) return null;
+    return comparisonMode === "representative"
+      ? createRepresentativeMinSocOption(result, theme)
+      : createSweepOption(result, theme, "minSoc");
+  }, [result, theme, comparisonMode]);
+  const compareNetOption = useMemo(() => {
+    if (!result) return null;
+    return comparisonMode === "representative"
+      ? createRepresentativeNetOption(result, theme)
+      : createSweepOption(result, theme, "net");
+  }, [result, theme, comparisonMode]);
+
+  const kpis = useMemo(() => (result ? buildKpis(result) : []), [result]);
+  const metrics = useMemo(() => (result ? buildMetrics(result) : []), [result]);
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
@@ -696,7 +783,7 @@ export default function SolarImpactAnalysis({ satText, constText, startTime }: P
             value={selectedSatellite?.id ?? ""}
             onChange={(event) => setSelectedSatelliteId(event.target.value)}
             disabled={isAnalyzing || satellites.length === 0}
-            style={{ minWidth: 220 }}
+            style={{ minWidth: 220, maxWidth: "100%" }}
           >
             {satellites.map((item) => (
               <option key={item.id} value={item.id}>
@@ -735,7 +822,7 @@ export default function SolarImpactAnalysis({ satText, constText, startTime }: P
           <div className="analysis-error">解析対象の衛星がありません</div>
         )}
 
-        <div className="analysis-split" style={{ display: "grid", gridTemplateColumns: "minmax(320px, 420px) minmax(0, 1fr)", gap: 12 }}>
+        <div className="analysis-split" style={{ display: "grid", gridTemplateColumns: "minmax(320px, 400px) minmax(0, 1fr)", gap: 12 }}>
           <section className="solar-panel">
             <div className="solar-panel-header">
               <div>
@@ -795,82 +882,101 @@ export default function SolarImpactAnalysis({ satText, constText, startTime }: P
             </div>
           </section>
 
-          <div style={{ display: "grid", gridTemplateRows: "auto auto auto", gap: 12, minWidth: 0 }}>
-            <section className="solar-panel">
-              <div className="solar-panel-header">
-                <div>
-                  <h4 className="solar-panel-title">KPI</h4>
-                  <div className="solar-panel-subtitle">主要指標を上段、補助指標を下段にまとめています。</div>
-                </div>
-              </div>
-              {result ? (
-                <>
-                  <div className="solar-kpi-grid">
-                    {primaryKpis.map(([label, value]) => (
-                      <div key={label} className="solar-kpi-card">
-                        <div className="solar-kpi-label">{label}</div>
-                        <div className="solar-kpi-value">{value}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="solar-kpi-grid solar-kpi-grid-secondary">
-                    {secondaryKpis.map(([label, value]) => (
-                      <div key={label} className="solar-kpi-card solar-kpi-card-secondary">
-                        <div className="solar-kpi-label">{label}</div>
-                        {label === "状態" ? (
-                          <div className={`solar-status-badge solar-status-${result.currentDay.designStatus}`}>{value}</div>
-                        ) : (
-                          <div className="solar-kpi-value solar-kpi-value-secondary">{value}</div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <div style={{ color: "var(--fg-muted)" }}>解析開始後に指標を表示します。</div>
-              )}
-            </section>
+          <div className="grid min-w-0 content-start gap-3">
+            {!result || !socOption || !powerOption || !compareSocOption || !compareNetOption ? (
+              <EmptyState title="解析結果はまだありません">
+                左の設計入力を確認して「解析開始」を押すと、24時間の電力収支とSOC推移、日陰区間、
+                代表日（春分・夏至・秋分・冬至）比較と感度解析を計算します。
+              </EmptyState>
+            ) : (
+              <>
+                <Verdict
+                  tone={statusTone(result.currentDay.designStatus)}
+                  label={statusLabel(result.currentDay.designStatus)}
+                  detail={verdictDetail(result)}
+                />
 
-            <div className="analysis-chart-pair" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, minWidth: 0 }}>
-              <div style={{ minHeight: 280 }}>
-                <ReactECharts ref={powerChartRef} option={powerOption} style={{ height: 280, width: "100%" }} />
-              </div>
-              <div style={{ minHeight: 280 }}>
-                <ReactECharts ref={socChartRef} option={socOption} style={{ height: 280, width: "100%" }} />
-              </div>
-            </div>
+                <KpiStrip items={kpis} />
 
-            <section className="solar-panel">
-              <div className="solar-compare-header">
-                <div>
-                  <h4 className="solar-panel-title">{comparisonMode === "representative" ? "年代表点比較" : "感度解析"}</h4>
-                  <div className="solar-panel-subtitle">
-                    {comparisonMode === "representative"
-                      ? "春分・夏至・秋分・冬至付近での成立性を比較します。"
-                      : "選択した設計変数を掃引したときの成立性変化を表示します。"}
+                <ChartCard
+                  title="SOC 24時間推移"
+                  caption={`網掛けは日陰区間。下限 ${formatNumber(result.analysisInput.minSocPercent, 0)} % 以下は赤で表示します。`}
+                >
+                  <ReactECharts
+                    ref={socChartRef}
+                    option={socOption}
+                    notMerge
+                    style={{ height: SOC_CHART_HEIGHT, width: "100%" }}
+                  />
+                </ChartCard>
+
+                <ChartCard
+                  title="周回電力"
+                  caption="解析開始から1周回分の発電・消費・正味電力。網掛けは日陰区間。"
+                >
+                  <ReactECharts
+                    ref={powerChartRef}
+                    option={powerOption}
+                    notMerge
+                    style={{ height: POWER_CHART_HEIGHT, width: "100%" }}
+                  />
+                </ChartCard>
+
+                <ChartCard
+                  title={comparisonMode === "representative" ? "代表日比較" : "感度解析"}
+                  caption={comparisonMode === "representative"
+                    ? "春分・夏至・秋分・冬至付近での成立性を比較します。"
+                    : `${SWEEP_LABELS[result.analysisInput.sweepParameter]} を掃引したときの成立性変化。破線は現設計値です。`}
+                  actions={(
+                    <div className="solar-segmented-control" role="group" aria-label="比較モード">
+                      <button
+                        type="button"
+                        aria-pressed={comparisonMode === "representative"}
+                        className={`solar-segment-button ${comparisonMode === "representative" ? "is-active" : ""}`}
+                        onClick={() => setComparisonMode("representative")}
+                      >
+                        代表日比較
+                      </button>
+                      <button
+                        type="button"
+                        aria-pressed={comparisonMode === "sweep"}
+                        className={`solar-segment-button ${comparisonMode === "sweep" ? "is-active" : ""}`}
+                        onClick={() => setComparisonMode("sweep")}
+                      >
+                        感度解析
+                      </button>
+                    </div>
+                  )}
+                >
+                  <div className="analysis-chart-pair grid gap-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                    <div className="min-w-0">
+                      <div className="solar-section-title">最小SOC</div>
+                      <ReactECharts
+                        key={`soc-${comparisonMode}`}
+                        ref={compareSocChartRef}
+                        option={compareSocOption}
+                        notMerge
+                        style={{ height: SMALL_CHART_HEIGHT, width: "100%" }}
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="solar-section-title">正味収支/日</div>
+                      <ReactECharts
+                        key={`net-${comparisonMode}`}
+                        ref={compareNetChartRef}
+                        option={compareNetOption}
+                        notMerge
+                        style={{ height: SMALL_CHART_HEIGHT, width: "100%" }}
+                      />
+                    </div>
                   </div>
-                </div>
-                <div className="solar-segmented-control">
-                  <button
-                    type="button"
-                    className={`solar-segment-button ${comparisonMode === "representative" ? "is-active" : ""}`}
-                    onClick={() => setComparisonMode("representative")}
-                  >
-                    代表日比較
-                  </button>
-                  <button
-                    type="button"
-                    className={`solar-segment-button ${comparisonMode === "sweep" ? "is-active" : ""}`}
-                    onClick={() => setComparisonMode("sweep")}
-                  >
-                    感度解析
-                  </button>
-                </div>
-              </div>
-              <div style={{ minHeight: 320 }}>
-                <ReactECharts ref={comparisonChartRef} option={comparisonOption} style={{ height: 320, width: "100%" }} />
-              </div>
-            </section>
+                </ChartCard>
+
+                <ChartCard title="その他の指標">
+                  <MetricList items={metrics} />
+                </ChartCard>
+              </>
+            )}
           </div>
         </div>
       </div>

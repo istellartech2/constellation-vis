@@ -21,7 +21,20 @@ import {
   downloadMultiChartHTML,
   downloadPNG,
 } from "./utils/downloadUtils";
-import { getChartTheme } from "./utils/chartTheme";
+import { useChartTheme, type ChartTheme } from "./utils/chartTheme";
+import {
+  baseOption,
+  barSeries,
+  categoryAxis,
+  gridBase,
+  legendBase,
+  lineSeries,
+  thresholdMarkLine,
+  tooltipBase,
+  valueAxis,
+  valueXAxis,
+} from "./utils/chartBase";
+import { ChartCard, EmptyState, KpiStrip, MetricList, Verdict, type Kpi, type VerdictTone } from "./AnalysisLayout";
 
 interface Props {
   satText: string;
@@ -171,179 +184,247 @@ function getTooltipValue(value: unknown): number | null {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
-function createAltitudeTimelineOption(result: MaintenanceAnalysisResult): ECBasicOption {
-  const t = getChartTheme();
+type TipParam = { axisValueLabel?: string; seriesName?: string; value?: unknown; dataIndex?: number; name?: string };
+
+/** Perigee/apogee count as distinct lines only when they leave the mean by more than this. */
+const CIRCULAR_TOLERANCE_KM = 1;
+
+function isEffectivelyCircular(result: MaintenanceAnalysisResult): boolean {
+  return result.timeline.every(
+    (p) =>
+      Math.abs(p.perigeeAltitudeKm - p.altitudeKm) <= CIRCULAR_TOLERANCE_KM &&
+      Math.abs(p.apogeeAltitudeKm - p.altitudeKm) <= CIRCULAR_TOLERANCE_KM,
+  );
+}
+
+function createAltitudeTimelineOption(result: MaintenanceAnalysisResult, t: ChartTheme): ECBasicOption {
+  const color = t.series[0];
+  const circular = isEffectivelyCircular(result);
+  const timeline = result.timeline;
+  const threshold = result.analysisInput.deorbitAltitudeKm;
+  const lifetime = result.kpi.naturalLifetimeYears;
+  const lastYear = timeline.at(-1)?.elapsedYears ?? 0;
+  const showLifetime = result.kpi.naturalLifetimeReached && Number.isFinite(lifetime) && lifetime <= lastYear + 1e-6;
+
+  const meanSeries = lineSeries(color, {
+    name: "平均高度",
+    data: timeline.map((p) => [p.elapsedYears, p.altitudeKm]),
+    markLine: thresholdMarkLine(t, threshold, `寿命判定高度 ${formatNumber(threshold, 0)} km`),
+    ...(showLifetime
+      ? {
+          markPoint: {
+            silent: true,
+            symbol: "circle",
+            symbolSize: 9,
+            itemStyle: { color: t.danger, borderColor: t.surface, borderWidth: 2 },
+            label: {
+              show: true,
+              position: "top",
+              color: t.fg,
+              fontSize: 11,
+              formatter: `自然寿命 ${formatNumber(lifetime, 1)} yr`,
+            },
+            data: [{ coord: [lifetime, threshold] }],
+          },
+        }
+      : {}),
+  });
+
+  const bandSeries = circular
+    ? []
+    : [
+        // Invisible base at perigee; the stacked span up to apogee is the light band.
+        lineSeries(color, {
+          name: "近地点",
+          data: timeline.map((p) => [p.elapsedYears, p.perigeeAltitudeKm]),
+          stack: "band",
+          lineStyle: { width: 0, opacity: 0 },
+          tooltip: { show: false },
+        }),
+        lineSeries(color, {
+          name: "近地点〜遠地点",
+          data: timeline.map((p) => [p.elapsedYears, p.apogeeAltitudeKm - p.perigeeAltitudeKm]),
+          stack: "band",
+          lineStyle: { width: 0, opacity: 0 },
+          areaStyle: { color, opacity: 0.18 },
+        }),
+      ];
+
   return {
-    title: { text: "自然減衰による高度低下", textStyle: { color: t.fg, fontSize: 14 }, left: "center" },
-    backgroundColor: "transparent",
-    textStyle: { color: t.fg },
-    tooltip: { backgroundColor: t.surface, borderColor: t.lineStrong, textStyle: { color: t.fg },
-      trigger: "axis",
-      formatter: (params: Array<{ axisValueLabel?: string; seriesName?: string; value?: unknown }>) => {
-        const lines = params.map((param) => {
-          const numericValue = getTooltipValue(param.value);
-          if (numericValue === null) return null;
-          return `${param.seriesName}: ${formatNumber(numericValue, 1)} km`;
-        }).filter(Boolean);
-        return [`経過年: ${params[0]?.axisValueLabel ?? ""}`, ...lines].join("<br/>");
+    ...baseOption(t),
+    grid: gridBase({ top: 24, bottom: circular ? 36 : 44, right: 24 }),
+    legend: circular ? { show: false } : legendBase(t, { data: ["平均高度", "近地点〜遠地点"] }),
+    tooltip: {
+      ...tooltipBase(t),
+      formatter: (params: TipParam[]) => {
+        const idx = params[0]?.dataIndex ?? 0;
+        const p = timeline[idx];
+        if (!p) return "";
+        const lines = [`経過 ${formatNumber(p.elapsedYears, 2)} yr`, `平均高度: ${formatNumber(p.altitudeKm, 1)} km`];
+        if (!circular) {
+          lines.push(`近地点: ${formatNumber(p.perigeeAltitudeKm, 1)} km`, `遠地点: ${formatNumber(p.apogeeAltitudeKm, 1)} km`);
+        }
+        return lines.join("<br/>");
       },
     },
-    legend: { top: 28, textStyle: { color: t.fgMuted }, data: ["平均高度", "近地点高度", "遠地点高度"] },
-    grid: { left: 55, right: 24, top: 80, bottom: 50 },
-    xAxis: {
-      type: "category",
-      data: result.timeline.map((point) => formatNumber(point.elapsedYears, 1)),
-      axisLabel: { color: t.fgMuted },
-      name: "経過年 [yr]",
-      nameLocation: "middle",
-      nameGap: 30,
-      nameTextStyle: { color: t.fgMuted },
-    },
-    yAxis: {
-      type: "value",
-      axisLabel: { color: t.fgMuted },
+    xAxis: valueXAxis(t, { name: "経過年 [yr]", min: 0, max: lastYear }),
+    yAxis: valueAxis(t, {
       name: "高度 [km]",
-      nameTextStyle: { color: t.fgMuted },
+      scale: true,
+      min: (v: { min: number; max: number }) => Math.floor(Math.min(v.min, threshold) - 5),
+    }),
+    series: [...bandSeries, meanSeries],
+  };
+}
+
+function cumulativePropellant(result: MaintenanceAnalysisResult): number[] {
+  let sum = 0;
+  return result.annualBudget.map((p) => (sum += p.propellantKg));
+}
+
+function createDeltaVOption(result: MaintenanceAnalysisResult, t: ChartTheme): ECBasicOption {
+  return {
+    ...baseOption(t),
+    grid: gridBase({ bottom: 36 }),
+    tooltip: {
+      ...tooltipBase(t),
+      axisPointer: { type: "shadow" },
+      formatter: (params: TipParam[]) => {
+        const p = params[0];
+        const v = getTooltipValue(p?.value);
+        return `${p?.axisValueLabel ?? ""}<br/>年間ΔV: ${v === null ? "—" : formatNumber(v, 2)} m/s`;
+      },
     },
+    xAxis: categoryAxis(t, result.annualBudget.map((p) => p.label)),
+    yAxis: valueAxis(t, { name: "年間ΔV [m/s]" }),
+    series: [barSeries(t.series[1], { name: "年間ΔV", data: result.annualBudget.map((p) => p.deltaV_mps) })],
+  };
+}
+
+function createCumulativePropellantOption(result: MaintenanceAnalysisResult, t: ChartTheme): ECBasicOption {
+  const capacity = result.kpi.availablePropellantKg;
+  const cumulative = cumulativePropellant(result);
+  return {
+    ...baseOption(t),
+    grid: gridBase({ bottom: 36 }),
+    tooltip: {
+      ...tooltipBase(t),
+      formatter: (params: TipParam[]) => {
+        const p = params[0];
+        const v = getTooltipValue(p?.value);
+        return `${p?.axisValueLabel ?? ""}<br/>累積推進剤: ${v === null ? "—" : formatNumber(v, 2)} kg`;
+      },
+    },
+    xAxis: categoryAxis(t, result.annualBudget.map((p) => p.label), { boundaryGap: false }),
+    yAxis: valueAxis(t, {
+      name: "累積推進剤 [kg]",
+      min: 0,
+      max: (v: { min: number; max: number }) => Math.max(v.max, capacity) * 1.1,
+    }),
     series: [
-      {
-        name: "平均高度",
-        type: "line",
-        smooth: true,
-        data: result.timeline.map((point) => point.altitudeKm),
-        lineStyle: { color: "#63b3ed", width: 2 },
-        itemStyle: { color: "#63b3ed" },
-        areaStyle: { color: "rgba(99, 179, 237, 0.12)" },
+      lineSeries(t.series[2], {
+        name: "累積推進剤",
+        data: cumulative,
+        areaStyle: { color: t.series[2], opacity: 0.15 },
+        markLine: thresholdMarkLine(t, capacity, `搭載推進剤 ${formatNumber(capacity, 1)} kg`),
+      }),
+    ],
+  };
+}
+
+function createScenarioOption(result: MaintenanceAnalysisResult, t: ChartTheme): ECBasicOption {
+  const capacity = result.kpi.availablePropellantKg;
+  const years = Math.max(result.analysisInput.missionYears, 1e-6);
+  const entries = result.scenarioComparisons;
+  return {
+    ...baseOption(t),
+    grid: gridBase({ top: 12, bottom: 36, right: 24 }),
+    tooltip: {
+      ...tooltipBase(t, "item"),
+      axisPointer: { type: "shadow" },
+      formatter: (param: { dataIndex: number }) => {
+        const e = entries[param.dataIndex];
+        if (!e) return "";
+        return [
+          e.label,
+          `必要推進剤(+マージン): ${formatNumber(e.requiredPropellantKg, 2)} kg`,
+          `年間ΔV: ${formatNumber(e.missionDeltaV_mps / years, 2)} m/s`,
+          `総ΔV: ${formatNumber(e.missionDeltaV_mps, 1)} m/s`,
+          `高度低下: ${formatNumber(e.annualAltitudeLossKm, 2)} km/yr`,
+          `自然寿命: ${formatLifetime(e.naturalLifetimeYears, e.naturalLifetimeReached)}`,
+        ].join("<br/>");
+      },
+    },
+    xAxis: valueXAxis(t, {
+      name: "必要推進剤(+マージン) [kg]",
+      min: 0,
+      max: (v: { min: number; max: number }) => Math.max(v.max, capacity) * 1.1,
+    }),
+    yAxis: { ...categoryAxis(t, entries.map((e) => e.label)), inverse: true, nameGap: 0 },
+    series: [
+      barSeries(t.series[0], {
+        name: "必要推進剤",
+        barMaxWidth: 28,
+        itemStyle: { borderRadius: [0, 4, 4, 0] },
+        label: { show: true, position: "right", color: t.fgMuted, fontSize: 11, formatter: (p: { value: number }) => `${formatNumber(p.value, 2)} kg` },
+        data: entries.map((e) => ({
+          value: e.requiredPropellantKg,
+          itemStyle: { color: e.requiredPropellantKg > capacity ? t.danger : t.series[0], borderRadius: [0, 4, 4, 0] },
+        })),
         markLine: {
           symbol: "none",
-          label: { position: "insideEndTop" },
-          data: [{ yAxis: result.analysisInput.deorbitAltitudeKm, name: "寿命判定高度", lineStyle: { color: "#e53e3e", type: "dashed" } }],
+          silent: true,
+          lineStyle: { color: t.danger, type: "dashed", width: 1 },
+          label: { position: "insideEndTop", color: t.danger, fontSize: 11, formatter: `搭載 ${formatNumber(capacity, 1)} kg` },
+          data: [{ xAxis: capacity }],
         },
-      },
-      {
-        name: "近地点高度",
-        type: "line",
-        smooth: true,
-        data: result.timeline.map((point) => point.perigeeAltitudeKm),
-        lineStyle: { color: "#f56565", width: 1.5 },
-        itemStyle: { color: "#f56565" },
-      },
-      {
-        name: "遠地点高度",
-        type: "line",
-        smooth: true,
-        data: result.timeline.map((point) => point.apogeeAltitudeKm),
-        lineStyle: { color: "#38a169", width: 1.5 },
-        itemStyle: { color: "#38a169" },
-      },
+      }),
     ],
   };
 }
 
-function createBudgetOption(result: MaintenanceAnalysisResult): ECBasicOption {
-  const t = getChartTheme();
+function createSweepOption(
+  result: MaintenanceAnalysisResult,
+  t: ChartTheme,
+  metric: "annualDeltaV_mps" | "requiredPropellantKg",
+): ECBasicOption {
+  const param = result.analysisInput.sweepParameter;
+  const isDv = metric === "annualDeltaV_mps";
+  const current = result.analysisInput[param];
+  const unit = isDv ? "m/s" : "kg";
+  const name = isDv ? "年間ΔV" : "必要推進剤(+マージン)";
+  const xs = result.sweep.map((p) => p.inputValue);
+  const inRange = xs.length > 0 && current >= Math.min(...xs) && current <= Math.max(...xs);
   return {
-    title: { text: "年次ΔVと推進剤消費", textStyle: { color: t.fg, fontSize: 14 }, left: "center" },
-    backgroundColor: "transparent",
-    textStyle: { color: t.fg },
-    legend: { top: 28, textStyle: { color: t.fgMuted }, data: ["年間ΔV", "累積推進剤"] },
-    tooltip: { backgroundColor: t.surface, borderColor: t.lineStrong, textStyle: { color: t.fg },
-      trigger: "axis",
-      formatter: (params: Array<{ axisValueLabel?: string; seriesName?: string; value?: unknown }>) => {
-        const lines = params.map((param) => {
-          const numericValue = getTooltipValue(param.value);
-          if (numericValue === null) return null;
-          return `${param.seriesName}: ${formatNumber(numericValue, 2)} ${param.seriesName === "年間ΔV" ? "m/s" : "kg"}`;
-        }).filter(Boolean);
-        return [`年次: ${params[0]?.axisValueLabel ?? ""}`, ...lines].join("<br/>");
+    ...baseOption(t),
+    grid: gridBase({ bottom: 44, right: 24 }),
+    tooltip: {
+      ...tooltipBase(t),
+      formatter: (params: TipParam[]) => {
+        const p = params[0];
+        const v = getTooltipValue(p?.value);
+        const x = Array.isArray(p?.value) ? Number(p.value[0]) : NaN;
+        return `${SWEEP_LABELS[param]}: ${formatNumber(x, 2)}<br/>${name}: ${v === null ? "—" : formatNumber(v, 2)} ${unit}`;
       },
     },
-    grid: { left: 55, right: 55, top: 80, bottom: 45 },
-    xAxis: { type: "category", data: result.annualBudget.map((point) => point.label), axisLabel: { color: t.fgMuted } },
-    yAxis: [
-      { type: "value", axisLabel: { color: t.fgMuted }, name: "年間ΔV [m/s]", nameTextStyle: { color: t.fgMuted } },
-      { type: "value", axisLabel: { color: t.fgMuted }, name: "累積推進剤 [kg]", nameTextStyle: { color: t.fgMuted } },
-    ],
+    xAxis: valueXAxis(t, { name: SWEEP_LABELS[param], scale: true }),
+    yAxis: valueAxis(t, { name: `${name} [${unit}]` }),
     series: [
-      { name: "年間ΔV", type: "bar", data: result.annualBudget.map((point) => point.deltaV_mps), itemStyle: { color: "#ed8936" } },
-      {
-        name: "累積推進剤",
-        type: "line",
-        smooth: true,
-        yAxisIndex: 1,
-        data: result.annualBudget.map((_, index) => result.annualBudget.slice(0, index + 1).reduce((sum, point) => sum + point.propellantKg, 0)),
-        lineStyle: { color: "#38a169", width: 2 },
-        itemStyle: { color: "#38a169" },
-      },
-    ],
-  };
-}
-
-function createComparisonOption(result: MaintenanceAnalysisResult, mode: ComparisonMode): ECBasicOption {
-  const t = getChartTheme();
-  if (mode === "sweep") {
-    return {
-      title: { text: "感度解析", textStyle: { color: t.fg, fontSize: 14 }, left: "center" },
-      backgroundColor: "transparent",
-      textStyle: { color: t.fg },
-      legend: { top: 28, textStyle: { color: t.fgMuted }, data: ["年間ΔV", "必要推進剤"] },
-      tooltip: { backgroundColor: t.surface, borderColor: t.lineStrong, textStyle: { color: t.fg },
-        trigger: "axis",
-        formatter: (params: Array<{ axisValueLabel?: string; seriesName?: string; value?: unknown }>) => {
-          const lines = params.map((param) => {
-            const numericValue = getTooltipValue(param.value);
-            if (numericValue === null) return null;
-            return `${param.seriesName}: ${formatNumber(numericValue, 2)} ${param.seriesName === "年間ΔV" ? "m/s" : "kg"}`;
-          }).filter(Boolean);
-          return [`${SWEEP_LABELS[result.analysisInput.sweepParameter]}: ${params[0]?.axisValueLabel ?? ""}`, ...lines].join("<br/>");
-        },
-      },
-      grid: { left: 55, right: 55, top: 80, bottom: 55 },
-      xAxis: {
-        type: "category",
-        data: result.sweep.map((point) => formatNumber(point.inputValue, 2)),
-        axisLabel: { color: t.fgMuted },
-        name: SWEEP_LABELS[result.analysisInput.sweepParameter],
-        nameLocation: "middle",
-        nameGap: 35,
-        nameTextStyle: { color: t.fgMuted },
-      },
-      yAxis: [
-        { type: "value", axisLabel: { color: t.fgMuted }, name: "年間ΔV [m/s]", nameTextStyle: { color: t.fgMuted } },
-        { type: "value", axisLabel: { color: t.fgMuted }, name: "必要推進剤 [kg]", nameTextStyle: { color: t.fgMuted } },
-      ],
-      series: [
-        { name: "年間ΔV", type: "line", smooth: true, data: result.sweep.map((point) => point.annualDeltaV_mps), lineStyle: { color: "#63b3ed", width: 2 }, itemStyle: { color: "#63b3ed" } },
-        { name: "必要推進剤", type: "line", smooth: true, yAxisIndex: 1, data: result.sweep.map((point) => point.requiredPropellantKg), lineStyle: { color: "#38a169", width: 2 }, itemStyle: { color: "#38a169" } },
-      ],
-    };
-  }
-
-  return {
-    title: { text: "大気プリセット比較", textStyle: { color: t.fg, fontSize: 14 }, left: "center" },
-    backgroundColor: "transparent",
-    textStyle: { color: t.fg },
-    legend: { top: 28, textStyle: { color: t.fgMuted }, data: ["年間ΔV", "必要推進剤"] },
-    tooltip: { backgroundColor: t.surface, borderColor: t.lineStrong, textStyle: { color: t.fg },
-      trigger: "axis",
-      formatter: (params: Array<{ axisValueLabel?: string; seriesName?: string; value?: unknown }>) => {
-        const lines = params.map((param) => {
-          const numericValue = getTooltipValue(param.value);
-          if (numericValue === null) return null;
-          return `${param.seriesName}: ${formatNumber(numericValue, 2)} ${param.seriesName === "年間ΔV" ? "m/s" : "kg"}`;
-        }).filter(Boolean);
-        return [`シナリオ: ${params[0]?.axisValueLabel ?? ""}`, ...lines].join("<br/>");
-      },
-    },
-    grid: { left: 55, right: 55, top: 80, bottom: 45 },
-    xAxis: { type: "category", data: result.scenarioComparisons.map((entry) => entry.label), axisLabel: { color: t.fgMuted } },
-    yAxis: [
-      { type: "value", axisLabel: { color: t.fgMuted }, name: "年間ΔV [m/s]", nameTextStyle: { color: t.fgMuted } },
-      { type: "value", axisLabel: { color: t.fgMuted }, name: "必要推進剤 [kg]", nameTextStyle: { color: t.fgMuted } },
-    ],
-    series: [
-      { name: "年間ΔV", type: "bar", data: result.scenarioComparisons.map((entry) => entry.missionDeltaV_mps / Math.max(result.analysisInput.missionYears, 1e-6)), itemStyle: { color: "#ed8936" } },
-      { name: "必要推進剤", type: "line", smooth: true, yAxisIndex: 1, data: result.scenarioComparisons.map((entry) => entry.requiredPropellantKg), lineStyle: { color: "#38a169", width: 2 }, itemStyle: { color: "#38a169" } },
+      lineSeries(isDv ? t.series[1] : t.series[0], {
+        name,
+        data: result.sweep.map((p) => [p.inputValue, p[metric]]),
+        ...(inRange
+          ? {
+              markLine: {
+                symbol: "none",
+                silent: true,
+                lineStyle: { color: t.fgMuted, type: "dashed", width: 1 },
+                label: { position: "insideEndTop", color: t.fgMuted, fontSize: 11, formatter: `現在 ${formatNumber(current, 2)}` },
+                data: [{ xAxis: current }],
+              },
+            }
+          : {}),
+      }),
     ],
   };
 }
@@ -366,15 +447,6 @@ function createSummaryHtml(result: MaintenanceAnalysisResult): string {
     ["自然寿命", formatLifetime(result.kpi.naturalLifetimeYears, result.kpi.naturalLifetimeReached)],
   ];
   return `<table><thead><tr><th>項目</th><th>値</th></tr></thead><tbody>${rows.map(([label, value]) => `<tr><td>${label}</td><td>${value}</td></tr>`).join("")}</tbody></table>`;
-}
-
-function statusLabel(status: MaintenanceAnalysisResult["kpi"]["designStatus"]): string {
-  switch (status) {
-    case "nominal": return "成立";
-    case "warning": return "要調整";
-    case "critical": return "不成立";
-    default: return status;
-  }
 }
 
 function createAtmosphereModelSummary(result: MaintenanceAnalysisResult): string {
@@ -419,9 +491,13 @@ export default function OrbitMaintenanceAnalysis({ satText, constText, startTime
   const [error, setError] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [comparisonMode, setComparisonMode] = useState<ComparisonMode>("scenario");
+  const theme = useChartTheme();
   const altitudeChartRef = useRef<InstanceType<typeof ReactECharts> | null>(null);
   const budgetChartRef = useRef<InstanceType<typeof ReactECharts> | null>(null);
+  const propellantChartRef = useRef<InstanceType<typeof ReactECharts> | null>(null);
   const comparisonChartRef = useRef<InstanceType<typeof ReactECharts> | null>(null);
+  const sweepDvChartRef = useRef<InstanceType<typeof ReactECharts> | null>(null);
+  const sweepPropChartRef = useRef<InstanceType<typeof ReactECharts> | null>(null);
 
   const groupedFields = useMemo(() => ({
     "軌道条件": INPUT_FIELDS.filter((field) => field.section === "軌道条件"),
@@ -430,24 +506,43 @@ export default function OrbitMaintenanceAnalysis({ satText, constText, startTime
     "推進系": INPUT_FIELDS.filter((field) => field.section === "推進系"),
   }), []);
 
-  const primaryKpis = result ? [
-    ["平均高度", `${formatNumber(result.kpi.initialAltitudeKm, 1)} km`],
-    ["高度低下/年", `${formatNumber(result.kpi.annualAltitudeLossKm, 2)} km`],
-    ["年間ΔV", `${formatNumber(result.kpi.annualDeltaV_mps, 2)} m/s`],
-    ["総ΔV", `${formatNumber(result.kpi.missionDeltaV_mps, 2)} m/s`],
-    ["必要推進剤", `${formatNumber(result.kpi.requiredPropellantKg, 2)} kg`],
-    ["自然寿命", formatLifetime(result.kpi.naturalLifetimeYears, result.kpi.naturalLifetimeReached)],
+  const circularOrbit = result ? isEffectivelyCircular(result) : true;
+  const verdictTone: VerdictTone = result?.kpi.designStatus === "critical" ? "ng" : result?.kpi.designStatus === "warning" ? "warn" : "ok";
+  const verdictLabel = verdictTone === "ng" ? "不成立" : verdictTone === "warn" ? "要注意" : "成立";
+  const verdictDetail = result ? (() => {
+    const need = result.kpi.requiredPropellantWithMarginKg;
+    const have = result.kpi.availablePropellantKg;
+    const reserve = have > 0 ? ((have - need) / have) * 100 : NaN;
+    if (need > have) return `必要推進剤 ${formatNumber(need, 2)} kg > 搭載 ${formatNumber(have, 1)} kg（不足 ${formatNumber(need - have, 2)} kg）`;
+    return `必要推進剤 ${formatNumber(need, 2)} kg ≤ 搭載 ${formatNumber(have, 1)} kg（余裕 ${formatNumber(reserve, 0)} %${verdictTone === "warn" ? "、余裕が小さい" : ""}）`;
+  })() : undefined;
+
+  const kpiItems: Kpi[] = result ? [
+    {
+      label: "自然寿命",
+      value: Number.isFinite(result.kpi.naturalLifetimeYears) ? `${formatNumber(result.kpi.naturalLifetimeYears, 1)}${result.kpi.naturalLifetimeReached ? "" : "+"}` : "N/A",
+      unit: "yr",
+      hint: `判定高度 ${formatNumber(result.analysisInput.deorbitAltitudeKm, 0)} km`,
+    },
+    { label: "年間ΔV", value: formatNumber(result.kpi.annualDeltaV_mps, 2), unit: "m/s", hint: `総ΔV ${formatNumber(result.kpi.missionDeltaV_mps, 1)} m/s` },
+    {
+      label: "必要推進剤",
+      value: formatNumber(result.kpi.requiredPropellantWithMarginKg, 2),
+      unit: "kg",
+      hint: `搭載 ${formatNumber(result.kpi.availablePropellantKg, 1)} kg（マージン込み）`,
+      tone: verdictTone,
+    },
+    { label: "高度低下", value: formatNumber(result.kpi.annualAltitudeLossKm, 2), unit: "km/yr", hint: `平均高度 ${formatNumber(result.kpi.initialAltitudeKm, 1)} km` },
   ] : [];
 
-  const secondaryKpis = result ? [
-    ["初期e", `${formatNumber(result.kpi.initialEccentricity, 4)}`],
-    ["近地点", `${formatNumber(result.kpi.initialPerigeeAltitudeKm, 1)} km`],
-    ["遠地点", `${formatNumber(result.kpi.initialApogeeAltitudeKm, 1)} km`],
+  const metricItems: Array<[string, string]> = result ? [
+    ["総ΔV", `${formatNumber(result.kpi.missionDeltaV_mps, 2)} m/s`],
+    ["必要推進剤（マージン前）", `${formatNumber(result.kpi.requiredPropellantKg, 2)} kg`],
+    ["初期近地点 / 遠地点", `${formatNumber(result.kpi.initialPerigeeAltitudeKm, 1)} / ${formatNumber(result.kpi.initialApogeeAltitudeKm, 1)} km`],
+    ["初期離心率", formatNumber(result.kpi.initialEccentricity, 4)],
     ["F10.7 / Ap", `${formatNumber(result.kpi.f107, 0)} / ${formatNumber(result.kpi.ap, 0)}`],
     ["平均密度", `${formatDensity(result.kpi.meanDensityKgPerM3)} kg/m^3`],
-    ["必要量+マージン", `${formatNumber(result.kpi.requiredPropellantWithMarginKg, 2)} kg`],
     ["最悪プリセット", result.worstScenario.label],
-    ["状態", statusLabel(result.kpi.designStatus)],
   ] : [];
 
   const updateInput = <K extends keyof MaintenanceAnalysisInput>(field: K, value: MaintenanceAnalysisInput[K]) => {
@@ -508,18 +603,22 @@ export default function OrbitMaintenanceAnalysis({ satText, constText, startTime
   };
 
   const dateStr = useMemo(() => startTime.toISOString().slice(0, 10), [startTime]);
-  const altitudeOption = useMemo(() => result ? createAltitudeTimelineOption(result) : { backgroundColor: "transparent" }, [result]);
-  const budgetOption = useMemo(() => result ? createBudgetOption(result) : { backgroundColor: "transparent" }, [result]);
-  const comparisonOption = useMemo(() => result ? createComparisonOption(result, comparisonMode) : { backgroundColor: "transparent" }, [result, comparisonMode]);
+  const altitudeOption = useMemo(() => result ? createAltitudeTimelineOption(result, theme) : {}, [result, theme]);
+  const deltaVOption = useMemo(() => result ? createDeltaVOption(result, theme) : {}, [result, theme]);
+  const propellantOption = useMemo(() => result ? createCumulativePropellantOption(result, theme) : {}, [result, theme]);
+  const scenarioOption = useMemo(() => result ? createScenarioOption(result, theme) : {}, [result, theme]);
+  const sweepDvOption = useMemo(() => result ? createSweepOption(result, theme, "annualDeltaV_mps") : {}, [result, theme]);
+  const sweepPropOption = useMemo(() => result ? createSweepOption(result, theme, "requiredPropellantKg") : {}, [result, theme]);
 
   const downloadChartSetAsHTML = () => {
-    if (!altitudeChartRef.current || !budgetChartRef.current || !comparisonChartRef.current || !result) return;
+    if (!result) return;
+    const refs = comparisonMode === "scenario"
+      ? [altitudeChartRef, budgetChartRef, propellantChartRef, comparisonChartRef]
+      : [altitudeChartRef, budgetChartRef, propellantChartRef, sweepDvChartRef, sweepPropChartRef];
+    const options = refs.flatMap((ref) => (ref.current ? [ref.current.getEchartsInstance().getOption()] : []));
+    if (options.length === 0) return;
     downloadMultiChartHTML(
-      [
-        altitudeChartRef.current.getEchartsInstance().getOption(),
-        budgetChartRef.current.getEchartsInstance().getOption(),
-        comparisonChartRef.current.getEchartsInstance().getOption(),
-      ],
+      options,
       "軌道維持燃料解析",
       `orbit-maintenance-analysis-${dateStr}.html`,
       createSummaryHtml(result),
@@ -545,8 +644,11 @@ export default function OrbitMaintenanceAnalysis({ satText, constText, startTime
 
   const handleDownloadPng = () => {
     downloadPNG(altitudeChartRef, `orbit-maintenance-altitude-${dateStr}.png`);
-    downloadPNG(budgetChartRef, `orbit-maintenance-budget-${dateStr}.png`);
-    downloadPNG(comparisonChartRef, `orbit-maintenance-comparison-${dateStr}.png`);
+    downloadPNG(budgetChartRef, `orbit-maintenance-deltav-${dateStr}.png`);
+    downloadPNG(propellantChartRef, `orbit-maintenance-propellant-${dateStr}.png`);
+    downloadPNG(comparisonChartRef, `orbit-maintenance-scenarios-${dateStr}.png`);
+    downloadPNG(sweepDvChartRef, `orbit-maintenance-sweep-deltav-${dateStr}.png`);
+    downloadPNG(sweepPropChartRef, `orbit-maintenance-sweep-propellant-${dateStr}.png`);
   };
 
   return (
@@ -661,66 +763,61 @@ export default function OrbitMaintenanceAnalysis({ satText, constText, startTime
             )}
           </section>
 
-          <div style={{ display: "grid", gridTemplateRows: "auto auto auto", gap: 12, minWidth: 0 }}>
-            <section className="solar-panel">
-              <div className="solar-panel-header">
-                <div>
-                  <h4 className="solar-panel-title">KPI</h4>
-                  <div className="solar-panel-subtitle">概念設計に必要な寿命、年間ΔV、必要推進剤をまとめています。</div>
-                </div>
-              </div>
-              {result ? (
-                <>
-                  <div className="solar-kpi-grid">
-                    {primaryKpis.map(([label, value]) => (
-                      <div key={label} className="solar-kpi-card">
-                        <div className="solar-kpi-label">{label}</div>
-                        <div className="solar-kpi-value">{value}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="solar-kpi-grid solar-kpi-grid-secondary">
-                    {secondaryKpis.map(([label, value]) => (
-                      <div key={label} className="solar-kpi-card solar-kpi-card-secondary">
-                        <div className="solar-kpi-label">{label}</div>
-                        {label === "状態" ? <div className={`solar-status-badge solar-status-${result.kpi.designStatus}`}>{value}</div> : <div className="solar-kpi-value solar-kpi-value-secondary">{value}</div>}
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <div style={{ color: "var(--fg-muted)" }}>解析開始後に指標を表示します。</div>
-              )}
-            </section>
+          <div className="flex min-w-0 flex-col gap-3">
+            {result ? (
+              <>
+                <Verdict tone={verdictTone} label={verdictLabel} detail={verdictDetail} />
+                <KpiStrip items={kpiItems} />
 
-            <div className="analysis-chart-pair" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, minWidth: 0 }}>
-              <div style={{ minHeight: 280 }}>
-                <ReactECharts ref={altitudeChartRef} option={altitudeOption} style={{ height: 280, width: "100%" }} />
-              </div>
-              <div style={{ minHeight: 280 }}>
-                <ReactECharts ref={budgetChartRef} option={budgetOption} style={{ height: 280, width: "100%" }} />
-              </div>
-            </div>
+                <ChartCard
+                  title="高度推移（自然減衰）"
+                  caption={circularOrbit
+                    ? "ほぼ円軌道のため近地点・遠地点は平均高度と重なるので、平均高度のみ表示しています。"
+                    : "実線は平均高度、帯は近地点〜遠地点の範囲です。"}
+                >
+                  <ReactECharts ref={altitudeChartRef} option={altitudeOption} notMerge style={{ height: 280, width: "100%" }} />
+                </ChartCard>
 
-            <section className="solar-panel">
-              <div className="solar-compare-header">
-                <div>
-                  <h4 className="solar-panel-title">{comparisonMode === "scenario" ? "大気プリセット比較" : "感度解析"}</h4>
-                  <div className="solar-panel-subtitle">
-                    {comparisonMode === "scenario"
-                      ? "Quiet / Nominal / Active / Storm で軌道維持要求がどう変わるかを比較します。"
-                      : "選択した設計変数を掃引したときの年間ΔVと必要推進剤の変化を表示します。"}
-                  </div>
+                <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                  <ChartCard title="年間ΔV" caption="運用年ごとの軌道維持ΔV（平均高度へ戻す等価リブースト）。">
+                    <ReactECharts ref={budgetChartRef} option={deltaVOption} notMerge style={{ height: 240, width: "100%" }} />
+                  </ChartCard>
+                  <ChartCard title="累積推進剤" caption="マージン込みの必要量は上の判定を参照。破線が搭載推進剤です。">
+                    <ReactECharts ref={propellantChartRef} option={propellantOption} notMerge style={{ height: 240, width: "100%" }} />
+                  </ChartCard>
                 </div>
-                <div className="solar-segmented-control">
-                  <button type="button" className={`solar-segment-button ${comparisonMode === "scenario" ? "is-active" : ""}`} onClick={() => setComparisonMode("scenario")}>シナリオ比較</button>
-                  <button type="button" className={`solar-segment-button ${comparisonMode === "sweep" ? "is-active" : ""}`} onClick={() => setComparisonMode("sweep")}>感度解析</button>
-                </div>
-              </div>
-              <div style={{ minHeight: 320 }}>
-                <ReactECharts ref={comparisonChartRef} option={comparisonOption} style={{ height: 320, width: "100%" }} />
-              </div>
-            </section>
+
+                <ChartCard
+                  title={comparisonMode === "scenario" ? "大気シナリオ別 必要推進剤" : `感度解析（${SWEEP_LABELS[result.analysisInput.sweepParameter]}）`}
+                  caption={comparisonMode === "scenario"
+                    ? "Quiet / Nominal / Active / Storm で搭載推進剤に収まるかを比較します。赤は搭載量を超過。"
+                    : "掃引対象を変えたときの年間ΔVと必要推進剤の変化です。"}
+                  actions={(
+                    <div className="solar-segmented-control">
+                      <button type="button" className={`solar-segment-button ${comparisonMode === "scenario" ? "is-active" : ""}`} onClick={() => setComparisonMode("scenario")}>シナリオ比較</button>
+                      <button type="button" className={`solar-segment-button ${comparisonMode === "sweep" ? "is-active" : ""}`} onClick={() => setComparisonMode("sweep")}>感度解析</button>
+                    </div>
+                  )}
+                >
+                  {comparisonMode === "scenario" ? (
+                    <ReactECharts ref={comparisonChartRef} option={scenarioOption} notMerge style={{ height: 220, width: "100%" }} />
+                  ) : (
+                    <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                      <ReactECharts ref={sweepDvChartRef} option={sweepDvOption} notMerge style={{ height: 240, width: "100%" }} />
+                      <ReactECharts ref={sweepPropChartRef} option={sweepPropOption} notMerge style={{ height: 240, width: "100%" }} />
+                    </div>
+                  )}
+                </ChartCard>
+
+                <ChartCard title="詳細指標">
+                  <MetricList items={metricItems} />
+                </ChartCard>
+              </>
+            ) : (
+              <EmptyState title="解析結果がありません">
+                左の設計入力を確認し、上部の「解析開始」を押すと、成立性の判定・高度推移・推進剤の見積りを表示します。
+              </EmptyState>
+            )}
           </div>
         </div>
       </div>

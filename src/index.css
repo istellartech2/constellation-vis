@@ -370,6 +370,175 @@ a:hover {
   flex-wrap: wrap;
 }
 
+/* Shared analysis result blocks (AnalysisLayout.tsx) */
+.analysis-card {
+  min-width: 0;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.analysis-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.analysis-card-title {
+  margin: 0;
+  color: var(--fg);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.analysis-card-caption {
+  margin-top: 2px;
+  color: var(--fg-muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.analysis-verdict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-size: 0.875rem;
+}
+
+.analysis-verdict-icon {
+  width: 1.125rem;
+  height: 1.125rem;
+  flex-shrink: 0;
+}
+
+.analysis-verdict-label {
+  font-weight: 700;
+}
+
+.analysis-verdict-detail {
+  color: var(--fg-muted);
+  font-size: 0.8125rem;
+}
+
+.analysis-verdict-ok {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.analysis-verdict-warn {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.analysis-verdict-ng {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.analysis-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.analysis-kpi {
+  min-width: 0;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+.analysis-kpi-label {
+  color: var(--fg-muted);
+  font-size: 0.75rem;
+}
+
+.analysis-kpi-value {
+  margin-top: 2px;
+  color: var(--fg);
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.analysis-kpi-unit {
+  margin-left: 4px;
+  color: var(--fg-muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.analysis-kpi-hint {
+  margin-top: 2px;
+  color: var(--fg-subtle);
+  font-size: 0.75rem;
+}
+
+.analysis-kpi-ok .analysis-kpi-value { color: var(--success); }
+.analysis-kpi-warn .analysis-kpi-value { color: var(--warning); }
+.analysis-kpi-ng .analysis-kpi-value { color: var(--danger); }
+
+.analysis-metric-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 0 20px;
+  margin: 0;
+}
+
+.analysis-metric {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.8125rem;
+}
+
+.analysis-metric dt {
+  color: var(--fg-muted);
+}
+
+.analysis-metric dd {
+  margin: 0;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.analysis-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 220px;
+  padding: 24px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.analysis-empty-title {
+  color: var(--fg);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.analysis-empty-body {
+  max-width: 460px;
+  color: var(--fg-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
 .solar-panel {
   min-width: 0;
   background: var(--raised);
@@ -512,76 +681,6 @@ a:hover {
   opacity: 1;
 }
 
-.solar-kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 8px;
-}
-
-.solar-kpi-grid-secondary {
-  margin-top: 8px;
-}
-
-.solar-kpi-card {
-  background: var(--sunken);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 8px 10px;
-  min-height: 58px;
-}
-
-.solar-kpi-card-secondary {
-  min-height: 52px;
-}
-
-.solar-kpi-label {
-  color: var(--fg-muted);
-  font-size: 0.7rem;
-  margin-bottom: 3px;
-  letter-spacing: 0.01em;
-}
-
-.solar-kpi-value {
-  color: var(--fg);
-  font-weight: 700;
-  font-size: 1rem;
-  line-height: 1.15;
-}
-
-.solar-kpi-value-secondary {
-  font-size: 0.92rem;
-}
-
-.solar-status-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 24px;
-  padding: 0 8px;
-  border-radius: 999px;
-  font-size: 0.74rem;
-  font-weight: 700;
-  width: fit-content;
-}
-
-.solar-status-nominal {
-  background: var(--success-soft);
-  color: var(--success);
-  border: 1px solid var(--success-soft);
-}
-
-.solar-status-warning {
-  background: var(--warning-soft);
-  color: var(--warning);
-  border: 1px solid var(--warning-soft);
-}
-
-.solar-status-critical {
-  background: var(--danger-soft);
-  color: var(--danger);
-  border: 1px solid var(--danger-soft);
-}
-
 .solar-segmented-control {
   display: inline-flex;
   gap: 4px;
@@ -598,6 +697,7 @@ a:hover {
   border-radius: 999px;
   padding: 5px 10px;
   font-size: 0.78rem;
+  white-space: nowrap;
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -609,47 +709,6 @@ a:hover {
 .solar-segment-button.is-active {
   background: var(--brand-soft);
   color: var(--brand-text);
-}
-
-.availability-card {
-  background-color: var(--raised);
-  border: 1px solid var(--line);
-  border-radius: 0.375rem;
-  padding: 0.75rem;
-}
-
-.availability-card-title {
-  margin: 0;
-  margin-bottom: 0.5rem;
-  color: var(--fg);
-  font-size: 1.125rem;
-  line-height: 1.75rem;
-}
-
-.availability-metrics {
-  display: grid;
-  grid-template-columns: repeat(1, minmax(0, 1fr));
-  gap: 0.375rem;
-  font-size: 0.875rem;
-  line-height: 1.25rem;
-}
-
-.availability-metric-label {
-  color: var(--text-secondary);
-}
-
-.availability-metric-value {
-  margin-left: 0.5rem;
-  font-weight: 700;
-}
-
-.availability-info {
-  margin-bottom: 0.625rem;
-  color: var(--text-secondary);
-  font-size: 0.875rem;
-  line-height: 1.25rem;
-  display: flex;
-  gap: 1.25rem;
 }
 
 /* Panel section spacing & dividers (used by editor / analysis / option tabs) */
@@ -1273,11 +1332,6 @@ button:focus-visible {
     padding: 0 0.875rem;
   }
 
-  .availability-info {
-    flex-direction: column;
-    gap: 0.125rem;
-  }
-
   /* Orbit maintenance / solar impact: inputs above results, charts stacked.
      The grid templates are inline styles, hence !important. */
   .analysis-split,
@@ -1300,16 +1354,6 @@ button:focus-visible {
     padding: 0 0.75rem;
   }
 
-  /* GlobalAvailabilityPopup: stack the two charts, each keeps a usable height. */
-  .global-availability-charts {
-    flex-direction: column;
-    flex: none !important;
-  }
-
-  .global-availability-charts > * {
-    flex: none !important;
-    height: 340px;
-  }
 }
 @media (max-width: 767px) {
   /* Hint that the horizontally scrolling toolbar has more buttons. */
