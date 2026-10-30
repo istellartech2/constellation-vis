@@ -32,7 +32,7 @@ import { Button } from "./button";
 import { Menu, X } from "lucide-react";
 import { useSheetDrag } from "./useSheetDrag";
 import type { EarthTextureMode } from "../../lib/earthTextures";
-import type { ViewSettings } from "../../lib/viewState";
+import type { ViewFrame, ViewSettings } from "../../lib/viewState";
 
 /**
  * Editor side panel allowing the user to load, edit and save TOML files
@@ -122,10 +122,9 @@ interface Props {
   satelliteSelectedColor: string;
   /** Called when satellite selected color changes */
   onSatelliteSelectedColorChange: (color: string) => void;
-  /** Display scene in Earth-fixed (ECEF) mode */
-  ecef: boolean;
-  /** Called when ECEF mode changes */
-  onEcefChange: (v: boolean) => void;
+  /** Scene reference frame (ECI / ECEF / GSE) */
+  viewFrame: ViewFrame;
+  onViewFrameChange: (frame: ViewFrame) => void;
   /** Show perturbation information */
   showPerturbation: boolean;
   /** Called when perturbation visibility changes */
@@ -232,8 +231,8 @@ export default function SatelliteEditor({
   onSatelliteHiddenColorChange,
   satelliteSelectedColor,
   onSatelliteSelectedColorChange,
-  ecef,
-  onEcefChange,
+  viewFrame,
+  onViewFrameChange,
   showPerturbation,
   onShowPerturbationChange,
   brightEarth,
@@ -640,8 +639,8 @@ export default function SatelliteEditor({
                 onSatelliteHiddenColorChange={onSatelliteHiddenColorChange}
                 satelliteSelectedColor={satelliteSelectedColor}
                 onSatelliteSelectedColorChange={onSatelliteSelectedColorChange}
-                ecef={ecef}
-                onEcefChange={onEcefChange}
+                viewFrame={viewFrame}
+                onViewFrameChange={onViewFrameChange}
                 showPerturbation={showPerturbation}
                 onShowPerturbationChange={onShowPerturbationChange}
                 brightEarth={brightEarth}
