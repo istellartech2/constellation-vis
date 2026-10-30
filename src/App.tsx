@@ -13,6 +13,7 @@ import { isMassMode } from "./lib/massSatelliteLayer";
 import { formatGroundStationInfo } from "./lib/formatGroundStationInfo";
 import { DEFAULT_EARTH_MODE, isMonochromeEarthMode, type EarthTextureMode } from "./lib/earthTextures";
 import { type SatelliteCameraMode } from "./lib/visualization";
+import { DEFAULT_POINT_STYLE, type SatellitePointStyle } from "./lib/satellitePointStyle";
 import {
   loadLastView,
   saveLastView,
@@ -62,6 +63,11 @@ function App() {
   );
   const [simTime, setSimTime] = useState(() => new Date());
 
+  const [pointStyle, setPointStyle] = useState<SatellitePointStyle>(() => ({
+    pixelSize: SAVED_DISPLAY?.satPixelSize ?? DEFAULT_POINT_STYLE.pixelSize,
+    sunlitShading: SAVED_DISPLAY?.satSunlitShading ?? DEFAULT_POINT_STYLE.sunlitShading,
+    glint: SAVED_DISPLAY?.satGlint ?? DEFAULT_POINT_STYLE.glint,
+  }));
   const [satRadius, setSatRadius] = useState(
     () => SAVED_DISPLAY?.satRadius ?? (window.innerWidth <= 600 ? 0.02 : 0.015),
   );
@@ -186,6 +192,9 @@ function App() {
   // effect and named-view saving always see the latest values.
   const currentDisplay: DisplaySettings = {
     satRadius,
+    satPixelSize: pointStyle.pixelSize,
+    satSunlitShading: pointStyle.sunlitShading,
+    satGlint: pointStyle.glint,
     earthTexture,
     showCountryBorders,
     showClouds,
@@ -236,6 +245,7 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     satRadius,
+    pointStyle,
     earthTexture,
     showCountryBorders,
     showClouds,
@@ -318,6 +328,7 @@ function App() {
     layerColorMode,
     groundStations,
     satRadius,
+    pointStyle,
     earthTexture,
     showCountryBorders,
     showClouds,
@@ -355,6 +366,13 @@ function App() {
 
   const applyDisplay = useCallback((d: RemoteDisplaySettings) => {
     if (d.satRadius !== undefined) setSatRadius(d.satRadius);
+    if (d.satPixelSize !== undefined || d.satSunlitShading !== undefined || d.satGlint !== undefined) {
+      setPointStyle((prev) => ({
+        pixelSize: d.satPixelSize ?? prev.pixelSize,
+        sunlitShading: d.satSunlitShading ?? prev.sunlitShading,
+        glint: d.satGlint ?? prev.glint,
+      }));
+    }
     if (d.earthTexture !== undefined) setEarthTexture(d.earthTexture);
     if (d.showCountryBorders !== undefined) setShowCountryBorders(d.showCountryBorders);
     if (d.showClouds !== undefined) setShowClouds(d.showClouds);
@@ -494,6 +512,8 @@ function App() {
       <SatelliteEditor
         satRadius={satRadius}
         onSatRadiusChange={setSatRadius}
+        pointStyle={pointStyle}
+        onPointStyleChange={setPointStyle}
         earthTexture={earthTexture}
         onEarthTextureChange={setEarthTexture}
         showCountryBorders={showCountryBorders}

@@ -49,6 +49,12 @@ export function nextViewFrame(prev: ViewFrame, flags: { ecef?: boolean; gse?: bo
 /** Every display-related setting held in App.tsx. */
 export interface DisplaySettings {
   satRadius: number;
+  /** Fixed dot size in CSS px (0 = world-size dots). Absent in older views. */
+  satPixelSize?: number;
+  /** Dim satellites in the Earth's shadow. Absent in older views. */
+  satSunlitShading?: boolean;
+  /** Sun-glint flashes. Absent in older views. */
+  satGlint?: boolean;
   earthTexture: EarthTextureMode;
   /** Absent in views saved before borders became a setting. */
   showCountryBorders?: boolean;

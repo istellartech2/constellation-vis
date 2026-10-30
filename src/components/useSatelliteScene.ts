@@ -100,6 +100,7 @@ export function useSatelliteScene(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     params.satRadius,
+    params.pointStyle,
     params.showCountryBorders,
     params.showClouds,
     params.showGraticule,

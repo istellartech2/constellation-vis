@@ -4,7 +4,7 @@ import type { DisplaySettings } from "./viewState";
 /** Scalar rendering settings; camera framing and ISL configuration stay local. */
 export type RemoteDisplaySettings = Partial<Omit<DisplaySettings, "isl">>;
 const booleans = new Set([
-  "showCountryBorders", "showClouds", "showGraticule", "showEcliptic", "showGeoOrbit", "showSunDirection", "ecef", "gse",
+  "showCountryBorders", "showClouds", "showGraticule", "showEcliptic", "showGeoOrbit", "showSunDirection", "ecef", "gse", "satSunlitShading", "satGlint",
   "showPerturbation", "brightEarth", "whiteBackground",
   "showGroundStationCones", "showSatelliteFovCones",
 ]);
@@ -12,7 +12,7 @@ const booleans = new Set([
 const legacyBooleans = new Set(["showDerivedSatelliteInfo"]);
 const colors = new Set(["groundConeColor", "fovConeColor", "satelliteVisibleColor", "satelliteHiddenColor", "satelliteSelectedColor"]);
 const ranges: Record<string, readonly [number, number]> = {
-  satRadius: [0.01, 0.05], groundConeMinElevationDeg: [0, 85], groundConeDistanceKm: [100, 20000],
+  satRadius: [0.01, 0.05], satPixelSize: [0, 3], groundConeMinElevationDeg: [0, 85], groundConeDistanceKm: [100, 20000],
   fovConeHalfAngleDeg: [1, 80], fovConeAlongTrackDeg: [-60, 60], fovConeCrossTrackDeg: [-60, 60],
   speedExp: [0, Math.log10(600)],
 };
