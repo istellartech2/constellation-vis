@@ -43,6 +43,8 @@ interface Props {
   onLayerChange: (id: string, patch: Partial<Pick<CatalogLayer, "visible" | "color">>) => void;
   onLayerRemove: (id: string) => void;
   onUpdate: () => void;
+  /** Empties satellites, constellations and ground stations and applies it to the 3D view. */
+  onClearAll: () => void;
   updateFeedback: "idle" | "success";
   onSaveBundle: () => void;
   onLoadBundle: (file: File) => void;
@@ -92,6 +94,7 @@ export default function EditorTab({
   onLayerChange,
   onLayerRemove,
   onUpdate,
+  onClearAll,
   updateFeedback,
   onSaveBundle,
   onLoadBundle,
@@ -115,12 +118,6 @@ export default function EditorTab({
     [gsText],
   );
 
-  const handleClearAll = () => {
-    onSatTextChange("");
-    onConstTextChange("");
-    onGsTextChange("");
-  };
-
   const clearAllAction = (
     <button
       type="button"
@@ -135,7 +132,7 @@ export default function EditorTab({
 
   return (
     <>
-      <NoticeDialog open={clearOpen} onClose={() => setClearOpen(false)} title="すべて削除しますか？" description="衛星・コンステレーション・地上局の編集内容を削除します。表示レイヤーは残ります（レイヤーごとに削除できます）。3Dビューへの反映には更新が必要です。" confirmLabel="すべて削除" onConfirm={handleClearAll} destructive />
+      <NoticeDialog open={clearOpen} onClose={() => setClearOpen(false)} title="すべて削除しますか？" description="衛星・コンステレーション・地上局の編集内容を削除します。3Dビューにもすぐ反映します。表示レイヤーは残ります（レイヤーごとに削除できます）。" confirmLabel="すべて削除" onConfirm={onClearAll} destructive />
       <PanelSection title="シミュレーション対象" icon={<Pencil />} action={clearAllAction}>
         <EntryButton
           icon={<Satellite className="h-4 w-4" />}

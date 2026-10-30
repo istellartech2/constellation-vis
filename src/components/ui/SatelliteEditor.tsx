@@ -451,6 +451,15 @@ export default function SatelliteEditor({
     setUpdateFeedback("success");
   }
 
+  /** Clearing has nothing to validate, so apply the empty scenario at once. */
+  function clearAll() {
+    onUpdate({ satellites: [], groundStations: [], startTime: new Date(startText + "Z"), islShellRanges: [] });
+    setSatText("");
+    setConstText("");
+    setGsText("");
+    setUpdateFeedback("success");
+  }
+
   function applyFiling(dataset: FilingDataset, configuration: string, epoch: Date) {
     commitSatText(replaceFilingText(satText, dataset, configuration, epoch), epoch);
   }
@@ -549,6 +558,7 @@ export default function SatelliteEditor({
                 onLayerChange={onCatalogLayerChange}
                 onLayerRemove={onCatalogLayerRemove}
                 onUpdate={handleUpdate}
+                onClearAll={clearAll}
                 updateFeedback={updateFeedback}
                 onSaveBundle={handleSaveBundle}
                 onLoadBundle={handleBundleFile}
