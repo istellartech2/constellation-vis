@@ -314,11 +314,14 @@ export default function SatelliteEditor({
     null,
   );
 
-  useEffect(() => {
-    if (!openTabRequest) return;
-    setOpen(true);
-    setTab(openTabRequest.tab);
-  }, [openTabRequest]);
+  const [handledTabRequest, setHandledTabRequest] = useState<typeof openTabRequest>(undefined);
+  if (openTabRequest !== handledTabRequest) {
+    setHandledTabRequest(openTabRequest);
+    if (openTabRequest) {
+      setOpen(true);
+      setTab(openTabRequest.tab);
+    }
+  }
 
   // Reset the transient "更新しました" badge after it's had a moment to be seen.
   useEffect(() => {

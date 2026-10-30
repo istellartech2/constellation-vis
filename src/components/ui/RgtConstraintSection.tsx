@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   solveAltitudeFromInclinationAndRatio,
   solveInclinationFromAltitudeAndRatio,
@@ -47,7 +47,10 @@ export default function RgtConstraintSection({
   const [rgtRepeatOrbits, setRgtRepeatOrbits] = useState<number>(15);
   const [rgtRepeatDays, setRgtRepeatDays] = useState<number>(1);
 
-  useEffect(() => {
+  const sourceKey = `${shellId}:${altitudeKm}:${inclinationDeg}:${eccentricity}`;
+  const [previousSourceKey, setPreviousSourceKey] = useState<string | null>(null);
+  if (previousSourceKey !== sourceKey) {
+    setPreviousSourceKey(sourceKey);
     setRgtStatus(null);
     const suggestion = suggestRgtRatioFromAltitudeInclination(
       altitudeKm ?? 0,
@@ -63,7 +66,7 @@ export default function RgtConstraintSection({
       setRgtRepeatOrbits(suggestion.repeatOrbits);
       setRgtRepeatDays(suggestion.repeatDays);
     }
-  }, [shellId, altitudeKm, inclinationDeg, eccentricity]);
+  }
 
   const handleApplyRgt = () => {
     const repeatOrbits = Math.max(1, Math.round(rgtRepeatOrbits));

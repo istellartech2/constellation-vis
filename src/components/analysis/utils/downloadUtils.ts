@@ -1,10 +1,14 @@
 // Download utility functions for analysis components
-import type { MutableRefObject } from "react";
+import type { RefObject } from "react";
+import { version as echartsVersion } from "echarts";
 import type ReactECharts from "echarts-for-react";
 import type { ECBasicOption } from "echarts/types/dist/shared";
 import { getChartTheme } from "./chartTheme";
 
-type ChartComponentRef = MutableRefObject<InstanceType<typeof ReactECharts> | null>;
+// Keep exported reports on the exact runtime used to create their chart options.
+export const ECHARTS_SCRIPT_URL = `https://cdn.jsdelivr.net/npm/echarts@${echartsVersion}/dist/echarts.min.js`;
+
+type ChartComponentRef = RefObject<InstanceType<typeof ReactECharts> | null>;
 
 export function downloadPNG(chartRef: ChartComponentRef, filename: string) {
   if (!chartRef.current) return;
@@ -31,7 +35,7 @@ export function downloadHTML(chartOption: ECBasicOption, title: string, filename
 <head>
     <meta charset="utf-8">
     <title>${title}</title>
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="${ECHARTS_SCRIPT_URL}"></script>
     <style>
         body { margin: 0; padding: 30px; background: ${t.surface}; }
         #chart { width: 100%; height: 600px; }
@@ -102,7 +106,7 @@ export function downloadDualChartHTML(
 <head>
     <meta charset="utf-8">
     <title>${title}</title>
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="${ECHARTS_SCRIPT_URL}"></script>
     <style>
         body { margin: 0; padding: 30px; background: ${t.surface}; color: ${t.fg}; font-family: Arial, sans-serif; }
         .chart-container { display: flex; gap: 20px; height: 600px; }
@@ -166,7 +170,7 @@ export function downloadMultiChartHTML(
 <head>
     <meta charset="utf-8">
     <title>${title}</title>
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="${ECHARTS_SCRIPT_URL}"></script>
     <style>
         body { margin: 0; padding: 30px; background: ${t.surface}; color: ${t.fg}; font-family: Arial, sans-serif; }
         h1 { color: ${t.fg}; text-align: center; margin-bottom: 20px; }

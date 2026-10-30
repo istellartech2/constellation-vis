@@ -19,7 +19,7 @@ bun run build
 bun run build:cli
 ```
 
-Use the generated script at `dist/constelation-cli` with Bun ≥ 1.3.11 installed. The distribution does not include the Bun runtime. Keep `LICENSE` and `third-party-licenses.txt` with the script when redistributing it. Do not commit `dist/`.
+Use the generated script at `dist/constelation-cli` with Bun ≥ 1.4.4 installed. The distribution does not include the Bun runtime. Keep `LICENSE` and `third-party-licenses.txt` with the script when redistributing it. Do not commit `dist/`.
 
 For source-mode iteration, use:
 

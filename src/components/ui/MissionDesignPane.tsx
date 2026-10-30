@@ -250,6 +250,8 @@ export default function MissionDesignPane({ epochIso, initialForm, onAddCandidat
   }, [step]);
 
   useEffect(() => {
+    // Deactivation cancels an external Worker and snapshots its final results.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!active && running) handleCancel();
   }, [active, running, handleCancel]);
 

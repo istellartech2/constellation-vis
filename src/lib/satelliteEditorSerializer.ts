@@ -216,7 +216,7 @@ function orbitalElementsFromState(position: Vec3, velocity: Vec3, epoch: Date, s
     argPerigee = Math.atan2(eVec.y, eVec.x);
   }
 
-  let trueAnomaly = 0;
+  let trueAnomaly: number;
   if (e > 1e-10) {
     const cosNu = Math.min(1, Math.max(-1, dot(eVec, position) / (e * r)));
     trueAnomaly = Math.acos(cosNu);

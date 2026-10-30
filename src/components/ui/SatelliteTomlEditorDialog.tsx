@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, Globe, Orbit, Rows3, Satellite, Trash2 } from "lucide-react";
 import { Button } from "./button";
 import { GEO_SEMI_MAJOR_AXIS_KM, geoElementsFromLongitude } from "../../lib/astronomy";
@@ -111,19 +111,17 @@ function summaryForEntry(entry: SatelliteEditorEntry, chiefName?: string): strin
 export default function SatelliteTomlEditorDialog({ open, satText, onSatTextChange, onClose }: Props) {
   const [config, setConfig] = useState<SatelliteEditorConfig>({ entries: [] });
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [errors, setErrors] = useState<SatelliteEditorValidationError[]>([]);
+  const errors = useMemo(() => validateSatelliteEditorConfig(config).errors, [config]);
 
-  useEffect(() => {
-    if (!open) return;
-    const parsed = syncFormationRepresentations(parseSatelliteEditorConfig(satText));
-    setConfig(parsed);
-    setSelectedId(parsed.entries[0]?.id ?? null);
-    setErrors([]);
-  }, [open, satText]);
-
-  useEffect(() => {
-    setErrors(validateSatelliteEditorConfig(config).errors);
-  }, [config]);
+  const [source, setSource] = useState({ open: false, satText });
+  if (source.open !== open || source.satText !== satText) {
+    setSource({ open, satText });
+    if (open) {
+      const parsed = syncFormationRepresentations(parseSatelliteEditorConfig(satText));
+      setConfig(parsed);
+      setSelectedId(parsed.entries[0]?.id ?? null);
+    }
+  }
 
   const chiefOptions = useMemo(() => getChiefOptions(config), [config]);
   const selectedEntry = useMemo(() => config.entries.find((entry) => entry.id === selectedId) ?? null, [config.entries, selectedId]);
@@ -192,7 +190,6 @@ export default function SatelliteTomlEditorDialog({ open, satText, onSatTextChan
 
   const handleSave = useCallback(() => {
     const validation = validateSatelliteEditorConfig(config);
-    setErrors(validation.errors);
     if (!validation.isValid) return;
     onSatTextChange(serializeSatelliteEditorConfig(config));
     onClose();

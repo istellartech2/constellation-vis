@@ -14,7 +14,7 @@
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
     "noEmit": true,
-    "baseUrl": ".",
+    "types": ["bun", "node", "vite/client"],
     "paths": {
       "@/*": ["./src/*"]
     },

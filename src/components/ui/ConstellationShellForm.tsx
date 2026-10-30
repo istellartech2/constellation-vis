@@ -47,9 +47,11 @@ export default function ConstellationShellForm({
   const [migrationNote, setMigrationNote] = useState<string | null>(null);
   const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
+  const [previousShellId, setPreviousShellId] = useState(shell.id);
+  if (previousShellId !== shell.id) {
+    setPreviousShellId(shell.id);
     setMigrationNote(null);
-  }, [shell.id]);
+  }
 
   useEffect(
     () => () => {

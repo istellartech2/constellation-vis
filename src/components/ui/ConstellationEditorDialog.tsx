@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { ChevronLeft } from "lucide-react";
 import {
   Dialog,
@@ -18,7 +18,6 @@ import {
   parseConstellationConfig,
   serializeConstellationConfig,
   validateConfig,
-  type ValidationError,
 } from "../../lib/constellationSerializer";
 import ConstellationShellList from "./ConstellationShellList";
 import ConstellationShellForm from "./ConstellationShellForm";
@@ -43,7 +42,7 @@ export default function ConstellationEditorDialog({
 }: Props) {
   const [config, setConfig] = useState<ConstellationConfig>(createDefaultConfig());
   const [selectedShellId, setSelectedShellId] = useState<string | null>(null);
-  const [errors, setErrors] = useState<ValidationError[]>([]);
+  const errors = useMemo(() => validateConfig(config).errors, [config]);
   const [mode, setMode] = useState<Mode>("shells");
   /** Constraints handed to the wizard by 「設計をやり直す」; null = wizard defaults. */
   const [missionPrefill, setMissionPrefill] = useState<MissionDesignForm | null>(null);
@@ -51,17 +50,18 @@ export default function ConstellationEditorDialog({
   const [missionSession, setMissionSession] = useState(0);
 
   // Initialize config when dialog opens
-  useEffect(() => {
+  const [source, setSource] = useState({ open: false, constText });
+  if (source.open !== open || source.constText !== constText) {
+    setSource({ open, constText });
     if (open) {
       const parsed = parseConstellationConfig(constText);
       setConfig(parsed);
       setSelectedShellId(parsed.shells[0]?.id ?? null);
-      setErrors([]);
       setMode("shells");
       setMissionPrefill(null);
       setMissionOpened(false);
     }
-  }, [open, constText]);
+  }
 
   const openMission = useCallback((prefill: MissionDesignForm | null) => {
     if (prefill) {
@@ -75,12 +75,6 @@ export default function ConstellationEditorDialog({
   const backToShells = useCallback(() => {
     setMode("shells");
   }, []);
-
-  // Validate on config changes
-  useEffect(() => {
-    const result = validateConfig(config);
-    setErrors(result.errors);
-  }, [config]);
 
   const handleEpochChange = useCallback((epochStr: string) => {
     const date = new Date(epochStr);

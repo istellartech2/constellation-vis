@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { ConstellationShell } from "../../lib/constellationTypes";
 import type { ValidationError } from "../../lib/constellationSerializer";
 import { planShellFailures } from "../../lib/constellationPatterns";
@@ -47,11 +47,11 @@ export default function ShellFailureSection({
   // typed into. It is re-seeded when a different shell (or a freshly parsed
   // TOML, which mints new ids) is selected.
   const [mode, setMode] = useState<FailureMode>(() => currentMode(shell));
-  useEffect(() => {
+  const [previousShellId, setPreviousShellId] = useState(shell.id);
+  if (previousShellId !== shell.id) {
+    setPreviousShellId(shell.id);
     setMode(currentMode(shell));
-    // Only on shell identity: re-seeding on value changes is the bug above.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shell.id]);
+  }
 
   const nominal = totalSats ?? 0;
   const plan = useMemo(

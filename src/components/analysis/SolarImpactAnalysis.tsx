@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import ReactECharts from "echarts-for-react";
 import type { ECBasicOption } from "echarts/types/dist/shared";
 import {
@@ -572,15 +572,8 @@ export default function SolarImpactAnalysis({ satText, constText, startTime }: P
 
   const selectedSatellite = satellites.find((item) => item.id === selectedSatelliteId) ?? satellites[0];
 
-  useEffect(() => {
-    if (!satellites.length) {
-      setSelectedSatelliteId("");
-      return;
-    }
-    if (!satellites.some((item) => item.id === selectedSatelliteId)) {
-      setSelectedSatelliteId(satellites[0].id);
-    }
-  }, [satellites, selectedSatelliteId]);
+  const resolvedSatelliteId = selectedSatellite?.id ?? "";
+  if (selectedSatelliteId !== resolvedSatelliteId) setSelectedSatelliteId(resolvedSatelliteId);
 
   const groupedFields = useMemo(() => ({
     発電系: INPUT_FIELDS.filter((field) => field.section === "発電系"),
@@ -676,7 +669,7 @@ export default function SolarImpactAnalysis({ satText, constText, startTime }: P
     downloadCSV(headers, rows, `solar-impact-data-${dateStr}.csv`);
   };
 
-  const dateStr = useMemo(() => startTime.toISOString().slice(0, 10), [startTime]);
+  const dateStr = startTime.toISOString().slice(0, 10);
 
   const downloadReportJson = () => {
     if (!result) return;

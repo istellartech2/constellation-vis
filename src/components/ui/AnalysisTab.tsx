@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import { createPortal } from "react-dom";
 import { Radio, Globe2, Rocket, Sun } from "lucide-react";
 import StationAccessAnalysis from "../analysis/StationAccessAnalysis";
@@ -65,13 +65,22 @@ export default function AnalysisTab({
     onAnalysisStart?.();
   }
 
-  // Open an analysis requested from outside this tab (runs on mount too, since
-  // the tab content unmounts on tab switch — a pending request survives that).
-  useEffect(() => {
-    if (!requestedAnalysis || !requestedAnalysis.type) return;
-    handleAnalysisClick(requestedAnalysis.type);
+  const [handledRequest, setHandledRequest] = useState<typeof requestedAnalysis>(null);
+  if (requestedAnalysis !== handledRequest) {
+    setHandledRequest(requestedAnalysis);
+    if (requestedAnalysis?.type) {
+      setAnalysisType(requestedAnalysis.type);
+      setAnalysisOpen(true);
+    }
+  }
+  // Effect Events read the latest parent callbacks without reopening the modal
+  // when callback identities change. Local state is synchronized before paint.
+  const acknowledgeRequest = useEffectEvent(() => {
+    onAnalysisStart?.();
     onRequestedAnalysisHandled?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  });
+  useEffect(() => {
+    if (requestedAnalysis?.type) acknowledgeRequest();
   }, [requestedAnalysis]);
 
   function handleAnalysisClose() {

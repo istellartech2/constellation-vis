@@ -749,14 +749,12 @@ function NumField({
   const [draft, setDraft] = useState<string>(String(value));
   const timerRef = useRef<number | undefined>(undefined);
 
-  useEffect(() => {
-    // Resync from external changes (e.g. A/B swap) — but not while the value
-    // we'd commit from the current draft already matches, which would
-    // otherwise clobber an in-progress edit (e.g. a trailing ".") on every
-    // parent re-render.
-    if (parseNumericInput(draft) !== value) setDraft(String(numericInputValue(value)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
+  // Preserve a draft such as "1." until the external numeric value changes.
+  const [previousValue, setPreviousValue] = useState(value);
+  if (!Object.is(previousValue, value)) {
+    setPreviousValue(value);
+    if (!Object.is(parseNumericInput(draft), value)) setDraft(String(numericInputValue(value)));
+  }
 
   useEffect(() => {
     return () => {

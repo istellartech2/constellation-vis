@@ -159,8 +159,8 @@ function computeEclipseStats(
   const firstEgress = nextTransitionAfter(transitions, false);
 
   let eclipseMinutes: number | null = null;
-  let timeToNextEclipseStartMinutes: number | null = null;
-  let timeToNextSunlightReturnMinutes: number | null = null;
+  let timeToNextEclipseStartMinutes: number | null;
+  let timeToNextSunlightReturnMinutes: number | null;
 
   if (currentlyInShadow) {
     timeToNextSunlightReturnMinutes = firstEgress?.atMinutes ?? null;

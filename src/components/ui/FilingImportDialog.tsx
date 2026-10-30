@@ -74,7 +74,11 @@ export default function FilingImportDialog({ open, defaultEpoch, placed, onClose
   const tooLargeForEditor = (config?.count ?? 0) > EDITOR_FILING_LIMIT;
   const canApply = canPlace && !tooLargeForEditor;
 
-  useEffect(() => { if (open) setEpoch(defaultEpoch); }, [open, defaultEpoch]);
+  const [epochSource, setEpochSource] = useState({ open: false, defaultEpoch });
+  if (epochSource.open !== open || epochSource.defaultEpoch !== defaultEpoch) {
+    setEpochSource({ open, defaultEpoch });
+    if (open) setEpoch(defaultEpoch);
+  }
   useEffect(() => () => {
     generation.current++;
     workerRef.current?.terminate();

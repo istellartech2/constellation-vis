@@ -120,12 +120,14 @@ export default function IslRoutingAnalysis({ satellites, islSettings, islShellRa
   const t = getChartTheme();
   const chartOption = results && {
     backgroundColor: "transparent",
+    textStyle: { color: t.fg },
     tooltip: { trigger: "axis", backgroundColor: t.surface, borderColor: t.lineStrong, textStyle: { color: t.fg } },
     legend: { data: ["総遅延 (ms)", "ホップ数"], textStyle: { color: t.fgMuted } },
     grid: { left: 60, right: 60, top: 40, bottom: 60 },
     xAxis: {
       type: "category",
       name: "経過時間 (s)",
+      nameTextStyle: { color: t.fgMuted },
       data: results.map((r, i) => (i === 0 ? 0 : Math.round((r.computedAtSimMs - results[0].computedAtSimMs) / 1000))),
       axisLabel: { color: t.fgMuted },
       axisLine: { lineStyle: { color: t.lineStrong } },
@@ -134,6 +136,7 @@ export default function IslRoutingAnalysis({ satellites, islSettings, islShellRa
       {
         type: "value",
         name: "総遅延 (ms)",
+        nameTextStyle: { color: t.fgMuted },
         axisLabel: { color: t.fgMuted },
         axisLine: { lineStyle: { color: t.lineStrong } },
         splitLine: { lineStyle: { color: t.line } },
@@ -141,6 +144,7 @@ export default function IslRoutingAnalysis({ satellites, islSettings, islShellRa
       {
         type: "value",
         name: "ホップ数",
+        nameTextStyle: { color: t.fgMuted },
         axisLabel: { color: t.fgMuted },
         axisLine: { lineStyle: { color: t.lineStrong } },
         splitLine: { show: false },

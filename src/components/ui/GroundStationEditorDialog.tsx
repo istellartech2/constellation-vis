@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -18,7 +18,6 @@ import {
   toDraft,
   fromDraft,
   type GroundStationDraft,
-  type GroundStationValidationError,
 } from "../../lib/groundStationSerializer";
 import type { GroundStationPreset } from "../../lib/groundStationPresets";
 
@@ -37,9 +36,11 @@ export default function GroundStationEditorDialog({
 }: Props) {
   const [stations, setStations] = useState<GroundStationDraft[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [errors, setErrors] = useState<GroundStationValidationError[]>([]);
+  const errors = useMemo(() => validateGroundStations(stations), [stations]);
 
-  useEffect(() => {
+  const [source, setSource] = useState({ open: false, gsText });
+  if (source.open !== open || source.gsText !== gsText) {
+    setSource({ open, gsText });
     if (open) {
       try {
         const parsed = parseGroundStationsConfig(gsText);
@@ -51,13 +52,8 @@ export default function GroundStationEditorDialog({
         setStations([]);
         setSelectedId(null);
       }
-      setErrors([]);
     }
-  }, [open, gsText]);
-
-  useEffect(() => {
-    setErrors(validateGroundStations(stations));
-  }, [stations]);
+  }
 
   const handleAdd = useCallback(() => {
     const next = createNewStation(stations.length);

@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve Constellation Visualizer. Use [Bun](https://bun.sh/) 1.3.11 or later.
+Thanks for helping improve Constellation Visualizer. Use [Bun](https://bun.sh/) 1.4.4 or later.
 
 ## Pull requests
 
@@ -18,3 +18,7 @@ bun run build:cli
 ```
 
 `build:cli` replaces `dist/` with the CLI distribution. Do not commit `dist/`, `node_modules/`, secrets, or local experiment outputs. Satellite data is generated from TOML; update the inputs and regenerate instead of editing `src/lib/satellites.generated.ts` by hand. See [AGENTS.md](../AGENTS.md) for project conventions and [releasing](releasing.md) for version and release procedures.
+
+## Toolchain updates
+
+Type checking uses TypeScript 7; ESLint uses the official TypeScript 6 compatibility API. See [dependency updates and verification](dependency-upgrades.md) before changing the compiler aliases or updating major dependencies.

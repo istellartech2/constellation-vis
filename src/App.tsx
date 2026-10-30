@@ -1,5 +1,5 @@
 import type { RemoteDisplaySettings } from "./lib/remoteDisplay";
-import { useRef, useEffect, useState, useCallback, useMemo } from "react";
+import { useRef, useEffect, useLayoutEffect, useState, useCallback, useMemo } from "react";
 import PlaybackBar from "./components/ui/PlaybackBar";
 import SatelliteEditor from "./components/ui/SatelliteEditor";
 import IslHud from "./components/ui/IslHud";
@@ -226,7 +226,7 @@ function App() {
   // Mirror into a ref so the (stable) camera callback can read it without
   // being recreated on every settings change.
   const displayRef = useRef(currentDisplay);
-  displayRef.current = currentDisplay;
+  useLayoutEffect(() => { displayRef.current = currentDisplay; });
 
   // A neutral camera snapshot used only until the scene reports its first one.
   const fallbackCamera: CameraSnapshot = {
