@@ -80,9 +80,10 @@ Browser-created sessions include `scenario.display`, a snapshot of the current d
 
 | Fields | Accepted values |
 | --- | --- |
-| `showCountryBorders`, `showClouds`, `showGraticule`, `showEcliptic`, `showGeoOrbit`, `showSunDirection`, `ecef`, `showPerturbation`, `brightEarth`, `whiteBackground`, `showGroundStationCones`, `showSatelliteFovCones` | Boolean |
+| `showCountryBorders`, `showClouds`, `showGraticule`, `showEcliptic`, `showGeoOrbit`, `showSunDirection`, `ecef`, `satSunlitShading`, `satGlint`, `showPerturbation`, `brightEarth`, `whiteBackground`, `showGroundStationCones`, `showSatelliteFovCones` | Boolean |
 | `earthTexture` | `blue-marble` (satellite photo), `natural-earth` (colored map), `dark-monochrome`, `paper-atlas`. Older values `high-resolution`, `./assets/earth01.webp` and `./assets/earth02.webp` are still accepted and rewritten. |
 | `satRadius` | 0.01–0.05 Earth radii (UI sizes: 0.01, 0.02, 0.03, 0.05) |
+| `satPixelSize` | 0–3 CSS px. 0 draws satellites at `satRadius`; 1–3 keeps every dot that many pixels regardless of zoom. `satSunlitShading` dims satellites in the Earth's shadow; `satGlint` adds brief sun-glint flashes. |
 | `groundConeMinElevationDeg` | 0–85 degrees |
 | `groundConeDistanceKm` | 100–20000 km |
 | `fovConeHalfAngleDeg` | 1–80 degrees |

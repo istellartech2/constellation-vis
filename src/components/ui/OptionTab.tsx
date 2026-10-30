@@ -1,5 +1,6 @@
 import { useState, type RefObject } from "react";
 import SatelliteSizeControl from "./SatelliteSizeControl";
+import type { SatellitePointStyle } from "../../lib/satellitePointStyle";
 import EarthTextureSelector from "./EarthTextureSelector";
 import { Checkbox } from "./checkbox";
 import { Label } from "./label";
@@ -37,6 +38,8 @@ const EARTH_RADIUS_KM = 6378.137;
 interface Props {
   satRadius: number;
   onSatRadiusChange: (r: number) => void;
+  pointStyle: SatellitePointStyle;
+  onPointStyleChange: (style: SatellitePointStyle) => void;
   earthTexture: EarthTextureMode;
   onEarthTextureChange: (t: EarthTextureMode) => void;
   showCountryBorders: boolean;
@@ -112,6 +115,8 @@ export default function OptionTab(props: Props) {
   const {
     satRadius,
     onSatRadiusChange,
+    pointStyle,
+    onPointStyleChange,
     earthTexture,
     onEarthTextureChange,
     showCountryBorders,
@@ -373,7 +378,24 @@ export default function OptionTab(props: Props) {
 
       {/* B. 衛星の見た目 */}
       <PanelSection title="衛星の見た目" icon={<Satellite />}>
-        <SatelliteSizeControl value={satRadius} onChange={onSatRadiusChange} />
+        <SatelliteSizeControl
+          radius={satRadius}
+          pixelSize={pointStyle.pixelSize}
+          onRadiusChange={(r) => { onSatRadiusChange(r); onPointStyleChange({ ...pointStyle, pixelSize: 0 }); }}
+          onPixelSizeChange={(px) => onPointStyleChange({ ...pointStyle, pixelSize: px })}
+        />
+        <CheckboxItem
+          id="sat-sunlit-shading"
+          checked={pointStyle.sunlitShading}
+          onChange={(v) => onPointStyleChange({ ...pointStyle, sunlitShading: v })}
+          label="地球の影に入った衛星を暗くする"
+        />
+        <CheckboxItem
+          id="sat-glint"
+          checked={pointStyle.glint}
+          onChange={(v) => onPointStyleChange({ ...pointStyle, glint: v })}
+          label="太陽光の反射できらめかせる"
+        />
         <CheckboxItem
           id="perturbation"
           checked={showPerturbation}

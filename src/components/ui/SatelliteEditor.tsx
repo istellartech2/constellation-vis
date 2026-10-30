@@ -33,6 +33,7 @@ import { Menu, X } from "lucide-react";
 import { useSheetDrag } from "./useSheetDrag";
 import type { EarthTextureMode } from "../../lib/earthTextures";
 import type { ViewSettings } from "../../lib/viewState";
+import type { SatellitePointStyle } from "../../lib/satellitePointStyle";
 
 /**
  * Editor side panel allowing the user to load, edit and save TOML files
@@ -48,6 +49,9 @@ interface Props {
   satRadius: number;
   /** Called when satellite size is changed */
   onSatRadiusChange: (r: number) => void;
+  /** Fixed-pixel dots, shadow dimming and glint */
+  pointStyle: SatellitePointStyle;
+  onPointStyleChange: (style: SatellitePointStyle) => void;
   /** Current earth texture URL */
   earthTexture: EarthTextureMode;
   /** Called when earth texture is changed */
@@ -193,6 +197,8 @@ export default function SatelliteEditor({
   onUpdate,
   satRadius,
   onSatRadiusChange,
+  pointStyle,
+  onPointStyleChange,
   earthTexture,
   onEarthTextureChange,
   showCountryBorders,
@@ -609,6 +615,8 @@ export default function SatelliteEditor({
               <OptionTab
                 satRadius={satRadius}
                 onSatRadiusChange={onSatRadiusChange}
+                pointStyle={pointStyle}
+                onPointStyleChange={onPointStyleChange}
                 earthTexture={earthTexture}
                 onEarthTextureChange={onEarthTextureChange}
                 showCountryBorders={showCountryBorders}

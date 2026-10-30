@@ -27,6 +27,15 @@ import {
   EARTH_FLATTENING,
 } from "./astronomy";
 import { KMLRenderer } from "./kmlRenderer";
+import {
+  POINT_STYLE_FRAGMENT_PARS,
+  POINT_STYLE_VERTEX_PARS,
+  PIXEL_DOT_ALPHA,
+  applyPointStyle,
+  createPointStyleUniforms,
+  type PointStyleUniforms,
+  type SatellitePointStyle,
+} from "./satellitePointStyle";
 import { loadKMLFromURL } from "./kml";
 import { computeFovConeQuaternion, computeTiltedConeHeight } from "./orbitalCoordinates";
 import {
@@ -200,6 +209,8 @@ export interface SatelliteSceneParams {
   layerColorMode?: LayerColorMode;
   groundStations: GroundStation[];
   satRadius: number;
+  /** Fixed-pixel dots, shadow dimming and glint for every satellite renderer. Applied live. */
+  pointStyle: SatellitePointStyle;
   earthTexture: EarthTextureMode;
   showCountryBorders: boolean;
   /** Decorative procedural clouds; only image-based globes draw them. */
@@ -298,6 +309,10 @@ export default class SatelliteScene {
   private linkPositions = new Float32Array(0);
   private linkCount = 0;
   private readonly linkSegments: THREE.LineSegments;
+  /** Shared by the CPU point cloud and both GPU layers. */
+  private readonly pointStyleUniforms: PointStyleUniforms;
+  /** CPU point cloud only: selected row, so the style keeps it unshaded and large. */
+  private readonly cpuSelectedUniform = { value: -1 };
   private readonly earthGroup: THREE.Group;
   private readonly earthResourceDisposers: (() => void)[];
   private readonly earthAnimationBindings: EarthAnimationBinding[];
@@ -426,6 +441,7 @@ export default class SatelliteScene {
 
   constructor(params: SatelliteSceneParams) {
     this.params = params;
+    this.pointStyleUniforms = createPointStyleUniforms(params.pointStyle);
     this.cameraMode = params.cameraMode;
     if (!this.params.mountRef.current) {
       throw new Error("mountRef must be attached to a DOM element");
@@ -540,6 +556,7 @@ export default class SatelliteScene {
         this.currentSimDate.getTime(),
         this.params.satRadius,
         { visible: this.satelliteVisibleColor, hidden: this.satelliteHiddenColor, selected: this.satelliteSelectedColor },
+        this.pointStyleUniforms,
       )
       : null;
     const filingMarkers = new Float32Array(this.satRecs.length);
@@ -567,11 +584,23 @@ export default class SatelliteScene {
     // the normal visibility colours but draw as a hollow ring, like a planned
     // object on a map, so they never read as a tracked satellite.
     this.satMaterial.onBeforeCompile = shader => {
-      shader.vertexShader = "attribute float filingMarker; varying float vFilingMarker;\n" + shader.vertexShader;
+      Object.assign(shader.uniforms, this.pointStyleUniforms, { uSelectedPoint: this.cpuSelectedUniform });
+      shader.vertexShader = "attribute float filingMarker; varying float vFilingMarker; uniform float uSelectedPoint;\n" + POINT_STYLE_VERTEX_PARS + shader.vertexShader;
       shader.vertexShader = shader.vertexShader.replace("gl_PointSize = size;", "vFilingMarker = filingMarker; gl_PointSize = size * (filingMarker > 0.5 ? 1.35 : 1.0);");
-      shader.fragmentShader = "varying float vFilingMarker;\n" + shader.fragmentShader;
+      shader.vertexShader = shader.vertexShader.replace("#include <logdepthbuf_vertex>", `
+        {
+          vec3 styled = vColor.rgb;
+          bool selectedPoint = abs(float(gl_VertexID) - uSelectedPoint) < 0.5;
+          gl_PointSize = styleSatPoint(transformed, float(gl_VertexID), selectedPoint, filingMarker > 0.5, gl_PointSize, styled);
+          vColor.rgb = styled;
+        }
+        #include <logdepthbuf_vertex>
+      `);
+      shader.fragmentShader = "varying float vFilingMarker;\n" + POINT_STYLE_FRAGMENT_PARS + shader.fragmentShader;
       shader.fragmentShader = shader.fragmentShader.replace("#include <map_particle_fragment>", `
-        if (vFilingMarker > 0.5) {
+        if (vPixelDot > 0.5) {
+          diffuseColor.a *= ${PIXEL_DOT_ALPHA};
+        } else if (vFilingMarker > 0.5) {
           float d = length(gl_PointCoord - 0.5);
           float ring = smoothstep(0.5, 0.42, d) * smoothstep(0.24, 0.32, d);
           if (ring < 0.01) discard;
@@ -581,7 +610,7 @@ export default class SatelliteScene {
         }
       `);
     };
-    this.satMaterial.customProgramCacheKey = () => "filing-hollow-ring-v1";
+    this.satMaterial.customProgramCacheKey = () => "filing-hollow-ring-point-style-v1";
     const satPoints = new THREE.Points(this.satGeometry, this.satMaterial);
 
     const groundPositions = new Float32Array(this.satRecs.length * 3);
@@ -595,6 +624,7 @@ export default class SatelliteScene {
       size: 0.01,
       sizeAttenuation: true,
     });
+    this.applyGroundPointSize();
     const groundPoints = new THREE.Points(this.groundGeometry, this.groundMaterial);
 
     this.stationConeGeometries = [];
@@ -931,6 +961,7 @@ export default class SatelliteScene {
       this.currentSimDate.getTime(),
       this.params.satRadius,
       { visible: this.satelliteVisibleColor, hidden: this.satelliteHiddenColor, selected: this.satelliteSelectedColor },
+      this.pointStyleUniforms,
     );
     layer.setLayerStyles(this.params.catalogStyles ?? []);
     layer.setColorMode(this.params.layerColorMode ?? "layer");
@@ -1029,6 +1060,10 @@ export default class SatelliteScene {
       this.satMaterial.size = next.satRadius * 2;
       this.massLayer?.setSatRadius(next.satRadius);
       this.catalogLayer?.setSatRadius(next.satRadius);
+    }
+    if (next.pointStyle !== prev.pointStyle) {
+      applyPointStyle(this.pointStyleUniforms, next.pointStyle);
+      this.applyGroundPointSize();
     }
 
     // Catalog-layer colour/visibility: uniform updates on the overlay only.
@@ -1253,8 +1288,22 @@ export default class SatelliteScene {
     return this.massLayer ? this.massLayer.periodMinutes(i) : (2 * Math.PI) / this.satRecs[i].no;
   }
 
+  /** CPU sub-satellite points: world size, or fixed pixels in pixel mode (as the GPU layers do). */
+  private applyGroundPointSize() {
+    const px = this.params.pointStyle.pixelSize;
+    const attenuate = px <= 0;
+    const map = attenuate ? this.satMaterial.map : null;
+    this.groundMaterial.size = attenuate ? 0.01 : Math.max(px - 1, 1) * this.renderer.getPixelRatio();
+    if (this.groundMaterial.sizeAttenuation !== attenuate || this.groundMaterial.map !== map) {
+      this.groundMaterial.sizeAttenuation = attenuate;
+      this.groundMaterial.map = map;
+      this.groundMaterial.needsUpdate = true;
+    }
+  }
+
   private selectSatellite(idx: number) {
     this.selectedIndex = idx;
+    this.cpuSelectedUniform.value = !this.massLayer && idx < this.satCount ? idx : -1;
     this.massLayer?.setSelected(idx < this.satCount ? idx : null);
     this.catalogLayer?.setSelected(idx >= this.satCount ? idx - this.satCount : null);
     this.params.onSelect?.(idx);
@@ -1264,6 +1313,7 @@ export default class SatelliteScene {
 
   private clearSatelliteSelection() {
     this.selectedIndex = null;
+    this.cpuSelectedUniform.value = -1;
     this.massLayer?.setSelected(null);
     this.catalogLayer?.setSelected(null);
     this.hasCachedSelection = false;
@@ -1603,6 +1653,9 @@ export default class SatelliteScene {
     const { x: sx, y: sy, z: sz } = sunVectorECI(simDate);
     this.sunlight.position.set(sx * 10, sz * 10, -sy * 10);
     this.sunDot.position.set(sx, sz, -sy);
+    this.pointStyleUniforms.uSunDir.value.set(sx, sz, -sy).normalize();
+    this.pointStyleUniforms.uTime.value = nowReal / 1000;
+    this.pointStyleUniforms.uPixelRatio.value = this.renderer.getPixelRatio();
     for (const entry of this.earthAnimationBindings) {
       entry.sunDirectionUniform?.set(sx, sz, -sy);
     }

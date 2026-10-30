@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { j2AnglesAt, j2OrbitsFromCatalog, j2PeriodMinutes, j2StateAt, type J2Orbits } from "./j2Propagator";
 import { isFilingRow, type SatelliteCatalog } from "./satelliteCatalog";
+import { POINT_STYLE_FRAGMENT_PARS, POINT_STYLE_VERTEX_PARS, PIXEL_DOT_ALPHA, createPointStyleUniforms, type PointStyleUniforms } from "./satellitePointStyle";
 import { LAYER_PALETTE, MAX_CATALOG_LAYERS, type CatalogLayerStyle, type LayerColorMode } from "./catalogLayers";
 
 /**
@@ -101,6 +102,7 @@ uniform float uLayerVisible[MAX_LAYERS];
 uniform float uColorMode; // 1 = per-layer colour, 0 = ground-station visibility
 varying vec3 vColor;
 varying float vFiling;
+${POINT_STYLE_VERTEX_PARS}
 const float PI = 3.141592653589793;
 void main() {
   int layer = int(clamp(aLayer, 0.0, float(MAX_LAYERS - 1)) + 0.5);
@@ -108,6 +110,7 @@ void main() {
     // Hidden layer: park the vertex outside the clip volume with no size.
     vColor = vec3(0.0);
     vFiling = 0.0;
+    vPixelDot = 0.0;
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     gl_PointSize = 0.0;
     return;
@@ -157,7 +160,14 @@ void main() {
   }
   vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
   gl_Position = projectionMatrix * mvPosition;
-  gl_PointSize = max(size * uScale / -mvPosition.z, 1.0);
+  float pointSize = max(size * uScale / -mvPosition.z, 1.0);
+  if (uGround) {
+    // Sub-satellite points follow the pixel mode too, one step smaller than the satellite.
+    vPixelDot = uPixelSize > 0.0 ? 1.0 : 0.0;
+    gl_PointSize = uPixelSize > 0.0 ? max(uPixelSize - 1.0, 1.0) * uPixelRatio : pointSize;
+  } else {
+    gl_PointSize = styleSatPoint(p, float(gl_VertexID), selected, vFiling > 0.5, pointSize, vColor);
+  }
 }
 `;
 
@@ -165,10 +175,13 @@ const fragmentShader = /* glsl */ `
 uniform float uAlpha;
 varying vec3 vColor;
 varying float vFiling;
+${POINT_STYLE_FRAGMENT_PARS}
 void main() {
   float d = length(gl_PointCoord - 0.5);
   float alpha;
-  if (vFiling > 0.5) {
+  if (vPixelDot > 0.5) {
+    alpha = ${PIXEL_DOT_ALPHA};
+  } else if (vFiling > 0.5) {
     // Declared filings draw as a hollow ring, never as a tracked satellite.
     alpha = smoothstep(0.5, 0.42, d) * smoothstep(0.24, 0.32, d);
   } else {
@@ -227,7 +240,11 @@ export class MassSatelliteLayer {
   private scanPairs: number[] = [];
   private focusPairs: number[] = [];
 
-  constructor(catalog: SatelliteCatalog, startMs: number, satRadius: number, colors: MassLayerColors) {
+  /**
+   * `style` is shared by reference with the scene's other satellite
+   * materials, so pixel size, shading and glint follow one set of uniforms.
+   */
+  constructor(catalog: SatelliteCatalog, startMs: number, satRadius: number, colors: MassLayerColors, style: PointStyleUniforms = createPointStyleUniforms()) {
     this.count = catalog.count;
     this.orbits = j2OrbitsFromCatalog(catalog);
     this.refMs = startMs;
@@ -287,6 +304,7 @@ export class MassSatelliteLayer {
       uLayerColor: { value: this.layerColors },
       uLayerVisible: { value: this.layerVisible },
       uColorMode: { value: 0 },
+      ...style,
     });
     this.material = new THREE.ShaderMaterial({ uniforms: uniforms(), vertexShader, fragmentShader, transparent: true });
     this.groundMaterial = new THREE.ShaderMaterial({ uniforms: uniforms(), vertexShader, fragmentShader, transparent: true });
