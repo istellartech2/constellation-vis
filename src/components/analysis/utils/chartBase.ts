@@ -16,6 +16,11 @@ export function formatNumber(value: number, digits = 1): string {
   return value.toLocaleString("ja-JP", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
+/** Axis tick label without float noise (a computed max such as 6.6000000000000005). */
+function tidyTick(value: number): string {
+  return Number.isInteger(value) ? String(value) : String(Number(value.toPrecision(6)));
+}
+
 export function baseOption(t: ChartTheme) {
   return {
     backgroundColor: "transparent",
@@ -67,7 +72,7 @@ export function valueAxis(t: ChartTheme, { name, ...rest }: AxisOptions = {}) {
     nameLocation: "end",
     nameGap: 10,
     nameTextStyle: { color: t.fgMuted, fontSize: AXIS_FONT_SIZE, align: "left" },
-    axisLabel: { color: t.fgMuted, fontSize: AXIS_FONT_SIZE },
+    axisLabel: { color: t.fgMuted, fontSize: AXIS_FONT_SIZE, formatter: tidyTick },
     axisLine: { show: false },
     axisTick: { show: false },
     splitLine: { lineStyle: { color: t.line } },
@@ -83,7 +88,7 @@ export function valueXAxis(t: ChartTheme, { name, ...rest }: AxisOptions = {}) {
     nameLocation: "middle",
     nameGap: 26,
     nameTextStyle: { color: t.fgMuted, fontSize: AXIS_FONT_SIZE },
-    axisLabel: { color: t.fgMuted, fontSize: AXIS_FONT_SIZE },
+    axisLabel: { color: t.fgMuted, fontSize: AXIS_FONT_SIZE, formatter: tidyTick },
     axisLine: { lineStyle: { color: t.lineStrong } },
     axisTick: { show: false },
     splitLine: { show: false },

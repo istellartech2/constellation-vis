@@ -80,7 +80,7 @@ export function ChartCard({
           <h4 className="analysis-card-title">{title}</h4>
           {caption && <div className="analysis-card-caption">{caption}</div>}
         </div>
-        {actions}
+        {actions && <div className="shrink-0">{actions}</div>}
       </header>
       {children}
     </section>

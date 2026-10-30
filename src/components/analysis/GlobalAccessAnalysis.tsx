@@ -1,21 +1,30 @@
-import { useState, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import ReactECharts from "echarts-for-react";
-import { calculateStationAccessData, calculateStationStats, averageVisibilityData, calculateAvailabilityMetrics } from "../../lib/visibility";
+import { calculateStationAccessData, averageVisibilityData } from "../../lib/visibility";
 import { parseSatellitesToml, parseConstellationToml } from "../../lib/config";
 import type { GroundStation } from "../../lib/groundStations";
-import { downloadPNG, downloadHTML, downloadCSV } from "./utils/downloadUtils";
-import { createGlobalAccessChartOption } from "./utils/chartOptions";
-import { useCompactChart } from "./utils/useCompactChart";
-import GlobalAvailabilityPopup from "./GlobalAvailabilityPopup";
 import type { StationVisibilitySample } from "../../lib/visibility";
+import { downloadPNG, downloadHTML, downloadCSV } from "./utils/downloadUtils";
+import { createGlobalAccessChartOption, type LatitudeAvailabilityRow } from "./utils/chartOptions";
+import { useCompactChart } from "./utils/useCompactChart";
+import { useChartTheme } from "./utils/chartTheme";
+import { formatNumber } from "./utils/chartBase";
+import {
+  areaWeightedMean,
+  formatLatitude,
+  latitudeRanges,
+  stationCounts,
+  summarizeCounts,
+} from "./utils/accessMetrics";
+import { ChartCard, EmptyState, KpiStrip, MetricList, type Kpi } from "./AnalysisLayout";
 
-interface AvailabilityMetrics {
-  latitude: number;
-  timeAvailability: number; // 時間的可用性（%）
-  interruptionFrequency: number; // 中断頻度（回/日）
-  maxInterruptionTime: number; // 最大中断時間（分）
-  avgInterruptionTime: number; // 平均中断時間（分）
-}
+const DURATION_HOURS = 24;
+const STEP_SECONDS = 10;
+/** Heatmap bucket: 12 × 10 s = 2 min → 721 columns × 181 latitudes. */
+const AVERAGE_POINTS = 12;
+const BUCKET_MINUTES = (STEP_SECONDS * AVERAGE_POINTS) / 60;
+/** Latitude band threshold quoted in the KPI strip. */
+const GOOD_AVAILABILITY_PCT = 90;
 
 interface Props {
   satText: string;
@@ -23,13 +32,18 @@ interface Props {
   startTime: Date;
 }
 
+interface GlobalResult {
+  samples: StationVisibilitySample[];
+  latitudes: number[];
+  rows: LatitudeAvailabilityRow[];
+  minElevationDeg: number;
+  longitudeDeg: number;
+}
+
 export default function GlobalAccessAnalysis({ satText, constText, startTime }: Props) {
-  const [data, setData] = useState<StationVisibilitySample[]>([]);
   const compactChart = useCompactChart();
-  const [latitudeStations, setLatitudeStations] = useState<GroundStation[]>([]);
-  const [stats, setStats] = useState<Array<{name: string; averageVisible: number; nonZeroRate: number}>>([]);
-  const [availabilityMetrics, setAvailabilityMetrics] = useState<AvailabilityMetrics[]>([]);
-  const [showAvailabilityPopup, setShowAvailabilityPopup] = useState(false);
+  const theme = useChartTheme();
+  const [result, setResult] = useState<GlobalResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string>("");
   const [minElevationAngle, setMinElevationAngle] = useState(30);
@@ -39,62 +53,58 @@ export default function GlobalAccessAnalysis({ satText, constText, startTime }: 
   const analyzeGlobalCoverage = async () => {
     setIsAnalyzing(true);
     setError("");
-    
+
     // Allow UI to update before starting heavy computation
-    await new Promise(resolve => setTimeout(resolve, 10));
-    
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
     try {
-      // Parse TOML data
       const baseSats = satText ? parseSatellitesToml(satText) : [];
       const constSats = constText ? parseConstellationToml(constText) : [];
-      
       const allSatellites = [...baseSats, ...constSats];
       if (allSatellites.length === 0) {
         throw new Error("衛星データがありません");
       }
 
-      // Create ground stations at specified longitude, latitude from -90 to 90 degrees with 1 degree steps
+      // One virtual ground station per degree of latitude on the chosen meridian.
       const generatedStations: GroundStation[] = [];
       for (let lat = -90; lat <= 90; lat++) {
         generatedStations.push({
-          name: `Lat${lat}°`,
+          name: formatLatitude(lat),
           latitudeDeg: lat,
           longitudeDeg: observationLongitude,
           heightKm: 0,
-          minElevationDeg: minElevationAngle
+          minElevationDeg: minElevationAngle,
         });
       }
 
-      // Calculate visibility data for 24 hours
       const visibilityData = calculateStationAccessData(
         allSatellites,
         generatedStations,
         startTime,
-        24, // 24 hours
-        10  // 10 second intervals
+        DURATION_HOURS,
+        STEP_SECONDS,
       );
 
-      // Average the data for 1 miniuts
-      const averagedData = averageVisibilityData(visibilityData, 6);
-      
-      // Calculate statistics from original data
-      const stationStats = calculateStationStats(visibilityData);
+      // Metrics come from the raw 10 s integer counts; only the heatmap is averaged.
+      const rows: LatitudeAvailabilityRow[] = generatedStations.map((station, index) => {
+        const summary = summarizeCounts(stationCounts(visibilityData, index), STEP_SECONDS);
+        return {
+          latitude: station.latitudeDeg,
+          availabilityPct: summary.availabilityPct,
+          redundancyPct: summary.redundancyPct,
+          interruptionsPerDay: summary.interruptionsPerDay,
+          maxGapMin: summary.maxGapMin,
+          avgGapMin: summary.avgGapMin,
+        };
+      });
 
-      // Calculate availability metrics
-      const stationIndices = generatedStations.map((_, index) => index);
-      const availabilityData = calculateAvailabilityMetrics(visibilityData, stationIndices, 10);
-      const availability = generatedStations.map((station, index) => ({
-        latitude: station.latitudeDeg,
-        ...availabilityData[index]
-      }));
-
-      setData(averagedData);
-      setLatitudeStations(generatedStations);
-      setStats(stationStats);
-      setAvailabilityMetrics(availability);
-      
-      console.log(`Generated ${visibilityData.length} data points for 24 hours`);
-      console.log(`Averaged to ${averagedData.length} data points (1 minute intervals)`);
+      setResult({
+        samples: averageVisibilityData(visibilityData, AVERAGE_POINTS),
+        latitudes: generatedStations.map((s) => s.latitudeDeg),
+        rows,
+        minElevationDeg: minElevationAngle,
+        longitudeDeg: observationLongitude,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "解析エラーが発生しました");
     } finally {
@@ -102,79 +112,96 @@ export default function GlobalAccessAnalysis({ satText, constText, startTime }: 
     }
   };
 
+  const option = useMemo(
+    () =>
+      result
+        ? createGlobalAccessChartOption(
+            { samples: result.samples, latitudes: result.latitudes, rows: result.rows, bucketMinutes: BUCKET_MINUTES },
+            theme,
+            compactChart,
+          )
+        : null,
+    [result, theme, compactChart],
+  );
+
+  const kpis = useMemo(() => (result ? buildKpis(result.rows) : []), [result]);
+  const details = useMemo(() => (result ? buildDetails(result.rows) : []), [result]);
+
+  const dateTag = startTime.toISOString().slice(0, 10);
 
   const downloadChartAsPNG = () => {
-    downloadPNG(chartRef, `global-coverage-analysis-${startTime.toISOString().slice(0, 10)}.png`);
+    downloadPNG(chartRef, `global-coverage-analysis-${dateTag}.png`);
   };
 
   const downloadChartAsHTML = () => {
-    if (chartRef.current && data.length > 0) {
-      const chartInstance = chartRef.current.getEchartsInstance();
-      const chartOption = chartInstance.getOption();
-      downloadHTML(
-        chartOption,
-        "全球アクセス解析",
-        `global-coverage-analysis-${startTime.toISOString().slice(0, 10)}.html`
-      );
+    if (chartRef.current && result) {
+      // Function formatters do not survive JSON serialisation; the data does.
+      const chartOption = chartRef.current.getEchartsInstance().getOption();
+      downloadHTML(chartOption, "全球アクセス解析", `global-coverage-analysis-${dateTag}.html`);
     }
   };
 
   const downloadRawData = () => {
-    if (data.length > 0) {
-      const headers = ['Time', 'Timestamp', ...latitudeStations.map(s => s.name)];
-      const rows = data.map(timeData => [
-        timeData.time,
-        timeData.timestamp,
-        ...timeData.stations.map((station) => station.visibleCount)
-      ]);
-      downloadCSV(headers, rows, `global-coverage-data-${startTime.toISOString().slice(0, 10)}.csv`);
-    }
+    if (!result) return;
+    const headers = ["Time", "Timestamp", ...result.latitudes.map((lat) => formatLatitude(lat))];
+    const rows = result.samples.map((timeData) => [
+      timeData.time,
+      timeData.timestamp,
+      ...timeData.stations.map((station) => station.visibleCount),
+    ]);
+    downloadCSV(headers, rows, `global-coverage-data-${dateTag}.csv`);
   };
 
-  const option = createGlobalAccessChartOption(data, latitudeStations, stats, compactChart);
+  const downloadAvailabilityCSV = () => {
+    if (!result) return;
+    const headers = ["緯度(deg)", "時間可用率(%)", "冗長率_2機以上(%)", "中断頻度(回/日)", "最大中断時間(分)", "平均中断時間(分)"];
+    const rows = result.rows.map((r) => [
+      r.latitude,
+      r.availabilityPct.toFixed(1),
+      r.redundancyPct.toFixed(1),
+      r.interruptionsPerDay.toFixed(1),
+      r.maxGapMin.toFixed(1),
+      r.avgGapMin.toFixed(1),
+    ]);
+    downloadCSV(headers, rows, `global-availability-${dateTag}.csv`);
+  };
 
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+    <div className="flex h-full min-h-0 flex-col">
       <div className="analysis-toolbar">
-        <button
-          onClick={analyzeGlobalCoverage}
-          disabled={isAnalyzing}
-          className="analysis-primary-button"
-        >
+        <button onClick={analyzeGlobalCoverage} disabled={isAnalyzing} className="analysis-primary-button">
           {isAnalyzing ? "解析中..." : "解析開始"}
         </button>
-        
+
         <label className="analysis-input-label">
-          最低仰角:
+          最低仰角
           <input
             type="number"
             min="0"
             max="80"
             value={minElevationAngle}
             onChange={(e) => setMinElevationAngle(Number(e.target.value))}
-            className="analysis-input"
-            style={{ width: "50px" }}
+            className="analysis-input w-14"
             disabled={isAnalyzing}
           />
           °
         </label>
-        
+
         <label className="analysis-input-label">
-          観測経度:
+          観測経度
           <input
             type="number"
             min="-180"
             max="180"
             value={observationLongitude}
             onChange={(e) => setObservationLongitude(Number(e.target.value))}
-            className="analysis-input"
-            style={{ width: "60px" }}
+            className="analysis-input w-16"
             disabled={isAnalyzing}
           />
           °
         </label>
-        
-        {data.length > 0 && (
+
+        {result && (
           <>
             <button onClick={downloadChartAsPNG} className="analysis-secondary-button">
               PNG保存
@@ -185,16 +212,13 @@ export default function GlobalAccessAnalysis({ satText, constText, startTime }: 
             <button onClick={downloadRawData} className="analysis-secondary-button">
               CSV保存
             </button>
-            <button onClick={() => setShowAvailabilityPopup(true)} className="analysis-secondary-button">
-              可用性
-            </button>
           </>
         )}
-        
+
         {error && <span className="analysis-error">{error}</span>}
       </div>
-      
-      <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
+
+      <div className="relative min-h-0 flex-1">
         {isAnalyzing && (
           <div className="analysis-loading-overlay">
             <div className="analysis-loading-spinner" />
@@ -202,19 +226,108 @@ export default function GlobalAccessAnalysis({ satText, constText, startTime }: 
             <div className="analysis-loading-subtext">数秒お待ちください</div>
           </div>
         )}
-        <ReactECharts
-          ref={chartRef}
-          option={option}
-          style={{ height: "100%", width: "100%" }}
-        />
+
+        <div className="h-full overflow-y-auto px-1 py-2">
+          {!result || !option ? (
+            <EmptyState title="緯度ごとの全球アクセス">
+              観測経度の子午線上に 1° 間隔で仮想地上局（90°S〜90°N の 181 点）を置き、開始時刻から {DURATION_HOURS} 時間を{" "}
+              {STEP_SECONDS} 秒刻みで伝搬して、最低仰角以上に見える衛星数を求めます。結果は緯度 × 時刻のヒートマップと、緯度ごとの時間可用率・冗長率で表示します。
+            </EmptyState>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <KpiStrip items={kpis} />
+
+              <ChartCard
+                title="緯度 × 時刻の可視衛星数"
+                caption={`経度 ${formatNumber(result.longitudeDeg, 0)}°・最低仰角 ${formatNumber(result.minElevationDeg, 0)}°・UTC 24 時間（${BUCKET_MINUTES} 分平均）。右は緯度ごとの時間可用率と冗長率（行にカーソルで中断の詳細）。`}
+                actions={
+                  <button onClick={downloadAvailabilityCSV} className="analysis-secondary-button">
+                    可用率CSV
+                  </button>
+                }
+              >
+                <ReactECharts
+                  ref={chartRef}
+                  option={option}
+                  notMerge
+                  style={{ height: compactChart ? 440 : 520, width: "100%" }}
+                />
+              </ChartCard>
+
+              <ChartCard title="中断の統計" caption="可用率が 0 % または 100 % の緯度は中断統計から除外。">
+                <MetricList items={details} />
+              </ChartCard>
+            </div>
+          )}
+        </div>
       </div>
-      
-      <GlobalAvailabilityPopup
-        show={showAvailabilityPopup}
-        onClose={() => setShowAvailabilityPopup(false)}
-        availabilityMetrics={availabilityMetrics}
-        startTime={startTime}
-      />
     </div>
   );
+}
+
+function formatRanges(ranges: Array<[number, number]>): string {
+  if (ranges.length === 0) return "なし";
+  return ranges
+    .map(([a, b]) => (a === b ? formatLatitude(a) : `${formatLatitude(a)}〜${formatLatitude(b)}`))
+    .join("、");
+}
+
+function buildKpis(rows: LatitudeAvailabilityRow[]): Kpi[] {
+  const meanAvailability = areaWeightedMean(rows, (r) => r.availabilityPct);
+  const meanRedundancy = areaWeightedMean(rows, (r) => r.redundancyPct);
+  const goodRanges = latitudeRanges(rows, (r) => r.availabilityPct >= GOOD_AVAILABILITY_PCT);
+  const goodCount = rows.filter((r) => r.availabilityPct >= GOOD_AVAILABILITY_PCT).length;
+  const covered = rows.filter((r) => r.availabilityPct > 0);
+  const worst = covered.reduce<LatitudeAvailabilityRow | null>((a, b) => (!a || b.maxGapMin > a.maxGapMin ? b : a), null);
+
+  return [
+    {
+      label: "全球平均可用率",
+      value: formatNumber(meanAvailability, 1),
+      unit: "%",
+      hint: "緯度の面積（cos φ）で加重",
+    },
+    {
+      label: `可用率 ${GOOD_AVAILABILITY_PCT}% 以上の緯度帯`,
+      value:
+        goodRanges.length === 0 ? "なし" : goodRanges.length <= 2 ? formatRanges(goodRanges) : `${goodRanges.length} 帯`,
+      hint: goodRanges.length === 0 ? undefined : `${goodCount} / ${rows.length} 緯度（1° 刻み）`,
+    },
+    {
+      label: "全球平均冗長率",
+      value: formatNumber(meanRedundancy, 1),
+      unit: "%",
+      hint: "同時 2 機以上・面積加重",
+    },
+    {
+      label: "最大通信断",
+      value: worst ? formatNumber(worst.maxGapMin, 1) : "—",
+      unit: worst ? "分" : undefined,
+      hint: worst ? `${formatLatitude(worst.latitude)}（可視のある緯度で最長）` : "可視のある緯度なし",
+    },
+  ];
+}
+
+function buildDetails(rows: LatitudeAvailabilityRow[]): Array<[string, string]> {
+  const interrupted = rows.filter((r) => r.availabilityPct > 0 && r.availabilityPct < 100);
+  const uncovered = latitudeRanges(rows, (r) => r.availabilityPct === 0);
+  const full = latitudeRanges(rows, (r) => r.availabilityPct >= 100);
+  if (interrupted.length === 0) {
+    return [
+      ["常時可視の緯度帯", formatRanges(full)],
+      ["不可視の緯度帯", formatRanges(uncovered)],
+    ];
+  }
+  const maxFreq = interrupted.reduce((a, b) => (b.interruptionsPerDay > a.interruptionsPerDay ? b : a));
+  const meanFreq = interrupted.reduce((s, r) => s + r.interruptionsPerDay, 0) / interrupted.length;
+  const meanAvgGap = interrupted.reduce((s, r) => s + r.avgGapMin, 0) / interrupted.length;
+  const longestAvg = interrupted.reduce((a, b) => (b.avgGapMin > a.avgGapMin ? b : a));
+  return [
+    ["中断頻度（緯度平均）", `${formatNumber(meanFreq, 1)} 回/日`],
+    ["中断頻度（最多）", `${formatNumber(maxFreq.interruptionsPerDay, 1)} 回/日・${formatLatitude(maxFreq.latitude)}`],
+    ["平均中断時間（緯度平均）", `${formatNumber(meanAvgGap, 1)} 分`],
+    ["平均中断時間（最長）", `${formatNumber(longestAvg.avgGapMin, 1)} 分・${formatLatitude(longestAvg.latitude)}`],
+    ["常時可視の緯度帯", formatRanges(full)],
+    ["不可視の緯度帯", formatRanges(uncovered)],
+  ];
 }

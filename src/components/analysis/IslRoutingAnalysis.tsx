@@ -1,6 +1,5 @@
 import { useRef, useState } from "react";
 import ReactECharts from "echarts-for-react";
-import { Button } from "../ui/button";
 import { downloadCSV, downloadPNG } from "./utils/downloadUtils";
 import type { SatelliteSpec } from "../../lib/satellites";
 import type { IslPathResult, IslSettings, IslShellRange } from "../../lib/isl/types";
@@ -11,7 +10,9 @@ import {
   type IslRoutingWorkerResponse,
   type IslRoutingWorkerSweepRequest,
 } from "../../workers/islRoutingWorker.types";
-import { getChartTheme } from "./utils/chartTheme";
+import { useChartTheme } from "./utils/chartTheme";
+import { baseOption, categoryAxis, formatNumber, gridBase, lineSeries, tooltipBase, valueAxis } from "./utils/chartBase";
+import { ChartCard, EmptyState, KpiStrip } from "./AnalysisLayout";
 
 interface Props {
   /** The currently active (committed) satellite array — matches islShellRanges exactly. */
@@ -117,66 +118,76 @@ export default function IslRoutingAnalysis({ satellites, islSettings, islShellRa
   const reachabilityRate = results && results.length > 0 ? (reachableCount / results.length) * 100 : null;
   const switchCount = results?.filter((r) => r.switchedFromPrevious).length ?? 0;
 
-  const t = getChartTheme();
+  const t = useChartTheme();
+  const elapsedS = results
+    ? results.map((r, i) => (i === 0 ? 0 : Math.round((r.computedAtSimMs - results[0].computedAtSimMs) / 1000)))
+    : [];
+  const reachableResults = results?.filter((r) => r.reachable) ?? [];
+  const avgDelay =
+    reachableResults.length > 0
+      ? reachableResults.reduce((sum, r) => sum + r.totalDelayMs, 0) / reachableResults.length
+      : null;
+  const maxDelay = reachableResults.length > 0 ? Math.max(...reachableResults.map((r) => r.totalDelayMs)) : null;
+  const avgHops =
+    reachableResults.length > 0
+      ? reachableResults.reduce((sum, r) => sum + r.hopCount, 0) / reachableResults.length
+      : null;
+  const outageCount = results ? results.length - reachableCount : 0;
+
+  // One canvas with two stacked grids (delay on top, hops below) sharing the
+  // same x axis; axisPointer.link keeps the cursor in sync across both.
+  const GRID_LEFT = 56;
+  const GRID_RIGHT = 16;
+  const DELAY_TOP = 28;
+  const DELAY_H = 190;
+  const HOPS_TOP = DELAY_TOP + DELAY_H + 36;
+  const HOPS_H = 120;
+  const CHART_H = HOPS_TOP + HOPS_H + 44;
+  const switchMarks = results
+    ? results.flatMap((r, i) => (r.switchedFromPrevious ? [{ xAxis: i }] : []))
+    : [];
   const chartOption = results && {
-    backgroundColor: "transparent",
-    textStyle: { color: t.fg },
-    tooltip: { trigger: "axis", backgroundColor: t.surface, borderColor: t.lineStrong, textStyle: { color: t.fg } },
-    legend: { data: ["総遅延 (ms)", "ホップ数"], textStyle: { color: t.fgMuted } },
-    grid: { left: 60, right: 60, top: 40, bottom: 60 },
-    xAxis: {
-      type: "category",
-      name: "経過時間 (s)",
-      nameTextStyle: { color: t.fgMuted },
-      data: results.map((r, i) => (i === 0 ? 0 : Math.round((r.computedAtSimMs - results[0].computedAtSimMs) / 1000))),
-      axisLabel: { color: t.fgMuted },
-      axisLine: { lineStyle: { color: t.lineStrong } },
+    ...baseOption(t),
+    tooltip: {
+      ...tooltipBase(t),
+      valueFormatter: (v: unknown) => (typeof v === "number" ? formatNumber(v, 2) : "—"),
     },
+    axisPointer: { link: [{ xAxisIndex: "all" }] },
+    grid: [
+      gridBase({ left: GRID_LEFT, right: GRID_RIGHT, top: DELAY_TOP, height: DELAY_H, containLabel: false }),
+      gridBase({ left: GRID_LEFT, right: GRID_RIGHT, top: HOPS_TOP, height: HOPS_H, containLabel: false }),
+    ],
+    xAxis: [
+      categoryAxis(t, elapsedS, { gridIndex: 0, axisLabel: { show: false }, boundaryGap: false }),
+      categoryAxis(t, elapsedS, { name: "経過時間 (s)", gridIndex: 1, boundaryGap: false }),
+    ],
     yAxis: [
-      {
-        type: "value",
-        name: "総遅延 (ms)",
-        nameTextStyle: { color: t.fgMuted },
-        axisLabel: { color: t.fgMuted },
-        axisLine: { lineStyle: { color: t.lineStrong } },
-        splitLine: { lineStyle: { color: t.line } },
-      },
-      {
-        type: "value",
-        name: "ホップ数",
-        nameTextStyle: { color: t.fgMuted },
-        axisLabel: { color: t.fgMuted },
-        axisLine: { lineStyle: { color: t.lineStrong } },
-        splitLine: { show: false },
-      },
+      valueAxis(t, { name: "総遅延 (ms)", gridIndex: 0, scale: true }),
+      valueAxis(t, { name: "ホップ数", gridIndex: 1, minInterval: 1, min: 0 }),
     ],
     series: [
-      {
+      lineSeries(t.series[0], {
         name: "総遅延 (ms)",
-        type: "line",
+        xAxisIndex: 0,
         yAxisIndex: 0,
         data: results.map((r) => (r.reachable ? r.totalDelayMs : null)),
         connectNulls: false,
-        color: "#ff33cc",
         markLine: {
-          silent: true,
           symbol: "none",
-          lineStyle: { color: "#facc15", type: "dashed" },
-          data: results
-            .map((r, i) => (r.switchedFromPrevious ? i : null))
-            .filter((i): i is number => i !== null)
-            .map((i) => ({ xAxis: i })),
+          silent: true,
+          lineStyle: { color: t.warning, type: "dashed", width: 1 },
+          label: { show: false },
+          data: switchMarks,
         },
-      },
-      {
+      }),
+      lineSeries(t.series[1], {
         name: "ホップ数",
-        type: "line",
+        xAxisIndex: 1,
         yAxisIndex: 1,
         step: "middle",
         data: results.map((r) => (r.reachable ? r.hopCount : null)),
         connectNulls: false,
-        color: "#33e0ff",
-      },
+      }),
     ],
   };
 
@@ -185,7 +196,7 @@ export default function IslRoutingAnalysis({ satellites, islSettings, islShellRa
     downloadCSV(
       ["elapsedS", "reachable", "totalDelayMs", "hopCount", "totalDistanceKm", "switchedFromPrevious"],
       results.map((r, i) => [
-        i === 0 ? 0 : Math.round((r.computedAtSimMs - results[0].computedAtSimMs) / 1000),
+        elapsedS[i],
         r.reachable ? 1 : 0,
         r.totalDelayMs.toFixed(3),
         r.hopCount,
@@ -208,67 +219,108 @@ export default function IslRoutingAnalysis({ satellites, islSettings, islShellRa
         </p>
       )}
 
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="text-xs text-fg-muted">
-          期間(分)
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="analysis-input-label">
+          期間:
           <input
             type="number"
             min={1}
             step={1}
-            className="w-20 bg-raised text-fg rounded px-1 py-0.5 mt-0.5 block"
+            className="analysis-input"
+            style={{ width: "64px" }}
             value={numericInputValue(parseNumericInput(durationMinDraft))}
             onChange={(e) => setDurationMinDraft(e.target.value)}
+            disabled={running}
           />
+          分
         </label>
-        <label className="text-xs text-fg-muted">
-          刻み(秒)
+        <label className="analysis-input-label">
+          刻み:
           <input
             type="number"
             min={1}
             step={1}
-            className="w-20 bg-raised text-fg rounded px-1 py-0.5 mt-0.5 block"
+            className="analysis-input"
+            style={{ width: "64px" }}
             value={numericInputValue(parseNumericInput(stepSDraft))}
             onChange={(e) => setStepSDraft(e.target.value)}
+            disabled={running}
           />
+          秒
         </label>
-        <Button onClick={runSweep} disabled={running || !endpointsConfigured} variant="secondary">
+        <button
+          type="button"
+          onClick={runSweep}
+          disabled={running || !endpointsConfigured}
+          className="analysis-primary-button"
+        >
           {running ? "計算中..." : "スイープ実行"}
-        </Button>
+        </button>
         {results && (
           <>
-            <Button onClick={handleDownloadCSV} variant="outline" size="sm">
+            <button type="button" onClick={handleDownloadCSV} className="analysis-secondary-button">
               CSV
-            </Button>
-            <Button onClick={handleDownloadPNG} variant="outline" size="sm">
+            </button>
+            <button type="button" onClick={handleDownloadPNG} className="analysis-secondary-button">
               PNG
-            </Button>
+            </button>
           </>
         )}
       </div>
 
       {error && <div className="text-danger text-xs bg-danger-soft p-2 rounded">{error}</div>}
 
+      {!results && !running && (
+        <EmptyState title="ISL 経路のタイムスイープ">
+          ISL タブで設定した地点 A・B 間の最短経路を、指定した期間・刻みで繰り返し計算し、
+          総遅延・ホップ数・経路切替・到達不能区間の時間変化を表示します。期間と刻みを指定して「スイープ実行」を押してください。
+        </EmptyState>
+      )}
+
       {results && (
-        <div className="text-sm text-fg flex flex-wrap gap-4">
-          <span>到達可能率: {reachabilityRate?.toFixed(1)}%</span>
-          <span>切替回数: {switchCount}</span>
-          <span>ステップ数: {results.length}</span>
-        </div>
-      )}
-
-      {chartOption && (
-        <div className="flex-1 min-h-[360px]">
-          <ReactECharts
-            ref={chartRef}
-            option={chartOption}
-            style={{ height: "100%", width: "100%" }}
+        <>
+          <KpiStrip
+            items={[
+              {
+                label: "平均遅延",
+                value: avgDelay === null ? "—" : formatNumber(avgDelay, 2),
+                unit: avgDelay === null ? undefined : "ms",
+                hint: `到達可能率 ${formatNumber(reachabilityRate ?? 0, 1)} %`,
+              },
+              {
+                label: "最大遅延",
+                value: maxDelay === null ? "—" : formatNumber(maxDelay, 2),
+                unit: maxDelay === null ? undefined : "ms",
+              },
+              {
+                label: "平均ホップ数",
+                value: avgHops === null ? "—" : formatNumber(avgHops, 1),
+                hint: `経路切替 ${switchCount} 回`,
+              },
+              {
+                label: "経路断",
+                value: outageCount === 0 ? "なし" : String(outageCount),
+                unit: outageCount === 0 ? undefined : "ステップ",
+                hint: `全 ${results.length} ステップ`,
+                tone: outageCount === 0 ? "ok" : "ng",
+              },
+            ]}
           />
-        </div>
+          {chartOption && (
+            <ChartCard
+              title="総遅延とホップ数の推移"
+              caption="黄色の破線は経路切替(フラッピング)が起きた時刻です。到達不能な区間は線が途切れます。"
+            >
+              <ReactECharts
+                ref={chartRef}
+                option={chartOption}
+                style={{ height: CHART_H, width: "100%" }}
+                notMerge
+              />
+            </ChartCard>
+          )}
+        </>
       )}
-
-      <p className="text-xs text-fg-subtle">
-        黄色の破線は経路切替(フラッピング)が起きた時刻を示します。到達不能な区間は線が途切れます。
-      </p>
     </div>
   );
 }
