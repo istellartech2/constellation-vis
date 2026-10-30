@@ -18,9 +18,11 @@ import {
   loadLastView,
   saveLastView,
   buildViewSettings,
+  nextViewFrame,
   type CameraSnapshot,
   type DisplaySettings,
   type ViewSettings,
+  type ViewFrame,
 } from "./lib/viewState";
 import {
   createDefaultIslSettings,
@@ -84,7 +86,7 @@ function App() {
   const [showEcliptic, setShowEcliptic] = useState(SAVED_DISPLAY?.showEcliptic ?? true);
   const [showGeoOrbit, setShowGeoOrbit] = useState(SAVED_DISPLAY?.showGeoOrbit ?? false);
   const [showSunDirection, setShowSunDirection] = useState(SAVED_DISPLAY?.showSunDirection ?? true);
-  const [ecef, setEcef] = useState(SAVED_DISPLAY?.ecef ?? false);
+  const [viewFrame, setViewFrame] = useState<ViewFrame>(() => nextViewFrame("eci", SAVED_DISPLAY ?? {}));
   const [showPerturbation, setShowPerturbation] = useState(SAVED_DISPLAY?.showPerturbation ?? false);
   const [brightEarth, setBrightEarth] = useState(SAVED_DISPLAY?.brightEarth ?? false);
   const [whiteBackground, setWhiteBackground] = useState(SAVED_DISPLAY?.whiteBackground ?? false);
@@ -200,7 +202,8 @@ function App() {
     showEcliptic,
     showGeoOrbit,
     showSunDirection,
-    ecef,
+    ecef: viewFrame === "ecef",
+    gse: viewFrame === "gse",
     showPerturbation,
     brightEarth,
     whiteBackground,
@@ -250,7 +253,7 @@ function App() {
     showEcliptic,
     showGeoOrbit,
     showSunDirection,
-    ecef,
+    viewFrame,
     showPerturbation,
     brightEarth,
     whiteBackground,
@@ -347,7 +350,7 @@ function App() {
     satelliteHiddenColor,
     satelliteSelectedColor,
     cameraMode,
-    ecef,
+    viewFrame,
     brightEarth,
     whiteBackground,
     onSelect: handleSelectSatellite,
@@ -377,7 +380,7 @@ function App() {
     if (d.showEcliptic !== undefined) setShowEcliptic(d.showEcliptic);
     if (d.showGeoOrbit !== undefined) setShowGeoOrbit(d.showGeoOrbit);
     if (d.showSunDirection !== undefined) setShowSunDirection(d.showSunDirection);
-    if (d.ecef !== undefined) setEcef(d.ecef);
+    if (d.ecef !== undefined || d.gse !== undefined) setViewFrame((prev) => nextViewFrame(prev, d));
     if (d.showPerturbation !== undefined) setShowPerturbation(d.showPerturbation);
     if (d.brightEarth !== undefined) setBrightEarth(d.brightEarth);
     if (d.whiteBackground !== undefined) setWhiteBackground(d.whiteBackground);
@@ -550,8 +553,8 @@ function App() {
         onSatelliteHiddenColorChange={setSatelliteHiddenColor}
         satelliteSelectedColor={satelliteSelectedColor}
         onSatelliteSelectedColorChange={setSatelliteSelectedColor}
-        ecef={ecef}
-        onEcefChange={setEcef}
+        viewFrame={viewFrame}
+        onViewFrameChange={setViewFrame}
         showPerturbation={showPerturbation}
         onShowPerturbationChange={setShowPerturbation}
         brightEarth={brightEarth}

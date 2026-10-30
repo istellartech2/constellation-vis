@@ -25,14 +25,14 @@ import { MASS_MODE_THRESHOLD } from "../../lib/massSatelliteLayer";
 import { replaceFilingText } from "../../lib/filings/replace";
 import type { FilingDataset } from "../../lib/filings/types";
 import type { IslPathResult, IslSettings, IslShellRange } from "../../lib/isl/types";
-import { satellitesToToml, mergeImportedSatellites } from "../../utils/celestrakUtils";
+import { mergeImportedIntoScenarioText } from "../../lib/scenarioImport";
 import { validateSatellites, validateGroundStations } from "../../utils/validators";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./tabs";
 import { Button } from "./button";
 import { Menu, X } from "lucide-react";
 import { useSheetDrag } from "./useSheetDrag";
 import type { EarthTextureMode } from "../../lib/earthTextures";
-import type { ViewSettings } from "../../lib/viewState";
+import type { ViewFrame, ViewSettings } from "../../lib/viewState";
 import type { SatellitePointStyle } from "../../lib/satellitePointStyle";
 
 /**
@@ -126,10 +126,9 @@ interface Props {
   satelliteSelectedColor: string;
   /** Called when satellite selected color changes */
   onSatelliteSelectedColorChange: (color: string) => void;
-  /** Display scene in Earth-fixed (ECEF) mode */
-  ecef: boolean;
-  /** Called when ECEF mode changes */
-  onEcefChange: (v: boolean) => void;
+  /** Scene reference frame (ECI / ECEF / GSE) */
+  viewFrame: ViewFrame;
+  onViewFrameChange: (frame: ViewFrame) => void;
   /** Show perturbation information */
   showPerturbation: boolean;
   /** Called when perturbation visibility changes */
@@ -187,7 +186,7 @@ function ScopeNote({ editorCount, catalogCount }: { editorCount: number; catalog
   if (catalogCount === 0 && editorCount <= MASS_MODE_THRESHOLD) return null;
   return (
     <p className="mb-2 rounded border border-line bg-raised px-3 py-2 text-[11px] text-fg-muted" role="note">
-      {catalogCount > 0 && <>表示レイヤー（{catalogCount.toLocaleString()}機）は対象外です。シナリオの衛星{editorCount.toLocaleString()}機のみを扱います。</>}
+      {catalogCount > 0 && <>表示レイヤー（{catalogCount.toLocaleString()}機）は対象外です。シミュレーション対象の衛星{editorCount.toLocaleString()}機のみを扱います。</>}
       {editorCount > MASS_MODE_THRESHOLD && <>エディタの衛星が{MASS_MODE_THRESHOLD.toLocaleString()}機を超えているため、計算に時間がかかります。</>}
     </p>
   );
@@ -238,8 +237,8 @@ export default function SatelliteEditor({
   onSatelliteHiddenColorChange,
   satelliteSelectedColor,
   onSatelliteSelectedColorChange,
-  ecef,
-  onEcefChange,
+  viewFrame,
+  onViewFrameChange,
   showPerturbation,
   onShowPerturbationChange,
   brightEarth,
@@ -457,13 +456,22 @@ export default function SatelliteEditor({
     setUpdateFeedback("success");
   }
 
+  /** Clearing has nothing to validate, so apply the empty scenario at once. */
+  function clearAll() {
+    onUpdate({ satellites: [], groundStations: [], startTime: new Date(startText + "Z"), islShellRanges: [] });
+    setSatText("");
+    setConstText("");
+    setGsText("");
+    setUpdateFeedback("success");
+  }
+
   function applyFiling(dataset: FilingDataset, configuration: string, epoch: Date) {
     commitSatText(replaceFilingText(satText, dataset, configuration, epoch), epoch);
   }
 
   function addToScenario(specs: SatelliteSpec[]) {
     if (specs.length === 0) throw new Error("追加できる衛星がありません");
-    commitSatText(satellitesToToml(mergeImportedSatellites(parseSatellitesToml(satText), specs)));
+    commitSatText(mergeImportedIntoScenarioText(satText, specs));
   }
 
   return (
@@ -555,6 +563,7 @@ export default function SatelliteEditor({
                 onLayerChange={onCatalogLayerChange}
                 onLayerRemove={onCatalogLayerRemove}
                 onUpdate={handleUpdate}
+                onClearAll={clearAll}
                 updateFeedback={updateFeedback}
                 onSaveBundle={handleSaveBundle}
                 onLoadBundle={handleBundleFile}
@@ -648,8 +657,8 @@ export default function SatelliteEditor({
                 onSatelliteHiddenColorChange={onSatelliteHiddenColorChange}
                 satelliteSelectedColor={satelliteSelectedColor}
                 onSatelliteSelectedColorChange={onSatelliteSelectedColorChange}
-                ecef={ecef}
-                onEcefChange={onEcefChange}
+                viewFrame={viewFrame}
+                onViewFrameChange={onViewFrameChange}
                 showPerturbation={showPerturbation}
                 onShowPerturbationChange={onShowPerturbationChange}
                 brightEarth={brightEarth}

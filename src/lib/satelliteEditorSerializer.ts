@@ -20,9 +20,8 @@ import {
   type SatelliteEditorRelativeState,
   type SatelliteEditorRoe,
 } from "./satelliteEditorTypes";
+import { LOCAL_SATNUM_MIN, nextLocalSatnum } from "./localSatnum";
 
-const MANUAL_SATNUM_MIN = 90000;
-const MANUAL_SATNUM_MAX = 99999;
 const NEAR_CIRCULAR_ECC_MAX = 0.02;
 const SQRT3 = Math.sqrt(3);
 const EARTH_MU_KM3_S2 = 398600.4418;
@@ -571,7 +570,7 @@ export function parseSatelliteEditorConfig(text: string): SatelliteEditorConfig 
         name: entry.name !== undefined ? String(entry.name) : undefined,
         meta: orbitalMetaFromEntry(entry),
         geo: {
-          satnum: Number(entry.satnum ?? 90001),
+          satnum: Number(entry.satnum ?? LOCAL_SATNUM_MIN),
           epoch: entry.epoch instanceof Date ? entry.epoch : new Date(String(entry.epoch ?? new Date().toISOString())),
           longitudeDeg: Number(entry.longitudeDeg ?? 0),
           inclinationDeg: Number(entry.inclinationDeg ?? 0),
@@ -586,7 +585,7 @@ export function parseSatelliteEditorConfig(text: string): SatelliteEditorConfig 
         name: entry.name !== undefined ? String(entry.name) : undefined,
         meta: orbitalMetaFromEntry(entry),
         elements: {
-          satnum: Number(entry.satnum ?? 90001),
+          satnum: Number(entry.satnum ?? LOCAL_SATNUM_MIN),
           epoch: entry.epoch instanceof Date ? entry.epoch : new Date(String(entry.epoch ?? new Date().toISOString())),
           semiMajorAxisKm: Number(entry.semiMajorAxisKm ?? 7000),
           eccentricity: Number(entry.eccentricity ?? 0),
@@ -859,21 +858,28 @@ function gcoRelativeVelocity(chief: OrbitalElements, entry: GcoFormationEntry, d
   };
 }
 
+/** Catalog numbers held by manual entries (elements, GEO, TLE and their `noradCatId`). */
+export function manualSatnums(config: SatelliteEditorConfig): Set<number> {
+  const used = new Set<number>();
+  for (const entry of config.entries) {
+    if (entry.kind !== "manual") continue;
+    if (entry.type === "elements" && entry.elements) used.add(entry.elements.satnum);
+    else if (entry.type === "geo" && entry.geo) used.add(entry.geo.satnum);
+    else if (entry.type === "tle" && entry.tle) used.add(Number(entry.tle.line1.slice(2, 7)));
+    if (entry.meta?.noradCatId !== undefined) used.add(entry.meta.noradCatId);
+  }
+  return used;
+}
+
 export function expandSatelliteEditorConfig(config: SatelliteEditorConfig): SatelliteSpec[] {
   const output: SatelliteSpec[] = [];
   const manualChiefs = new Map<number, ManualSatelliteEntry>();
   config.entries.forEach((entry) => {
     if (entry.kind === "manual" && entry.type === "elements" && entry.elements) manualChiefs.set(entry.elements.satnum, entry);
   });
-  let nextSatnum = Math.max(
-    MANUAL_SATNUM_MIN,
-    ...config.entries
-      .filter((entry): entry is ManualSatelliteEntry => entry.kind === "manual" && entry.type === "elements" && !!entry.elements)
-      .map((entry) => entry.elements!.satnum + 1),
-    ...config.entries
-      .filter((entry): entry is ManualSatelliteEntry => entry.kind === "manual" && entry.type === "geo" && !!entry.geo)
-      .map((entry) => entry.geo!.satnum + 1),
-  );
+  // Deputies take free local numbers so they never shadow a catalog object
+  // stored next to them (see localSatnum.ts).
+  const usedSatnums = manualSatnums(config);
 
   for (const entry of config.entries) {
     if (entry.kind === "manual") {
@@ -889,8 +895,8 @@ export function expandSatelliteEditorConfig(config: SatelliteEditorConfig): Sate
     const chiefName = getChiefDisplayName(chiefEntry);
     const count = deputyCountForFormation(entry);
     for (let deputyIndex = 0; deputyIndex < count; deputyIndex += 1) {
-      const satnum = Math.min(nextSatnum, MANUAL_SATNUM_MAX);
-      nextSatnum += 1;
+      const satnum = nextLocalSatnum(usedSatnums);
+      usedSatnums.add(satnum);
       const deputyName = `${entry.name || chiefName}-${deputyIndex + 1}`;
       if (entry.formationMode === "gco") {
         const relativeState = relativeStateForFormation(chief, entry, deputyIndex);

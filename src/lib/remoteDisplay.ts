@@ -4,7 +4,7 @@ import type { DisplaySettings } from "./viewState";
 /** Scalar rendering settings; camera framing and ISL configuration stay local. */
 export type RemoteDisplaySettings = Partial<Omit<DisplaySettings, "isl">>;
 const booleans = new Set([
-  "showCountryBorders", "showClouds", "showGraticule", "showEcliptic", "showGeoOrbit", "showSunDirection", "ecef", "satSunlitShading", "satGlint",
+  "showCountryBorders", "showClouds", "showGraticule", "showEcliptic", "showGeoOrbit", "showSunDirection", "ecef", "gse", "satSunlitShading", "satGlint",
   "showPerturbation", "brightEarth", "whiteBackground",
   "showGroundStationCones", "showSatelliteFovCones",
 ]);

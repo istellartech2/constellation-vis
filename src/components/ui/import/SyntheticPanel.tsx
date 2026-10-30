@@ -39,7 +39,7 @@ export default function SyntheticPanel({ targets }: { targets: ImportTargets }) 
   return (
     <>
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3 space-y-4">
-        <p className="text-xs text-fg-muted">公開情報からの推定や負荷試験のための、実在しない衛星群を生成します。生成した衛星はレイヤーとして表示され、実在の衛星と区別されます。</p>
+        <p className="text-xs text-fg-muted">公開情報からの推定や負荷試験のための、実在しない衛星群を生成します。生成した衛星は表示専用で、実在の衛星と区別して描きます。</p>
         <section>
           <h3 className="text-sm font-semibold">プリセット</h3>
           <div role="radiogroup" aria-label="プリセット" className="mt-1.5 grid gap-1.5">
@@ -78,14 +78,14 @@ export default function SyntheticPanel({ targets }: { targets: ImportTargets }) 
               </button>
             ))}
           </div>
-          <p className="mt-1 text-[11px] text-fg-muted">基準日時はシナリオの開始時刻（{targets.startText.replace("T", " ")} UTC）です。</p>
+          <p className="mt-1 text-[11px] text-fg-muted">基準日時は現在の開始時刻（{targets.startText.replace("T", " ")} UTC）です。</p>
         </section>
 
         <DestinationPicker value="layer" onChange={() => {}} count={count} targets={targets} fixed="layer" />
         <ImportStatus busy={busy} onCancel={() => { worker.stop(); setBusy(null); }} error={error} />
       </div>
       <ImportFooter
-        hint="新しい表示レイヤーとして、3Dビューにすぐ表示します。"
+        hint="表示レイヤーに追加し、3Dビューにすぐ表示します。"
         primaryLabel={`${count.toLocaleString()} 機を生成して追加`}
         onPrimary={() => void generate()}
         disabled={!Number.isFinite(epoch.getTime()) || destinationBlock("layer", count, targets) !== null}

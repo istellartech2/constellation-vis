@@ -119,7 +119,7 @@ export function useSatelliteScene(
     params.satelliteVisibleColor,
     params.satelliteHiddenColor,
     params.satelliteSelectedColor,
-    params.ecef,
+    params.viewFrame,
     params.islSettings,
     params.islShellRanges,
     params.catalogStyles,

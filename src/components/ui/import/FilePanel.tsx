@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useCatalogWorker } from "./useCatalogWorker";
 import { catalogSpecAt, type SatelliteCatalog } from "../../../lib/satelliteCatalog";
 import { DestinationPicker, FileDropZone, ImportFooter, ImportStatus, ImportSummary } from "./ImportParts";
-import { destinationBlock, recommendedDestination, type ImportDestination, type ImportTargets } from "./importTargets";
+import { DESTINATION_NAMES, destinationBlock, recommendedDestination, type ImportDestination, type ImportTargets } from "./importTargets";
 
 /** Largest file read (V8 strings top out around 512 MB). */
 const MAX_CATALOG_FILE_BYTES = 480 * 1024 * 1024;
@@ -76,8 +76,8 @@ export default function FilePanel({ targets }: { targets: ImportTargets }) {
         <ImportStatus busy={busy} onCancel={() => { worker.stop(); setBusy(null); }} error={error} />
       </div>
       <ImportFooter
-        hint={!parsed ? undefined : destination === "scenario" ? "同じ衛星番号はエポックの新しいものに更新し、3Dビューにすぐ反映します。" : "新しい表示レイヤーとして、3Dビューにすぐ表示します。"}
-        primaryLabel={!parsed ? "ファイルを選んでください" : `${parsed.catalog.count.toLocaleString()} 機を${destination === "scenario" ? "シナリオ" : "レイヤー"}に追加`}
+        hint={!parsed ? undefined : destination === "scenario" ? "同じ衛星番号はエポックの新しいものに更新し、3Dビューにすぐ反映します。" : "3Dビューにすぐ表示します。"}
+        primaryLabel={!parsed ? "ファイルを選んでください" : `${parsed.catalog.count.toLocaleString()} 機を${DESTINATION_NAMES[destination]}に追加`}
         onPrimary={add}
         disabled={!parsed || (count !== null && destinationBlock(destination, count, targets) !== null)}
         busy={busy !== null}

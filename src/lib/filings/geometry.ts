@@ -2,6 +2,7 @@ import { gstime } from "satellite.js";
 import type { SatelliteSpec } from "../satellites";
 import { addCatalogMeta, createCatalog, setCatalogRow, type SatelliteCatalog } from "../satelliteCatalog";
 import type { FilingDataset } from "./types";
+import { LOCAL_SATNUM_MIN } from "../localSatnum";
 const normalize = (v: number) => ((v % 360) + 360) % 360;
 const SPEC_MU_KM3_S2 = 398600.4418;
 interface FilingElements { semiMajorAxisKm: number; eccentricity: number; inclinationDeg: number; raanDeg: number; argPerigeeDeg: number; meanAnomalyDeg: number }
@@ -27,7 +28,7 @@ function forEachFilingSatellite(dataset: FilingDataset, configuration: string, e
 }
 /** A declared geometry at a user-chosen synthetic epoch, never an operational ephemeris. */
 export function filingSatellites(dataset: FilingDataset, configuration: string, epoch: Date): SatelliteSpec[] {
-  let syntheticId = 90000;
+  let syntheticId = LOCAL_SATNUM_MIN;
   const out: SatelliteSpec[] = [];
   forEachFilingSatellite(dataset, configuration, epoch, (planeId, i, el) => {
     out.push({ type: "elements", elements: { satnum: syntheticId++, epoch, ...el }, meta: { objectName: `${dataset.name} / 仮配置 ${configuration} / P${planeId}-${i + 1}`, dataStatus: "filing", filingKey: dataset.key, filingName: dataset.name, filingConfiguration: configuration, filingSource: dataset.sourceUrl, filingSha256: dataset.sha256 } });

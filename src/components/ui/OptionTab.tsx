@@ -30,10 +30,17 @@ import {
   saveNamedView,
   deleteNamedView,
   type NamedView,
+  type ViewFrame,
   type ViewSettings,
 } from "../../lib/viewState";
 
 const EARTH_RADIUS_KM = 6378.137;
+
+const VIEW_FRAME_NOTES: Record<ViewFrame, string> = {
+  eci: "慣性系。星に対して静止し、軌道の形が見やすい。",
+  ecef: "地球固定。地球と一緒に回り、地表の動きが見やすい。",
+  gse: "太陽固定（地心太陽黄道座標）。太陽を右、黄道北を上に固定し、昼夜境界と季節で傾く地軸が見やすい。",
+};
 
 interface Props {
   satRadius: number;
@@ -71,8 +78,8 @@ interface Props {
   onSatelliteHiddenColorChange: (color: string) => void;
   satelliteSelectedColor: string;
   onSatelliteSelectedColorChange: (color: string) => void;
-  ecef: boolean;
-  onEcefChange: (v: boolean) => void;
+  viewFrame: ViewFrame;
+  onViewFrameChange: (frame: ViewFrame) => void;
   showPerturbation: boolean;
   onShowPerturbationChange: (v: boolean) => void;
   brightEarth: boolean;
@@ -148,8 +155,8 @@ export default function OptionTab(props: Props) {
     onSatelliteHiddenColorChange,
     satelliteSelectedColor,
     onSatelliteSelectedColorChange,
-    ecef,
-    onEcefChange,
+    viewFrame,
+    onViewFrameChange,
     showPerturbation,
     onShowPerturbationChange,
     brightEarth,
@@ -410,17 +417,16 @@ export default function OptionTab(props: Props) {
           <div className="text-sm text-fg">表示する座標系</div>
           <SegmentedControl
             ariaLabel="座標系の選択"
-            value={ecef ? "ecef" : "eci"}
+            value={viewFrame}
             options={[
-              { value: "eci", label: "ECI（慣性系）" },
-              { value: "ecef", label: "ECEF（地球固定）" },
+              { value: "eci", label: "ECI" },
+              { value: "ecef", label: "ECEF" },
+              { value: "gse", label: "GSE" },
             ]}
-            onChange={(v) => onEcefChange(v === "ecef")}
+            onChange={onViewFrameChange}
           />
           <p className="text-[11px] text-fg-subtle leading-snug">
-            {ecef
-              ? "地球と一緒に回転。地表の動きが見やすい。"
-              : "星に対して静止。軌道の形が見やすい。"}
+            {VIEW_FRAME_NOTES[viewFrame]}
           </p>
         </div>
         <CheckboxItem
