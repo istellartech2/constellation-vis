@@ -31,6 +31,21 @@ export interface CameraSnapshot {
   thirdPersonPitch: number;
 }
 
+/** Scene reference frame: inertial, Earth-fixed, or Geocentric Solar Ecliptic (Sun fixed). */
+export type ViewFrame = "eci" | "ecef" | "gse";
+
+/**
+ * Apply the stored/remote `ecef` and `gse` flags to the current frame. Either
+ * flag may be absent (partial updates); turning off a flag that is not the
+ * active frame leaves the frame unchanged.
+ */
+export function nextViewFrame(prev: ViewFrame, flags: { ecef?: boolean; gse?: boolean }): ViewFrame {
+  if (flags.gse) return "gse";
+  if (flags.ecef) return "ecef";
+  if ((flags.gse === false && prev === "gse") || (flags.ecef === false && prev === "ecef")) return "eci";
+  return prev;
+}
+
 /** Every display-related setting held in App.tsx. */
 export interface DisplaySettings {
   satRadius: number;
@@ -44,6 +59,8 @@ export interface DisplaySettings {
   showGeoOrbit: boolean;
   showSunDirection: boolean;
   ecef: boolean;
+  /** Sun-fixed GSE view; wins over `ecef`. Absent in views saved before it existed. */
+  gse?: boolean;
   showPerturbation: boolean;
   brightEarth: boolean;
   whiteBackground: boolean;

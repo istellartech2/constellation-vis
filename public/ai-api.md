@@ -80,7 +80,8 @@ Browser-created sessions include `scenario.display`, a snapshot of the current d
 
 | Fields | Accepted values |
 | --- | --- |
-| `showCountryBorders`, `showClouds`, `showGraticule`, `showEcliptic`, `showGeoOrbit`, `showSunDirection`, `ecef`, `showPerturbation`, `brightEarth`, `whiteBackground`, `showGroundStationCones`, `showSatelliteFovCones` | Boolean |
+| `showCountryBorders`, `showClouds`, `showGraticule`, `showEcliptic`, `showGeoOrbit`, `showSunDirection`, `ecef`, `gse`, `showPerturbation`, `brightEarth`, `whiteBackground`, `showGroundStationCones`, `showSatelliteFovCones` | Boolean |
+| `ecef` / `gse` | View frame: `ecef` rotates with the Earth; `gse` (Geocentric Solar Ecliptic) keeps the Sun on the right and ecliptic north up. `gse` wins when both are true; both false is the inertial (ECI) view. |
 | `earthTexture` | `blue-marble` (satellite photo), `natural-earth` (colored map), `dark-monochrome`, `paper-atlas`. Older values `high-resolution`, `./assets/earth01.webp` and `./assets/earth02.webp` are still accepted and rewritten. |
 | `satRadius` | 0.01–0.05 Earth radii (UI sizes: 0.01, 0.02, 0.03, 0.05) |
 | `groundConeMinElevationDeg` | 0–85 degrees |

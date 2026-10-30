@@ -21,6 +21,7 @@ import type { CatalogLayerStyle, LayerColorMode } from "./catalogLayers";
 import type { GroundStation } from "./groundStations";
 import {
   sunVectorECI,
+  OBLIQUITY,
   createGraticule,
   createEclipticLine,
   createGeoOrbitLine,
@@ -47,7 +48,7 @@ import {
   setBootSplashStatus,
   whenIdle,
 } from "./earthTextureLoader";
-import type { CameraSnapshot } from "./viewState";
+import type { CameraSnapshot, ViewFrame } from "./viewState";
 import type { IslEndpoint, IslPathResult, IslSettings, IslShellRange } from "./isl/types";
 import { pathEdgeKeys } from "./isl/edgeKey";
 import { endpointEci, endpointObserver, type Vec3 } from "./isl/geometry";
@@ -225,8 +226,8 @@ export interface SatelliteSceneParams {
   satelliteHiddenColor: string;
   satelliteSelectedColor: string;
   cameraMode: SatelliteCameraMode;
-  /** Rotate the camera with the Earth to approximate an ECEF view */
-  ecef: boolean;
+  /** Free-camera frame: ECI (still), ECEF (turns with the Earth) or GSE (turns with the Sun). */
+  viewFrame: ViewFrame;
   /** Show bright earth (uniform lighting) */
   brightEarth: boolean;
   /** Use a white background instead of the default dark space background */
@@ -1597,10 +1598,14 @@ export default class SatelliteScene {
     this.earthGroup.rotation.y = rotAngle;
     this.graticule.rotation.y = rotAngle;
     this.kmlRenderer.updateRotation(rotAngle);
-    this.cameraHolder.rotation.y =
-      this.params.ecef && this.cameraMode === "free" ? rotAngle : 0;
-
     const { x: sx, y: sy, z: sz } = sunVectorECI(simDate);
+    const frame = this.cameraMode === "free" ? this.params.viewFrame : "eci";
+    if (frame === "gse") {
+      this.setSunFixedHolder(sx, sz, -sy);
+    } else {
+      this.cameraHolder.rotation.set(0, frame === "ecef" ? rotAngle : 0, 0);
+    }
+
     this.sunlight.position.set(sx * 10, sz * 10, -sy * 10);
     this.sunDot.position.set(sx, sz, -sy);
     for (const entry of this.earthAnimationBindings) {
@@ -1970,6 +1975,22 @@ export default class SatelliteScene {
     this.tempQuaternionB.setFromRotationMatrix(this.tempMatrix);
     this.tempQuaternionA.copy(holderQuat).invert().multiply(this.tempQuaternionB);
     this.camera.quaternion.slerp(this.tempQuaternionA, FOLLOW_LERP_ALPHA);
+  }
+
+  /**
+   * GSE: the camera holder's local +X follows the Sun and local +Y the
+   * ecliptic north pole, so the free camera sees the Sun fixed on its right
+   * and the Earth's axis tilted by the obliquity. Arguments are the Sun unit
+   * vector in scene axes (ECI x, z, -y).
+   */
+  private setSunFixedHolder(sunX: number, sunY: number, sunZ: number) {
+    const xAxis = this.tempVectorA.set(sunX, sunY, sunZ).normalize();
+    // Ecliptic north (0, -sin ε, cos ε) in ECI, mapped to scene axes.
+    const yAxis = this.tempVectorB.set(0, Math.cos(OBLIQUITY), Math.sin(OBLIQUITY));
+    yAxis.addScaledVector(xAxis, -yAxis.dot(xAxis)).normalize();
+    const zAxis = this.tempVectorC.crossVectors(xAxis, yAxis);
+    this.tempMatrix.makeBasis(xAxis, yAxis, zAxis);
+    this.cameraHolder.quaternion.setFromRotationMatrix(this.tempMatrix);
   }
 
   private configureEarthCenterCamera(selectedSatPosition: THREE.Vector3) {
