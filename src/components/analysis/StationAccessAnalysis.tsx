@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import ReactECharts from "echarts-for-react";
 import type { GroundStation } from "../../lib/groundStations";
 import { downloadPNG, downloadHTML, downloadCSV } from "./utils/downloadUtils";
@@ -17,12 +17,11 @@ import {
   summarizeStations,
   type StationAccessSummary,
 } from "./utils/accessMetrics";
-import { ChartCard, EmptyState, KpiStrip, type Kpi } from "./AnalysisLayout";
+import { BusyOverlay, ChartCard, EmptyState, KpiStrip, type Kpi } from "./AnalysisLayout";
 import type { StationVisibilitySample } from "../../lib/visibility";
-import type {
-  StationAccessWorkerRequest,
-  StationAccessWorkerResponse,
-} from "../../workers/stationAccessWorker.types";
+import { gridToSamples } from "../../lib/accessGrid";
+import { parseGroundStationsToml } from "../../lib/config";
+import { AnalysisCancelledError, useAccessGridJob } from "./utils/useAccessGridJob";
 
 /** Propagation settings sent to the worker; also quoted in the empty state. */
 const DURATION_HOURS = 24;
@@ -58,84 +57,26 @@ export default function StationAccessAnalysis({
   const theme = useChartTheme();
   const [data, setData] = useState<StationVisibilitySample[]>([]);
   const [stations, setStations] = useState<GroundStation[]>([]);
-  const [stepSeconds, setStepSeconds] = useState(STEP_SECONDS);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string>("");
   const chartRef = useRef<InstanceType<typeof ReactECharts> | null>(null);
-  const workerRef = useRef<Worker | null>(null);
-  const latestJobId = useRef(0);
-  const analyzingRef = useRef(false);
+  const job = useAccessGridJob();
+  const stepSeconds = STEP_SECONDS;
 
-  useEffect(() => {
-    const worker = new Worker(
-      new URL("../../workers/stationAccessWorker.ts", import.meta.url),
-      { type: "module" },
-    );
-
-    const handleMessage = (event: MessageEvent<StationAccessWorkerResponse>) => {
-      const message = event.data;
-      if (message.id !== latestJobId.current) {
-        return;
-      }
-
-      if (message.type === "success") {
-        const { averagedData, stations: workerStations, averagePoints } = message.payload;
-        setData(averagedData);
-        setStations(workerStations);
-        setStepSeconds(STEP_SECONDS * Math.max(1, averagePoints));
-        setError("");
-      } else {
-        setError(message.message);
-      }
-      setIsAnalyzing(false);
-      analyzingRef.current = false;
-    };
-
-    const handleError = (event: ErrorEvent) => {
-      if (!analyzingRef.current) return;
-      setError(event.message || "解析ワーカーでエラーが発生しました");
-      setIsAnalyzing(false);
-      analyzingRef.current = false;
-    };
-
-    worker.addEventListener("message", handleMessage);
-    worker.addEventListener("error", handleError);
-    workerRef.current = worker;
-
-    return () => {
-      worker.removeEventListener("message", handleMessage);
-      worker.removeEventListener("error", handleError);
-      worker.terminate();
-      workerRef.current = null;
-      analyzingRef.current = false;
-    };
-  }, []);
-
-  const analyzeAccess = () => {
-    const worker = workerRef.current;
-    if (!worker) {
-      setError("解析ワーカーが初期化されていません");
-      return;
-    }
-    analyzingRef.current = true;
+  const analyzeAccess = async () => {
     setIsAnalyzing(true);
     setError("");
-
-    const id = latestJobId.current + 1;
-    latestJobId.current = id;
-
-    const request: StationAccessWorkerRequest = {
-      id,
-      type: "analyze",
-      payload: {
+    try {
+      const groundStations = gsText ? parseGroundStationsToml(gsText) : [];
+      if (groundStations.length === 0) throw new Error("地上局データがありません");
+      const { grid } = await job.run({
         satText,
         constText,
-        gsText,
+        stations: groundStations,
         startTimeIso: startTime.toISOString(),
         durationHours: DURATION_HOURS,
-        stepSeconds: STEP_SECONDS,
         // No averaging: counts must stay integers for the redundancy colours.
-        averagePoints: 1,
+        stepSeconds: STEP_SECONDS,
         satelliteFov: useSatelliteFov
           ? {
               halfAngleDeg: fovHalfAngleDeg,
@@ -143,10 +84,16 @@ export default function StationAccessAnalysis({
               crossTrackDeg: fovCrossTrackDeg,
             }
           : undefined,
-      },
-    };
-
-    worker.postMessage(request);
+      });
+      setData(gridToSamples(grid, groundStations.map((gs) => gs.name)));
+      setStations(groundStations);
+    } catch (err) {
+      if (!(err instanceof AnalysisCancelledError)) {
+        setError(err instanceof Error ? err.message : "解析エラーが発生しました");
+      }
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const stationNames = useMemo(() => stations.map((s) => s.name), [stations]);
@@ -258,13 +205,7 @@ export default function StationAccessAnalysis({
       </div>
 
       <div className="relative min-h-0 flex-1">
-        {isAnalyzing && (
-          <div className="analysis-loading-overlay">
-            <div className="analysis-loading-spinner" />
-            <div className="analysis-loading-text">解析中...</div>
-            <div className="analysis-loading-subtext">数秒お待ちください</div>
-          </div>
-        )}
+        {isAnalyzing && <BusyOverlay progress={job.progress} onCancel={job.cancel} />}
 
         <div className="h-full overflow-y-auto px-1 py-2">
           {!hasResult ? (

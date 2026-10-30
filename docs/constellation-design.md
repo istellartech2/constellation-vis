@@ -165,7 +165,7 @@ latencyNadirMs     = h / c × 1000
 
 ## 6. Worker プロトコル
 
-`src/workers/constellationDesignWorker.ts` + `.types.ts`。`islRoutingWorker.types.ts` / `stationAccessWorker.types.ts` と同じ `id` 付き request/response union 規約。
+`src/workers/constellationDesignWorker.ts` + `.types.ts`。`islRoutingWorker.types.ts` / `accessGridWorker.types.ts` と同じ `id` 付き request/response union 規約。
 
 | メッセージ | 方向 | 内容 |
 |---|---|---|

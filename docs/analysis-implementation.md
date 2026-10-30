@@ -263,17 +263,27 @@ avgInterruptionTime   = 0 区間の平均長                                    
 最低仰角 minElevationAngle      （UI 入力、既定 30 deg）
 
 lat = -90, -89, ..., +90        -> 181 個の仮想地上局
-  name = `Lat{lat}°`, longitudeDeg = observationLongitude, heightKm = 0
+  name = formatLatitude(lat), longitudeDeg = observationLongitude, heightKm = 0
 
-calculateStationAccessData(全衛星, 181局, startTime, 24 h, 10 s)
-  -> 表示は averageVisibilityData(data, 6)  # 1 分平均
-  -> 統計は元データ（10 s）から calculateStationStats
-  -> 可用性は元データから calculateAvailabilityMetrics(..., 10)
+computeAccessGrid(全衛星, 181局, startTime, 24 h, 10 s)    # Worker 内、§4.1
+  -> 緯度ごとの可用率・冗長率（2 機以上）・中断統計は 10 s の整数カウントから
+     accessMetrics.ts の summarizeCounts
+  -> ヒートマップは gridToSamples(grid, names, 12)  # 2 分平均、1 枚の画像として描画
 ```
 
 24 h は太陽日であり、恒星日（約 86164 s）とは異なる。衛星も同時に運動するため、単一経線の時系列を全経度の同時評価と同一視できない。これは選択した経線の緯度別アクセスであり、全球の面積平均や最悪地点の可用性を保証しない。
 
-局側の解析（`StationAccessAnalysis.tsx`）は同じ `visibility.ts` を使い、Worker（`src/workers/stationAccessWorker.ts`）に逃がして実行する。
+局側の解析（`StationAccessAnalysis.tsx`）も同じ `computeAccessGrid` を同じ Worker で実行し、10 s の整数カウントをそのまま（平均せず）タイムラインに使う。
+
+### 4.1 高速カーネル（`src/lib/accessGrid.ts`）
+
+判定規則は `calculateStationAccessData`（§3.2）と同一。`tests/accessGrid.test.ts` が 10 s 刻み（FOV あり／なし）と 181 緯度で照合している。10 s 刻みでは補間誤差による閾値ぎりぎりの差を 2 セルまで許容しているが、検証したケースでは差は 0。速度のための違いは次の 3 点。
+
+- **SGP4 は 60 s ごとのノットだけ**で呼び、間の ECI 位置・速度は 3 次 Hermite 補間する。LEO で誤差はサブメートル。ノットで伝搬に失敗した区間はその時刻を直接伝搬する。
+- **局ごとの判定は前計算した局ベクトルとの内積**だけで行う（`ecfToLookAngles` や `acos`、オブジェクト生成を使わない）。仰角は `d·u ≥ sin(minEl)·|d|`（u は測地上方向）、オフナディアと衛星 FOV も同様に cos で比較する。
+- **仰角のみの局（全球の 181 点など）は地心緯度でソート**し、衛星直下点の緯度 ± 最大地心角（+1° の余裕）に入る局だけを二分探索で選んで判定する。中心角は緯度差以上なので、この絞り込みで可視局を落とすことはない。
+
+結果は `Uint16Array`（時刻 × 局）で、Worker（`src/workers/accessGridWorker.ts`）から転送（コピーなし）で返す。300 機・24 h・10 s で、全球 181 点が約 1 s、地上局 2 局が約 0.3〜0.7 s（`bun scripts/analysis/bench-access.ts`、マシン負荷で変動）。旧実装はメインスレッドで全球に約 120 s かかっていた。
 
 ---
 
@@ -598,7 +608,7 @@ ISL の `gridPattern` トポロジと、シェル別リンクモデルの解決�
 | 経路 | エントリ | 中身 |
 | --- | --- | --- |
 | ブラウザ描画ループ | `src/lib/visualization.ts`, `src/components/useSatelliteScene.ts` | 毎フレーム SGP4。Three.js リソースは `useSatelliteScene` の cleanup で dispose する |
-| 局アクセス解析 | `src/workers/stationAccessWorker.ts` | TOML パース + `visibility.ts`。UI は `terminate()` で中断 |
+| 地上局／全球アクセス解析 | `src/workers/accessGridWorker.ts` | TOML パース + `accessGrid.ts`（§4.1）。進捗を 100 ms ごとに通知、UI（`useAccessGridJob.ts`）は `terminate()` で中断 |
 | ISL 経路探索 | `src/workers/islRoutingWorker.ts` | `init` / `configure` / `compute` / `sweep`。`propagateAll` のバッファを init 間で再利用 |
 | ミッション設計 | `src/workers/constellationDesignWorker.ts` | `enumerate → screen → verify` を丸ごとオフスレッド。キャンセルメッセージはなく `terminate()` で中断 |
 | CLI | `src/cli/main.ts`（`bun run cli` / `bun run build:cli`） | `analyzeLinkDuty` のみ。`--format json\|csv`, `--summary-only`, `--duration-hours`, `--step-seconds` |
@@ -689,6 +699,7 @@ RGT/J2 補正と J3 は [RGT §4.1](RGTorbit.md#implemented-rates)・[摂動モ�
 | `src/lib/orbitalCoordinates.ts` | `computeLVLHFrame`, `computeSensorDirection`, `computeFovConeQuaternion`, `computeTiltedConeHeight` | `tests/orbitalCoordinates.test.ts` |
 | `src/lib/satelliteDerivedInfo.ts` | `getSatelliteDerivedInfo`, `isInEarthShadow` | `src/lib/satelliteDerivedInfo.test.ts` |
 | `src/lib/visibility.ts` | `passesVisibilityCriteria`, `visibilityStats`, `calculateStationAccessData`, `calculateAvailabilityMetrics`, `generateVisibilityReport` | `tests/visibility-criteria.test.ts`（`tests/test-visibility-interval.ts` は `.test.` 接尾辞がなく `bun test` の対象外＝手動スクリプト） |
+| `src/lib/accessGrid.ts` | `computeAccessGrid`, `gridStationCounts`, `gridToSamples` | `tests/accessGrid.test.ts`（`calculateStationAccessData` との照合） |
 | `src/lib/linkGeometry.ts` | `calculateLinkGeometry` | `tests/linkGeometry.test.ts` |
 | `src/lib/linkDutyAnalysis.ts` | `analyzeLinkDuty` | `tests/linkDutyAnalysis.test.ts` |
 | `src/cli/main.ts`, `scenarioParser.ts` | `parseCliArguments`, `loadScenario` | `tests/cli.test.ts`, `tests/scenarioParser.test.ts` |

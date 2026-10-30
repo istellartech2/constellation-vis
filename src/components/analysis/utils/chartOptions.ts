@@ -172,6 +172,10 @@ export function createStationTimelineOption(
         encode: { x: [1, 2], y: 0, tooltip: [3] },
         data: rows,
         clip: true,
+        // Hundreds of satellites give thousands of count changes. Past the
+        // default threshold ECharts draws progressively, and a re-render cut
+        // the later lanes off part-way; draw everything in one pass instead.
+        progressive: 0,
       },
     ],
   };
@@ -197,11 +201,7 @@ export interface GlobalAccessInput {
   latitudes: number[];
   /** Availability per latitude, same order as `latitudes`. */
   rows: LatitudeAvailabilityRow[];
-  /** Bucket width (min), shown in the tooltip. */
-  bucketMinutes: number;
 }
-
-type HeatCell = [timeIndex: number, latIndex: number, value: number];
 
 /** Category indices that start a new labelled hour (every `everyHours` h). */
 function hourLabelIndices(timestamps: number[], everyHours: number): Map<number, string> {
@@ -232,8 +232,53 @@ function latitudeRowTooltip(row: LatitudeAvailabilityRow): string {
   ].join("<br/>");
 }
 
+/** "#rrggbb" → [r, g, b]. */
+function hexToRgb(hex: string): [number, number, number] {
+  const n = Number.parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/**
+ * Paints the latitude × time grid into a bitmap, one pixel per cell (north at
+ * the top), coloured along the theme's sequential ramp; zero stays transparent.
+ * Drawing ~130k heatmap rectangles took seconds per render (and again on every
+ * zoom); a single image draws instantly.
+ */
+function paintHeatImage(samples: StationVisibilitySample[], ramp: readonly string[], max: number): HTMLCanvasElement | null {
+  if (typeof document === "undefined" || samples.length === 0) return null;
+  const width = samples.length;
+  const height = samples[0].stations.length;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  const image = ctx.createImageData(width, height);
+  const stops = ramp.map(hexToRgb);
+  const segments = stops.length - 1;
+  for (let ti = 0; ti < width; ti++) {
+    const stations = samples[ti].stations;
+    for (let li = 0; li < height; li++) {
+      const v = stations[li].visibleCount;
+      if (v <= 0) continue;
+      const x = Math.min(1, v / max) * segments;
+      const k = Math.min(segments - 1, Math.floor(x));
+      const f = x - k;
+      const a = stops[k];
+      const b = stops[k + 1];
+      const o = ((height - 1 - li) * width + ti) * 4;
+      image.data[o] = a[0] + (b[0] - a[0]) * f;
+      image.data[o + 1] = a[1] + (b[1] - a[1]) * f;
+      image.data[o + 2] = a[2] + (b[2] - a[2]) * f;
+      image.data[o + 3] = 255;
+    }
+  }
+  ctx.putImageData(image, 0, 0);
+  return canvas;
+}
+
 export function createGlobalAccessChartOption(
-  { samples, latitudes, rows, bucketMinutes }: GlobalAccessInput,
+  { samples, latitudes, rows }: GlobalAccessInput,
   t: ChartTheme,
   compact = false,
 ): ECBasicOption {
@@ -243,20 +288,14 @@ export function createGlobalAccessChartOption(
   // Hourly candidates; hideOverlap thins them at full range, zooming reveals them.
   const hourLabels = hourLabelIndices(timestamps, compact ? 3 : 1);
 
-  // Zero cells are skipped: an empty cell reads as "no satellite" against the
-  // card background and the canvas has far fewer rectangles to draw.
-  const cells: HeatCell[] = [];
   let maxValue = 0;
-  samples.forEach((sample, ti) => {
-    sample.stations.forEach((station, li) => {
-      const v = station.visibleCount;
-      if (v > 0) {
-        cells.push([ti, li, v]);
-        if (v > maxValue) maxValue = v;
-      }
-    });
-  });
+  for (const sample of samples) {
+    for (const station of sample.stations) if (station.visibleCount > maxValue) maxValue = station.visibleCount;
+  }
   const vmMax = Math.max(1, Math.ceil(maxValue * 10) / 10);
+  const heatImage = paintHeatImage(samples, t.seq, vmMax);
+  const timeCount = samples.length;
+  const latCount = latitudes.length;
 
   const top = 30;
   // Compact: the marginal is narrow, so its legend stacks vertically below it.
@@ -275,18 +314,9 @@ export function createGlobalAccessChartOption(
       formatter: (params: unknown) => {
         // Axis-pointer hover on the marginal arrives as an array.
         const first = (Array.isArray(params) ? params[0] : params) as
-          | { seriesIndex?: number; value?: unknown; axisValue?: string; dataIndex?: number }
+          | { axisValue?: string; dataIndex?: number }
           | undefined;
         if (!first) return "";
-        if (first.seriesIndex === 0 && Array.isArray(first.value)) {
-          const [ti, li, v] = first.value as HeatCell;
-          const from = timestamps[ti];
-          return [
-            `<b>${formatLatitude(latitudes[li])}</b>`,
-            `${formatUtcHHMM(from)} UTC（${bucketMinutes} 分平均）`,
-            `平均可視数: ${formatNumber(v, 2)} 機`,
-          ].join("<br/>");
-        }
         const row =
           (first.axisValue !== undefined ? rowByCategory.get(String(first.axisValue)) : undefined) ??
           (first.dataIndex !== undefined ? rows[first.dataIndex] : undefined);
@@ -301,9 +331,10 @@ export function createGlobalAccessChartOption(
       textStyle: { color: t.fgMuted, fontSize: compact ? 10 : 11 },
       ...(compact ? { orient: "vertical", itemGap: 4, itemHeight: 8, itemWidth: 8 } : {}),
     }),
+    // Legend for the bitmap's colour ramp; it styles no series itself.
     visualMap: {
       type: "continuous",
-      seriesIndex: 0,
+      seriesIndex: [],
       min: 0,
       max: vmMax,
       calculable: false,
@@ -366,21 +397,38 @@ export function createGlobalAccessChartOption(
       }),
     ],
     dataZoom: [
-      { type: "inside", xAxisIndex: 0 },
-      sliderZoom(t, { left: heatGrid.left, right: heatGrid.right }),
+      { type: "inside", xAxisIndex: 0, filterMode: "none" },
+      sliderZoom(t, { filterMode: "none", left: heatGrid.left, right: heatGrid.right }),
     ],
     series: [
       {
-        type: "heatmap",
+        type: "custom",
         name: "平均可視数",
         xAxisIndex: 0,
         yAxisIndex: 0,
-        data: cells,
-        // Draw every cell in one pass; progressive chunks were interrupted
-        // part-way across the axis by re-renders.
-        progressive: 0,
-        animation: false,
-        emphasis: { disabled: true },
+        silent: true,
+        tooltip: { show: false },
+        // One datum; the whole grid is a single image scaled to the axes.
+        data: [[0, 0]],
+        renderItem: (params: CustomSeriesRenderItemParams, api: CustomSeriesRenderItemAPI): CustomSeriesRenderItemReturn => {
+          if (!heatImage) return null;
+          const [x0, ySouth] = api.coord([0, 0]);
+          const [x1, yNorth] = api.coord([timeCount - 1, latCount - 1]);
+          const [bandW, bandH] = api.size!([1, 1]) as number[];
+          const cs = params.coordSys as unknown as { x: number; y: number; width: number; height: number };
+          return {
+            type: "image",
+            silent: true,
+            style: {
+              image: heatImage,
+              x: x0 - bandW / 2,
+              y: yNorth - bandH / 2,
+              width: x1 - x0 + bandW,
+              height: ySouth - yNorth + bandH,
+            },
+            clipPath: { type: "rect", shape: { x: cs.x, y: cs.y, width: cs.width, height: cs.height } },
+          };
+        },
       },
       {
         type: "bar",
