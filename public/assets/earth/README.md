@@ -22,4 +22,4 @@ curl -fL 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/
 python3 scripts/generate-earth-textures.py /tmp/earth-sources
 ```
 
-The 4k images load first; the 8k versions replace them after download on GPUs that support 8192-pixel textures. Clouds and country borders are only downloaded when turned on. Exact compressed bytes can vary by Pillow and WebP version.
+The 4k images load first (`index.html` starts their download before the scripts arrive); once the globe is drawn and the page is idle, the 8k versions download one at a time and replace them on GPUs that support 8192-pixel textures. Images are decoded off the main thread with `createImageBitmap` (see `src/lib/earthTextureLoader.ts`). Clouds and country borders are only downloaded when turned on. Exact compressed bytes can vary by Pillow and WebP version.

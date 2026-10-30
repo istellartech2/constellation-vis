@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   BLUE_MARBLE_EARTH_MODE,
@@ -61,5 +61,23 @@ describe("earthTextures", () => {
     expect(low.qualityTier).toBe("4k");
     expect(low.dayMap).toEqual({ initial: EARTH_ASSETS.dayNatural.low });
     expect(low.lightsMap.upgrade).toBeUndefined();
+  });
+
+  it("prefetches each mode's first images from index.html", () => {
+    const html = readFileSync(join(import.meta.dir, "../../index.html"), "utf8");
+    const prefetched = (mode: string) => {
+      const match = html.match(new RegExp(`"${mode}": \\[([^\\]]*)\\]`));
+      return (match?.[1].match(/"[^"]+"/g) ?? []).map((name) => `./assets/earth/${name.slice(1, -1)}.webp`);
+    };
+    const maxTextureSize = 16384;
+    for (const mode of [BLUE_MARBLE_EARTH_MODE, NATURAL_EARTH_MODE] as const) {
+      const assets = resolveLayeredEarthAssets(mode, maxTextureSize);
+      expect(prefetched(mode).sort()).toEqual(
+        [assets.dayMap.initial, assets.oceanMask.initial, assets.lightsMap.initial].sort(),
+      );
+    }
+    for (const mode of [DARK_MONOCHROME_EARTH_MODE, PAPER_ATLAS_EARTH_MODE]) {
+      expect(prefetched(mode).sort()).toEqual([EARTH_ASSETS.countryBorders, EARTH_ASSETS.oceanMask.low].sort());
+    }
   });
 });
