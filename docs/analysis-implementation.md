@@ -711,7 +711,7 @@ RGT/J2 補正と J3 は [RGT §4.1](RGTorbit.md#implemented-rates)・[摂動モ�
 | `src/lib/constellationDesign/starSizing.ts` | `enumerateStarCandidates` | `tests/constellationDesign-starSizing.test.ts` |
 | `src/lib/config.ts`, `tomlParsers.ts` | `parseConfigBundle`, `buildConfigBundle` | `tests/constellationParser.test.ts`, `constellationSerializer.test.ts` |
 
-検証コマンド: `bun run test`（Bun ネイティブテストランナー）、`bun run lint`、`bun run build`。ISL は `scripts/verify-isl-routing.ts` / `scripts/bench-isl.ts` に数値検証・ベンチもある。
+検証コマンド: `bun run test`（Bun ネイティブテストランナー）、`bun run lint`、`bun run build`。ISL は `scripts/analysis/verify-isl-routing.ts` / `scripts/analysis/bench-isl.ts` に数値検証・ベンチもある。
 
 ---
 
@@ -723,4 +723,4 @@ RGT/J2 補正と J3 は [RGT §4.1](RGTorbit.md#implemented-rates)・[摂動モ�
 - [constellation-patterns.md](constellation-patterns.md) — 6 設計方式と TOML スキーマ
 - [constellation-design.md](constellation-design.md) — ミッション駆動オプティマイザ（2 段パイプライン）
 - [constelation-cli-SKILLS.md](constelation-cli-SKILLS.md) — CLI エージェント向けガイド（`dist/SKILLS.md` の元）
-- `AGENTS.md` / `CLAUDE.md` — プロジェクト運用ルール
+- `AGENTS.md` — プロジェクト運用ルール

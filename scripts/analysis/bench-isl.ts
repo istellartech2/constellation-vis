@@ -2,20 +2,20 @@
  * ISL routing performance benchmark (results tabulated in docs/isl-routing.md).
  * Measures candidate generation (naive / uniform grid / gridPattern) and
  * Dijkstra shortest-path time for a seeded Walker-like LEO shell at
- * N = 100 / 1,000 / 10,000 satellites. Run with: bun run scripts/bench-isl.ts
+ * N = 100 / 1,000 / 10,000 satellites. Run with: bun run scripts/analysis/bench-isl.ts
  */
-import { toSatrec, type SatelliteSpec } from "../src/lib/satellites";
-import { generateFromShells } from "../src/lib/tomlParsers";
+import { toSatrec, type SatelliteSpec } from "../../src/lib/satellites";
+import { generateFromShells } from "../../src/lib/tomlParsers";
 import {
   gridPatternIslCandidates,
   naiveIslCandidates,
   uniformGridIslCandidates,
   type ShellIndexRange,
-} from "../src/lib/isl/candidates";
-import { findShortestPath } from "../src/lib/isl/shortestPath";
-import { buildSnapshotGraph } from "../src/lib/isl/graph";
-import { propagateAll } from "../src/lib/isl/propagate";
-import type { IslEndpoint, IslLinkModel } from "../src/lib/isl/types";
+} from "../../src/lib/isl/candidates";
+import { findShortestPath } from "../../src/lib/isl/shortestPath";
+import { buildSnapshotGraph } from "../../src/lib/isl/graph";
+import { propagateAll } from "../../src/lib/isl/propagate";
+import type { IslEndpoint, IslLinkModel } from "../../src/lib/isl/types";
 
 const ALTITUDE_KM = 550;
 // A single LEO shell's diameter (~2 * (R_e + alt) ~= 13,860 km) is only ~2.8x

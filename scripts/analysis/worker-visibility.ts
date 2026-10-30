@@ -3,9 +3,9 @@
  */
 import { generateConstellationToml } from "./generate-constellation";
 import type { ShellParams } from "./generate-constellation";
-import { parseConstellationToml } from "../src/utils/tomlParse";
-import { visibilityStats } from "../src/lib/visibility";
-import type { GroundStation } from "../src/lib/groundStations";
+import { parseConstellationToml } from "../../src/lib/tomlParsers";
+import { visibilityStats } from "../../src/lib/visibility";
+import type { GroundStation } from "../../src/lib/groundStations";
 
 self.onmessage = (e) => {
   const {

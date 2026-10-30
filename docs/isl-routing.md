@@ -245,7 +245,7 @@ src/components/ui/
   compactControls.tsx      — InlineSlider / HelpTip / ColorChip(表示タブと共用)
 src/components/analysis/
   IslRoutingAnalysis.tsx   — タイムライン解析(時間窓スイープ)
-scripts/
+scripts/analysis/
   bench-isl.ts             — 性能ベンチマーク
   verify-isl-routing.ts    — 数値検証(§3.2)
 ```
@@ -315,7 +315,7 @@ interface IslSettings {
 
 ### 2.7 性能
 
-`scripts/bench-isl.ts`(bun 実行)による実測(参考値):
+`scripts/analysis/bench-isl.ts`(bun 実行)による実測(参考値):
 
 | N | naive(d_max=5,000km) | uniformGrid(同) | gridPattern(同) | graph+Dijkstra 合計(d_max=1,500km) |
 |---|---|---|---|---|
@@ -344,7 +344,7 @@ interface IslSettings {
 | `isl-endpoints.test.ts` | シナリオ更新時の endpoint 整合(局の消滅 → 未設定、定義変更 → 追従) |
 | `isl-hysteresis-scenario.test.ts` | Iridium 風 66 機の東京–NY スイープでの切替抑制の定量確認 |
 
-### 3.2 数値検証(`scripts/verify-isl-routing.ts`)
+### 3.2 数値検証(`scripts/analysis/verify-isl-routing.ts`)
 
 - **GEO 2 機リレー(手計算一致)**: GEO を東経 0°/90° に置き、直下点 2 局間の経路を計算。GSL 各 35,786 km(119.4 ms)+ ISL 弦長 59,629 km(198.9 ms)= 合計 ≈ 437.6 ms に ±0.5% で一致することを回帰テスト化。
 - **Iridium 風 Walker(オーダー確認)**: 66 機・高度 780 km・傾斜 86.4°、東京–NY。総遅延が大圏距離の理論下限(≈ 36.2 ms)以上・2 倍以下に収まることを確認(実測例: 61.6 ms、5 ホップ)。

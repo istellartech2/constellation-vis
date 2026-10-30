@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import type { RemoteScenario } from "../src/lib/remoteScenario";
+import type { RemoteScenario } from "../lib/remoteScenario";
 
 export interface SessionRecord {
   ownerHash: string;

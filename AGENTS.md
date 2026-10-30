@@ -23,7 +23,9 @@ These notes collect the essentials an autonomous coding assistant needs before t
   - `ui/` shared controls, dialogs, and headless Radix UI wrappers.
   - `useSatelliteScene.ts` integrates Three.js scene state with React.
 - `public/` ─ user-editable TOML describing satellites/constellations/ground stations plus static assets.
-- `scripts/` ─ build-time Bun scripts (currently `generate-satellites.ts`).
+- `scripts/` ─ build and data generation scripts and license notice tooling; `scripts/analysis/` contains analysis and benchmark utilities.
+- `src/server/` ─ shared session API and its local and Vercel implementations; `api/` contains Vercel route entry points.
+- `.github/pages-redirect/` ─ legacy GitHub Pages redirect files published by the manual workflow.
 - `tests/` ─ Bun test specs plus Python helpers for reference data generation.
 - `docs/` ─ deeper explanations (`docs/analysis-implementation.md` is the cross-cutting index of how the propagator, coordinate frames, visibility/availability, link geometry, duty, ISL, perturbation and power analyses are actually implemented, with a defaults table and an explicit list of what is *not* modelled; `docs/perturbation.md` covers drag and harmonics modeling; `docs/constellation-patterns.md` documents the six constellation design patterns and their TOML schema; `docs/constellation-design.md` documents the mission-driven design optimizer).
 - `docs/constelation-cli-SKILLS.md` ─ tracked source for the copy-ready CLI agent guide distributed as `dist/SKILLS.md`.
@@ -40,6 +42,7 @@ These notes collect the essentials an autonomous coding assistant needs before t
 ## Implementation Guidelines
 - Stay inside the existing stack: React function components, hooks, and Three.js helpers. Reach for `clsx`/`tailwind-merge` rather than bespoke string building.
 - Styling uses Tailwind CSS v4 with configuration embedded in `src/index.css`. Prefer utility classes or the predefined component classes (`.analysis-button`, `.side-panel`, etc.) over ad‑hoc CSS.
+- Reuse existing UI primitives and analysis helpers before introducing new third-party components.
 - Heavy computation should live in `src/lib` utilities; keep React components declarative and effectful logic inside hooks (`useSatelliteScene`, custom hooks under `src/lib` if needed).
 - Generated file `src/lib/satellites.generated.ts` is owned by the Bun script. Modify TOML inputs instead of editing it by hand, and document any schema changes in the script.
 - Favor pure/typed utilities; extend existing types in `src/lib/satellites.ts`, `config.ts`, or dedicated type modules when introducing new data.
@@ -64,5 +67,6 @@ These notes collect the essentials an autonomous coding assistant needs before t
 - The visualization depends on Three.js side effects; ensure any new GL resources are disposed in `useSatelliteScene` cleanup paths.
 - Watch for UTC vs local time handling: epochs are stored as ISO strings and parsed into `Date` objects in the generator.
 - Large data imports can block the main thread; batch updates or move heavy math into worker-friendly utilities if you expand functionality.
+- In task reports, call out generated artifacts, relevant validation, and checks that could not be run. When TOML or generator logic changes, note that `predev`/`prebuild` regenerate satellite data.
 
 Armed with this playbook, an AI agent should be able to explore confidently, make changes safely, and respect the domain-specific workflows in this repository.

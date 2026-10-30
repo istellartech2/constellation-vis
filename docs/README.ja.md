@@ -36,8 +36,8 @@ bun run build:cli  # Bun で実行する CLI を dist/ に生成
 - [計算の概要](how-it-works.md) · [解析モデルと実装](analysis-implementation.md)
 - [コンステレーション配置方式](constellation-patterns.md) · [ミッションからの設計](constellation-design.md) · [衛星間リンクの経路探索](isl-routing.md)
 - [CLI ガイド](constelation-cli-SKILLS.md) · [AI セッション API](../public/ai-api.md) · [デプロイとローカル API 設定](deployment.md)
-- [PR の進め方](../CONTRIBUTING.md) · [リリース手順](releasing.md)
+- [PR の進め方](CONTRIBUTING.md) · [リリース手順](releasing.md)
 
 ## ライセンス
 
-Copyright 2026 Interstellar Technologies Inc. 本プロジェクトが作成したものは [Apache-2.0](../LICENSE) で提供します。第三者のライブラリやデータにはそれぞれの条件が適用されます。詳しくは [THIRD-PARTY.md](../THIRD-PARTY.md) を参照してください。
+Copyright 2026 Interstellar Technologies Inc. 本プロジェクトが作成したものは [Apache-2.0](../LICENSE) で提供します。第三者のライブラリやデータにはそれぞれの条件が適用されます。詳しくは [THIRD-PARTY.md](THIRD-PARTY.md) を参照してください。

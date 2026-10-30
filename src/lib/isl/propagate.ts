@@ -15,7 +15,7 @@ export interface PropagateAllResult {
  * indices by `valid` before building a graph (as the routing worker does).
  *
  * Previously reimplemented independently in the routing worker and in
- * `scripts/verify-isl-routing.ts`/`scripts/bench-isl.ts` — the scripts'
+ * `scripts/analysis/verify-isl-routing.ts`/`scripts/analysis/bench-isl.ts` — the scripts'
  * copies used the `{0,0,0}` fallback the worker had already moved away from,
  * so they were verifying different behavior than what ships.
  *

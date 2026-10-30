@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { LocalSessionStore } from "../server/localSessionStore";
-import { handleSessionRequest } from "../server/sessionApi";
+import { LocalSessionStore } from "../src/server/localSessionStore";
+import { handleSessionRequest } from "../src/server/sessionApi";
 
 describe("local session API", () => {
   it("creates, updates, acknowledges and ends a session without external storage", async () => {

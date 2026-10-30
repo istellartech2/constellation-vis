@@ -17,4 +17,4 @@ bun run build
 bun run build:cli
 ```
 
-`build:cli` replaces `dist/` with the CLI distribution. Do not commit `dist/`, `node_modules/`, secrets, or local experiment outputs. Satellite data is generated from TOML; update the inputs and regenerate instead of editing `src/lib/satellites.generated.ts` by hand. See [AGENTS.md](AGENTS.md) for project conventions and [releasing](docs/releasing.md) for version and release procedures.
+`build:cli` replaces `dist/` with the CLI distribution. Do not commit `dist/`, `node_modules/`, secrets, or local experiment outputs. Satellite data is generated from TOML; update the inputs and regenerate instead of editing `src/lib/satellites.generated.ts` by hand. See [AGENTS.md](../AGENTS.md) for project conventions and [releasing](releasing.md) for version and release procedures.

@@ -4,7 +4,7 @@
  * median, and non-zero rate for each.
  */
 import type { ShellParams } from './generate-constellation';
-import { parseGroundStationsToml } from '../src/utils/tomlParse';
+import { parseGroundStationsToml } from '../../src/lib/tomlParsers';
 const workerModule = new URL('./worker-visibility.ts', import.meta.url);
 
 async function main() {

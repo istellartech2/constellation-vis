@@ -3,9 +3,9 @@ import { stdin as input, stdout as output } from 'node:process';
 import {
   parseSatellitesToml,
   parseConstellationToml,
-} from '../src/utils/tomlParse';
-import { parseConfigBundle } from '../src/utils/configBundle';
-import { generateVisibilityReport } from '../src/lib/visibility';
+} from '../../src/lib/tomlParsers';
+import { parseConfigBundle } from '../../src/lib/config';
+import { generateVisibilityReport } from '../../src/lib/visibility';
 
 async function ask(question: string): Promise<string> {
   const rl = readline.createInterface({ input, output });

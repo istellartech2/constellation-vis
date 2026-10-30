@@ -50,7 +50,7 @@ async function main() {
   const args = process.argv.slice(2);
   if (args.length < 8 || args.length > 11) {
     console.error(
-      'Usage: bun run scripts/generate-constellation.ts ' +
+      'Usage: bun run scripts/analysis/generate-constellation.ts ' +
         'name count planes phasing apogee_altitude eccentricity inclination raan_range [raan_start] [argp] [mean_anomaly_0]',
     );
     process.exit(1);

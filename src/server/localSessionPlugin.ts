@@ -1,7 +1,7 @@
 import type { ViteDevServer } from "vite";
 import { handleSessionRequest } from "./sessionApi";
 import { LocalSessionStore } from "./localSessionStore";
-import { MAX_SCENARIO_BYTES } from "../src/lib/remoteScenario";
+import { MAX_SCENARIO_BYTES } from "../lib/remoteScenario";
 
 /** Expose the same session API only in Vite's local development server. */
 export function configureLocalSession(server: ViteDevServer): void {

@@ -7,10 +7,10 @@ import {
   generateFromShells,
   parseConstellationConfig,
   parseSatellitesToml,
-} from "../src/lib/tomlParsers";
-import { parseConfigBundle } from "../src/lib/config";
-import type { GroundStation, VisibilityMode } from "../src/lib/groundStations";
-import { visibilityStats } from "../src/lib/visibility";
+} from "../../src/lib/tomlParsers";
+import { parseConfigBundle } from "../../src/lib/config";
+import type { GroundStation, VisibilityMode } from "../../src/lib/groundStations";
+import { visibilityStats } from "../../src/lib/visibility";
 
 type LineSweepKey =
   | "apogee_altitude"
@@ -706,7 +706,7 @@ ${notes.map((note) => `- ${note}`).join("\n")}
 async function main() {
   const settingsArg = process.argv[2];
   if (!settingsArg) {
-    console.error("Usage: bun scripts/analyze-settings-visibility.ts <path/to/settings.toml>");
+    console.error("Usage: bun scripts/analysis/analyze-settings-visibility.ts <path/to/settings.toml>");
     process.exit(1);
   }
 

@@ -1,7 +1,7 @@
 /** Vercel runs native Node ESM: bundle shared domain imports into one module. */
 const result = await Bun.build({
-  entrypoints: ["server/vercelHandler.ts"],
-  outdir: "server/generated",
+  entrypoints: ["src/server/vercelHandler.ts"],
+  outdir: "src/server/generated",
   naming: "sessionHandler.mjs",
   target: "node",
   format: "esm",

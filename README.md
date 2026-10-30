@@ -36,8 +36,8 @@ bun run build:cli  # Bun-powered CLI in dist/
 - [Calculation overview](docs/how-it-works.md) · [Models and implementation](docs/analysis-implementation.md)
 - [Constellation patterns](docs/constellation-patterns.md) · [Mission-driven design](docs/constellation-design.md) · [ISL routing](docs/isl-routing.md)
 - [CLI guide](docs/constelation-cli-SKILLS.md) · [AI session API](public/ai-api.md) · [Deployment](docs/deployment.md)
-- [Contributing](CONTRIBUTING.md) · [Releasing](docs/releasing.md)
+- [Contributing](docs/CONTRIBUTING.md) · [Releasing](docs/releasing.md)
 
 ## License
 
-Copyright 2026 Interstellar Technologies Inc. Project-authored material is licensed under [Apache-2.0](LICENSE). Third-party components and data retain their own terms; see [THIRD-PARTY.md](THIRD-PARTY.md).
+Copyright 2026 Interstellar Technologies Inc. Project-authored material is licensed under [Apache-2.0](LICENSE). Third-party components and data retain their own terms; see [THIRD-PARTY.md](docs/THIRD-PARTY.md).

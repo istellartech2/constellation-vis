@@ -2,7 +2,7 @@
 
 The [live application](https://constellation-vis-rho.vercel.app/) is hosted in the Interstellar Technologies Inc Vercel team. The GitHub repository is connected to Vercel: pushes to `main` deploy production, while other branches receive preview deployments. `vercel.json` runs lint, the Bun test suite, TypeScript and Vite before publishing. GitHub Actions also runs CI, including the CLI build.
 
-The Vite base path is `/`. The retained GitHub Pages workflow is for manual legacy deployments and sets `BASE_URL=/constellation-vis/`.
+The Vite base path is `/`. The retained GitHub Pages workflow is for manual legacy deployments; it publishes the redirect pages in `.github/pages-redirect/`, rather than building the app.
 
 ## AI sessions
 

@@ -1,1 +1,1 @@
-export { default } from "../../server/generated/sessionHandler.mjs";
+export { default } from "../../src/server/generated/sessionHandler.mjs";

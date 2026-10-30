@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
-import { handleSessionRequest, SESSION_TTL_SECONDS } from "../server/sessionApi";
-import { decryptScenario, encryptScenario, type SessionRecord, type SessionStore } from "../server/sessionStore";
+import { handleSessionRequest, SESSION_TTL_SECONDS } from "../src/server/sessionApi";
+import { decryptScenario, encryptScenario, type SessionRecord, type SessionStore } from "../src/server/sessionStore";
 import { applyScenarioOperation, commitRemoteScenario, emptyScenario, type RemoteScenario } from "../src/lib/remoteScenario";
 
 class MemoryStore implements SessionStore {

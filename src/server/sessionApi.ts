@@ -1,5 +1,5 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { applyScenarioOperation, emptyScenario, MAX_SCENARIO_BYTES } from "../src/lib/remoteScenario";
+import { applyScenarioOperation, emptyScenario, MAX_SCENARIO_BYTES } from "../lib/remoteScenario";
 import { tokenHash, type SessionStore } from "./sessionStore";
 
 export const SESSION_TTL_SECONDS = 3600;

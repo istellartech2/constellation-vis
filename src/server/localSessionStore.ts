@@ -1,4 +1,4 @@
-import type { RemoteScenario } from "../src/lib/remoteScenario";
+import type { RemoteScenario } from "../lib/remoteScenario";
 import type { SessionRecord, SessionStore } from "./sessionStore";
 
 /** Development-only storage; data disappears when the Vite server stops. */

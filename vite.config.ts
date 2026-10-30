@@ -16,7 +16,7 @@ export default defineConfig({
     name: 'local-session-api-loader',
     apply: 'serve',
     async configureServer(server) {
-      const { configureLocalSession } = await server.ssrLoadModule('/server/localSessionPlugin.ts')
+      const { configureLocalSession } = await server.ssrLoadModule('/src/server/localSessionPlugin.ts')
       configureLocalSession(server)
     },
   }],

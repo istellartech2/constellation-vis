@@ -78,7 +78,7 @@ export function noticesForModules(moduleIds: Iterable<string>): string {
   const sections = [...groups].map(([content, names]) =>
     `${names.sort().join("\n")}\n${"=".repeat(60)}\n${content}`,
   );
-  return `Copyright 2026 Interstellar Technologies Inc.\nProject-authored material is licensed under Apache-2.0; see LICENSE.\nThird-party components retain their own licenses; see below and THIRD-PARTY.md in the source repository.\n\n${sections.sort().join("\n\n")}\n`;
+  return `Copyright 2026 Interstellar Technologies Inc.\nProject-authored material is licensed under Apache-2.0; see LICENSE.\nThird-party components retain their own licenses; see below and docs/THIRD-PARTY.md in the source repository.\n\n${sections.sort().join("\n\n")}\n`;
 }
 
 const webModules = new Set<string>();

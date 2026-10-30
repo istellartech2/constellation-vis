@@ -1,6 +1,6 @@
 /**
  * ISL routing regression check — Iridium-like Walker order-of-magnitude check
- * (documented in docs/isl-routing.md). Run with: bun run scripts/verify-isl-routing.ts
+ * (documented in docs/isl-routing.md). Run with: bun run scripts/analysis/verify-isl-routing.ts
  *
  * 66 satellites (6 planes x 11), 780 km altitude, 86.4 deg inclination, routing
  * Tokyo <-> New York. Checks that the resulting path delay sits between the
@@ -8,14 +8,14 @@
  * count is in the few-to-tens range expected for this constellation size.
  */
 import * as satellite from "satellite.js";
-import { parseConstellationToml } from "../src/lib/tomlParsers";
-import { toSatrec } from "../src/lib/satellites";
-import { buildSnapshotGraph } from "../src/lib/isl/graph";
-import { findShortestPath } from "../src/lib/isl/shortestPath";
-import { propagateAll } from "../src/lib/isl/propagate";
-import { EARTH_RADIUS_EQUATOR_KM } from "../src/lib/isl/geometry";
-import { SPEED_OF_LIGHT_KM_PER_S } from "../src/lib/isl/cost";
-import type { IslEndpoint, IslLinkModel } from "../src/lib/isl/types";
+import { parseConstellationToml } from "../../src/lib/tomlParsers";
+import { toSatrec } from "../../src/lib/satellites";
+import { buildSnapshotGraph } from "../../src/lib/isl/graph";
+import { findShortestPath } from "../../src/lib/isl/shortestPath";
+import { propagateAll } from "../../src/lib/isl/propagate";
+import { EARTH_RADIUS_EQUATOR_KM } from "../../src/lib/isl/geometry";
+import { SPEED_OF_LIGHT_KM_PER_S } from "../../src/lib/isl/cost";
+import type { IslEndpoint, IslLinkModel } from "../../src/lib/isl/types";
 
 const constellationToml = `
 [constellation]

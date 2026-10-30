@@ -35,7 +35,7 @@ function parseArrayTable(text: string, marker: string): Record<string, TomlScala
  * One `[[constellation.shells]]` block, as read from TOML.
  *
  * The eleven base fields keep their original required/optional shape (existing
- * callers and `scripts/analyze-settings-visibility.ts` depend on it); every
+ * callers and `scripts/analysis/analyze-settings-visibility.ts` depend on it); every
  * pattern-specific key is optional and flat, named exactly like its TOML key.
  */
 export interface ConstellationShellConfig {

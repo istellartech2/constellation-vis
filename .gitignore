@@ -35,5 +35,5 @@ local
 .vercel
 .env*
 
-# Bundled Vercel session handler (built from server/vercelHandler.ts)
-server/generated/
+# Bundled Vercel session handler (built from src/server/vercelHandler.ts)
+src/server/generated/
