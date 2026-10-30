@@ -25,7 +25,7 @@ import { MASS_MODE_THRESHOLD } from "../../lib/massSatelliteLayer";
 import { replaceFilingText } from "../../lib/filings/replace";
 import type { FilingDataset } from "../../lib/filings/types";
 import type { IslPathResult, IslSettings, IslShellRange } from "../../lib/isl/types";
-import { satellitesToToml, mergeImportedSatellites } from "../../utils/celestrakUtils";
+import { mergeImportedIntoScenarioText } from "../../lib/scenarioImport";
 import { validateSatellites, validateGroundStations } from "../../utils/validators";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./tabs";
 import { Button } from "./button";
@@ -457,7 +457,7 @@ export default function SatelliteEditor({
 
   function addToScenario(specs: SatelliteSpec[]) {
     if (specs.length === 0) throw new Error("追加できる衛星がありません");
-    commitSatText(satellitesToToml(mergeImportedSatellites(parseSatellitesToml(satText), specs)));
+    commitSatText(mergeImportedIntoScenarioText(satText, specs));
   }
 
   return (
