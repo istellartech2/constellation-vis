@@ -6,6 +6,7 @@ import {
   listSavedViews,
   saveNamedView,
   deleteNamedView,
+  isFiniteCameraSnapshot,
   defaultDisplayOptions,
   displayOptionsFromSaved,
   mergeDisplayOptions,
@@ -178,6 +179,80 @@ describe("viewState persistence", () => {
       );
       expect(loadLastView()!.display.earthTexture).toBe(expected as DisplaySettings["earthTexture"]);
     }
+  });
+});
+
+describe("isFiniteCameraSnapshot", () => {
+  it("accepts a normal snapshot", () => {
+    expect(isFiniteCameraSnapshot(CAMERA)).toBe(true);
+  });
+
+  it("rejects a NaN camera that came back from storage as nulls", () => {
+    saveLastView(buildViewSettings(DISPLAY, { ...CAMERA, position: [NaN, NaN, NaN] }));
+    const camera = loadLastView()!.camera;
+    expect(camera.position).toEqual([null, null, null] as unknown as [number, number, number]);
+    expect(isFiniteCameraSnapshot(camera)).toBe(false);
+  });
+
+  it("rejects infinite follow distances", () => {
+    expect(isFiniteCameraSnapshot({ ...CAMERA, thirdPersonDistance: Infinity })).toBe(false);
+  });
+});
+
+describe("loading damaged views", () => {
+  const store = (view: unknown) => localStorage.setItem("constellation-vis:lastView", JSON.stringify(view));
+
+  it("drops wrong-typed display fields so the usual defaults apply", () => {
+    store({ version: 2, camera: CAMERA, display: { ...DISPLAY, satRadius: null, showGraticule: "yes", speedExp: Number.NaN, groundConeColor: 5 } });
+    const display = loadLastView()!.display;
+    expect("satRadius" in display).toBe(false);
+    expect("showGraticule" in display).toBe(false);
+    expect("speedExp" in display).toBe(false);
+    expect("groundConeColor" in display).toBe(false);
+    expect(display.fovConeHalfAngleDeg).toBe(DISPLAY.fovConeHalfAngleDeg);
+    const restored = displayOptionsFromSaved(display, 0.015);
+    expect(restored.satRadius).toBe(0.015);
+    expect(restored.showGraticule).toBe(true);
+  });
+
+  it("fills broken ISL settings from the defaults and keeps valid ones", () => {
+    const tokyo = { kind: "station", name: "Tokyo", latitudeDeg: 35.7, longitudeDeg: 139.7, heightKm: 0, minElevationDeg: 10 };
+    store({
+      version: 2, camera: CAMERA,
+      display: {
+        ...DISPLAY,
+        isl: {
+          enabled: true, endpointA: tokyo, endpointB: { kind: "station", name: "X", latitudeDeg: null },
+          excludedShellKeys: ["a", 3], linkModel: { mode: "dynamic", maxRangeKm: null }, recomputeIntervalSimS: 30,
+        },
+      },
+    });
+    const isl = loadLastView()!.display.isl;
+    const defaults = createDefaultIslSettings();
+    expect(isl.enabled).toBe(true);
+    expect(isl.endpointA).toEqual(tokyo as never);
+    expect(isl.endpointB).toBeNull();
+    expect(isl.excludedShellKeys).toEqual(["a"]);
+    expect(isl.linkModel).toEqual({ ...defaults.linkModel, mode: "dynamic" });
+    expect(isl.cost).toEqual(defaults.cost);
+    expect(isl.recomputeIntervalSimS).toBe(30);
+    expect(isl.gslColor).toBe(defaults.gslColor);
+  });
+
+  it("falls back to free mode for an unknown camera mode", () => {
+    store({ version: 2, camera: { ...CAMERA, mode: "orbit" }, display: DISPLAY });
+    expect(loadLastView()!.camera.mode).toBe("free");
+  });
+
+  it("treats a camera without position arrays as not finite", () => {
+    expect(isFiniteCameraSnapshot({ ...CAMERA, position: undefined } as unknown as CameraSnapshot)).toBe(false);
+  });
+
+  it("applies the same checks to named views", () => {
+    localStorage.setItem("constellation-vis:savedViews", JSON.stringify([
+      { id: "v1", name: "Damaged", settings: { version: 2, camera: CAMERA, display: { ...DISPLAY, satRadius: "big" } } },
+    ]));
+    expect("satRadius" in listSavedViews()[0].settings.display).toBe(false);
   });
 });
 

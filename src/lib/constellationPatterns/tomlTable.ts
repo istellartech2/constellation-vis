@@ -13,6 +13,28 @@ export type TomlScalar = string | number | Date | number[];
 const KEY_VALUE = /^([A-Za-z0-9_.-]+)\s*=\s*(.+)$/;
 const ISO_DATE = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z/;
 
+const ESCAPES: Record<string, string> = { b: "\b", t: "\t", n: "\n", f: "\f", r: "\r", '"': '"', "\\": "\\" };
+
+/**
+ * The value of a quoted TOML string, or null when `raw` is not one. Basic
+ * ("...") strings have their escapes decoded; literal ('...') strings are
+ * taken verbatim. Without this, a name containing `"` or `\` gained another
+ * layer of backslashes on every save/load.
+ */
+export function unquoteTomlString(raw: string): string | null {
+  if (raw.length >= 2 && raw.startsWith("'") && raw.endsWith("'")) return raw.slice(1, -1);
+  if (raw.length < 2 || !raw.startsWith('"') || !raw.endsWith('"')) return null;
+  return raw.slice(1, -1).replace(/\\(u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|.)/g, (match, esc: string) => {
+    if (esc.length > 1) return String.fromCodePoint(parseInt(esc.slice(1), 16));
+    return ESCAPES[esc] ?? match;
+  });
+}
+
+/** A TOML basic string for `value`; JSON string escapes are valid TOML. */
+export function quoteTomlString(value: string): string {
+  return JSON.stringify(value);
+}
+
 /**
  * Parses one right-hand side. Behaviour matches the historical `parseValue`
  * for scalars; the only addition is integer arrays (`nec_necklace = [1, 4, 6]`),
@@ -21,9 +43,8 @@ const ISO_DATE = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z/;
 export function parseTomlScalar(raw: string): TomlScalar {
   const s = raw.trim();
   if (!s) return s;
-  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
-    return s.slice(1, -1);
-  }
+  const quoted = unquoteTomlString(s);
+  if (quoted !== null) return quoted;
   if (s.startsWith("[") && s.endsWith("]")) {
     const inner = s.slice(1, -1).trim();
     if (!inner) return [];

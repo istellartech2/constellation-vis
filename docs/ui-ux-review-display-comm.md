@@ -1,5 +1,7 @@
 # UI/UX レビュー：「表示」「通信」タブ
 
+> **状態: 対応済み（記録として保管）。** 指摘と改善案は #26・#29 で実装した（クイックトグル HUD のみ見送り）。結果は [§6 実装状況](#6-実装状況2026-10-30) を参照。本文のファイル名・行番号はレビュー時点のもので、`IslTab.tsx` はその後 `CommTab.tsx` と `IslSection.tsx` に分かれている。
+
 対象: `src/components/ui/OptionTab.tsx`（表示）、`src/components/ui/IslTab.tsx`（通信）、関連する `SatelliteEditor.tsx` / `LayerList.tsx` / `visualization.ts`。
 確認方法: コード読解 + 開発サーバーでデスクトップ (1400×900) とモバイル (375×812, ボトムシート) を目視。
 

@@ -278,7 +278,7 @@ export default function EditorTab({
       ) : (
         <p className={cn("flex items-center gap-1.5 px-1 text-[11px] transition-colors", updateFeedback === "success" ? "text-success" : "text-fg-subtle")} role="status">
           <Check className="h-3.5 w-3.5" />
-          {updateFeedback === "success" ? "3D ビューに反映しました" : "編集内容は保存時に 3D ビューへ反映されます"}
+          {updateFeedback === "success" ? "3D ビューに反映しました" : "各エディタで「保存して反映」を押すと 3D ビューへ反映されます"}
         </p>
       )}
 

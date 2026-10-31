@@ -12,6 +12,21 @@ import { getSatelliteDerivedInfo } from "../src/lib/satelliteDerivedInfo";
 import { createDefaultFormationEntry, createDefaultGeoEntry, type SatelliteEditorConfig } from "../src/lib/satelliteEditorTypes";
 
 describe("satelliteEditorSerializer", () => {
+  it("keeps quotes and backslashes in satellite names across save and load", () => {
+    const name = 'Sat "A" \\ 1';
+    const config: SatelliteEditorConfig = {
+      entries: [{
+        id: "manual-1", kind: "manual", type: "elements", name, meta: { objectName: name },
+        elements: {
+          satnum: 90001, epoch: new Date("2025-05-20T00:00:00Z"), semiMajorAxisKm: 7000,
+          eccentricity: 0.001, inclinationDeg: 40, raanDeg: 10, argPerigeeDeg: 20, meanAnomalyDeg: 30,
+        },
+      }],
+    };
+    const reparsed = parseSatelliteEditorConfig(serializeSatelliteEditorConfig(config));
+    expect(reparsed.entries[0].name).toBe(name);
+  });
+
   it("creates manual elements TOML from an empty config", () => {
     const config: SatelliteEditorConfig = {
       entries: [

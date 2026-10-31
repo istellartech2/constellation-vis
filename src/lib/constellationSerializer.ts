@@ -22,6 +22,7 @@ import {
   isPatternId,
   numberField,
   patternIdOf,
+  quoteTomlString,
   scanArrayTable,
   validateShell,
   type FieldSpec,
@@ -138,7 +139,7 @@ export function serializeConstellationConfig(config: ConstellationConfig): strin
     lines.push("[[constellation.shells]]");
 
     if (shell.name) {
-      lines.push(`name = "${shell.name}"`);
+      lines.push(`name = ${quoteTomlString(shell.name)}`);
     }
     // Omitted for walker_delta so pre-pattern files round-trip byte-identically.
     if (pattern !== DEFAULT_PATTERN_ID) {

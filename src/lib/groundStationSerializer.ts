@@ -1,5 +1,6 @@
 import type { GroundStation, VisibilityMode } from "./groundStations";
 import { parseGroundStationsToml } from "./tomlParsers";
+import { quoteTomlString } from "./constellationPatterns/tomlTable";
 
 export interface GroundStationDraft extends GroundStation {
   id: string;
@@ -17,10 +18,6 @@ export function parseGroundStationsConfig(text: string): GroundStation[] {
   return parseGroundStationsToml(text);
 }
 
-function escapeTomlString(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
 function formatNumber(value: number): string {
   if (!Number.isFinite(value)) return "0";
   // Strip trailing zeros while preserving precision
@@ -32,7 +29,7 @@ export function serializeGroundStations(stations: GroundStation[]): string {
   if (stations.length === 0) return "";
   const blocks = stations.map((s) => {
     const lines = ["[[groundstations]]"];
-    lines.push(`name = "${escapeTomlString(s.name)}"`);
+    lines.push(`name = ${quoteTomlString(s.name)}`);
     lines.push(`latitudeDeg = ${formatNumber(s.latitudeDeg)}`);
     lines.push(`longitudeDeg = ${formatNumber(s.longitudeDeg)}`);
     lines.push(`heightKm = ${formatNumber(s.heightKm)}`);
