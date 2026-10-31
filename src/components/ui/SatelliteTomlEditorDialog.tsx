@@ -1,9 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, Globe, Orbit, Rows3, Satellite, Trash2 } from "lucide-react";
+import { FileText, Globe, Orbit, Rows3, Satellite } from "lucide-react";
 import { Button } from "./button";
 import { GEO_SEMI_MAJOR_AXIS_KM, geoElementsFromLongitude } from "../../lib/astronomy";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "./dialog";
 import { Label } from "./label";
+import EditorDialogShell, { EditorDetailPane, EditorDialogFooter, EditorSplitBody } from "./EditorDialogShell";
+import EditorItemList, { KindBadge, listAddButtonClass } from "./EditorItemList";
 import { LOCAL_SATNUM_MIN, nextLocalSatnum } from "../../lib/localSatnum";
 import {
   getChiefOptions,
@@ -41,7 +42,8 @@ import {
 interface Props {
   open: boolean;
   satText: string;
-  onSatTextChange: (text: string) => void;
+  /** Saves the edited TOML and applies it to the 3D view. */
+  onApply: (text: string) => void;
   onClose: () => void;
 }
 
@@ -63,16 +65,35 @@ function hasEntryError(errors: SatelliteEditorValidationError[], index: number):
   return errors.some((error) => error.field.startsWith(`entry.${index}.`));
 }
 
-function selectionTitle(entry: SatelliteEditorEntry | null): string {
-  if (!entry) return "現在選択中: なし";
-  return entry.kind === "manual"
-    ? `現在選択中: 単独衛星 ${getEntryDisplayName(entry, 0)}`
-    : `現在選択中: 編隊 ${entry.name}`;
+function kindLabel(entry: SatelliteEditorEntry): string {
+  if (entry.kind === "formation") return "編隊";
+  if (entry.type === "tle") return "TLE";
+  if (entry.type === "geo") return "静止軌道";
+  return "軌道要素";
+}
+
+function kindBadge(entry: SatelliteEditorEntry) {
+  return <KindBadge tone={entry.kind === "formation" ? "info" : "neutral"}>{kindLabel(entry)}</KindBadge>;
+}
+
+/** One-line list subtitle; the detail header uses the longer {@link summaryForEntry}. */
+function shortSummary(entry: SatelliteEditorEntry, chiefName?: string): string {
+  if (entry.kind === "formation") return `chief ${chiefName ?? "未選択"} · ${entry.formationMode}`;
+  if (entry.type === "tle") {
+    const catalog = entry.tle?.line1.slice(2, 7).trim();
+    return catalog ? `NORAD ${catalog}` : "TLE 未入力";
+  }
+  if (entry.type === "geo" && entry.geo) {
+    const lon = entry.geo.longitudeDeg;
+    return `経度 ${Math.abs(lon).toFixed(2)}°${lon >= 0 ? "E" : "W"}`;
+  }
+  const el = entry.elements;
+  return el ? `a=${el.semiMajorAxisKm.toFixed(0)} km · i=${el.inclinationDeg.toFixed(1)}° · e=${el.eccentricity.toFixed(4)}` : "";
 }
 
 function summaryForEntry(entry: SatelliteEditorEntry, chiefName?: string): string {
   if (entry.kind === "manual") {
-    if (entry.type === "tle") return "2行 TLE をそのまま satellites.toml に保存します。";
+    if (entry.type === "tle") return "2行 TLE（Line 1 / Line 2）をそのまま使って軌道を計算します。";
     if (entry.type === "geo") {
       const geo = entry.geo;
       if (!geo) return "経度を入力して静止衛星を配置します。";
@@ -103,7 +124,7 @@ function summaryForEntry(entry: SatelliteEditorEntry, chiefName?: string): strin
   }
 }
 
-export default function SatelliteTomlEditorDialog({ open, satText, onSatTextChange, onClose }: Props) {
+export default function SatelliteTomlEditorDialog({ open, satText, onApply, onClose }: Props) {
   const [config, setConfig] = useState<SatelliteEditorConfig>({ entries: [] });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const errors = useMemo(() => validateSatelliteEditorConfig(config).errors, [config]);
@@ -150,6 +171,13 @@ export default function SatelliteTomlEditorDialog({ open, satText, onSatTextChan
     setSelectedId(newEntry.id);
   }, [updateConfig]);
 
+  const handleAddTle = useCallback(() => {
+    const base = createDefaultManualEntry();
+    const newEntry: ManualSatelliteEntry = { ...base, type: "tle", elements: undefined, tle: { line1: "", line2: "" } };
+    updateConfig((current) => ({ entries: [...current.entries, newEntry] }));
+    setSelectedId(newEntry.id);
+  }, [updateConfig]);
+
   const handleAddFormation = useCallback(() => {
     const newEntry = createDefaultFormationEntry("custom");
     updateConfig((current) => {
@@ -160,20 +188,18 @@ export default function SatelliteTomlEditorDialog({ open, satText, onSatTextChan
     setSelectedId(newEntry.id);
   }, [updateConfig]);
 
-  const handleDelete = useCallback(() => {
-    if (!selectedId) return;
+  const handleDelete = useCallback((id: string) => {
     setConfig((current) => {
-      const nextEntries = current.entries.filter((entry) => entry.id !== selectedId);
-      const currentIndex = current.entries.findIndex((entry) => entry.id === selectedId);
-      setSelectedId(nextEntries[Math.min(currentIndex, nextEntries.length - 1)]?.id ?? null);
+      const nextEntries = current.entries.filter((entry) => entry.id !== id);
+      const currentIndex = current.entries.findIndex((entry) => entry.id === id);
+      setSelectedId((selected) => selected === id ? nextEntries[Math.min(currentIndex, nextEntries.length - 1)]?.id ?? null : selected);
       return { entries: nextEntries };
     });
-  }, [selectedId]);
+  }, []);
 
-  const handleMove = useCallback((direction: "up" | "down") => {
-    if (!selectedId) return;
+  const handleMove = useCallback((id: string, direction: "up" | "down") => {
     updateConfig((current) => {
-      const index = current.entries.findIndex((entry) => entry.id === selectedId);
+      const index = current.entries.findIndex((entry) => entry.id === id);
       if (index < 0) return current;
       const nextIndex = direction === "up" ? index - 1 : index + 1;
       if (nextIndex < 0 || nextIndex >= current.entries.length) return current;
@@ -181,121 +207,91 @@ export default function SatelliteTomlEditorDialog({ open, satText, onSatTextChan
       [nextEntries[index], nextEntries[nextIndex]] = [nextEntries[nextIndex], nextEntries[index]];
       return { entries: nextEntries };
     });
-  }, [selectedId, updateConfig]);
+  }, [updateConfig]);
 
   const handleSave = useCallback(() => {
     const validation = validateSatelliteEditorConfig(config);
     if (!validation.isValid) return;
-    onSatTextChange(serializeSatelliteEditorConfig(config));
+    onApply(serializeSatelliteEditorConfig(config));
     onClose();
-  }, [config, onClose, onSatTextChange]);
+  }, [config, onClose, onApply]);
+
+  const chiefNameOf = (entry: SatelliteEditorEntry): string | undefined => {
+    if (entry.kind !== "formation") return undefined;
+    const chief = chiefOptions.find((option) => option.elements?.satnum === entry.chiefSatnum);
+    return chief ? chief.meta?.objectName || chief.name || `satnum ${chief.elements?.satnum}` : undefined;
+  };
+
+  const addActions = (
+    <div className="grid grid-cols-2 gap-1.5">
+      <Button variant="outline" size="sm" onClick={handleAddManual} className={listAddButtonClass} title="軌道要素（a, e, i, RAAN…）を入力して衛星を追加">
+        <Satellite className="h-4 w-4" />
+        軌道要素
+      </Button>
+      <Button variant="outline" size="sm" onClick={handleAddTle} className={listAddButtonClass} title="2行 TLE を貼り付けて衛星を追加">
+        <FileText className="h-4 w-4" />
+        TLE
+      </Button>
+      <Button variant="outline" size="sm" onClick={handleAddGeo} className={listAddButtonClass} title="経度を指定して静止衛星を追加">
+        <Globe className="h-4 w-4" />
+        静止軌道
+      </Button>
+      <Button variant="outline" size="sm" onClick={handleAddFormation} className={listAddButtonClass} title="既存の衛星を chief にした編隊を追加">
+        <Rows3 className="h-4 w-4" />
+        編隊
+      </Button>
+    </div>
+  );
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="!w-[92vw] !max-w-6xl max-h-[88vh] overflow-hidden max-md:overflow-hidden max-md:h-[100dvh] max-md:rounded-none max-md:border-0 flex flex-col max-md:gap-3 bg-surface-solid text-fg">
-        <DialogHeader className="max-md:pr-10">
-          <DialogTitle className="text-fg max-md:text-left">人工衛星軌道編集</DialogTitle>
-        </DialogHeader>
-
-        <div className="rounded-md border border-line bg-sunken px-4 py-3 max-md:px-3 max-md:py-2 text-sm max-md:text-xs text-fg shrink-0">
-          <div className="text-xs font-medium uppercase tracking-wide text-brand-text">{selectionTitle(selectedEntry)}</div>
-          <div className="mt-1">
-            {selectedEntry
-              ? summaryForEntry(
-                  selectedEntry,
-                  selectedEntry.kind === "formation"
-                    ? chiefOptions.find((option) => option.elements?.satnum === selectedEntry.chiefSatnum)?.meta?.objectName
-                    : undefined,
-                )
-              : "左の一覧から衛星または編隊を選択してください。"}
-          </div>
-        </div>
-
-        <div className="flex-1 border border-line-strong rounded-md overflow-hidden max-md:overflow-y-auto max-md:overscroll-contain flex flex-col md:flex-row min-h-0">
-          <div className="md:w-72 flex-shrink-0 md:border-r max-md:border-b border-line-strong bg-surface-solid flex flex-col">
-            <div className="p-2 border-b border-line-strong space-y-2 max-md:space-y-0 max-md:grid max-md:grid-cols-3 max-md:gap-1.5">
-              <Button variant="outline" size="sm" onClick={handleAddManual} className="w-full justify-center gap-2 max-md:gap-1 max-md:h-10 max-md:px-1 max-md:text-xs bg-sunken hover:bg-raised-hover text-fg border-line-strong">
-                <Satellite className="h-4 w-4 max-md:hidden" />
-                単独衛星を追加
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleAddGeo} className="w-full justify-center gap-2 max-md:gap-1 max-md:h-10 max-md:px-1 max-md:text-xs bg-sunken hover:bg-raised-hover text-fg border-line-strong">
-                <Globe className="h-4 w-4 max-md:hidden" />
-                静止衛星を追加
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleAddFormation} className="w-full justify-center gap-2 max-md:gap-1 max-md:h-10 max-md:px-1 max-md:text-xs bg-sunken hover:bg-raised-hover text-fg border-line-strong">
-                <Rows3 className="h-4 w-4 max-md:hidden" />
-                編隊を追加
-              </Button>
-            </div>
-            <div className="flex-1 overflow-y-auto max-md:max-h-40">
-              {config.entries.length === 0 ? (
-                <div className="p-5 text-sm text-fg-subtle text-center">エントリがありません</div>
-              ) : (
-                <ul className="divide-y divide-line">
-                  {config.entries.map((entry, index) => (
-                    <li
-                      key={entry.id}
-                      onClick={() => setSelectedId(entry.id)}
-                      className={`cursor-pointer border-l-2 px-3 py-2 max-md:py-2.5 transition-colors ${
-                        entry.id === selectedId
-                          ? "border-l-brand bg-brand-soft text-fg"
-                          : entry.kind === "formation"
-                            ? "border-l-info/40 hover:bg-sunken text-fg"
-                            : "border-l-transparent hover:bg-sunken text-fg"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        {hasEntryError(errors, index) && <span className="h-2 w-2 rounded-full bg-danger flex-shrink-0" />}
-                        <span className="truncate flex-1 text-sm">{getEntryDisplayName(entry, index)}</span>
-                        <span className={`rounded px-1.5 py-0.5 text-[10px] ${entry.kind === "manual" ? "bg-sunken text-fg-muted" : "bg-info-soft text-info"}`}>
-                          {entry.kind === "manual" ? "manual" : "formation"}
-                        </span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            {selectedId && (
-              <div className="p-2 border-t border-line-strong flex gap-1 justify-center">
-                <Button variant="outline" size="icon" onClick={() => handleMove("up")} disabled={selectedIndex <= 0} className="h-8 w-8 max-md:h-10 max-md:w-10 bg-sunken hover:bg-raised-hover text-fg border-line-strong disabled:opacity-40">
-                  <ChevronUp className="h-4 w-4" />
-                </Button>
-                <Button variant="outline" size="icon" onClick={() => handleMove("down")} disabled={selectedIndex < 0 || selectedIndex >= config.entries.length - 1} className="h-8 w-8 max-md:h-10 max-md:w-10 bg-sunken hover:bg-raised-hover text-fg border-line-strong disabled:opacity-40">
-                  <ChevronDown className="h-4 w-4" />
-                </Button>
-                <Button variant="outline" size="icon" onClick={handleDelete} className="h-8 w-8 max-md:h-10 max-md:w-10 bg-sunken hover:bg-danger text-fg border-line-strong">
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
-          </div>
-
-          <div className="flex-1 overflow-y-auto bg-sunken max-md:flex-auto max-md:overflow-visible">
-            {!selectedEntry && <div className="h-full flex items-center justify-center text-fg-muted text-sm">左の一覧から衛星または編隊を選択してください</div>}
-            {selectedEntry?.kind === "manual" && (
-              <ManualEntryForm entry={selectedEntry} index={selectedIndex} errors={errors} onChange={(updater) => updateSelectedEntry((entry) => updater(entry as ManualSatelliteEntry))} />
-            )}
-            {selectedEntry?.kind === "formation" && (
-              <FormationEntryForm
-                entry={selectedEntry}
-                chiefOptions={chiefOptions}
-                index={selectedIndex}
-                errors={errors}
-                onChange={(updater) => updateSelectedEntry((entry) => updater(entry as FormationSatelliteEntry))}
-              />
-            )}
-          </div>
-        </div>
-
-        {errors.length > 0 && <div className="rounded-md border border-danger/40 bg-danger-soft px-3 py-2 text-xs text-danger shrink-0">{errors[0]?.message}</div>}
-
-        <DialogFooter className="border-t border-line pt-3 shrink-0 max-md:flex-row max-md:gap-2">
-          <Button variant="outline" onClick={onClose} className="bg-raised hover:bg-raised-hover text-fg border-line-strong max-md:h-11 max-md:flex-1">キャンセル</Button>
-          <Button onClick={handleSave} className="bg-brand hover:bg-brand-hover text-brand-fg max-md:h-11 max-md:flex-1">保存</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <EditorDialogShell
+      open={open}
+      onClose={onClose}
+      icon={<Satellite />}
+      title="衛星"
+      description="一覧から衛星を選んで軌道を編集します。上のボタンで入力方式を選んで追加できます。"
+      footer={<EditorDialogFooter errors={errors.map((e) => e.message)} onCancel={onClose} onApply={handleSave} />}
+    >
+      <EditorSplitBody
+        list={
+          <EditorItemList
+            noun="衛星"
+            items={config.entries.map((entry, index) => ({
+              id: entry.id,
+              title: getEntryDisplayName(entry, index),
+              subtitle: shortSummary(entry, chiefNameOf(entry)),
+              badge: kindBadge(entry),
+              issue: hasEntryError(errors, index) ? "error" : undefined,
+            }))}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            onMove={handleMove}
+            onDelete={handleDelete}
+            addActions={addActions}
+          />
+        }
+      >
+        <EditorDetailPane
+          title={selectedEntry ? getEntryDisplayName(selectedEntry, selectedIndex) : null}
+          badge={selectedEntry && kindBadge(selectedEntry)}
+          summary={selectedEntry ? summaryForEntry(selectedEntry, chiefNameOf(selectedEntry)) : undefined}
+          emptyText={config.entries.length === 0 ? "左上のボタンから最初の衛星を追加してください" : "一覧から衛星を選択してください"}
+        >
+          {selectedEntry?.kind === "manual" && (
+            <ManualEntryForm entry={selectedEntry} index={selectedIndex} errors={errors} onChange={(updater) => updateSelectedEntry((entry) => updater(entry as ManualSatelliteEntry))} />
+          )}
+          {selectedEntry?.kind === "formation" && (
+            <FormationEntryForm
+              entry={selectedEntry}
+              chiefOptions={chiefOptions}
+              index={selectedIndex}
+              errors={errors}
+              onChange={(updater) => updateSelectedEntry((entry) => updater(entry as FormationSatelliteEntry))}
+            />
+          )}
+        </EditorDetailPane>
+      </EditorSplitBody>
+    </EditorDialogShell>
   );
 }
 
@@ -341,7 +337,7 @@ function ManualEntryForm({
     <div className="space-y-4 p-4">
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <Label className="text-xs text-fg-muted">保存形式</Label>
+          <Label className="text-xs text-fg-muted">入力方式</Label>
           <select value={entry.type} onChange={(e) => onChange((current) => changeManualType(current, e.target.value as ManualSatelliteEntry["type"], elements))} className="w-full rounded border border-line-strong bg-sunken px-2 py-1.5 text-sm text-fg">
             <option value="elements">軌道要素</option>
             <option value="geo">静止軌道 (経度指定)</option>

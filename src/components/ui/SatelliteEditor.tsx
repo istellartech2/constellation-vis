@@ -241,31 +241,50 @@ export default function SatelliteEditor({
     return () => { cancelled = true; };
   }, []);
 
-  const handleUpdate = () => {
+  // True when the editor holds edits the 3D view does not show yet (a new
+  // start time, or an apply that failed validation).
+  const [pending, setPending] = useState(false);
+
+  /**
+   * Validates the scenario (current texts overridden by `next`), pushes it
+   * to the 3D view and keeps it in the editor. Every editor save, import and
+   * file load goes through here so changes always land in one step. The text
+   * is kept even when it fails, so nothing typed is lost.
+   */
+  function applyScenario(next: { satText?: string; constText?: string; gsText?: string; startText?: string }) {
+    const nextSat = next.satText ?? satText;
+    const nextConst = next.constText ?? constText;
+    const nextGs = next.gsText ?? gsText;
+    const nextStart = next.startText ?? startText;
+    setSatText(nextSat);
+    setConstText(nextConst);
+    setGsText(nextGs);
+    setStartText(nextStart);
     try {
-      const base = parseSatellitesToml(satText);
+      const base = parseSatellitesToml(nextSat);
       // Parsed and generated in a single pass — `con` and `shellRanges`
       // are guaranteed to describe the same generated array, rather than
       // relying on two independent parses of the same text happening to agree.
-      const { satellites: con, ranges: shellRanges } = constText
-        ? buildConstellation(constText, base.length)
+      const { satellites: con, ranges: shellRanges } = nextConst
+        ? buildConstellation(nextConst, base.length)
         : { satellites: [], ranges: [] };
-      const gs = parseGroundStationsToml(gsText);
+      const gs = parseGroundStationsToml(nextGs);
       validateSatellites(base, "satellites.toml");
       validateSatellites(con, "constellation.toml");
       validateGroundStations(gs);
       onUpdate({
         satellites: [...base, ...con],
         groundStations: gs,
-        startTime: new Date(startText + "Z"),
+        startTime: new Date(nextStart + "Z"),
         islShellRanges: shellRanges,
       });
+      setPending(false);
       setUpdateFeedback("success");
     } catch (e) {
-      setNotice("ファイルの解析に失敗しました: " + (e as Error).message);
+      setPending(true);
+      setNotice("3D ビューに反映できませんでした: " + (e as Error).message);
     }
-  };
-
+  }
 
   const handleSaveBundle = () => {
     const bundle = buildConfigBundle(
@@ -283,10 +302,12 @@ export default function SatelliteEditor({
       const parsed = parseConfigBundle(text);
       validateSatellites(parsed.satellites);
       validateGroundStations(parsed.groundStations);
-      setSatText(parsed.satText);
-      setConstText(parsed.constText);
-      setGsText(parsed.gsText);
-      setStartText(parsed.startTime.toISOString().slice(0, 16));
+      applyScenario({
+        satText: parsed.satText,
+        constText: parsed.constText,
+        gsText: parsed.gsText,
+        startText: parsed.startTime.toISOString().slice(0, 16),
+      });
     } catch (e) {
       setNotice("ファイルが不正です: " + (e as Error).message);
     }
@@ -309,7 +330,8 @@ export default function SatelliteEditor({
   /**
    * Imports into the scenario apply at once, like layers do: validate the
    * new satellite text together with the current constellation and ground
-   * stations, push it to the 3D view, then keep it in the editor.
+   * stations, push it to the 3D view, then keep it in the editor. Unlike
+   * {@link applyScenario} a failure throws, so the import dialog can show it.
    */
   function commitSatText(nextText: string, startTime = new Date(startText + "Z")) {
     const base = parseSatellitesToml(nextText);
@@ -321,6 +343,7 @@ export default function SatelliteEditor({
     onUpdate({ satellites: [...base, ...con], groundStations, startTime, islShellRanges: ranges });
     setSatText(nextText);
     setStartText(startTime.toISOString().slice(0, 16));
+    setPending(false);
     setUpdateFeedback("success");
   }
 
@@ -330,6 +353,7 @@ export default function SatelliteEditor({
     setSatText("");
     setConstText("");
     setGsText("");
+    setPending(false);
     setUpdateFeedback("success");
   }
 
@@ -430,15 +454,16 @@ export default function SatelliteEditor({
                 constText={constText}
                 gsText={gsText}
                 startText={startText}
-                onSatTextChange={setSatText}
-                onConstTextChange={setConstText}
-                onGsTextChange={setGsText}
-                onStartTextChange={setStartText}
+                onApplySatText={(text) => applyScenario({ satText: text })}
+                onApplyConstText={(text) => applyScenario({ constText: text })}
+                onApplyGsText={(text) => applyScenario({ gsText: text })}
+                onStartTextChange={(text) => { setStartText(text); setPending(true); }}
                 onImportClick={() => setImportOpen(true)}
                 layers={catalogLayers}
                 onLayerChange={onCatalogLayerChange}
                 onLayerRemove={onCatalogLayerRemove}
-                onUpdate={handleUpdate}
+                pending={pending}
+                onUpdate={() => applyScenario({})}
                 onClearAll={clearAll}
                 updateFeedback={updateFeedback}
                 onSaveBundle={handleSaveBundle}
@@ -521,6 +546,7 @@ export default function SatelliteEditor({
                     || remote.startTime !== (remoteStartTimeRef.current ?? new Date(startText + "Z").toISOString());
                   if (domainChanged) {
                     onUpdate(committed);
+                    setPending(false);
                   }
                   remoteStartTimeRef.current = remote.startTime;
                   if (remote.display) onApplyDisplay(remote.display);

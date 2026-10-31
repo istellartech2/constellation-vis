@@ -1,34 +1,59 @@
 import { useState, useMemo, useCallback } from "react";
-import { ChevronLeft } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "./dialog";
+import { ChevronLeft, Layers, Plus, Wand2 } from "lucide-react";
 import { Button } from "./button";
 import { Label } from "./label";
+import EditorDialogShell, { EditorDetailPane, EditorDialogFooter, EditorSplitBody } from "./EditorDialogShell";
+import EditorItemList, { listAddButtonClass } from "./EditorItemList";
+import PatternBadge from "./PatternBadge";
+import ConstellationTemplateMenu from "./ConstellationTemplateMenu";
 import type { ConstellationConfig, ConstellationShell } from "../../lib/constellationTypes";
 import { createNewShell, createDefaultConfig } from "../../lib/constellationTypes";
 import { syncDerivedFields } from "../../lib/constellationPatterns/migrate";
 import {
+  getShellDisplayName,
   isBlockingError,
   parseConstellationConfig,
   serializeConstellationConfig,
   validateConfig,
 } from "../../lib/constellationSerializer";
-import ConstellationShellList from "./ConstellationShellList";
 import ConstellationShellForm from "./ConstellationShellForm";
 import MissionDesignPane from "./MissionDesignPane";
 import { constraintsFromShell, type MissionDesignForm } from "../../lib/missionDesignForm";
+import { computeShellDerived, type ShellDerived } from "../../lib/constellationPatterns";
 
 interface Props {
   open: boolean;
   constText: string;
-  onConstTextChange: (text: string) => void;
+  /** Saves the edited TOML and applies it to the 3D view. */
+  onApply: (text: string) => void;
   onClose: () => void;
+}
+
+/** `F=`/`S=`/`Nc=` readout per pattern family, exhaustive over `ShellDerived`. */
+function sizeLabel(derived: ShellDerived): string {
+  switch (derived.pattern) {
+    case "walker_delta":
+    case "walker_star":
+      return `F=${derived.phasing}`;
+    case "streets_of_coverage":
+      return `S=${derived.design.satsPerPlane}`;
+    case "flower":
+      return `Nc=${derived.harmonicNc ?? "-"}`;
+    case "lattice_flower":
+    case "necklace_flower":
+      return `Nc=${derived.nc}`;
+  }
+}
+
+function shellSummary(shell: ConstellationShell): string {
+  try {
+    const derived = computeShellDerived(shell);
+    const alt = Math.round(derived.apogeeAltitudeKm);
+    const inc = Number(derived.inclinationDeg.toFixed(1));
+    return `${derived.totalSats}機 / ${derived.planes}面 / ${sizeLabel(derived)} · ${alt}km · ${inc}°`;
+  } catch {
+    return `${shell.count}機 / ${shell.planes}面`;
+  }
 }
 
 /** Which pane fills the dialog body. */
@@ -37,7 +62,7 @@ type Mode = "shells" | "mission";
 export default function ConstellationEditorDialog({
   open,
   constText,
-  onConstTextChange,
+  onApply,
   onClose,
 }: Props) {
   const [config, setConfig] = useState<ConstellationConfig>(createDefaultConfig());
@@ -149,23 +174,19 @@ export default function ConstellationEditorDialog({
   }, [selectedShellId]);
 
   const handleApply = useCallback(() => {
-    const toml = serializeConstellationConfig(config);
-    onConstTextChange(toml);
-  }, [config, onConstTextChange]);
-
-  const handleOK = useCallback(() => {
-    handleApply();
+    onApply(serializeConstellationConfig(config));
     onClose();
-  }, [handleApply, onClose]);
-
-  const handleCancel = useCallback(() => {
-    onClose();
-  }, [onClose]);
+  }, [config, onApply, onClose]);
 
   const selectedShell = config.shells.find((s) => s.id === selectedShellId);
   const selectedShellIndex = config.shells.findIndex((s) => s.id === selectedShellId);
-  // Warnings are advisory; only blocking errors disable OK.
-  const isValid = errors.filter(isBlockingError).length === 0;
+  // Warnings are advisory; only blocking errors disable saving.
+  const blockingErrors = errors.filter(isBlockingError);
+  const shellIssue = (index: number): "error" | "warning" | undefined => {
+    const own = errors.filter((err) => err.field === `shell.${index}` || err.field.startsWith(`shell.${index}.`));
+    if (own.length === 0) return undefined;
+    return own.some(isBlockingError) ? "error" : "warning";
+  };
 
   // Format date for datetime-local input
   const formatDateForInput = (date: Date): string => {
@@ -173,121 +194,119 @@ export default function ConstellationEditorDialog({
     return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}T${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`;
   };
 
-  return (
-    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent
-        className="dark !w-[94vw] !max-w-7xl h-[90dvh] max-h-[90dvh] overflow-hidden max-md:overflow-hidden max-md:h-[100dvh] max-md:rounded-none max-md:border-0 flex flex-col max-md:gap-3 bg-surface-solid text-fg"
-        onEscapeKeyDown={(event) => {
-          // In the wizard, Escape steps back to the shell list rather than
-          // discarding the whole editing session.
-          if (mode === "mission") {
-            event.preventDefault();
-            backToShells();
-          }
-        }}
+  const addActions = (
+    <>
+      <Button variant="outline" size="sm" onClick={handleAddShell} className={listAddButtonClass}>
+        <Plus className="h-4 w-4" />
+        新しいシェル
+      </Button>
+      <ConstellationTemplateMenu onSelect={handleSelectPreset} />
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => openMission(null)}
+        className={`${listAddButtonClass} border-brand text-brand-text hover:text-fg`}
       >
-        <DialogHeader className="max-md:pr-10">
-          <DialogTitle className="text-fg flex items-center gap-2">
-            {mode === "mission" && (
-              <button
-                type="button"
-                onClick={backToShells}
-                aria-label="シェル一覧へ戻る"
-                className="p-1 -ml-1 rounded text-fg-muted hover:text-fg hover:bg-sunken max-md:p-2 max-md:-ml-2"
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </button>
-            )}
-            <span>{mode === "mission" ? "ミッションから設計" : "コンステレーション編集"}</span>
-          </DialogTitle>
-          <DialogDescription className="text-xs text-fg-muted text-left">
-            {mode === "mission" ? "目的に合う配置を探し、候補からシェルを作成します。" : "シェルを選んで設定を調整し、自動計算の結果を確認します。"}
-          </DialogDescription>
-        </DialogHeader>
+        <Wand2 className="h-4 w-4" />
+        ミッションから設計
+      </Button>
+    </>
+  );
 
-        {mode === "shells" && (
-          <div className="flex items-center gap-4 px-1">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="constellation-epoch" className="text-xs text-fg-muted whitespace-nowrap">基準時刻 (UTC)</Label>
-              <input
-                id="constellation-epoch"
-                type="datetime-local"
-                value={formatDateForInput(config.epoch)}
-                onChange={(e) => handleEpochChange(e.target.value + ":00Z")}
-                className="w-48 px-2 py-1 text-sm bg-sunken border border-line-strong rounded focus:border-brand focus:outline-none text-fg"
-              />
-            </div>
-          </div>
-        )}
+  return (
+    <EditorDialogShell
+      open={open}
+      onClose={onClose}
+      icon={<Layers />}
+      title={mode === "mission" ? "ミッションから設計" : "コンステレーション"}
+      description={mode === "mission" ? "目的に合う配置を探し、候補からシェルを作成します。" : "一覧からシェルを選んで設定を調整し、右側の計算結果を確認します。"}
+      leading={mode === "mission" && (
+        <button
+          type="button"
+          onClick={backToShells}
+          aria-label="シェル一覧へ戻る"
+          className="p-1 -ml-1 rounded text-fg-muted hover:text-fg hover:bg-sunken max-md:p-2 max-md:-ml-2"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+      )}
+      onEscapeKeyDown={(event) => {
+        // In the wizard, Escape steps back to the shell list rather than
+        // discarding the whole editing session.
+        if (mode === "mission") {
+          event.preventDefault();
+          backToShells();
+        }
+      }}
+      footer={mode === "shells" && (
+        <EditorDialogFooter errors={blockingErrors.map((e) => e.message)} onCancel={onClose} onApply={handleApply} />
+      )}
+    >
+      {mode === "shells" && (
+        <div className="flex items-center gap-2 px-1">
+          <Label htmlFor="constellation-epoch" className="text-xs text-fg-muted whitespace-nowrap">全シェル共通の基準時刻 (UTC)</Label>
+          <input
+            id="constellation-epoch"
+            type="datetime-local"
+            value={formatDateForInput(config.epoch)}
+            onChange={(e) => handleEpochChange(e.target.value + ":00Z")}
+            className="w-48 px-2 py-1 text-sm bg-sunken border border-line-strong rounded focus:border-brand focus:outline-none text-fg"
+          />
+        </div>
+      )}
 
-        {missionOpened && (
-          <div className={mode === "mission" ? "flex flex-1 min-h-0" : "hidden"}>
-            <MissionDesignPane
-              key={missionSession}
-              active={mode === "mission"}
-              epochIso={config.epoch.toISOString()}
-              initialForm={missionPrefill}
-              onAddCandidate={handleSelectPreset}
+      {missionOpened && (
+        <div className={mode === "mission" ? "flex flex-1 min-h-0" : "hidden"}>
+          <MissionDesignPane
+            key={missionSession}
+            active={mode === "mission"}
+            epochIso={config.epoch.toISOString()}
+            initialForm={missionPrefill}
+            onAddCandidate={handleSelectPreset}
+          />
+        </div>
+      )}
+      {mode === "shells" && (
+        <EditorSplitBody
+          list={
+            <EditorItemList
+              noun="シェル"
+              items={config.shells.map((shell, index) => ({
+                id: shell.id,
+                title: getShellDisplayName(shell, index),
+                subtitle: shellSummary(shell),
+                badge: <PatternBadge pattern={shell.pattern} />,
+                issue: shellIssue(index),
+              }))}
+              selectedId={selectedShellId}
+              onSelect={setSelectedShellId}
+              onMove={handleMoveShell}
+              onDelete={handleDeleteShell}
+              addActions={addActions}
             />
-          </div>
-        )}
-        {mode === "shells" && (
-          <div className="flex-1 border border-line-strong rounded-md overflow-hidden max-md:overflow-y-auto max-md:overscroll-contain flex flex-col md:flex-row min-h-0">
-            {/* Shell list: sidebar on desktop, compact select on mobile */}
-            <div className="md:w-52 md:flex-shrink-0 bg-surface-solid max-md:shrink-0">
-              <ConstellationShellList
-                shells={config.shells}
-                selectedId={selectedShellId}
+          }
+        >
+          <EditorDetailPane
+            title={selectedShell ? getShellDisplayName(selectedShell, selectedShellIndex) : null}
+            badge={selectedShell && <PatternBadge pattern={selectedShell.pattern} />}
+            summary={selectedShell && shellSummary(selectedShell)}
+            emptyText={config.shells.length === 0
+              ? "「新しいシェル」・テンプレート・ミッションから設計のいずれかで最初のシェルを追加してください"
+              : "一覧からシェルを選択してください"}
+            scroll={false}
+          >
+            {selectedShell && (
+              <ConstellationShellForm
+                shell={selectedShell}
+                shellIndex={selectedShellIndex}
                 errors={errors}
-                onSelect={setSelectedShellId}
-                onAdd={handleAddShell}
-                onDelete={handleDeleteShell}
-                onMoveUp={(id) => handleMoveShell(id, "up")}
-                onMoveDown={(id) => handleMoveShell(id, "down")}
-                onSelectPreset={handleSelectPreset}
-                onOpenMission={() => openMission(null)}
+                onChange={handleShellChange}
+                onRedesign={(shell) => openMission(constraintsFromShell(shell))}
               />
-            </div>
-
-            {/* Shell form */}
-            <div className="flex-1 min-w-0 min-h-0 overflow-hidden bg-raised max-md:flex-auto max-md:overflow-visible">
-              {selectedShell ? (
-                <ConstellationShellForm
-                  shell={selectedShell}
-                  shellIndex={selectedShellIndex}
-                  errors={errors}
-                  onChange={handleShellChange}
-                  onRedesign={(shell) => openMission(constraintsFromShell(shell))}
-                />
-              ) : (
-                <div className="h-full flex items-center justify-center text-fg-muted text-sm p-6 text-center">
-                  {config.shells.length === 0
-                    ? "「シェル追加」をクリックして最初のシェルを作成してください"
-                    : "シェルを選択してください"}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {mode === "shells" && (
-          <DialogFooter className="border-t border-line pt-3 shrink-0 sm:items-center max-md:flex-row max-md:flex-wrap max-md:gap-2">
-            <p className="text-xs text-fg-muted sm:mr-auto max-md:basis-full">
-              {isValid ? "保存後、シナリオの「この内容で 3D ビューを更新」で反映します。" : "入力エラーを修正すると保存できます。"}
-            </p>
-            <Button variant="outline" onClick={handleCancel} className="bg-raised hover:bg-raised-hover text-fg border-line-strong max-md:h-11 max-md:flex-1">
-              キャンセル
-            </Button>
-            <Button
-              onClick={handleOK}
-              disabled={!isValid}
-              className="bg-brand hover:bg-brand-hover text-brand-fg disabled:opacity-50 max-md:h-11 max-md:flex-1"
-            >
-              編集内容を保存
-            </Button>
-          </DialogFooter>
-        )}
-      </DialogContent>
-    </Dialog>
+            )}
+          </EditorDetailPane>
+        </EditorSplitBody>
+      )}
+    </EditorDialogShell>
   );
 }
