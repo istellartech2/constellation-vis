@@ -166,9 +166,9 @@ export function defaultDisplayOptions(satRadius: number): DisplayOptions {
   return {
     satRadius,
     pointStyle: DEFAULT_POINT_STYLE,
+    // A coloured map with borders and day/night shading (brightEarth off).
     earthTexture: DEFAULT_EARTH_MODE,
-    // Monochrome globes have always drawn borders and photo globes have not.
-    showCountryBorders: isMonochromeEarthMode(DEFAULT_EARTH_MODE),
+    showCountryBorders: true,
     showClouds: false,
     showGraticule: true,
     showEcliptic: true,

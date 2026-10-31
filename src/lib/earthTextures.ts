@@ -3,7 +3,7 @@ export const NATURAL_EARTH_MODE = "natural-earth" as const;
 export const DARK_MONOCHROME_EARTH_MODE = "dark-monochrome" as const;
 export const PAPER_ATLAS_EARTH_MODE = "paper-atlas" as const;
 
-export const DEFAULT_EARTH_MODE = BLUE_MARBLE_EARTH_MODE;
+export const DEFAULT_EARTH_MODE = NATURAL_EARTH_MODE;
 
 /** Image-based globes, drawn with night lights and atmosphere. */
 export type LayeredEarthMode =
@@ -64,11 +64,37 @@ export const EARTH_ASSETS = {
   // Synthetic noise; a larger image would only be an upscale.
   clouds: earthAsset("clouds-2k"),
   countryBorders: earthAsset("country-borders-4k"),
+  // Land elevation for terrain shading; small, since relief is a subtle cue.
+  relief: earthAsset("relief-2k"),
 } as const;
 
 export const LAYERED_EARTH_DAY_MAPS: Record<LayeredEarthMode, TieredTexture> = {
   [BLUE_MARBLE_EARTH_MODE]: EARTH_ASSETS.dayBlueMarble,
   [NATURAL_EARTH_MODE]: EARTH_ASSETS.dayNatural,
+};
+
+/**
+ * Per-map lighting, so both globes read alike by day and by night under the
+ * same sun. `albedo` scales the day map (and its night-side glow): the
+ * Natural Earth map is about 2.2× brighter on land and 6× on the ocean than
+ * the Blue Marble photo (mean linear luminance), so it is dimmed and the
+ * photo lifted slightly toward a common land brightness. `glint` scales the
+ * ocean's sun reflection, which the map's light-blue ocean would otherwise
+ * overstate. `night` scales the faint glow that keeps land legible on the
+ * night side: the photo's forests are much darker than the map's greens.
+ * `bright` scales the map under 地球を明るく表示 (flat light, no sun), where the
+ * photo would otherwise read about half as bright as the map.
+ */
+export interface LayeredEarthLighting {
+  albedo: number;
+  glint: number;
+  night: number;
+  bright: number;
+}
+
+export const LAYERED_EARTH_LIGHTING: Record<LayeredEarthMode, LayeredEarthLighting> = {
+  [BLUE_MARBLE_EARTH_MODE]: { albedo: 1.15, glint: 0.8, night: 3, bright: 2 },
+  [NATURAL_EARTH_MODE]: { albedo: 0.58, glint: 0.6, night: 0.6, bright: 1 },
 };
 
 /** First texture to show, plus the one to swap in once it has downloaded. */
@@ -82,6 +108,8 @@ export interface ResolvedLayeredEarthAssets {
   oceanMask: ProgressiveTexture;
   lightsMap: ProgressiveTexture;
   cloudsMap: string;
+  reliefMap: string;
+  lighting: LayeredEarthLighting;
   qualityTier: "8k" | "4k";
 }
 
@@ -110,6 +138,8 @@ export function resolveLayeredEarthAssets(
     oceanMask: resolveProgressiveTexture(EARTH_ASSETS.oceanMask, maxTextureSize),
     lightsMap: resolveProgressiveTexture(EARTH_ASSETS.nightLights, maxTextureSize),
     cloudsMap: EARTH_ASSETS.clouds,
+    reliefMap: EARTH_ASSETS.relief,
+    lighting: LAYERED_EARTH_LIGHTING[mode],
     qualityTier: maxTextureSize >= 8192 ? "8k" : "4k",
   };
 }
