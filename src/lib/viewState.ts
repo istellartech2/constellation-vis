@@ -1,6 +1,6 @@
 import { DEFAULT_EARTH_MODE, isMonochromeEarthMode, normalizeEarthTextureMode, type EarthTextureMode } from "./earthTextures";
 import type { SatelliteCameraMode } from "./visualization";
-import { createDefaultIslSettings, DEFAULT_GSL_COLOR, DEFAULT_ISL_COLOR, type IslSettings } from "./isl/types";
+import { createDefaultIslSettings, DEFAULT_GSL_COLOR, DEFAULT_ISL_COLOR, type IslEndpoint, type IslSettings } from "./isl/types";
 import { DEFAULT_POINT_STYLE, type SatellitePointStyle } from "./satellitePointStyle";
 
 /**
@@ -39,6 +39,9 @@ export interface CameraSnapshot {
  * reload.
  */
 export function isFiniteCameraSnapshot(snap: CameraSnapshot): boolean {
+  if (!Array.isArray(snap.position) || snap.position.length !== 3 || !Array.isArray(snap.target) || snap.target.length !== 3) {
+    return false;
+  }
   return [...snap.position, ...snap.target, snap.earthCenterDistance, snap.thirdPersonDistance, snap.thirdPersonPitch]
     .every((n) => typeof n === "number" && Number.isFinite(n));
 }
@@ -299,6 +302,60 @@ const MIGRATIONS: Record<number, (display: unknown) => unknown> = {
   },
 };
 
+/** Same kind of value as `template`; numbers must also be finite (JSON stores NaN as null). */
+function isLike(value: unknown, template: unknown): boolean {
+  if (typeof template === "number") return typeof value === "number" && Number.isFinite(value);
+  return typeof value === typeof template;
+}
+
+/**
+ * `value` with every field that does not match `template` replaced by the
+ * template's, recursively; missing fields are filled in. Keys the template
+ * lacks (optional fields such as `shellLinkModels`) are kept as they are.
+ */
+function conformTo<T>(value: unknown, template: T): T {
+  if (template === null || typeof template !== "object") return (isLike(value, template) ? value : template) as T;
+  if (Array.isArray(template)) return (Array.isArray(value) ? value : template) as T;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return template;
+  const out: Record<string, unknown> = { ...(value as Record<string, unknown>) };
+  for (const [key, t] of Object.entries(template)) out[key] = key in out ? conformTo(out[key], t) : t;
+  return out as T;
+}
+
+function isIslEndpoint(v: unknown): v is IslEndpoint {
+  if (!v || typeof v !== "object") return false;
+  const e = v as Record<string, unknown>;
+  return (e.kind === "station" || e.kind === "adhoc") && typeof e.name === "string" &&
+    [e.latitudeDeg, e.longitudeDeg, e.heightKm, e.minElevationDeg].every((n) => typeof n === "number" && Number.isFinite(n));
+}
+
+const CAMERA_MODES: readonly SatelliteCameraMode[] = ["free", "earthCenter", "thirdPerson"];
+
+/**
+ * Stored views are only ever written by this app, but a value captured in a
+ * bad state (NaN written as null) or by an older build would otherwise flow
+ * straight into the scene. Wrong-typed display fields are dropped, so the
+ * usual "absent field" defaults apply; ISL settings are filled from the
+ * defaults. Camera numbers are checked where they are applied
+ * ({@link isFiniteCameraSnapshot}), since the default framing depends on the
+ * screen.
+ */
+function sanitizeView(v: ViewSettings): ViewSettings {
+  const template = toDisplaySettings(defaultDisplayOptions(0), 0, createDefaultIslSettings());
+  const display: Record<string, unknown> = { ...v.display };
+  for (const [key, t] of Object.entries(template)) {
+    if (key !== "isl" && key in display && !isLike(display[key], t)) delete display[key];
+  }
+  const isl = conformTo(display.isl, template.isl);
+  isl.endpointA = isIslEndpoint(isl.endpointA) ? isl.endpointA : null;
+  isl.endpointB = isIslEndpoint(isl.endpointB) ? isl.endpointB : null;
+  isl.excludedShellKeys = isl.excludedShellKeys.filter((k) => typeof k === "string");
+  display.isl = isl;
+  const camera = { ...(typeof v.camera === "object" ? v.camera : {}) } as CameraSnapshot;
+  if (!CAMERA_MODES.includes(camera.mode)) camera.mode = "free";
+  return { ...v, display: display as unknown as DisplaySettings, camera };
+}
+
 function migrateViewSettings(v: ViewSettings): ViewSettings {
   let display: unknown = v.display;
   for (let version = v.version; version < STORAGE_VERSION; version++) {
@@ -309,7 +366,7 @@ function migrateViewSettings(v: ViewSettings): ViewSettings {
   // Earth modes used to be stored as image paths; map those (and any mode
   // since removed) onto current ids. Not version-gated: v2 records hold both.
   migrated.earthTexture = normalizeEarthTextureMode(migrated.earthTexture) ?? DEFAULT_EARTH_MODE;
-  return { version: STORAGE_VERSION, camera: v.camera, display: migrated };
+  return sanitizeView({ version: STORAGE_VERSION, camera: v.camera, display: migrated });
 }
 
 export function loadLastView(): ViewSettings | null {

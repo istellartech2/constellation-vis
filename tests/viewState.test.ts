@@ -199,6 +199,63 @@ describe("isFiniteCameraSnapshot", () => {
   });
 });
 
+describe("loading damaged views", () => {
+  const store = (view: unknown) => localStorage.setItem("constellation-vis:lastView", JSON.stringify(view));
+
+  it("drops wrong-typed display fields so the usual defaults apply", () => {
+    store({ version: 2, camera: CAMERA, display: { ...DISPLAY, satRadius: null, showGraticule: "yes", speedExp: Number.NaN, groundConeColor: 5 } });
+    const display = loadLastView()!.display;
+    expect("satRadius" in display).toBe(false);
+    expect("showGraticule" in display).toBe(false);
+    expect("speedExp" in display).toBe(false);
+    expect("groundConeColor" in display).toBe(false);
+    expect(display.fovConeHalfAngleDeg).toBe(DISPLAY.fovConeHalfAngleDeg);
+    const restored = displayOptionsFromSaved(display, 0.015);
+    expect(restored.satRadius).toBe(0.015);
+    expect(restored.showGraticule).toBe(true);
+  });
+
+  it("fills broken ISL settings from the defaults and keeps valid ones", () => {
+    const tokyo = { kind: "station", name: "Tokyo", latitudeDeg: 35.7, longitudeDeg: 139.7, heightKm: 0, minElevationDeg: 10 };
+    store({
+      version: 2, camera: CAMERA,
+      display: {
+        ...DISPLAY,
+        isl: {
+          enabled: true, endpointA: tokyo, endpointB: { kind: "station", name: "X", latitudeDeg: null },
+          excludedShellKeys: ["a", 3], linkModel: { mode: "dynamic", maxRangeKm: null }, recomputeIntervalSimS: 30,
+        },
+      },
+    });
+    const isl = loadLastView()!.display.isl;
+    const defaults = createDefaultIslSettings();
+    expect(isl.enabled).toBe(true);
+    expect(isl.endpointA).toEqual(tokyo as never);
+    expect(isl.endpointB).toBeNull();
+    expect(isl.excludedShellKeys).toEqual(["a"]);
+    expect(isl.linkModel).toEqual({ ...defaults.linkModel, mode: "dynamic" });
+    expect(isl.cost).toEqual(defaults.cost);
+    expect(isl.recomputeIntervalSimS).toBe(30);
+    expect(isl.gslColor).toBe(defaults.gslColor);
+  });
+
+  it("falls back to free mode for an unknown camera mode", () => {
+    store({ version: 2, camera: { ...CAMERA, mode: "orbit" }, display: DISPLAY });
+    expect(loadLastView()!.camera.mode).toBe("free");
+  });
+
+  it("treats a camera without position arrays as not finite", () => {
+    expect(isFiniteCameraSnapshot({ ...CAMERA, position: undefined } as unknown as CameraSnapshot)).toBe(false);
+  });
+
+  it("applies the same checks to named views", () => {
+    localStorage.setItem("constellation-vis:savedViews", JSON.stringify([
+      { id: "v1", name: "Damaged", settings: { version: 2, camera: CAMERA, display: { ...DISPLAY, satRadius: "big" } } },
+    ]));
+    expect("satRadius" in listSavedViews()[0].settings.display).toBe(false);
+  });
+});
+
 describe("display options", () => {
   it("round-trips through the persisted DisplaySettings", () => {
     const options = displayOptionsFromSaved(DISPLAY, 0.015);

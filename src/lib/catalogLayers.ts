@@ -120,6 +120,8 @@ export function saveCatalogLayerStyles(layers: readonly CatalogLayer[]) {
   } catch { /* storage unavailable: styles reset on reload */ }
 }
 
+const isHexColor = (v: unknown): v is string => typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v);
+
 /** Layers saved before colours/visibility existed (or in old builds) get defaults; order is insertion order. */
 function normalizeLayers(raw: (Partial<CatalogLayer> & { addedAt?: number })[]): CatalogLayer[] {
   const styles = readStyles();
@@ -132,8 +134,8 @@ function normalizeLayers(raw: (Partial<CatalogLayer> & { addedAt?: number })[]):
       name: layer.name ?? "レイヤー",
       kind: layer.kind ?? "file",
       detail: layer.detail ?? "",
-      color: style?.color || layer.color || nextLayerColor(out),
-      visible: style?.visible ?? layer.visible ?? true,
+      color: [style?.color, layer.color].find(isHexColor) ?? nextLayerColor(out),
+      visible: [style?.visible, layer.visible].find((v) => typeof v === "boolean") ?? true,
       catalog: layer.catalog,
     });
   }
