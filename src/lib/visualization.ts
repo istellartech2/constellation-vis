@@ -57,7 +57,7 @@ import {
   setBootSplashStatus,
   whenIdle,
 } from "./earthTextureLoader";
-import type { CameraSnapshot, ViewFrame } from "./viewState";
+import { isFiniteCameraSnapshot, type CameraSnapshot, type ViewFrame } from "./viewState";
 import type { IslEndpoint, IslPathResult, IslSettings, IslShellRange } from "./isl/types";
 import { pathEdgeKeys } from "./isl/edgeKey";
 import { endpointEci, endpointObserver, type Vec3 } from "./isl/geometry";
@@ -103,6 +103,17 @@ const DOWN_AXIS = new THREE.Vector3(0, -1, 0);
 const UP_AXIS = new THREE.Vector3(0, 1, 0);
 const POINTER_DRAG_THRESHOLD_PX = 5;
 const DEFAULT_CAMERA_POSITION = new THREE.Vector3(0, 0, 3);
+
+/**
+ * Window aspect ratio, or `fallback` while the window has no size (a hidden
+ * tab or pane reports 0×0). 0/0 would make the camera — and the saved view —
+ * NaN.
+ */
+function windowAspect(fallback = 1): number {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  return w > 0 && h > 0 ? w / h : fallback;
+}
 const DEFAULT_CAMERA_TARGET = new THREE.Vector3(0, 0, 0);
 const FOLLOW_MIN_DISTANCE = 0.12;
 const FOLLOW_MAX_DISTANCE = 1.8;
@@ -469,7 +480,7 @@ export default class SatelliteScene {
     }
     this.camera = new THREE.PerspectiveCamera(
       45,
-      window.innerWidth / window.innerHeight,
+      windowAspect(),
       0.1,
       1000,
     );
@@ -908,7 +919,7 @@ export default class SatelliteScene {
 
     const handleResize = () => {
       this.renderer.setSize(window.innerWidth, window.innerHeight);
-      this.camera.aspect = window.innerWidth / window.innerHeight;
+      this.camera.aspect = windowAspect(this.camera.aspect);
       this.camera.updateProjectionMatrix();
       this.applyViewOffset();
       this.kmlRenderer.setResolution(window.innerWidth, window.innerHeight);
@@ -1000,6 +1011,14 @@ export default class SatelliteScene {
    * pitch drive {@link updateCameraFollow} on subsequent frames.
    */
   applyCameraSnapshot(snap: CameraSnapshot) {
+    if (!isFiniteCameraSnapshot(snap)) {
+      // A broken saved view (see isFiniteCameraSnapshot): fall back to the
+      // default framing and report it so the stored view is overwritten.
+      this.cameraMode = "free";
+      this.resetFreeCamera();
+      this.params.onCameraChange?.(this.getCameraSnapshot());
+      return;
+    }
     this.cameraMode = snap.mode;
     this.earthCenterDistance = snap.earthCenterDistance;
     this.thirdPersonDistance = snap.thirdPersonDistance;

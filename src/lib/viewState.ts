@@ -32,6 +32,17 @@ export interface CameraSnapshot {
   thirdPersonPitch: number;
 }
 
+/**
+ * Whether every number in a snapshot is finite. JSON stores NaN/Infinity as
+ * null, so a snapshot captured while the window had no size comes back as
+ * `[null, null, null]` and would put the camera inside the globe on every
+ * reload.
+ */
+export function isFiniteCameraSnapshot(snap: CameraSnapshot): boolean {
+  return [...snap.position, ...snap.target, snap.earthCenterDistance, snap.thirdPersonDistance, snap.thirdPersonPitch]
+    .every((n) => typeof n === "number" && Number.isFinite(n));
+}
+
 /** Scene reference frame: inertial, Earth-fixed, or Geocentric Solar Ecliptic (Sun fixed). */
 export type ViewFrame = "eci" | "ecef" | "gse";
 

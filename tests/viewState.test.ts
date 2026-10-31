@@ -6,6 +6,7 @@ import {
   listSavedViews,
   saveNamedView,
   deleteNamedView,
+  isFiniteCameraSnapshot,
   defaultDisplayOptions,
   displayOptionsFromSaved,
   mergeDisplayOptions,
@@ -178,6 +179,23 @@ describe("viewState persistence", () => {
       );
       expect(loadLastView()!.display.earthTexture).toBe(expected as DisplaySettings["earthTexture"]);
     }
+  });
+});
+
+describe("isFiniteCameraSnapshot", () => {
+  it("accepts a normal snapshot", () => {
+    expect(isFiniteCameraSnapshot(CAMERA)).toBe(true);
+  });
+
+  it("rejects a NaN camera that came back from storage as nulls", () => {
+    saveLastView(buildViewSettings(DISPLAY, { ...CAMERA, position: [NaN, NaN, NaN] }));
+    const camera = loadLastView()!.camera;
+    expect(camera.position).toEqual([null, null, null] as unknown as [number, number, number]);
+    expect(isFiniteCameraSnapshot(camera)).toBe(false);
+  });
+
+  it("rejects infinite follow distances", () => {
+    expect(isFiniteCameraSnapshot({ ...CAMERA, thirdPersonDistance: Infinity })).toBe(false);
   });
 });
 
