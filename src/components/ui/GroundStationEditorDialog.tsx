@@ -1,13 +1,8 @@
 import { useCallback, useMemo, useState } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "./dialog";
+import { MapPin, Plus } from "lucide-react";
 import { Button } from "./button";
-import GroundStationList from "./GroundStationList";
+import EditorDialogShell, { EditorDetailPane, EditorDialogFooter, EditorSplitBody } from "./EditorDialogShell";
+import EditorItemList, { listAddButtonClass, listAddSelectClass } from "./EditorItemList";
 import GroundStationForm from "./GroundStationForm";
 import GroundStationMap from "./GroundStationMap";
 import {
@@ -19,19 +14,26 @@ import {
   fromDraft,
   type GroundStationDraft,
 } from "../../lib/groundStationSerializer";
-import type { GroundStationPreset } from "../../lib/groundStationPresets";
+import { GROUND_STATION_PRESETS, type GroundStationPreset } from "../../lib/groundStationPresets";
 
 interface Props {
   open: boolean;
   gsText: string;
-  onGsTextChange: (text: string) => void;
+  /** Saves the edited TOML and applies it to the 3D view. */
+  onApply: (text: string) => void;
   onClose: () => void;
+}
+
+function formatLatLon(s: GroundStationDraft): string {
+  const lat = `${Math.abs(s.latitudeDeg).toFixed(2)}°${s.latitudeDeg >= 0 ? "N" : "S"}`;
+  const lon = `${Math.abs(s.longitudeDeg).toFixed(2)}°${s.longitudeDeg >= 0 ? "E" : "W"}`;
+  return `${lat} ${lon}`;
 }
 
 export default function GroundStationEditorDialog({
   open,
   gsText,
-  onGsTextChange,
+  onApply,
   onClose,
 }: Props) {
   const [stations, setStations] = useState<GroundStationDraft[]>([]);
@@ -130,88 +132,95 @@ export default function GroundStationEditorDialog({
     [selectedId],
   );
 
-  const handleOK = useCallback(() => {
-    const toml = serializeGroundStations(stations.map(fromDraft));
-    onGsTextChange(toml);
+  const handleApply = useCallback(() => {
+    onApply(serializeGroundStations(stations.map(fromDraft)));
     onClose();
-  }, [stations, onGsTextChange, onClose]);
+  }, [stations, onApply, onClose]);
 
   const selected = stations.find((s) => s.id === selectedId);
   const selectedIndex = stations.findIndex((s) => s.id === selectedId);
-  const isValid = errors.length === 0;
+
+  const addActions = (
+    <>
+      <Button variant="outline" size="sm" onClick={handleAdd} className={listAddButtonClass}>
+        <Plus className="h-4 w-4" />
+        新しい地上局
+      </Button>
+      <select
+        value=""
+        aria-label="プリセットから地上局を追加"
+        onChange={(e) => {
+          const value = e.target.value;
+          if (!value) return;
+          const [groupIdx, presetIdx] = value.split(":").map(Number);
+          const preset = GROUND_STATION_PRESETS[groupIdx]?.presets[presetIdx];
+          if (preset) handleAddPreset(preset);
+          e.target.value = "";
+        }}
+        className={listAddSelectClass}
+      >
+        <option value="">プリセットから追加...</option>
+        {GROUND_STATION_PRESETS.map((group, gi) => (
+          <optgroup key={group.label} label={group.label}>
+            {group.presets.map((p, pi) => (
+              <option key={p.name} value={`${gi}:${pi}`}>
+                {p.labelJa}
+              </option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
+    </>
+  );
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="!w-[90vw] !max-w-6xl max-h-[85vh] overflow-hidden max-md:overflow-hidden max-md:h-[100dvh] max-md:rounded-none max-md:border-0 flex flex-col max-md:gap-3 bg-surface-solid text-fg">
-        <DialogHeader className="max-md:pr-10">
-          <DialogTitle className="text-fg max-md:text-left">地上局編集</DialogTitle>
-        </DialogHeader>
-
-        <div className="flex-1 border border-line-strong rounded-md overflow-hidden max-md:overflow-y-auto max-md:overscroll-contain flex flex-col md:flex-row min-h-0">
-          <div className="md:w-56 flex-shrink-0 bg-surface-solid">
-            <GroundStationList
-              stations={stations}
-              selectedId={selectedId}
-              errors={errors}
-              onSelect={setSelectedId}
-              onAdd={handleAdd}
-              onAddPreset={handleAddPreset}
-              onDelete={handleDelete}
-              onMoveUp={(id) => handleMove(id, "up")}
-              onMoveDown={(id) => handleMove(id, "down")}
-            />
-          </div>
-
-          <div className="flex-1 flex flex-col min-w-0 max-md:flex-none">
-            <div className="flex-shrink-0 md:max-h-[45%] md:overflow-y-auto bg-sunken border-b border-line-strong">
-              {selected ? (
-                <GroundStationForm
-                  station={selected}
-                  index={selectedIndex}
-                  errors={errors}
-                  onChange={handleChange}
-                />
-              ) : (
-                <div className="h-32 flex items-center justify-center text-fg-muted text-sm">
-                  {stations.length === 0
-                    ? "「地上局追加」をクリックして最初の地上局を作成してください"
-                    : "地上局を選択してください"}
-                </div>
-              )}
-            </div>
-            <div className="flex-1 min-h-[280px] relative max-md:flex-none max-md:h-[280px]">
-              <div className="absolute top-2 left-2 max-md:left-14 max-md:right-2 z-[1000] bg-sunken text-xs text-fg px-2 py-1 rounded pointer-events-none">
-                {selected
-                  ? "地図クリックで選択中の地上局の座標を上書き"
-                  : "地上局を選択してください"}
+    <EditorDialogShell
+      open={open}
+      onClose={onClose}
+      icon={<MapPin />}
+      title="地上局"
+      description="一覧から地上局を選んで位置と可視条件を編集します。地図をクリックすると選択中の地上局を移動できます。"
+      footer={<EditorDialogFooter errors={errors.map((e) => e.message)} onCancel={onClose} onApply={handleApply} />}
+    >
+      <EditorSplitBody
+        list={
+          <EditorItemList
+            noun="地上局"
+            items={stations.map((s) => ({
+              id: s.id,
+              title: s.name || "(無名)",
+              subtitle: `${formatLatLon(s)} · 最低仰角 ${s.minElevationDeg}°`,
+              issue: errors.some((e) => e.stationId === s.id) ? "error" : undefined,
+            }))}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            onMove={handleMove}
+            onDelete={handleDelete}
+            addActions={addActions}
+          />
+        }
+      >
+        <EditorDetailPane
+          title={selected ? selected.name || "(無名)" : null}
+          summary={selected ? `${formatLatLon(selected)} · 高度 ${selected.heightKm} km` : undefined}
+          emptyText={stations.length === 0 ? "「新しい地上局」かプリセットから最初の地上局を追加してください" : "一覧から地上局を選択してください"}
+          scroll={false}
+        >
+          {selected && (
+            <>
+              <div className="shrink-0 md:max-h-[45%] md:overflow-y-auto border-b border-line-strong">
+                <GroundStationForm station={selected} index={selectedIndex} errors={errors} onChange={handleChange} />
               </div>
-              <GroundStationMap
-                stations={stations}
-                selectedId={selectedId}
-                onMapClick={handleMapClick}
-                onSelect={setSelectedId}
-              />
-            </div>
-          </div>
-        </div>
-
-        <DialogFooter className="border-t border-line pt-3 shrink-0 max-md:flex-row max-md:gap-2">
-          <Button
-            variant="outline"
-            onClick={onClose}
-            className="bg-raised hover:bg-raised-hover text-fg border-line-strong max-md:h-11 max-md:flex-1"
-          >
-            キャンセル
-          </Button>
-          <Button
-            onClick={handleOK}
-            disabled={!isValid}
-            className="bg-brand hover:bg-brand-hover text-brand-fg disabled:opacity-50 max-md:h-11 max-md:flex-1"
-          >
-            OK
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+              <div className="relative min-h-[280px] flex-1 max-md:h-[280px] max-md:flex-none">
+                <div className="pointer-events-none absolute top-2 left-14 z-[1000] rounded bg-sunken px-2 py-1 text-xs text-fg max-md:right-2">
+                  地図クリックで「{selected.name || "(無名)"}」の位置を移動
+                </div>
+                <GroundStationMap stations={stations} selectedId={selectedId} onMapClick={handleMapClick} onSelect={setSelectedId} />
+              </div>
+            </>
+          )}
+        </EditorDetailPane>
+      </EditorSplitBody>
+    </EditorDialogShell>
   );
 }

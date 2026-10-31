@@ -1,5 +1,6 @@
 import { useState, type ChangeEvent } from "react";
 import NoticeDialog from "./NoticeDialog";
+import { listAddSelectClass } from "./EditorItemList";
 import type { ConstellationShell } from "../../lib/constellationTypes";
 import { computeShellDerived } from "../../lib/constellationPatterns";
 import {
@@ -49,7 +50,8 @@ export default function ConstellationTemplateMenu({ onSelect, className }: Props
     <select
       value=""
       onChange={handleChange}
-      className={`w-full px-2 py-1 text-xs bg-sunken border border-line-strong rounded text-fg focus:border-brand focus:outline-none ${className ?? ""}`}
+      aria-label="テンプレートからシェルを追加"
+      className={`${listAddSelectClass} ${className ?? ""}`}
     >
       <option value="">テンプレートから追加...</option>
       {CONSTELLATION_PRESETS.map((group, gi) => (

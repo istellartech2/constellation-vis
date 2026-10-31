@@ -108,10 +108,6 @@ export default function ConstellationShellForm({
   return (
     <div className="h-full min-h-0 overflow-y-auto max-md:h-auto max-md:overflow-visible xl:overflow-hidden xl:grid xl:grid-cols-[minmax(0,1fr)_18rem]">
       <section aria-label="シェルの設定" className="min-w-0 space-y-5 p-4 xl:overflow-y-auto">
-        <div>
-          <h3 className="text-base font-semibold text-fg">シェルの設定</h3>
-          <p className="mt-1 text-xs text-fg-muted">数値を変更すると、右側の計算結果が更新されます。</p>
-        </div>
         <ShellFormBanner items={banner} />
         <div className="space-y-1">
           <Label htmlFor={`shell-name-${shell.id}`} className="text-xs text-fg-muted">名前</Label>
