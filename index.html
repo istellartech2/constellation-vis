@@ -27,7 +27,7 @@
       // scripts have loaded; src/lib/earthTextureLoader.ts picks these up.
       // Keep the file lists in sync with EARTH_ASSETS (earthTextures.test.ts checks).
       (function () {
-        var mode = "blue-marble";
+        var mode = "natural-earth";
         try {
           var saved = JSON.parse(localStorage.getItem("constellation-vis:lastView") || "null");
           var stored = saved && saved.display && saved.display.earthTexture;
@@ -35,8 +35,8 @@
           if (typeof stored === "string") mode = legacy[stored] || stored;
         } catch (e) {}
         var files = {
-          "blue-marble": ["day-blue-marble-4k", "ocean-mask-2k", "night-lights-2k"],
-          "natural-earth": ["day-natural-4k", "ocean-mask-2k", "night-lights-2k"],
+          "blue-marble": ["day-blue-marble-4k", "ocean-mask-2k", "night-lights-2k", "relief-2k"],
+          "natural-earth": ["day-natural-4k", "ocean-mask-2k", "night-lights-2k", "relief-2k"],
           "dark-monochrome": ["ocean-mask-2k", "country-borders-4k"],
           "paper-atlas": ["ocean-mask-2k", "country-borders-4k"],
         }[mode];

@@ -121,6 +121,97 @@ export function InlineSlider({
   );
 }
 
+/** ラベルと値を上の行、スライダーを全幅で下の行に置く、読みやすさ優先のスライダー。 */
+export function FieldSlider({
+  label,
+  value,
+  min,
+  max,
+  step,
+  format,
+  help,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  format: (v: number) => string;
+  help?: string;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-0.5 text-xs text-fg">
+          {label}
+          {help && <HelpTip text={help} />}
+        </span>
+        <span className="text-xs font-medium tabular-nums text-fg">{format(value)}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        aria-label={label}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full"
+      />
+    </div>
+  );
+}
+
+/**
+ * A titled block inside a section. `analysis` marks values that feed the
+ * visibility checks and analyses, so they read apart from look-only settings.
+ */
+export function FieldGroup({
+  title,
+  analysis = false,
+  children,
+}: {
+  title: string;
+  analysis?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-1.5 border-b border-line pb-1">
+        <span className="text-[11px] font-semibold text-fg-muted">{title}</span>
+        {analysis && <AnalysisBadge />}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** Label on the left, colour swatch on the right: one full row per colour. */
+export function ColorRow({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (color: string) => void;
+}) {
+  return (
+    <label className="flex items-center justify-between gap-2 text-sm text-fg">
+      {label}
+      <input
+        type="color"
+        className="option-color-input"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        title={`${label}の色`}
+      />
+    </label>
+  );
+}
+
 /** ラベル + カラースウォッチのコンパクトな 1 組(横に並べて使う)。 */
 export function ColorChip({
   label,

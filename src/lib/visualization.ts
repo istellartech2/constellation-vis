@@ -180,6 +180,8 @@ type Rgba = readonly [number, number, number, number];
 /** Placeholder colors shown until each earth image has loaded. */
 const NO_DATA: Rgba = [0, 0, 0, 0];
 const ALL_WATER: Rgba = [255, 255, 255, 255];
+/** Share of the day map kept visible on the night side (before the per-map `night` factor). */
+const NIGHT_LIFT = 0.12;
 const DEEP_OCEAN: Rgba = [10, 26, 56, 255];
 
 /**
@@ -504,14 +506,17 @@ export default class SatelliteScene {
     );
 
     const useLayeredEarth = isLayeredEarthMode(params.earthTexture);
+    // Sunlight is a DirectionalLight: at 1 AU the rays are parallel. The
+    // layered globe keeps a low ambient so the night side reads as night but
+    // its continents stay legible next to the city lights.
     this.ambientLight = new THREE.AmbientLight(
       0xffffff,
-      params.brightEarth ? 1.5 : useLayeredEarth ? 0.28 : 0.2,
+      params.brightEarth ? 1.5 : 0.2,
     );
     this.scene.add(this.ambientLight);
     this.sunlight = new THREE.DirectionalLight(
       0xffffff,
-      params.brightEarth ? 0 : useLayeredEarth ? 1.62 : 1.5,
+      params.brightEarth ? 0 : useLayeredEarth ? 2.0 : 1.5,
     );
     this.scene.add(this.sunlight);
 
@@ -2351,7 +2356,7 @@ export default class SatelliteScene {
       };
     }
 
-    if (darkMonochrome || paperAtlas) {
+    if (layeredAssets || darkMonochrome || paperAtlas) {
       animatedMaterials.push(surfaceMesh.userData.shaderEntry);
     }
 
@@ -2535,11 +2540,21 @@ export default class SatelliteScene {
     assets: ReturnType<typeof resolveLayeredEarthAssets>,
     loadProgressiveTexture: ProgressiveTextureLoader,
   ) {
+    const brightEarth = !!this.params.brightEarth;
+    // Even out the two day maps, under the sun and under flat "bright earth" light.
+    const { glint, night } = brightEarth ? { glint: 1, night: 1 } : assets.lighting;
+    const albedo = brightEarth ? assets.lighting.bright : assets.lighting.albedo;
     const material = new THREE.MeshPhongMaterial({
+      color: new THREE.Color().setScalar(albedo),
       emissive: new THREE.Color("#394754"),
-      emissiveIntensity: this.params.brightEarth ? 0.04 : 0.1,
-      specular: new THREE.Color("#1e2833"),
-      shininess: 85,
+      emissiveIntensity: (brightEarth ? 0.04 : 0.07) * albedo,
+      // Bright enough for a visible sun glint on the oceans (the specular map
+      // masks it to water), soft enough to stay a highlight, not a hotspot.
+      specular: new THREE.Color(brightEarth ? "#1e2833" : "#1e262e").multiplyScalar(brightEarth ? 1 : glint * 0.5),
+      shininess: brightEarth ? 85 : 400,
+      // Terrain only reads where light grazes it, so this mostly shows near
+      // the terminator; under flat "bright earth" lighting it would be noise.
+      bumpScale: brightEarth ? 0 : 2.2,
     });
     const dayMap = loadProgressiveTexture(assets.dayMap, (texture) => {
       material.map = texture;
@@ -2550,7 +2565,86 @@ export default class SatelliteScene {
     material.specularMap = loadProgressiveTexture(assets.oceanMask, (texture) => {
       material.specularMap = texture;
     }, THREE.NoColorSpace, ALL_WATER);
+    if (!brightEarth) {
+      material.bumpMap = loadProgressiveTexture({ initial: assets.reliefMap }, (texture) => {
+        material.bumpMap = texture;
+      }, THREE.NoColorSpace, NO_DATA);
+    }
+
+    const sunDirection = new THREE.Vector3(1, 0, 0);
+    if (!brightEarth) {
+      material.onBeforeCompile = (shader) => {
+        shader.uniforms.sunDirection = { value: sunDirection };
+        shader.uniforms.nightLift = { value: NIGHT_LIFT * night };
+        shader.vertexShader = shader.vertexShader
+          .replace("#include <common>", "#include <common>\nvarying vec3 vSunWorldNormal;")
+          .replace(
+            "#include <beginnormal_vertex>",
+            "#include <beginnormal_vertex>\nvSunWorldNormal = normalize(mat3(modelMatrix) * objectNormal);",
+          );
+        shader.fragmentShader = shader.fragmentShader
+          .replace(
+            "#include <common>",
+            `#include <common>
+            uniform vec3 sunDirection;
+            uniform float nightLift;
+            varying vec3 vSunWorldNormal;
+            // Filmic curve (Narkowicz's ACES fit) for the globe alone, so user
+            // colours on satellites and lines are not tone-mapped.
+            vec3 earthFilmic(vec3 x) {
+              return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+            }`,
+          )
+          // three's Blinn-Phong uses a Schlick Fresnel that rises to white at
+          // grazing angles whatever the specular colour, which drew a white
+          // blob on the limb. Let the specular colour alone set the glint.
+          .replace(
+            "#include <lights_phong_pars_fragment>",
+            `vec3 earthGlintBRDF(const in vec3 lightDir, const in vec3 viewDir, const in vec3 normal,
+                const in vec3 specularColor, const in float shininess) {
+              vec3 halfDir = normalize(lightDir + viewDir);
+              return specularColor * 0.25 * D_BlinnPhong(shininess, saturate(dot(normal, halfDir)));
+            }
+            ${THREE.ShaderChunk.lights_phong_pars_fragment.replace("BRDF_BlinnPhong(", "earthGlintBRDF(")}`,
+          )
+          .replace(
+            "#include <lights_fragment_end>",
+            `#include <lights_fragment_end>
+            // Fade the glint at the limb, where Blinn-Phong smears it into a streak.
+            reflectedLight.directSpecular *= smoothstep(0.05, 0.4, dot(normal, normalize(vViewPosition)));`,
+          )
+          .replace(
+            "#include <opaque_fragment>",
+            `float sunCos = dot(normalize(vSunWorldNormal), normalize(sunDirection));
+            // Sunlight near the terminator crosses the most air: warm and dim it.
+            float dusk = smoothstep(-0.06, 0.06, sunCos) * (1.0 - smoothstep(0.06, 0.32, sunCos));
+            outgoingLight *= mix(vec3(1.0), vec3(1.0, 0.66, 0.42), dusk * 0.6);
+            // Keep the night side readable: a flat share of the day map where
+            // the sun is down (the city lights layer adds on top).
+            outgoingLight += diffuseColor.rgb * nightLift * (1.0 - smoothstep(-0.15, 0.1, sunCos));
+            // Daylight scattered by the air: a faint blue over the oceans
+            // (specularStrength is the water mask), barely any over land so
+            // the photo stays crisp, slightly thicker toward the limb.
+            float limb = 1.0 - max(dot(normal, normalize(vViewPosition)), 0.0);
+            outgoingLight += vec3(0.006, 0.017, 0.042) * sqrt(max(sunCos, 0.0))
+              * mix(0.15, 1.0, specularStrength) * (1.0 + 0.7 * limb);
+            outgoingLight = earthFilmic(outgoingLight * 1.1);
+            #include <opaque_fragment>`,
+          );
+      };
+    } else {
+      // Flat light leaves the photo's near-black oceans black; give all water
+      // the same faint blue the sunlit side gets from the air.
+      material.onBeforeCompile = (shader) => {
+        shader.fragmentShader = shader.fragmentShader.replace(
+          "#include <opaque_fragment>",
+          `outgoingLight += vec3(0.010, 0.028, 0.068) * specularStrength;
+          #include <opaque_fragment>`,
+        );
+      };
+    }
     const mesh = new THREE.Mesh(geometry, material);
+    mesh.userData.shaderEntry = { sunDirectionUniform: sunDirection };
     group.add(mesh);
     return mesh;
   }
@@ -2709,13 +2803,20 @@ export default class SatelliteScene {
           float fresnel = pow(1.0 - max(dot(viewDir, normalDir), 0.0), fresnelPower);
           float sunAmount = sunFloor + (1.0 - sunFloor) * max(dot(normalDir, normalize(sunDirection)), 0.0);
           float alpha = fresnel * sunAmount * glowStrength;
+          #ifndef DARK_MONOCHROME
+            // The limb over the terminator glows orange, as at sunrise/sunset.
+            float sunCos = dot(normalDir, normalize(sunDirection));
+            float dusk = exp(-pow(sunCos / 0.22, 2.0));
+            vec3 glowColor = mix(atmosphereColor, vec3(1.0, 0.56, 0.3), dusk * 0.7);
+            alpha *= 1.0 + 0.6 * dusk;
+          #endif
           #ifdef DARK_MONOCHROME
             // AdditiveBlending applies alpha; output the blue tint only once.
             gl_FragColor = vec4(atmosphereColor, alpha);
             #include <tonemapping_fragment>
             #include <colorspace_fragment>
           #else
-            gl_FragColor = vec4(atmosphereColor * alpha, alpha);
+            gl_FragColor = vec4(glowColor * alpha, alpha);
           #endif
         }
       `,

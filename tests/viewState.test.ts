@@ -170,7 +170,7 @@ describe("viewState persistence", () => {
       ["./assets/earth02.webp", "natural-earth"],
       ["high-resolution", "natural-earth"],
       ["paper-atlas", "paper-atlas"],
-      ["./assets/removed.webp", "blue-marble"],
+      ["./assets/removed.webp", "natural-earth"],
     ]) {
       localStorage.setItem(
         "constellation-vis:lastView",
@@ -197,6 +197,13 @@ describe("display options", () => {
   it("keeps the photo globe borderless for views saved before borders were a setting", () => {
     expect(displayOptionsFromSaved(DISPLAY, 0.015).showCountryBorders).toBe(false);
     expect(displayOptionsFromSaved({ ...DISPLAY, earthTexture: "dark-monochrome" }, 0.015).showCountryBorders).toBe(true);
+  });
+
+  it("defaults to the coloured map with borders and day/night shading", () => {
+    const d = defaultDisplayOptions(0.015);
+    expect(d.earthTexture).toBe("natural-earth");
+    expect(d.showCountryBorders).toBe(true);
+    expect(d.brightEarth).toBe(false);
   });
 
   it("merges partial updates without touching other fields", () => {

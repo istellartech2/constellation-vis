@@ -63,6 +63,14 @@ describe("earthTextures", () => {
     expect(low.lightsMap.upgrade).toBeUndefined();
   });
 
+  it("dims the brighter map so both globes read alike under the same sun", () => {
+    const photo = resolveLayeredEarthAssets(BLUE_MARBLE_EARTH_MODE, 4096).lighting;
+    const map = resolveLayeredEarthAssets(NATURAL_EARTH_MODE, 4096).lighting;
+    expect(map.albedo).toBeLessThan(photo.albedo);
+    expect(map.glint).toBeLessThan(photo.glint);
+    expect(photo.night).toBeGreaterThan(map.night);
+  });
+
   it("prefetches each mode's first images from index.html", () => {
     const html = readFileSync(join(import.meta.dir, "../../index.html"), "utf8");
     const prefetched = (mode: string) => {
@@ -73,7 +81,7 @@ describe("earthTextures", () => {
     for (const mode of [BLUE_MARBLE_EARTH_MODE, NATURAL_EARTH_MODE] as const) {
       const assets = resolveLayeredEarthAssets(mode, maxTextureSize);
       expect(prefetched(mode).sort()).toEqual(
-        [assets.dayMap.initial, assets.oceanMask.initial, assets.lightsMap.initial].sort(),
+        [assets.dayMap.initial, assets.oceanMask.initial, assets.lightsMap.initial, assets.reliefMap].sort(),
       );
     }
     for (const mode of [DARK_MONOCHROME_EARTH_MODE, PAPER_ATLAS_EARTH_MODE]) {
