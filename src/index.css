@@ -1050,7 +1050,7 @@ input[type="range"] {
 /* Playback HUD (bottom centre) */
 .playback-bar,
 .satellite-info {
-  transition: left 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: left 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), bottom 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .playback-bar {
@@ -1129,10 +1129,19 @@ input[type="range"] {
 }
 
 .satellite-info {
+  /* Lift the card above the playback bar only when the two would collide
+     horizontally (side panel open, or a narrow window). The clamp turns the
+     overlap (card right edge + gap vs. the bar's left edge, assuming the bar
+     is at most 360px wide) into a 0-or-bar-height step. */
+  --playback-clearance: clamp(
+    0px,
+    (var(--panel-offset, 0px) + 344px - (50vw + var(--panel-offset, 0px) / 2 - 180px)) * 1000,
+    56px
+  );
   left: calc(12px + var(--panel-offset, 0px));
-  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px) + var(--playback-clearance));
   width: min(320px, calc(100vw - 24px));
-  max-height: calc(100dvh - 90px);
+  max-height: calc(100dvh - 90px - var(--playback-clearance));
   display: flex;
   flex-direction: column;
   gap: 10px;
