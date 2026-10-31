@@ -44,7 +44,7 @@ export {
 } from "./fields";
 
 export type { TomlScalar, TomlTableScan } from "./tomlTable";
-export { parseTomlScalar, scanArrayTable } from "./tomlTable";
+export { parseTomlScalar, quoteTomlString, scanArrayTable, unquoteTomlString } from "./tomlTable";
 
 export type { AppliedShellFailures, ShellFailurePlan } from "./failure";
 export {

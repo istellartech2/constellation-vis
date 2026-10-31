@@ -21,6 +21,7 @@ import {
   type SatelliteEditorRoe,
 } from "./satelliteEditorTypes";
 import { LOCAL_SATNUM_MIN, nextLocalSatnum } from "./localSatnum";
+import { unquoteTomlString } from "./constellationPatterns/tomlTable";
 
 const NEAR_CIRCULAR_ECC_MAX = 0.02;
 const SQRT3 = Math.sqrt(3);
@@ -41,9 +42,8 @@ type TomlRecord = Record<string, string | number | boolean | Date>;
 function parseValue(raw: string): string | number | boolean | Date {
   const s = raw.trim();
   if (!s) return s;
-  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
-    return s.slice(1, -1);
-  }
+  const quoted = unquoteTomlString(s);
+  if (quoted !== null) return quoted;
   if (s === "true") return true;
   if (s === "false") return false;
   if (/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/.test(s)) {

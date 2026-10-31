@@ -6,6 +6,7 @@ import {
 import type { AnalysisSatellite, LinkDutyAnalysisInput } from "../lib/linkDutyAnalysis";
 import type { GroundTerminal, LinkKind } from "../lib/linkGeometry";
 import type { VisibilityMode } from "../lib/groundStations";
+import { unquoteTomlString } from "../lib/constellationPatterns/tomlTable";
 
 type TomlValue = string | number | boolean;
 type TomlRecord = Record<string, TomlValue>;
@@ -29,10 +30,8 @@ function stripComment(value: string): string {
 
 function parseValue(raw: string): TomlValue {
   const value = stripComment(raw);
-  if ((value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))) {
-    return value.slice(1, -1);
-  }
+  const quoted = unquoteTomlString(value);
+  if (quoted !== null) return quoted;
   if (value === "true") return true;
   if (value === "false") return false;
   const number = Number(value);
