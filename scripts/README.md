@@ -87,6 +87,20 @@
 - 実行例:
   - `bun scripts/analysis/bench-access.ts 1000`
 
+### `check-celestrak-groups.ts`
+
+- 目的:
+  - インポート画面に並ぶ CelesTrak グループ（`CELESTRAK_GROUP_TREE`）を実際に取得し、取得できるか・アプリと同じ変換が通るかを確認する
+  - ネットワークと celestrak.org が必要なので `bun test` には含めない。グループ一覧を変えたときに手で実行する
+- 入力:
+  - 引数なし: 全グループ（0.5 秒間隔で順に取得）
+  - 引数あり: 指定したグループ ID のみ
+- 主な出力:
+  - 標準出力に各グループの `ok` / `FAIL` と件数。失敗があれば終了コード 1
+- 実行例:
+  - `bun scripts/analysis/check-celestrak-groups.ts`
+  - `bun scripts/analysis/check-celestrak-groups.ts starlink geo`
+
 ### `compute-visibility-sweep.ts`
 
 - 目的:

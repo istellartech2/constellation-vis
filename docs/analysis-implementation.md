@@ -698,7 +698,7 @@ RGT/J2 補正と J3 は [RGT §4.1](RGTorbit.md#implemented-rates)・[摂動モ�
 | `src/lib/astronomy.ts` | `gmstDeg`, `sunVectorECI`, `geoElementsFromLongitude`, `createGraticule` | — |
 | `src/lib/orbitalCoordinates.ts` | `computeLVLHFrame`, `computeSensorDirection`, `computeFovConeQuaternion`, `computeTiltedConeHeight` | `tests/orbitalCoordinates.test.ts` |
 | `src/lib/satelliteDerivedInfo.ts` | `getSatelliteDerivedInfo`, `isInEarthShadow` | `src/lib/satelliteDerivedInfo.test.ts` |
-| `src/lib/visibility.ts` | `passesVisibilityCriteria`, `visibilityStats`, `calculateStationAccessData`, `calculateAvailabilityMetrics`, `generateVisibilityReport` | `tests/visibility-criteria.test.ts`（`tests/test-visibility-interval.ts` は `.test.` 接尾辞がなく `bun test` の対象外＝手動スクリプト） |
+| `src/lib/visibility.ts` | `passesVisibilityCriteria`, `visibilityStats`, `calculateStationAccessData`, `calculateAvailabilityMetrics`, `generateVisibilityReport` | `tests/visibility-criteria.test.ts` |
 | `src/lib/accessGrid.ts` | `computeAccessGrid`, `gridStationCounts`, `gridToSamples` | `tests/accessGrid.test.ts`（`calculateStationAccessData` との照合） |
 | `src/lib/linkGeometry.ts` | `calculateLinkGeometry` | `tests/linkGeometry.test.ts` |
 | `src/lib/linkDutyAnalysis.ts` | `analyzeLinkDuty` | `tests/linkDutyAnalysis.test.ts` |
