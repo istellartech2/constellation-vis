@@ -1,18 +1,24 @@
 /// <reference lib="webworker" />
 import { analyzeComparison } from "../lib/constellationComparison";
-import type { ComparisonJob, ComparisonWorkerResponse } from "./comparisonWorker.types";
+import { analyzeComparisonTimeline } from "../lib/comparison/timeline";
+import type { ComparisonWorkerRequest, ComparisonWorkerResponse } from "./comparisonWorker.types";
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
-ctx.addEventListener("message", (event: MessageEvent<ComparisonJob>) => {
+ctx.addEventListener("message", (event: MessageEvent<ComparisonWorkerRequest>) => {
   const post = (response: ComparisonWorkerResponse) => ctx.postMessage(response);
   try {
     let lastPost = 0;
-    const { scenario, conditions, target } = event.data;
-    const result = analyzeComparison(scenario, conditions, target, (fraction) => {
+    const progress = (fraction: number) => {
       if (performance.now() - lastPost < 100) return;
       lastPost = performance.now();
       post({ type: "progress", fraction });
-    });
-    post({ type: "success", result });
+    };
+    const request = event.data;
+    if (request.mode === "timeline") {
+      post({ type: "success", result: analyzeComparisonTimeline(request.payload, progress) });
+    } else {
+      const { scenario, conditions, target } = request.payload;
+      post({ type: "success", result: analyzeComparison(scenario, conditions, target, progress) });
+    }
   } catch (error) {
     post({ type: "error", message: error instanceof Error ? error.message : "比較解析エラー" });
   }

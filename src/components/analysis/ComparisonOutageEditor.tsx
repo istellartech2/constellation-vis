@@ -14,7 +14,7 @@ export default function ComparisonOutageEditor({ base, onCreate, disabled }: Pro
   }, [base]);
   function create() {
     try {
-      const scenario: ComparisonScenario = { ...base, id: crypto.randomUUID(),
+      const scenario: ComparisonScenario = { satText: base.satText, constText: base.constText, gsText: base.gsText, id: crypto.randomUUID(),
         name: `${base.name} / 故障${failedSatelliteCount}機・停止${disabledStationIndices.length}局`.slice(0, 120),
         outage: { failedSatelliteCount, seed, disabledStationIndices: [...disabledStationIndices].sort((a, b) => a - b) } };
       comparisonScenarioInputs(scenario);

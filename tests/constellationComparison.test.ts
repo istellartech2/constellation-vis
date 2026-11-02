@@ -105,3 +105,9 @@ minElevationDeg = 0
     }
   });
 });
+
+it("rejects excessive expansion and implicit current-time epochs before analysis", () => {
+  expect(() => parseComparisonDocument(JSON.stringify({ ...doc, cases: [{ ...scenario, constText: scenario.constText.replace('count = 12', 'count = 1000000000') }] }))).toThrow();
+  const implicitEpoch = { ...scenario, satText: '[[satellites]]\ntype = "elements"\nsemiMajorAxisKm = 7000\n', constText: "" };
+  expect(() => analyzeComparison(implicitEpoch, conditions, target)).toThrow('epoch');
+});

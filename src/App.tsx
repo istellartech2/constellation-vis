@@ -387,6 +387,7 @@ function App() {
         }}
         onAnalysisStart={handleAnalysisStart}
         onAnalysisEnd={handleAnalysisEnd}
+        onPausePlayback={() => setUserPaused(true)}
         getCurrentView={getCurrentView}
         onApplyDisplay={applyDisplay}
         onApplyView={applyView}

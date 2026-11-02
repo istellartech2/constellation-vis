@@ -1,3 +1,4 @@
+import type { ComparisonTimeline } from "../../../lib/comparison/timeline";
 // Chart option builders for the station-access and global-access screens.
 // Builders are pure: they take the chart theme as an argument (so charts
 // repaint on the light/dark switch) and never hardcode colours.
@@ -178,6 +179,29 @@ export function createStationTimelineOption(
         progressive: 0,
       },
     ],
+  };
+}
+
+/** The same zoomable interval chart, with event-kind colors and text-only tooltips. */
+export function createComparisonTimelineOption(result: ComparisonTimeline, t: ChartTheme, compact: boolean): ECBasicOption {
+  const segments = result.lanes.flatMap((lane, stationIndex) => lane.intervals.map((interval) => ({
+    stationIndex, ...interval, count: lane.kind === "eclipse" ? 1 : lane.kind === "station" ? 2 : 3,
+  })));
+  return {
+    ...createStationTimelineOption({ segments, stationNames: result.lanes.map((l) => l.label), startMs: result.startMs, endMs: result.endMs }, t, compact),
+    tooltip: {
+      ...tooltipBase(t, "item"), renderMode: "richText",
+      formatter: (params: { value?: unknown }) => {
+        const row = params.value as SegmentRow | undefined;
+        if (!Array.isArray(row)) return "";
+        return `${result.lanes[row[0]]?.label ?? ""}\n${new Date(row[1]).toISOString()} – ${new Date(row[2]).toISOString()}\n${((row[2] - row[1]) / 60000).toFixed(2)} min`;
+      },
+    },
+    visualMap: {
+      type: "piecewise", dimension: 3, seriesIndex: 0, orient: "horizontal", top: 0, right: 8,
+      textStyle: { color: t.fgMuted },
+      pieces: [{ value: 1, label: "食", color: t.seq[3] }, { value: 2, label: "地上局接触", color: t.seq[1] }, { value: 3, label: "対象地点", color: t.seq[0] }],
+    },
   };
 }
 

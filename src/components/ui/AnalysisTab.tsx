@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useEffectEvent, useState } from "react";
+import { lazy, Suspense, useEffect, useEffectEvent, useState, type Dispatch, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import { Radio, Globe2, Rocket, Sun, Columns3 } from "lucide-react";
 import StationAccessAnalysis from "../analysis/StationAccessAnalysis";
@@ -8,13 +8,17 @@ import SolarImpactAnalysis from "../analysis/SolarImpactAnalysis";
 import IslRoutingAnalysis from "../analysis/IslRoutingAnalysis";
 import PanelSection from "./PanelSection";
 import EntryButton from "./EntryButton";
+import type { SatelliteFovCriteria } from "../../lib/visibility";
 import type { SatelliteSpec } from "../../lib/satellites";
 import type { IslSettings, IslShellRange } from "../../lib/isl/types";
 
-import { defaultComparisonConditions, DEFAULT_COMPARISON_TARGET, type ComparisonDocument } from "../../lib/constellationComparison";
+import { type ComparisonDocument, type ComparisonScenario } from "../../lib/constellationComparison";
 const ConstellationComparisonAnalysis = lazy(() => import("../analysis/ConstellationComparisonAnalysis"));
 
 interface Props {
+  comparison: ComparisonDocument;
+  setComparison: Dispatch<SetStateAction<ComparisonDocument>>;
+  onComparisonPreview: (scenario: ComparisonScenario, timestampMs: number, fov: SatelliteFovCriteria | null) => void;
   satText: string;
   constText: string;
   gsText: string;
@@ -45,6 +49,9 @@ export type AnalysisType =
   | "";
 
 export default function AnalysisTab({
+  comparison,
+  setComparison,
+  onComparisonPreview,
   satText,
   constText,
   gsText,
@@ -60,10 +67,6 @@ export default function AnalysisTab({
   requestedAnalysis,
   onRequestedAnalysisHandled,
 }: Props) {
-  const [comparison, setComparison] = useState<ComparisonDocument>(() => ({
-    format: "constellation-comparison", version: 1, conditions: defaultComparisonConditions(startTime),
-    target: DEFAULT_COMPARISON_TARGET, cases: [],
-  }));
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [analysisType, setAnalysisType] = useState<AnalysisType>("");
 
@@ -103,7 +106,7 @@ export default function AnalysisTab({
         return <Suspense fallback={<p className="p-4">比較画面を読み込み中…</p>}>
           <ConstellationComparisonAnalysis satText={satText} constText={constText} gsText={gsText}
             sceneFov={{ halfAngleDeg: fovConeHalfAngleDeg, alongTrackDeg: fovConeAlongTrackDeg, crossTrackDeg: fovConeCrossTrackDeg }}
-            doc={comparison} setDoc={setComparison} />
+            doc={comparison} setDoc={setComparison} onPreview={(scenario, timestampMs) => { onComparisonPreview(scenario, timestampMs, comparison.conditions.fov); handleAnalysisClose(); }} />
         </Suspense>;
       case "地上局アクセス設計":
         return <StationAccessAnalysis

@@ -238,7 +238,7 @@ FOV条件 = acos(clamp(b_ecf_hat · (r_station-r_sat)_hat, -1, 1)) <= halfAngle
 `(visibilityData, stationIndices, intervalSeconds = 10)` から局ごとに 4 指標を出す。
 
 ```
-timeAvailability      = (可視機数 > 0 のサンプル数 / 全サンプル数) * 100      [%]
+timeAvailability      = (可視機数 > 0 の区間秒数 / 解析期間秒数) * 100      [%]
 interruptionFrequency = 可視機数が 0 に落ちた回数                            [回]
 maxInterruptionTime   = 最長の連続 0 区間                                    [分]
 avgInterruptionTime   = 0 区間の平均長                                       [分]

@@ -1,6 +1,42 @@
+import { parse as parseToml } from "smol-toml";
 import { parseConstellationToml, parseGroundStationsToml, parseSatellitesToml } from "../config";
+import { parseConstellationConfig } from "../tomlParsers";
+import { parseSatelliteEditorConfig } from "../satelliteEditorSerializer";
+import { shellTotalSats } from "../constellationPatterns/registry";
+import { socDesign } from "../constellationPatterns/streetsOfCoverage";
 import { selectFailedIndices } from "../constellationPatterns/failure";
 import type { ComparisonScenario } from "../constellationComparison";
+
+/** Bound expansion before allocating satellite/plane arrays, including imported source. */
+export function validateComparisonSourceSize(s: Pick<ComparisonScenario, "satText" | "constText" | "gsText">): void {
+  if ([s.satText, s.constText, s.gsText].some((text) => text.length > 1_000_000)) throw new Error("各入力TOMLは1 MB以下にしてください");
+  const raw = parseToml(s.satText);
+  if (raw.satellites !== undefined && !Array.isArray(raw.satellites)) throw new Error("satellitesは配列テーブルにしてください");
+  if (Array.isArray(raw.satellites)) for (const value of raw.satellites) {
+    if (!value || typeof value !== "object" || Array.isArray(value) || !("type" in value)
+      || !["tle", "elements", "geo", "formation"].includes(String(value.type))) throw new Error("衛星の形式を明示してください");
+    if (value.type !== "tle" && (!("epoch" in value) || !Number.isFinite(Date.parse(String(value.epoch))))) {
+      throw new Error("比較の再現性のため、TLE以外の衛星にはepochを明示してください");
+    }
+  }
+  const manual = parseSatelliteEditorConfig(s.satText);
+  let count = 0;
+  for (const e of manual.entries) {
+    const n = "deputyCount" in e ? e.deputyCount : 1;
+    if (!Number.isInteger(n) || n < 0 || n > 10000) throw new Error("編隊の機数は0〜10,000の整数にしてください");
+    count += n;
+  }
+  const config = parseConstellationConfig(s.constText);
+  for (const shell of config.shells) {
+    if (![shell.count, shell.planes].every((n) => Number.isFinite(n) && n >= 0 && n <= 10000)) throw new Error("シェルの機数・軌道面数は10,000以下にしてください");
+    if (shell.pattern === "streets_of_coverage") {
+      const design = socDesign(shell);
+      if (design.feasible && (!Number.isFinite(design.count) || design.count > 10000 || design.planes > 10000)) throw new Error("自動設計されたシェルが10,000機を超えます");
+    }
+    count += shellTotalSats(shell);
+  }
+  if (!Number.isFinite(count) || count > 10000 || count < 0) throw new Error("比較対象は10,000機以下にしてください");
+}
 
 /** Additional failures of the satellites already present in the captured source. */
 export interface ComparisonOutage {
@@ -9,6 +45,7 @@ export interface ComparisonOutage {
   disabledStationIndices: number[];
 }
 export function comparisonScenarioInputs(s: ComparisonScenario) {
+  validateComparisonSourceSize(s);
   const nominalSatellites = [...parseSatellitesToml(s.satText), ...parseConstellationToml(s.constText)];
   const allStations = s.gsText ? parseGroundStationsToml(s.gsText) : [];
   if (!nominalSatellites.length) throw new Error("衛星データがありません");

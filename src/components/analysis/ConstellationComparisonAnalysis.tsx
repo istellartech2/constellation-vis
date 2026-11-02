@@ -1,25 +1,28 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { SatelliteFovCriteria } from "../../lib/visibility";
 import { parseConstellationToml, parseSatellitesToml, downloadFile } from "../../lib/config";
-import { comparisonTargets, validateComparisonConditions, type ComparisonDocument } from "../../lib/constellationComparison";
-import { comparisonReportHtml, parseComparisonDocument } from "../../lib/comparison/document";
-import { downloadCSV, downloadJSON } from "./utils/downloadUtils";
+import { comparisonTargets, validateComparisonConditions, type ComparisonDocument, type ComparisonScenario } from "../../lib/constellationComparison";
+import { comparisonReportHtml, parseComparisonDocument, serializeComparisonDocument } from "../../lib/comparison/document";
+import { downloadCSV } from "./utils/downloadUtils";
 import { useComparisonJob } from "./utils/useComparisonJob";
 import { AnalysisCancelledError } from "./utils/useAccessGridJob";
 import { BusyOverlay } from "./AnalysisLayout";
 import ComparisonConditionsEditor from "./ComparisonConditionsEditor";
 import ComparisonTargetEditor from "./ComparisonTargetEditor";
 import ComparisonResults from "./ComparisonResults";
+import { validateComparisonSourceSize } from "../../lib/comparison/outages";
+import ComparisonTimelinePanel from "./ComparisonTimelinePanel";
 import ComparisonOutageEditor from "./ComparisonOutageEditor";
 import { currentComparisonResult } from "../../lib/comparison/document";
 
 interface Props {
   satText: string; constText: string; gsText: string;
   sceneFov: SatelliteFovCriteria;
+  onPreview: (scenario: ComparisonScenario, timestampMs: number) => void;
   doc: ComparisonDocument;
   setDoc: Dispatch<SetStateAction<ComparisonDocument>>;
 }
-export default function ConstellationComparisonAnalysis({ satText, constText, gsText, sceneFov, doc, setDoc }: Props) {
+export default function ConstellationComparisonAnalysis({ satText, constText, gsText, sceneFov, doc, setDoc, onPreview }: Props) {
   const [name, setName] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -36,6 +39,7 @@ export default function ConstellationComparisonAnalysis({ satText, constText, gs
   function capture() {
     try {
       if (doc.cases.length >= 6) throw new Error("比較は最大6案です。不要な案を削除してください");
+      validateComparisonSourceSize({ satText, constText, gsText });
       const count = parseSatellitesToml(satText).length + parseConstellationToml(constText).length;
       if (!count) throw new Error("シナリオに衛星を追加してから取り込んでください");
       const id = crypto.randomUUID();
@@ -77,18 +81,22 @@ export default function ConstellationComparisonAnalysis({ satText, constText, gs
       doc.conditions.stepSeconds, doc.conditions.minElevationDeg, doc.conditions.requiredFold]) ?? []);
     downloadCSV(["案", "地点", "緯度", "経度", "可用率(%)", "要求同時可視達成率(%)", "最大要求未達(min)", "開始UTC", "期間(h)", "刻み(s)", "最低仰角(deg)", "要求同時可視数"], rows, "constellation-comparison.csv");
   }
+  let conditionsError = "";
+  try { validateComparisonConditions(doc.conditions); comparisonTargets(doc.target, doc.conditions.minElevationDeg); }
+  catch (e) { conditionsError = e instanceof Error ? e.message : "共通条件が不正です"; }
   const selectedCase = doc.cases.find((s) => s.id === selectedId) ?? doc.cases[0];
   return <div className="relative flex h-full min-h-0 flex-col">
     <div className="analysis-toolbar flex-wrap">
-      <button className="analysis-primary-button" disabled={running || !doc.cases.length || !!targetError} onClick={() => void analyze()}>全案を解析</button>
-      <button className="analysis-secondary-button" disabled={running || !!targetError} onClick={() => downloadJSON(doc, "constellation-comparison.json")}>比較を保存</button>
+      <button className="analysis-primary-button" disabled={running || !doc.cases.length || !!targetError || !!conditionsError} onClick={() => void analyze()}>全案を解析</button>
+      <button className="analysis-secondary-button" disabled={running || !!targetError || !!conditionsError} onClick={() => { try { downloadFile("constellation-comparison.json", serializeComparisonDocument(doc)); } catch (e) { setError(e instanceof Error ? e.message : "保存エラー"); } }}>比較を保存</button>
       <button className="analysis-secondary-button" disabled={running} onClick={() => fileRef.current?.click()}>比較を読み込む</button>
       <input ref={fileRef} aria-label="比較ファイル" className="hidden" type="file" accept=".json,application/json" onChange={(e) => void importFile(e.target.files?.[0])} />
-      <button className="analysis-secondary-button" disabled={running || !!targetError} onClick={() => downloadFile("constellation-comparison.html", comparisonReportHtml(doc))}>HTMLレポート</button>
-      <button className="analysis-secondary-button" disabled={running || !!targetError} onClick={exportCsv}>地点別CSV</button>
+      <button className="analysis-secondary-button" disabled={running || !!targetError || !!conditionsError} onClick={() => downloadFile("constellation-comparison.html", comparisonReportHtml(doc))}>HTMLレポート</button>
+      <button className="analysis-secondary-button" disabled={running || !!targetError || !!conditionsError} onClick={exportCsv}>地点別CSV</button>
     </div>
     <div className="min-h-0 flex-1 overflow-y-auto p-3 space-y-4">
       <p className="text-sm text-fg-muted">シナリオを案として取り込み、構成を変更して次の案を追加します。共通条件の変更後は再解析が必要です。入力と結果はJSONで保存できます。</p>
+      {conditionsError && <p role="alert" className="text-sm text-danger">{conditionsError}</p>}
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       {notice && <p role="status" className="text-sm text-fg-muted">{notice}</p>}
       <fieldset disabled={running} className="flex flex-wrap items-end gap-2 rounded border border-line p-3">
@@ -98,9 +106,10 @@ export default function ConstellationComparisonAnalysis({ satText, constText, gs
       </fieldset>
       <ComparisonConditionsEditor value={doc.conditions} onChange={(conditions) => setDoc((d) => ({ ...d, conditions }))} sceneFov={sceneFov} disabled={running} />
       <ComparisonTargetEditor key={importRevision} value={doc.target} onChange={(target) => setDoc((d) => ({ ...d, target }))} onError={setTargetError} disabled={running} />
-      {selectedCase && <ComparisonOutageEditor key={`${importRevision}:${selectedCase.id}`} base={selectedCase} disabled={running || doc.cases.length >= 6}
+      {selectedCase && <ComparisonOutageEditor key={`outage:${importRevision}:${selectedCase.id}`} base={selectedCase} disabled={running || doc.cases.length >= 6}
         onCreate={(scenario) => { setDoc((d) => ({ ...d, cases: [...d.cases, scenario] })); setSelectedId(scenario.id); setNotice("元の案を保持して故障・局停止案を追加しました。全案を再解析してください。"); }} />}
       <ComparisonResults doc={doc} selectedId={selectedId} onSelect={setSelectedId} disabled={running} onRemove={(id) => setDoc((d) => ({ ...d, cases: d.cases.filter((s) => s.id !== id) }))} />
+      {selectedCase && <ComparisonTimelinePanel key={`timeline:${importRevision}:${selectedCase.id}`} scenario={selectedCase} doc={doc} disabled={running || !!targetError || !!conditionsError} onPreview={onPreview} />}
     </div>
     {running && <BusyOverlay progress={job.progress} onCancel={cancel} detail={`${runningName} を解析中`} />}
   </div>;

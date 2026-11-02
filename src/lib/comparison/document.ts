@@ -1,3 +1,4 @@
+import { validateComparisonSourceSize } from "./outages";
 import {
   COMPARISON_MODEL_VERSION, comparisonInputKey, comparisonTargets, validateComparisonConditions,
   type ComparisonCase, type ComparisonConditions, type ComparisonDocument, type ComparisonTarget,
@@ -30,6 +31,7 @@ export function parseComparisonDocument(text: string): ComparisonDocument {
     fov: fov && { halfAngleDeg: number(fov.halfAngleDeg), alongTrackDeg: number(fov.alongTrackDeg), crossTrackDeg: number(fov.crossTrackDeg) },
   };
   validateComparisonConditions(conditions);
+  conditions.startTimeIso = new Date(conditions.startTimeIso).toISOString();
   const t = object(doc.target);
   let target: ComparisonTarget;
   if (t.kind === "points") {
@@ -57,7 +59,15 @@ export function parseComparisonDocument(text: string): ComparisonDocument {
     return { id, ...(outage ? { outage } : {}), name: string(s.name), satText: string(s.satText, 1_000_000), constText: string(s.constText, 1_000_000),
       gsText: string(s.gsText, 1_000_000) };
   });
+  cases.forEach(validateComparisonSourceSize);
   return { format: "constellation-comparison", version: 1, conditions, target, cases };
+}
+export function serializeComparisonDocument(doc: ComparisonDocument): string {
+  validateComparisonConditions(doc.conditions);
+  comparisonTargets(doc.target, doc.conditions.minElevationDeg);
+  const text = JSON.stringify(doc, null, 2);
+  if (text.length > 10_000_000) throw new Error("保存ファイルが10 MBを超えます。案を減らして保存してください");
+  return text;
 }
 export function currentComparisonResult(s: ComparisonCase, doc: Pick<ComparisonDocument, "conditions" | "target">) {
   return s.result?.modelVersion === COMPARISON_MODEL_VERSION
