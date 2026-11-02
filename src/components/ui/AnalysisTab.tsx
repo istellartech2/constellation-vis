@@ -1,5 +1,5 @@
-import { lazy, Suspense, useEffect, useEffectEvent, useState, type Dispatch, type SetStateAction } from "react";
-import { createPortal } from "react-dom";
+import { lazy, Suspense, useEffect, useEffectEvent, useState, useRef, type Dispatch, type SetStateAction } from "react";
+import { Dialog, DialogContent, DialogTitle } from "./dialog";
 import { Radio, Globe2, Rocket, Sun, Columns3 } from "lucide-react";
 import StationAccessAnalysis from "../analysis/StationAccessAnalysis";
 import GlobalAccessAnalysis from "../analysis/GlobalAccessAnalysis";
@@ -18,6 +18,7 @@ const ConstellationComparisonAnalysis = lazy(() => import("../analysis/Constella
 interface Props {
   comparison: ComparisonDocument;
   setComparison: Dispatch<SetStateAction<ComparisonDocument>>;
+  onEditScenario: () => void;
   onComparisonPreview: (scenario: ComparisonScenario, timestampMs: number, fov: SatelliteFovCriteria | null) => void;
   satText: string;
   constText: string;
@@ -52,6 +53,7 @@ export default function AnalysisTab({
   comparison,
   setComparison,
   onComparisonPreview,
+  onEditScenario,
   satText,
   constText,
   gsText,
@@ -67,10 +69,13 @@ export default function AnalysisTab({
   requestedAnalysis,
   onRequestedAnalysisHandled,
 }: Props) {
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [analysisType, setAnalysisType] = useState<AnalysisType>("");
 
   function handleAnalysisClick(type: AnalysisType) {
+    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setAnalysisType(type);
     setAnalysisOpen(true);
     onAnalysisStart?.();
@@ -106,7 +111,7 @@ export default function AnalysisTab({
         return <Suspense fallback={<p className="p-4">比較画面を読み込み中…</p>}>
           <ConstellationComparisonAnalysis satText={satText} constText={constText} gsText={gsText}
             sceneFov={{ halfAngleDeg: fovConeHalfAngleDeg, alongTrackDeg: fovConeAlongTrackDeg, crossTrackDeg: fovConeCrossTrackDeg }}
-            doc={comparison} setDoc={setComparison} onPreview={(scenario, timestampMs) => { onComparisonPreview(scenario, timestampMs, comparison.conditions.fov); handleAnalysisClose(); }} />
+            doc={comparison} setDoc={setComparison} onEditScenario={() => { handleAnalysisClose(); onEditScenario(); }} onPreview={(scenario, timestampMs) => { onComparisonPreview(scenario, timestampMs, comparison.conditions.fov); handleAnalysisClose(); }} />
         </Suspense>;
       case "地上局アクセス設計":
         return <StationAccessAnalysis
@@ -186,27 +191,18 @@ export default function AnalysisTab({
 
       {/* ISL経路タイムライン解析のエントリは通信タブの結果カード(「タイムライン解析を開く」)に
           集約した — requestedAnalysis 経由でのみここのモーダルが開く */}
-      {analysisOpen && createPortal(
-        <div className="overlay" style={{ zIndex: 1000 }}>
-          <div className="overlay-box analysis-modal">
-            <div className="analysis-modal-header">
-              <h3 style={{ margin: 0, fontSize: "1rem" }}>{analysisType}</h3>
-              <button
-                type="button"
-                onClick={handleAnalysisClose}
-                aria-label="閉じる"
-                className="analysis-close-button"
-              >
-                ✕
-              </button>
-            </div>
-            <div style={{ flex: 1, minHeight: 0 }}>
-              {renderAnalysisComponent()}
-            </div>
+      <Dialog open={analysisOpen} onOpenChange={(next) => { if (!next) handleAnalysisClose(); }}>
+        <DialogContent className="analysis-modal gap-0" showCloseButton={false} aria-describedby={undefined}
+          onOpenAutoFocus={(e) => { e.preventDefault(); titleRef.current?.focus(); }}
+          onCloseAutoFocus={(e) => { if (openerRef.current?.isConnected) { e.preventDefault(); openerRef.current.focus(); } }}
+          onInteractOutside={(e) => e.preventDefault()}>
+          <div className="analysis-modal-header shrink-0">
+            <DialogTitle ref={titleRef} tabIndex={-1} className="text-base outline-none">{analysisType}</DialogTitle>
+            <button type="button" onClick={handleAnalysisClose} aria-label="解析を閉じる" className="analysis-close-button">✕</button>
           </div>
-        </div>,
-        document.body
-      )}
+          <div className="min-h-0 flex-1">{analysisOpen && renderAnalysisComponent()}</div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

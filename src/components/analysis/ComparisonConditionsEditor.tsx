@@ -13,8 +13,8 @@ export default function ComparisonConditionsEditor({ value, onChange, sceneFov, 
   return <fieldset disabled={disabled} className="rounded border border-line p-3 space-y-3">
     <legend className="px-1 text-sm font-medium">全案に共通の評価条件</legend>
     <label className="flex flex-col gap-1 text-sm text-fg-muted">開始時刻（UTC）
-      <input type="datetime-local" aria-label="比較開始時刻 UTC" className="analysis-input"
-        value={value.startTimeIso.slice(0, 16)} onChange={(e) => patch({ startTimeIso: e.target.value ? `${e.target.value}:00.000Z` : "" })} />
+      <input type="datetime-local" step="0.001" aria-label="比較開始時刻 UTC" className="analysis-input"
+        value={value.startTimeIso.replace(/Z$/, "")} onChange={(e) => patch({ startTimeIso: e.target.value ? new Date(`${e.target.value}Z`).toISOString() : "" })} />
     </label>
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
       <NumberField id="comparison-duration" label="期間" unit="h" value={value.durationHours} min={1 / 60} max={168} onChange={(durationHours) => patch({ durationHours })} />
@@ -26,10 +26,10 @@ export default function ComparisonConditionsEditor({ value, onChange, sceneFov, 
     </div>
     <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={value.fov !== null}
       onChange={(e) => patch({ fov: e.target.checked ? { ...sceneFov } : null })} />衛星FOVも適用する</label>
-    {value.fov && <div className="grid grid-cols-3 gap-3">
+    {value.fov && <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       <NumberField id="comparison-half-angle" label="FOV半角" unit="°" value={value.fov.halfAngleDeg} min={0.1} max={90} onChange={(halfAngleDeg) => patch({ fov: { ...value.fov!, halfAngleDeg } })} />
-      <NumberField id="comparison-along" label="Along-track" unit="°" value={value.fov.alongTrackDeg} min={-90} max={90} onChange={(alongTrackDeg) => patch({ fov: { ...value.fov!, alongTrackDeg } })} />
-      <NumberField id="comparison-cross" label="Cross-track" unit="°" value={value.fov.crossTrackDeg} min={-90} max={90} onChange={(crossTrackDeg) => patch({ fov: { ...value.fov!, crossTrackDeg } })} />
+      <NumberField id="comparison-along" label="進行方向の傾き" unit="°" value={value.fov.alongTrackDeg} min={-90} max={90} onChange={(alongTrackDeg) => patch({ fov: { ...value.fov!, alongTrackDeg } })} />
+      <NumberField id="comparison-cross" label="左右方向の傾き" unit="°" value={value.fov.crossTrackDeg} min={-90} max={90} onChange={(crossTrackDeg) => patch({ fov: { ...value.fov!, crossTrackDeg } })} />
     </div>}
     <p className="text-xs text-fg-muted">FOVは表示設定から初期値をコピーし、この比較の条件として保存します。地上局は各案の局設定で別に評価します。</p>
   </fieldset>;

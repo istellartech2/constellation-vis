@@ -43,6 +43,7 @@ export default function PlaybackBar({
     const onKey = (e: KeyboardEvent) => {
       if (e.code !== "Space" || e.repeat) return;
       const t = e.target as HTMLElement | null;
+      if (e.defaultPrevented || t?.closest('[role="dialog"]')) return;
       if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(t.tagName))) return;
       e.preventDefault();
       onPausedChange(!paused);

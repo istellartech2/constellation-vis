@@ -169,7 +169,7 @@ export default function SatelliteEditor({
     setSatText(satellitesToToml(activeSatellites));
     setConstText("");
     setGsText(serializeGroundStations(stations));
-    setStartText(time.toISOString().slice(0, 19));
+    setStartText(time.toISOString().slice(0, -1));
     setPending(false);
     onUpdate({ satellites: activeSatellites, groundStations: stations, startTime: time, islShellRanges: [] });
   }
@@ -501,7 +501,7 @@ export default function SatelliteEditor({
             <TabsContent value="analysis" className="mt-0">
               <ScopeNote editorCount={satellites.length} catalogCount={catalogCount} />
               <AnalysisTab
-                comparison={comparison} setComparison={setComparison} onComparisonPreview={previewComparison}
+                comparison={comparison} setComparison={setComparison} onComparisonPreview={previewComparison} onEditScenario={() => setTab("editor")}
                 satText={satText}
                 constText={constText}
                 gsText={gsText}

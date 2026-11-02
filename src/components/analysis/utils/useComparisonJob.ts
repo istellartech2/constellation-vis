@@ -19,7 +19,14 @@ function useComparisonWorker<Job, Result>(mode: "compare" | "timeline") {
     cancel();
     setProgress(0);
     return new Promise<Result>((resolve, reject) => {
-      const worker = new Worker(new URL("../../../workers/comparisonWorker.ts", import.meta.url), { type: "module" });
+      let worker: Worker;
+      try {
+        worker = new Worker(new URL("../../../workers/comparisonWorker.ts", import.meta.url), { type: "module" });
+      } catch {
+        setProgress(null);
+        reject(new Error("解析ワーカーを開始できません。ブラウザを再読み込みしてお試しください"));
+        return;
+      }
       workerRef.current = worker;
       rejectRef.current = reject;
       const finish = () => { worker.terminate(); workerRef.current = null; rejectRef.current = null; setProgress(null); };
@@ -34,7 +41,8 @@ function useComparisonWorker<Job, Result>(mode: "compare" | "timeline") {
         }
       };
       worker.onerror = () => { if (workerRef.current !== worker) return; finish(); reject(new Error("比較ワーカーでエラーが発生しました")); };
-      worker.postMessage({ mode, payload: job });
+      try { worker.postMessage({ mode, payload: job }); }
+      catch { finish(); reject(new Error("解析条件をワーカーへ渡せませんでした")); }
     });
   }, [cancel, mode]);
   useEffect(() => () => {

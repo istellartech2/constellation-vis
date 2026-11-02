@@ -66,6 +66,6 @@ export function analyzeComparisonTimeline(job: ComparisonTimelineJob, onProgress
     ...inputs.stations.map((st, i): TimelineLane => ({ id: `station-${i}`, label: `地上局: ${st.name}`, kind: "station", intervals: timelineIntervals(times, gridStationCounts(stationGrid!, i)) })),
     { id: "target", label: `${conditions.fov ? "FOV内" : "可視"}: ${targets[targetIndex].station.name}`, kind: "target", intervals: timelineIntervals(times, gridStationCounts(targetGrid, 0)) },
   ];
-  return { inputKey: timelineInputKey(job), satelliteLabel: spec.meta?.objectName ?? `衛星 ${satelliteIndex + 1}`,
+  return { inputKey: timelineInputKey(job), satelliteLabel: spec.meta?.objectName || `衛星 ${satelliteIndex + 1}`,
     startMs: times[0], endMs: times[times.length - 1], stepSeconds: conditions.stepSeconds, lanes };
 }

@@ -27,6 +27,7 @@ export function validateComparisonSourceSize(s: Pick<ComparisonScenario, "satTex
     count += n;
   }
   const config = parseConstellationConfig(s.constText);
+  if (config.shells.length && !Number.isFinite(config.epoch.getTime())) throw new Error("コンステレーションのepochを明示してください");
   for (const shell of config.shells) {
     if (![shell.count, shell.planes].every((n) => Number.isFinite(n) && n >= 0 && n <= 10000)) throw new Error("シェルの機数・軌道面数は10,000以下にしてください");
     if (shell.pattern === "streets_of_coverage") {

@@ -111,3 +111,16 @@ it("rejects excessive expansion and implicit current-time epochs before analysis
   const implicitEpoch = { ...scenario, satText: '[[satellites]]\ntype = "elements"\nsemiMajorAxisKm = 7000\n', constText: "" };
   expect(() => analyzeComparison(implicitEpoch, conditions, target)).toThrow('epoch');
 });
+
+it("uses UTF-8 bytes for saved and imported comparison size limits", async () => {
+  const { serializeComparisonDocument } = await import("../src/lib/comparison/document");
+  const oversized = { ...doc, cases: [{ ...scenario, satText: "あ".repeat(3_400_000) }] };
+  expect(() => serializeComparisonDocument(oversized)).toThrow("10 MB");
+  expect(() => parseComparisonDocument(JSON.stringify(oversized))).toThrow("10 MB");
+});
+
+it("rejects unusable imported cases before replacing the current workspace", () => {
+  expect(() => parseComparisonDocument(JSON.stringify({ ...doc, cases: [{ ...scenario, name: "  " }] }))).toThrow();
+  expect(() => parseComparisonDocument(JSON.stringify({ ...doc, cases: [{ ...scenario, outage: { failedSatelliteCount: 13, seed: 1, disabledStationIndices: [] } }] }))).toThrow();
+  expect(() => parseComparisonDocument(JSON.stringify({ ...doc, cases: [{ ...scenario, constText: scenario.constText.replace('epoch = 2025-05-20T00:00:00Z', '') }] }))).toThrow('epoch');
+});

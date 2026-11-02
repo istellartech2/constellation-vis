@@ -1,4 +1,4 @@
-import { validateComparisonSourceSize } from "./outages";
+import { comparisonScenarioInputs } from "./outages";
 import {
   COMPARISON_MODEL_VERSION, comparisonInputKey, comparisonTargets, validateComparisonConditions,
   type ComparisonCase, type ComparisonConditions, type ComparisonDocument, type ComparisonTarget,
@@ -19,7 +19,7 @@ function string(value: unknown, max = 120): string {
 
 /** Restore trusted inputs only. Archived results remain in the export; recalculate in this engine. */
 export function parseComparisonDocument(text: string): ComparisonDocument {
-  if (text.length > 10_000_000) throw new Error("比較ファイルは10 MB以下にしてください");
+  if (new TextEncoder().encode(text).byteLength > 10_000_000) throw new Error("比較ファイルは10 MB以下にしてください");
   const doc = object(JSON.parse(text));
   if (doc.format !== "constellation-comparison" || doc.version !== 1) throw new Error("対応していない比較ファイル形式です");
   const c = object(doc.conditions);
@@ -50,23 +50,25 @@ export function parseComparisonDocument(text: string): ComparisonDocument {
   const cases: ComparisonCase[] = doc.cases.map((value: unknown) => {
     const s = object(value);
     const id = string(s.id);
+    const name = string(s.name).trim();
+    if (!name) throw new Error("比較案の名前を入力してください");
     if (!id || ids.has(id)) throw new Error("設計案IDが重複または空欄です");
     ids.add(id);
     const o = s.outage === undefined ? null : object(s.outage);
     if (o && (!Array.isArray(o.disabledStationIndices) || o.disabledStationIndices.length > 200)) throw new Error("停止地上局の指定が不正です");
     const outage = o ? { failedSatelliteCount: number(o.failedSatelliteCount), seed: number(o.seed),
       disabledStationIndices: (o.disabledStationIndices as unknown[]).map(number) } : undefined;
-    return { id, ...(outage ? { outage } : {}), name: string(s.name), satText: string(s.satText, 1_000_000), constText: string(s.constText, 1_000_000),
+    return { id, ...(outage ? { outage } : {}), name, satText: string(s.satText, 1_000_000), constText: string(s.constText, 1_000_000),
       gsText: string(s.gsText, 1_000_000) };
   });
-  cases.forEach(validateComparisonSourceSize);
+  cases.forEach(comparisonScenarioInputs);
   return { format: "constellation-comparison", version: 1, conditions, target, cases };
 }
 export function serializeComparisonDocument(doc: ComparisonDocument): string {
   validateComparisonConditions(doc.conditions);
   comparisonTargets(doc.target, doc.conditions.minElevationDeg);
   const text = JSON.stringify(doc, null, 2);
-  if (text.length > 10_000_000) throw new Error("保存ファイルが10 MBを超えます。案を減らして保存してください");
+  if (new TextEncoder().encode(text).byteLength > 10_000_000) throw new Error("保存ファイルが10 MBを超えます。案を減らして保存してください");
   return text;
 }
 export function currentComparisonResult(s: ComparisonCase, doc: Pick<ComparisonDocument, "conditions" | "target">) {

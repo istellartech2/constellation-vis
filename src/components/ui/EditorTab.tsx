@@ -228,6 +228,7 @@ export default function EditorTab({
       <PanelSection title="開始時刻" icon={<Clock />}>
         <input
           type="datetime-local"
+          step="0.001"
           value={startText}
           onChange={(e) => onStartTextChange(e.target.value)}
           className="w-full text-sm bg-sunken border-2 border-line-strong text-fg rounded px-2 py-1 focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none"
