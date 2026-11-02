@@ -37,6 +37,8 @@ export interface AccessGridOptions {
   durationHours: number;
   stepSeconds: number;
   fov?: SatelliteFovCriteria;
+  /** Comparison must not silently accept a missing satellite state. */
+  strictPropagation?: boolean;
   /** Called after each satellite with the completed fraction (0–1). */
   onProgress?: (fraction: number) => void;
 }
@@ -197,7 +199,8 @@ function propagateKnot(rec: satellite.SatRec, ms: number): Knot {
   const pv = satellite.propagate(rec, new Date(ms));
   const p = pv?.position;
   const v = pv?.velocity;
-  if (!p || !v || typeof p === "boolean" || typeof v === "boolean") {
+  if (!p || !v || typeof p === "boolean" || typeof v === "boolean"
+    || ![p.x, p.y, p.z, v.x, v.y, v.z].every(Number.isFinite)) {
     return { ok: false, rx: 0, ry: 0, rz: 0, vx: 0, vy: 0, vz: 0 };
   }
   return { ok: true, rx: p.x, ry: p.y, rz: p.z, vx: v.x, vy: v.y, vz: v.z };
@@ -207,7 +210,7 @@ export function computeAccessGrid(
   sats: SatelliteSpec[],
   stations: GroundStation[],
   start: Date,
-  { durationHours, stepSeconds, fov, onProgress }: AccessGridOptions,
+  { durationHours, stepSeconds, fov, onProgress, strictPropagation }: AccessGridOptions,
 ): AccessGrid {
   const startMs = start.getTime();
   const stepMs = stepSeconds * 1000;
@@ -265,7 +268,10 @@ export function computeAccessGrid(
         if (!a.ok || !b.ok) {
           // Decayed or failed at a knot: fall back to propagating this step directly.
           const direct = propagateKnot(rec, ms);
-          if (!direct.ok) continue;
+          if (!direct.ok) {
+            if (strictPropagation) throw new Error(`衛星 ${si + 1} の位置を計算できません: ${new Date(ms).toISOString()}`);
+            continue;
+          }
           ({ rx, ry, rz, vx, vy, vz } = direct);
         } else {
           const h = knotMs / 1000;
@@ -293,7 +299,10 @@ export function computeAccessGrid(
         }
       } else {
         const direct = propagateKnot(rec, ms);
-        if (!direct.ok) continue;
+        if (!direct.ok) {
+            if (strictPropagation) throw new Error(`衛星 ${si + 1} の位置を計算できません: ${new Date(ms).toISOString()}`);
+            continue;
+          }
         ({ rx, ry, rz, vx, vy, vz } = direct);
       }
 

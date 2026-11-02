@@ -477,7 +477,7 @@ export default function SatelliteEditor({
                 satText={satText}
                 constText={constText}
                 gsText={gsText}
-                startTime={new Date(startText)}
+                startTime={new Date(startText + "Z")}
                 fovConeHalfAngleDeg={display.fovConeHalfAngleDeg}
                 fovConeAlongTrackDeg={display.fovConeAlongTrackDeg}
                 fovConeCrossTrackDeg={display.fovConeCrossTrackDeg}

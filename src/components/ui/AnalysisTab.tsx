@@ -1,6 +1,6 @@
-import { useEffect, useEffectEvent, useState } from "react";
+import { lazy, Suspense, useEffect, useEffectEvent, useState } from "react";
 import { createPortal } from "react-dom";
-import { Radio, Globe2, Rocket, Sun } from "lucide-react";
+import { Radio, Globe2, Rocket, Sun, Columns3 } from "lucide-react";
 import StationAccessAnalysis from "../analysis/StationAccessAnalysis";
 import GlobalAccessAnalysis from "../analysis/GlobalAccessAnalysis";
 import OrbitMaintenanceAnalysis from "../analysis/OrbitMaintenanceAnalysis";
@@ -10,6 +10,9 @@ import PanelSection from "./PanelSection";
 import EntryButton from "./EntryButton";
 import type { SatelliteSpec } from "../../lib/satellites";
 import type { IslSettings, IslShellRange } from "../../lib/isl/types";
+
+import { defaultComparisonConditions, DEFAULT_COMPARISON_TARGET, type ComparisonDocument } from "../../lib/constellationComparison";
+const ConstellationComparisonAnalysis = lazy(() => import("../analysis/ConstellationComparisonAnalysis"));
 
 interface Props {
   satText: string;
@@ -33,6 +36,7 @@ interface Props {
 }
 
 export type AnalysisType =
+  | "コンステレーション設計比較"
   | "地上局アクセス設計"
   | "全球アクセス設計"
   | "軌道寿命・推進剤設計"
@@ -56,6 +60,10 @@ export default function AnalysisTab({
   requestedAnalysis,
   onRequestedAnalysisHandled,
 }: Props) {
+  const [comparison, setComparison] = useState<ComparisonDocument>(() => ({
+    format: "constellation-comparison", version: 1, conditions: defaultComparisonConditions(startTime),
+    target: DEFAULT_COMPARISON_TARGET, cases: [],
+  }));
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [analysisType, setAnalysisType] = useState<AnalysisType>("");
 
@@ -91,6 +99,12 @@ export default function AnalysisTab({
 
   const renderAnalysisComponent = () => {
     switch (analysisType) {
+      case "コンステレーション設計比較":
+        return <Suspense fallback={<p className="p-4">比較画面を読み込み中…</p>}>
+          <ConstellationComparisonAnalysis satText={satText} constText={constText} gsText={gsText}
+            sceneFov={{ halfAngleDeg: fovConeHalfAngleDeg, alongTrackDeg: fovConeAlongTrackDeg, crossTrackDeg: fovConeCrossTrackDeg }}
+            doc={comparison} setDoc={setComparison} />
+        </Suspense>;
       case "地上局アクセス設計":
         return <StationAccessAnalysis
           satText={satText}
@@ -133,6 +147,10 @@ export default function AnalysisTab({
 
   return (
     <>
+      <PanelSection title="構想・比較" icon={<Columns3 />}>
+        <EntryButton icon={<Columns3 className="h-4 w-4" />} title="コンステレーション設計比較"
+          subtitle="地点・地域の要求達成率を同じ条件で比較・保存" onClick={() => handleAnalysisClick("コンステレーション設計比較")} />
+      </PanelSection>
       <PanelSection title="通信・アクセス" icon={<Radio />}>
         <EntryButton
           icon={<Radio className="h-4 w-4" />}
