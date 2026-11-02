@@ -11,16 +11,17 @@ export default function ComparisonResults({ doc, selectedId, onSelect, onRemove,
   return <div className="space-y-4">
     <div className="overflow-x-auto rounded border border-line">
       <table className="w-full text-sm tabular-nums"><caption className="p-2 text-left text-xs text-fg-muted">先頭案を基準に差分を表示。判定は全評価点の要求同時可視達成率と最大要求未達時間で行います。</caption>
-        <thead><tr>{["設計案", "衛星数", "平均達成率", "最悪地点", "最大要求未達", "基準との差", "判定", "操作"].map((h) => <th key={h} scope="col" className={cell}>{h}</th>)}</tr></thead>
+        <thead><tr>{["設計案", "衛星数", "平均達成率", "最悪地点", "最大要求未達", "地上局ネットワーク", "基準との差", "判定（地点）", "操作"].map((h) => <th key={h} scope="col" className={cell}>{h}</th>)}</tr></thead>
         <tbody>{doc.cases.map((s, i) => {
           const r = currentComparisonResult(s, doc);
           return <tr key={s.id} className={s.id === selected?.id ? "bg-brand-soft" : ""}>
             <th scope="row" className={cell}><button className="text-brand-text underline" onClick={() => onSelect(s.id)}>{s.name}{i === 0 ? "（基準）" : ""}</button></th>
-            <td className={cell}>{r?.satelliteCount ?? "—"}</td>
+            <td className={cell}>{r ? `${r.satelliteCount}/${r.nominalSatelliteCount}` : "—"}</td>
             <td className={cell}>{r ? `${r.averageFoldAvailabilityPct.toFixed(2)}%` : "—"}</td>
             <td className={cell}>{r ? `${r.worstFoldAvailabilityPct.toFixed(2)}%` : "—"}</td>
             <td className={cell}>{r ? `${r.maxGapMin.toFixed(2)} min` : "—"}</td>
-            <td className={cell}>{r && baseline && i > 0 ? `${signed(r.worstFoldAvailabilityPct - baseline.worstFoldAvailabilityPct)} pt / ${signed(r.maxGapMin - baseline.maxGapMin)} min` : "—"}</td>
+            <td className={cell}>{r ? `${r.networkAvailabilityPct.toFixed(2)}% / ${r.networkMaxGapMin.toFixed(2)} min断` : "—"}</td>
+            <td className={cell}>{r && baseline && i > 0 ? `${signed(r.worstFoldAvailabilityPct - baseline.worstFoldAvailabilityPct)} pt / ${signed(r.maxGapMin - baseline.maxGapMin)} min / 局 ${signed(r.networkAvailabilityPct - baseline.networkAvailabilityPct)} pt` : "—"}</td>
             <td className={cell}>{r ? r.meetsRequirements ? "達成" : "未達" : s.result ? "条件変更・要再解析" : "未解析"}</td>
             <td className={cell}><button disabled={disabled} className="analysis-secondary-button" aria-label={`${s.name}を削除`} onClick={() => onRemove(s.id)}>削除</button></td>
           </tr>;
@@ -30,6 +31,7 @@ export default function ComparisonResults({ doc, selectedId, onSelect, onRemove,
     {selected && <div className="rounded border border-line p-3 space-y-3">
       <h4 className="font-medium">{selected.name} の詳細</h4>
       {result ? <>
+        <p className="text-xs text-fg-muted">稼働/元の機数: {result.satelliteCount}/{result.nominalSatelliteCount}。停止局: {result.disabledStationNames.join("、") || "なし"}。地上局ネットワークは1局以上で1機以上見える時間です。</p>
         <div className="overflow-x-auto"><table className="w-full text-sm tabular-nums"><thead><tr>{["地点", "可用率（1機以上）", "要求同時可視達成率", "最大要求未達"].map((h) => <th scope="col" key={h} className={cell}>{h}</th>)}</tr></thead>
           <tbody>{result.points.map((p, i) => <tr key={i}><th scope="row" className={cell}>{p.name}</th><td className={cell}>{p.availabilityPct.toFixed(2)}%</td><td className={cell}>{p.foldAvailabilityPct.toFixed(2)}%</td><td className={cell}>{p.maxFoldGapMin.toFixed(2)} min</td></tr>)}</tbody></table></div>
         <details><summary className="cursor-pointer text-sm">地上局の評価（対象地域とは別評価・{result.stationCount}局）</summary>
@@ -43,6 +45,6 @@ export default function ComparisonResults({ doc, selectedId, onSelect, onRemove,
 }
 function ScenarioInputs({ scenario }: { scenario: ComparisonCase }) {
   return <details><summary className="cursor-pointer text-sm text-fg-muted">この案に取り込んだ入力</summary>
-    <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded bg-sunken p-2 text-xs">{[scenario.satText, scenario.constText, scenario.gsText].join("\n\n")}</pre>
+    <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded bg-sunken p-2 text-xs">{[scenario.satText, scenario.constText, scenario.gsText, JSON.stringify(scenario.outage ?? null, null, 2)].join("\n\n")}</pre>
   </details>;
 }

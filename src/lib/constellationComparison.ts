@@ -1,6 +1,6 @@
 import { computeAccessGrid, gridStationCounts } from "./accessGrid";
 import { summarizeCounts, type AccessSummary } from "./accessMetrics";
-import { parseConstellationToml, parseGroundStationsToml, parseSatellitesToml } from "./config";
+import { comparisonScenarioInputs, type ComparisonOutage } from "./comparison/outages";
 import type { GroundStation } from "./groundStations";
 import type { SatelliteFovCriteria } from "./visibility";
 
@@ -24,6 +24,7 @@ export interface ComparisonScenario {
   satText: string;
   constText: string;
   gsText: string;
+  outage?: ComparisonOutage;
 }
 export interface ComparisonPoint extends AccessSummary {
   name: string;
@@ -37,6 +38,11 @@ export interface ComparisonResult {
   modelVersion: string;
   inputKey: string;
   satelliteCount: number;
+  nominalSatelliteCount: number;
+  failedSatelliteIndices: number[];
+  disabledStationNames: string[];
+  networkAvailabilityPct: number;
+  networkMaxGapMin: number;
   stationCount: number;
   averageAvailabilityPct: number;
   averageFoldAvailabilityPct: number;
@@ -70,7 +76,7 @@ export const DEFAULT_COMPARISON_TARGET: ComparisonTarget = {
 
 export function comparisonInputKey(scenario: ComparisonScenario, conditions: ComparisonConditions, target: ComparisonTarget): string {
   // Full input identity, not a lossy hash. Names and display state don't affect calculations.
-  return JSON.stringify([COMPARISON_MODEL_VERSION, scenario.satText, scenario.constText, scenario.gsText, conditions, target]);
+  return JSON.stringify([COMPARISON_MODEL_VERSION, scenario.satText, scenario.constText, scenario.gsText, scenario.outage ?? null, conditions, target]);
 }
 
 function finiteRange(value: number, min: number, max: number, label: string): void {
@@ -141,11 +147,7 @@ export function analyzeComparison(
 ): ComparisonResult {
   validateComparisonConditions(conditions);
   const targets = comparisonTargets(target, conditions.minElevationDeg);
-  const satellites = [...parseSatellitesToml(scenario.satText), ...parseConstellationToml(scenario.constText)];
-  if (!satellites.length) throw new Error("衛星データがありません");
-  if (satellites.length > 10000) throw new Error("比較対象は10,000機以下にしてください");
-  const stations = scenario.gsText ? parseGroundStationsToml(scenario.gsText) : [];
-  if (stations.length > 200) throw new Error("地上局は200局以下にしてください");
+  const { satellites, stations, nominalSatellites, failedIndices, disabledStationNames } = comparisonScenarioInputs(scenario);
   const grid = computeAccessGrid(satellites, targets.map((p) => p.station), new Date(conditions.startTimeIso), {
     durationHours: conditions.durationHours, stepSeconds: conditions.stepSeconds, fov: conditions.fov ?? undefined, strictPropagation: true,
     onProgress: (f) => onProgress?.(f * 0.8),
@@ -165,6 +167,13 @@ export function analyzeComparison(
   }) : null;
   const stationSummaries = stations.map((s, i) => ({ name: s.name,
     ...summarizeCounts(gridStationCounts(stationGrid!, i), conditions.stepSeconds, durationSeconds) }));
+  const networkCounts = new Uint8Array(grid.stepCount);
+  if (stationGrid) for (let step = 0; step < stationGrid.stepCount; step++) {
+    for (let i = 0; i < stations.length; i++) {
+      if (stationGrid.counts[step * stations.length + i] > 0) { networkCounts[step] = 1; break; }
+    }
+  }
+  const network = summarizeCounts(networkCounts, conditions.stepSeconds, durationSeconds);
   const weight = points.reduce((sum, p) => sum + p.weight, 0);
   const average = (value: (p: ComparisonPoint) => number) => points.reduce((sum, p) => sum + value(p) * p.weight, 0) / weight;
   const worstFoldAvailabilityPct = Math.min(...points.map((p) => p.foldAvailabilityPct));
@@ -172,7 +181,9 @@ export function analyzeComparison(
   onProgress?.(1);
   return {
     modelVersion: COMPARISON_MODEL_VERSION, inputKey: comparisonInputKey(scenario, conditions, target),
-    satelliteCount: satellites.length, stationCount: stations.length,
+    satelliteCount: satellites.length, nominalSatelliteCount: nominalSatellites.length,
+    failedSatelliteIndices: failedIndices, disabledStationNames, stationCount: stations.length,
+    networkAvailabilityPct: network.availabilityPct, networkMaxGapMin: network.maxGapMin,
     averageAvailabilityPct: average((p) => p.availabilityPct),
     averageFoldAvailabilityPct: average((p) => p.foldAvailabilityPct), worstFoldAvailabilityPct, maxGapMin,
     meetsRequirements: worstFoldAvailabilityPct >= conditions.targetAvailabilityPct && maxGapMin <= conditions.maxGapMinutes,

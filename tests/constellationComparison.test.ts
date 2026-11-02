@@ -62,3 +62,46 @@ describe("regional constellation comparison", () => {
     expect(html).toContain('要再解析');
   });
 });
+
+describe("failure and ground-station outage comparisons", () => {
+  const withStations = { ...scenario, gsText: `[[groundstations]]
+name = "Tokyo"
+latitudeDeg = 35.68
+longitudeDeg = 139.76
+heightKm = 0
+minElevationDeg = 0
+` };
+  it("reproduces seeded removal without modifying the nominal source", () => {
+    const outage = { failedSatelliteCount: 3, seed: 14, disabledStationIndices: [] };
+    const degraded = { ...withStations, outage };
+    const a = analyzeComparison(degraded, conditions, target);
+    const b = analyzeComparison(degraded, conditions, target);
+    const nominal = analyzeComparison(withStations, conditions, target);
+    expect(a.failedSatelliteIndices).toEqual(b.failedSatelliteIndices);
+    expect(a.failedSatelliteIndices).toHaveLength(3);
+    expect(a.satelliteCount).toBe(nominal.satelliteCount - 3);
+    expect(a.averageAvailabilityPct).toBeLessThanOrEqual(nominal.averageAvailabilityPct);
+    expect(a.networkAvailabilityPct).toBeLessThanOrEqual(nominal.networkAvailabilityPct);
+    expect(scenario.constText).toBe(withStations.constText);
+  });
+  it("can remove all satellites and all stations; keeps their impact distinct", () => {
+    const nominal = analyzeComparison(withStations, conditions, target);
+    const noStations = analyzeComparison({ ...withStations, outage: { failedSatelliteCount: 0, seed: 1, disabledStationIndices: [0] } }, conditions, target);
+    expect(noStations.stationCount).toBe(0);
+    expect(noStations.networkAvailabilityPct).toBe(0);
+    expect(noStations.networkMaxGapMin).toBe(60);
+    expect(noStations.averageAvailabilityPct).toBe(nominal.averageAvailabilityPct);
+    const noSatellites = analyzeComparison({ ...withStations, outage: { failedSatelliteCount: 12, seed: 1, disabledStationIndices: [] } }, conditions, target);
+    expect(noSatellites.satelliteCount).toBe(0);
+    expect(noSatellites.maxGapMin).toBe(60);
+    expect(noSatellites.networkAvailabilityPct).toBe(0);
+  });
+  it("round trips failure inputs and rejects nonexistent or duplicated station indices", () => {
+    const outage = { failedSatelliteCount: 3, seed: 14, disabledStationIndices: [0] };
+    const saved = { ...doc, cases: [{ ...withStations, outage }] };
+    expect(parseComparisonDocument(JSON.stringify(saved))).toEqual(saved);
+    for (const indices of [[1], [0, 0], [-1]]) {
+      expect(() => analyzeComparison({ ...withStations, outage: { ...outage, disabledStationIndices: indices } }, conditions, target)).toThrow();
+    }
+  });
+});

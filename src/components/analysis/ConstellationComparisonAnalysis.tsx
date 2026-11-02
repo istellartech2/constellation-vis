@@ -10,6 +10,7 @@ import { BusyOverlay } from "./AnalysisLayout";
 import ComparisonConditionsEditor from "./ComparisonConditionsEditor";
 import ComparisonTargetEditor from "./ComparisonTargetEditor";
 import ComparisonResults from "./ComparisonResults";
+import ComparisonOutageEditor from "./ComparisonOutageEditor";
 import { currentComparisonResult } from "../../lib/comparison/document";
 
 interface Props {
@@ -76,6 +77,7 @@ export default function ConstellationComparisonAnalysis({ satText, constText, gs
       doc.conditions.stepSeconds, doc.conditions.minElevationDeg, doc.conditions.requiredFold]) ?? []);
     downloadCSV(["案", "地点", "緯度", "経度", "可用率(%)", "要求同時可視達成率(%)", "最大要求未達(min)", "開始UTC", "期間(h)", "刻み(s)", "最低仰角(deg)", "要求同時可視数"], rows, "constellation-comparison.csv");
   }
+  const selectedCase = doc.cases.find((s) => s.id === selectedId) ?? doc.cases[0];
   return <div className="relative flex h-full min-h-0 flex-col">
     <div className="analysis-toolbar flex-wrap">
       <button className="analysis-primary-button" disabled={running || !doc.cases.length || !!targetError} onClick={() => void analyze()}>全案を解析</button>
@@ -96,6 +98,8 @@ export default function ConstellationComparisonAnalysis({ satText, constText, gs
       </fieldset>
       <ComparisonConditionsEditor value={doc.conditions} onChange={(conditions) => setDoc((d) => ({ ...d, conditions }))} sceneFov={sceneFov} disabled={running} />
       <ComparisonTargetEditor key={importRevision} value={doc.target} onChange={(target) => setDoc((d) => ({ ...d, target }))} onError={setTargetError} disabled={running} />
+      {selectedCase && <ComparisonOutageEditor key={`${importRevision}:${selectedCase.id}`} base={selectedCase} disabled={running || doc.cases.length >= 6}
+        onCreate={(scenario) => { setDoc((d) => ({ ...d, cases: [...d.cases, scenario] })); setSelectedId(scenario.id); setNotice("元の案を保持して故障・局停止案を追加しました。全案を再解析してください。"); }} />}
       <ComparisonResults doc={doc} selectedId={selectedId} onSelect={setSelectedId} disabled={running} onRemove={(id) => setDoc((d) => ({ ...d, cases: d.cases.filter((s) => s.id !== id) }))} />
     </div>
     {running && <BusyOverlay progress={job.progress} onCancel={cancel} detail={`${runningName} を解析中`} />}
