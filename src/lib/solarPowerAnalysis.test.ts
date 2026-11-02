@@ -77,3 +77,14 @@ describe("solarPowerAnalysis", () => {
   });
 
 });
+
+it("integrates exactly 24 hours of constant load and ends the orbit at its boundary", () => {
+  const input = { ...createDefaultSolarPowerInput(), dayStepSeconds: 137, baseLoadW: 100,
+    sunlightExtraLoadW: 0, eclipseExtraLoadW: 0, payloadLoadW: 0, designMarginPercent: 0, sweepSteps: 2 };
+  const r = analyzeSolarPower(TEST_SATELLITE, "constant", TEST_SATELLITE.elements.epoch, input);
+  expect(r.currentDay.dailyLoadWh).toBeCloseTo(2400, 8);
+  expect(r.daySamples.at(-1)!.timestamp - r.daySamples[0].timestamp).toBe(86_400_000);
+  expect(r.orbitSamples.at(-1)!.elapsedMinutes).toBeCloseTo(r.currentOrbit.orbitPeriodMinutes, 5);
+  // Date stores integer milliseconds; allow less than one millisecond of energy.
+  expect(Math.abs(r.currentOrbit.dailyLoadWh - 100 * r.currentOrbit.orbitPeriodMinutes / 60)).toBeLessThan(100 / 3_600_000);
+});

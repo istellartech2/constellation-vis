@@ -33,7 +33,13 @@ import { Menu, Moon, Sun, X } from "lucide-react";
 import { useUiTheme } from "../../lib/uiTheme";
 import { useSheetDrag } from "./useSheetDrag";
 import type { DisplayOptions, ViewSettings } from "../../lib/viewState";
+import type { SatelliteFovCriteria } from "../../lib/visibility";
 import type { GroundStation } from "../../lib/groundStations";
+
+import { defaultComparisonConditions, DEFAULT_COMPARISON_TARGET, type ComparisonDocument, type ComparisonScenario } from "../../lib/constellationComparison";
+import { comparisonScenarioInputs } from "../../lib/comparison/outages";
+import { satellitesToToml } from "../../utils/celestrakUtils";
+import { serializeGroundStations } from "../../lib/groundStationSerializer";
 
 /**
  * Editor side panel allowing the user to load, edit and save TOML files
@@ -56,6 +62,7 @@ interface Props {
   onAnalysisStart?: () => void;
   /** Called when analysis is closed (to resume animation) */
   onAnalysisEnd?: () => void;
+  onPausePlayback: () => void;
   /** Reference to the satellite scene for KML loading */
   sceneRef?: RefObject<SatelliteScene | null>;
   /** Capture the current view (camera + display settings) on demand */
@@ -111,6 +118,7 @@ export default function SatelliteEditor({
   groundStations,
   onAnalysisStart,
   onAnalysisEnd,
+  onPausePlayback,
   sceneRef,
   getCurrentView,
   onApplyView,
@@ -146,6 +154,25 @@ export default function SatelliteEditor({
     d.setSeconds(0, 0);
     return d.toISOString().slice(0, 16);
   });
+  // Own the workspace above TabsContent: editing a different scenario must not unmount it.
+  const [comparison, setComparison] = useState<ComparisonDocument>(() => ({
+    format: "constellation-comparison", version: 1,
+    conditions: defaultComparisonConditions(new Date(startText + "Z")), target: DEFAULT_COMPARISON_TARGET, cases: [],
+  }));
+  function previewComparison(scenario: ComparisonScenario, timestampMs: number, fov: SatelliteFovCriteria | null) {
+    const { satellites: activeSatellites, stations } = comparisonScenarioInputs(scenario);
+    const time = new Date(timestampMs);
+    onPausePlayback();
+    onDisplayChange({ showSatelliteFovCones: fov !== null, ...(fov ? {
+      fovConeHalfAngleDeg: fov.halfAngleDeg, fovConeAlongTrackDeg: fov.alongTrackDeg, fovConeCrossTrackDeg: fov.crossTrackDeg,
+    } : {}) });
+    setSatText(satellitesToToml(activeSatellites));
+    setConstText("");
+    setGsText(serializeGroundStations(stations));
+    setStartText(time.toISOString().slice(0, -1));
+    setPending(false);
+    onUpdate({ satellites: activeSatellites, groundStations: stations, startTime: time, islShellRanges: [] });
+  }
   const [open, setOpen] = useState(false);
   const sheet = useSheetDrag(() => setOpen(false));
 
@@ -474,10 +501,11 @@ export default function SatelliteEditor({
             <TabsContent value="analysis" className="mt-0">
               <ScopeNote editorCount={satellites.length} catalogCount={catalogCount} />
               <AnalysisTab
+                comparison={comparison} setComparison={setComparison} onComparisonPreview={previewComparison} onEditScenario={() => setTab("editor")}
                 satText={satText}
                 constText={constText}
                 gsText={gsText}
-                startTime={new Date(startText)}
+                startTime={new Date(startText + "Z")}
                 fovConeHalfAngleDeg={display.fovConeHalfAngleDeg}
                 fovConeAlongTrackDeg={display.fovConeAlongTrackDeg}
                 fovConeCrossTrackDeg={display.fovConeCrossTrackDeg}

@@ -20,7 +20,7 @@ function samples(series: number[][], stepSeconds = 10): StationVisibilitySample[
 describe("summarizeCounts", () => {
   it("computes availability, redundancy, passes and gaps", () => {
     // 60 s steps: gap 2, pass (1,2,2), gap 1, pass (1), gap 3
-    const counts = [0, 0, 1, 2, 2, 0, 1, 0, 0, 0];
+    const counts = [0, 0, 1, 2, 2, 0, 1, 0, 0, 0, 0];
     const s = summarizeCounts(counts, 60);
     expect(s.availabilityPct).toBeCloseTo(40);
     expect(s.redundancyPct).toBeCloseTo(20);
@@ -42,8 +42,8 @@ describe("summarizeCounts", () => {
 describe("buildContactSegments", () => {
   it("run-length encodes non-zero counts per station", () => {
     const data = samples([
-      [0, 1, 1, 2, 0],
-      [3, 3, 0, 0, 1],
+      [0, 1, 1, 2, 0, 0],
+      [3, 3, 0, 0, 1, 1],
     ]);
     const segs = buildContactSegments(data, 10);
     expect(segs).toEqual([
@@ -58,9 +58,9 @@ describe("buildContactSegments", () => {
 describe("summarizeNetwork", () => {
   it("treats any station in contact as network contact", () => {
     const data = samples([
-      [1, 0, 0, 0],
-      [0, 0, 1, 1],
-    ]);
+      [1, 0, 0, 0, 0],
+      [0, 0, 1, 1, 1],
+    ], 60);
     const s = summarizeNetwork(data, 60);
     expect(s.availabilityPct).toBeCloseTo(75);
     expect(s.maxGapMin).toBe(1);

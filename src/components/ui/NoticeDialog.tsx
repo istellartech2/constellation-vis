@@ -11,17 +11,19 @@ interface Props {
   confirmLabel?: string;
   onConfirm?: () => void;
   destructive?: boolean;
+  initialFocus?: "confirm" | "cancel";
 }
 
-export default function NoticeDialog({ open, onClose, title, description, confirmLabel, onConfirm, destructive }: Props) {
+export default function NoticeDialog({ open, onClose, title, description, confirmLabel, onConfirm, destructive, initialFocus = "confirm" }: Props) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
       <DialogContent
         className="sm:max-w-md"
         showCloseButton={false}
-        // Enter confirms: the user already chose this action by opening the dialog.
-        onOpenAutoFocus={(e) => { if (confirmRef.current) { e.preventDefault(); confirmRef.current.focus(); } }}
+        // Replacement/deletion flows can keep accidental Enter on the safe action.
+        onOpenAutoFocus={(e) => { const target = initialFocus === "cancel" ? cancelRef.current : confirmRef.current; if (target) { e.preventDefault(); target.focus(); } }}
       >
         <DialogHeader className="text-left">
           <div className={`mb-1 flex size-10 items-center justify-center rounded-xl ${destructive ? "bg-danger-soft text-danger" : "bg-warning-soft text-warning"}`}>
@@ -31,7 +33,7 @@ export default function NoticeDialog({ open, onClose, title, description, confir
           <DialogDescription className="whitespace-pre-line leading-relaxed text-fg-muted">{description}</DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>{onConfirm ? "キャンセル" : "閉じる"}</Button>
+          <Button ref={cancelRef} variant="outline" onClick={onClose}>{onConfirm ? "キャンセル" : "閉じる"}</Button>
           {onConfirm && <Button ref={confirmRef} variant={destructive ? "destructive" : "default"} onClick={() => { onConfirm(); onClose(); }}>{confirmLabel ?? "続ける"}</Button>}
         </DialogFooter>
       </DialogContent>

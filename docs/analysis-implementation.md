@@ -229,16 +229,16 @@ FOV条件 = acos(clamp(b_ecf_hat · (r_station-r_sat)_hat, -1, 1)) <= halfAngle
 | `calculateStationStats(data)` | — | 局ごとの `averageVisible`, `nonZeroRate` |
 | `generateVisibilityReport(...)` | 24 h / 10 s | CSV 文字列 |
 
-`visibleSeconds = visibleStepCount * stepSec`、つまり**サンプル数 × ステップ幅による矩形近似**。`visibility.ts` には AOS/LOS の二分法精密化がない（それを持つのは §6 の `linkDutyAnalysis.ts` だけ）。したがって 10 s より短いパスは取りこぼし得る。区間境界の精度はサンプル刻みに制限される。
+`visibleSeconds` は各左端サンプルの可視状態を次の時刻まで積算する矩形近似（終了時刻は加算しない）。最後の端数区間は実際の長さで重み付けする。`visibility.ts` には AOS/LOS の二分法精密化がない（それを持つのは §6 の `linkDutyAnalysis.ts` だけ）。したがって 10 s より短いパスは取りこぼし得る。区間境界の精度はサンプル刻みに制限される。
 
-時系列は `t <= end` で終点も含む。24 h / 10 s は 8641 点であり、全点が可視なら `visibleSeconds` は 86410 s になる。不可視区間の長さもサンプル数 × 刻みなので、窓全体が不可視なら 24 h + 10 s。これらは厳密な区間積分ではなく、終点を含むサンプル集計である。
+時系列は両端を含む。24 h / 10 s は 8641 点だが、積算するのは 8640 区間で、全点可視の `visibleSeconds` は 86400 s。刻みが期間を割り切らない場合も終了時刻を追加し、解析期間を越えない。画面の可用率・冗長率・中断統計も共通の `src/lib/accessMetrics.ts` を用いる。
 
 ### 3.3 可用性メトリクス（`calculateAvailabilityMetrics`）
 
 `(visibilityData, stationIndices, intervalSeconds = 10)` から局ごとに 4 指標を出す。
 
 ```
-timeAvailability      = (可視機数 > 0 のサンプル数 / 全サンプル数) * 100      [%]
+timeAvailability      = (可視機数 > 0 の区間秒数 / 解析期間秒数) * 100      [%]
 interruptionFrequency = 可視機数が 0 に落ちた回数                            [回]
 maxInterruptionTime   = 最長の連続 0 区間                                    [分]
 avgInterruptionTime   = 0 区間の平均長                                       [分]
@@ -543,10 +543,10 @@ minSolarArrayW   = averageLoad / generationFactor
 
 KPI の定義と近似:
 
-- `dailyGenerationWh` / `dailyLoadWh` は `sum(P_sample * stepSeconds/3600)`。初期点・終点とも数えるため、24 h / 120 s では 721 点 = 24 h + 120 s 相当。周回 KPI でも同名フィールドはその周回窓の合計であり、24 h 換算ではない。
+- `dailyGenerationWh` / `dailyLoadWh` は SOC と同じ右端矩形積分。初期点を加算せず、最後の端数区間も実時間で積算する。24 h は正確に 24 h 分（Date のミリ秒精度）。周回 KPI ではその周回窓の合計であり、24 h 換算ではない。
 - `minBatteryRequiredWh = eclipseLoadW * (eclipseMinutes/60) / max(1-minSocPercent/100, 0.05)`。日照復帰までのエネルギー下限見積りで、初期 SOC と放電効率を式に入れない。`eclipseMinutes` は §2.3 の次の食区間から取る。
 - `minSolarArrayPowerRequiredW` も平均負荷の下限見積りで、バッテリの充放電損失を含めない。これらの値だけで SOC 条件の成立を保証しない。
-- `sunlightRatio` はサンプル比、`maxContinuousEclipseMinutes` は連続食サンプル数 × 刻み。SOC 計算は容量でクリップし、負荷未達の時間や充電余剰の量は記録しない。
+- `sunlightRatio` は右端状態の時間加重比、`maxContinuousEclipseMinutes` は連続する食区間の時間合計。SOC 計算は容量でクリップし、負荷未達の時間や充電余剰の量は記録しない。
 - `designStatus` は最小 SOC がしきい値以下なら `critical`、それ以外で発電量 < 消費量なら `warning`、他は `nominal`。
 
 主な既定値（`createDefaultSolarPowerInput`）: 周回刻み 30 s、24 h 刻み 120 s、BOL 250 W、日照追尾係数 0.78、電力経路効率 0.90、劣化 2.5 %/年、ミッション 3 年、ベース負荷 90 W、バッテリ 650 Wh、初期 SOC 95 %、最低 SOC 30 %、充電効率 0.95、放電効率 0.94、設計マージン 20 %。

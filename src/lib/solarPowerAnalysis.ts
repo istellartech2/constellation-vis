@@ -1,3 +1,4 @@
+import { analysisTimes } from "./analysisTime";
 import { earthShadowFraction } from "./illumination";
 import type { SatelliteSpec } from "./satellites";
 import { getSatelliteDerivedInfo } from "./satelliteDerivedInfo";
@@ -203,19 +204,19 @@ function simulateSolarPower(
   const batteryCapacityWh = Math.max(input.batteryCapacityWh, 1);
   let batteryEnergyWh = batteryCapacityWh * (input.initialSocPercent / 100);
   const samples: SolarPowerSample[] = [];
-  const totalSteps = Math.max(1, Math.ceil((durationMinutes * 60) / stepSeconds));
+  const times = analysisTimes(startTime.getTime(), durationMinutes * 60, stepSeconds);
 
-  for (let step = 0; step <= totalSteps; step += 1) {
-    const date = new Date(startTime.getTime() + step * stepSeconds * 1000);
+  for (let step = 0; step < times.length; step += 1) {
+    const date = new Date(times[step]);
     const pv = satellite.propagate(rec, date);
-    if (!pv?.position) continue;
+    if (!pv?.position) throw new Error(`衛星位置を計算できません: ${date.toISOString()}`);
 
     const sunlightFraction = 1 - earthShadowFraction(pv.position, date);
     const inSunlight = sunlightFraction > 0.5;
     const generationW = computeGenerationW(input, sunlightFraction);
     const loadW = computeLoadW(input, inSunlight);
     const netPowerW = generationW - loadW;
-    const deltaHours = step === 0 ? 0 : stepSeconds / 3600;
+    const deltaHours = step === 0 ? 0 : (times[step] - times[step - 1]) / 3_600_000;
 
     if (step > 0) {
       if (netPowerW >= 0) {
@@ -234,7 +235,7 @@ function simulateSolarPower(
     samples.push({
       timestamp: date.getTime(),
       timeLabel: formatSampleTime(date),
-      elapsedMinutes: step * stepSeconds / 60,
+      elapsedMinutes: (times[step] - times[0]) / 60_000,
       inSunlight,
       sunlightFraction,
       generationW,
@@ -248,16 +249,17 @@ function simulateSolarPower(
   return samples;
 }
 
-function computeMaxContinuousEclipseMinutes(samples: SolarPowerSample[], stepSeconds: number): number {
+function computeMaxContinuousEclipseMinutes(samples: SolarPowerSample[]): number {
   let current = 0;
   let max = 0;
 
-  for (const sample of samples) {
+  for (let i = 1; i < samples.length; i++) {
+    const sample = samples[i];
     if (sample.inSunlight) {
       current = 0;
       continue;
     }
-    current += stepSeconds / 60;
+    current += (sample.timestamp - samples[i - 1].timestamp) / 60_000;
     max = Math.max(max, current);
   }
 
@@ -276,26 +278,26 @@ function computeMinSolarArrayRequirement(input: SolarPowerAnalysisInput, sunligh
 
 function computeKpi(
   samples: SolarPowerSample[],
-  stepSeconds: number,
   input: SolarPowerAnalysisInput,
   orbitPeriodMinutes: number,
   orbitEclipseMinutes: number,
 ): SolarPowerKpi {
-  const deltaHours = stepSeconds / 3600;
-  const dailyGenerationWh = samples.reduce((sum, sample) => sum + sample.generationW * deltaHours, 0);
-  const dailyLoadWh = samples.reduce((sum, sample) => sum + sample.loadW * deltaHours, 0);
+  // Same right-endpoint quadrature as the SOC integration; no extra endpoint step.
+  const integral = (value: (sample: SolarPowerSample) => number) => samples.slice(1).reduce(
+    (sum, sample, i) => sum + value(sample) * (sample.timestamp - samples[i].timestamp) / 3_600_000, 0,
+  );
+  const durationHours = samples.length > 1 ? (samples.at(-1)!.timestamp - samples[0].timestamp) / 3_600_000 : 0;
+  const dailyGenerationWh = integral((s) => s.generationW);
+  const dailyLoadWh = integral((s) => s.loadW);
   const minSocPercent = samples.reduce((min, sample) => Math.min(min, sample.socPercent), Number.POSITIVE_INFINITY);
   const maxSocPercent = samples.reduce((max, sample) => Math.max(max, sample.socPercent), 0);
   const endSocPercent = samples.at(-1)?.socPercent ?? input.initialSocPercent;
-  const sunlightSamples = samples.filter((sample) => sample.inSunlight).length;
-  const sunlightRatio = samples.length > 0 ? sunlightSamples / samples.length : 0;
+  const sunlightRatio = durationHours > 0 ? integral((s) => Number(s.inSunlight)) / durationHours : 0;
   const energyDeficitWh = Math.max(0, dailyLoadWh - dailyGenerationWh);
   const minBatteryRequiredWh = orbitEclipseMinutes > 0
     ? computeLoadW(input, false) * (orbitEclipseMinutes / 60) / Math.max(input.minSocPercent > 0 ? 1 - input.minSocPercent / 100 : 1, 0.05)
     : 0;
-  const effectiveSunlightRatio = samples.length > 0
-    ? samples.reduce((sum, sample) => sum + sample.sunlightFraction, 0) / samples.length
-    : 0;
+  const effectiveSunlightRatio = durationHours > 0 ? integral((s) => s.sunlightFraction) / durationHours : 0;
   const minSolarArrayPowerRequiredW = computeMinSolarArrayRequirement(input, sunlightRatio, effectiveSunlightRatio);
   const designStatus =
     minSocPercent <= input.minSocPercent
@@ -315,7 +317,7 @@ function computeKpi(
     minSocPercent: Number.isFinite(minSocPercent) ? minSocPercent : input.initialSocPercent,
     endSocPercent,
     maxSocPercent,
-    maxContinuousEclipseMinutes: computeMaxContinuousEclipseMinutes(samples, stepSeconds),
+    maxContinuousEclipseMinutes: computeMaxContinuousEclipseMinutes(samples),
     minBatteryRequiredWh,
     minSolarArrayPowerRequiredW,
     energyDeficitWh,
@@ -350,8 +352,8 @@ function simulateForDate(
   return {
     orbitSamples,
     daySamples,
-    orbitKpi: computeKpi(orbitSamples, input.orbitStepSeconds, input, orbitPeriodMinutes, eclipseMinutes),
-    dayKpi: computeKpi(daySamples, input.dayStepSeconds, input, orbitPeriodMinutes, eclipseMinutes),
+    orbitKpi: computeKpi(orbitSamples, input, orbitPeriodMinutes, eclipseMinutes),
+    dayKpi: computeKpi(daySamples, input, orbitPeriodMinutes, eclipseMinutes),
   };
 }
 

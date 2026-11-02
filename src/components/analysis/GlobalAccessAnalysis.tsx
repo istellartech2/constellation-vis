@@ -104,7 +104,7 @@ export default function GlobalAccessAnalysis({ satText, constText, startTime }: 
 
       // Metrics come from the raw 10 s integer counts; only the heatmap is averaged.
       const rows: LatitudeAvailabilityRow[] = generatedStations.map((station, index) => {
-        const summary = summarizeCounts(gridStationCounts(grid, index), STEP_SECONDS);
+        const summary = summarizeCounts(gridStationCounts(grid, index), STEP_SECONDS, DURATION_HOURS * 3600);
         return {
           latitude: station.latitudeDeg,
           availabilityPct: summary.availabilityPct,
@@ -323,7 +323,7 @@ function buildKpis(rows: LatitudeAvailabilityRow[]): Kpi[] {
 
   return [
     {
-      label: "全球平均可用率",
+      label: "経線平均可用率",
       value: formatNumber(meanAvailability, 1),
       unit: "%",
       hint: "緯度の面積（cos φ）で加重",
@@ -335,7 +335,7 @@ function buildKpis(rows: LatitudeAvailabilityRow[]): Kpi[] {
       hint: goodRanges.length === 0 ? undefined : `${goodCount} / ${rows.length} 緯度（1° 刻み）`,
     },
     {
-      label: "全球平均冗長率",
+      label: "経線平均冗長率",
       value: formatNumber(meanRedundancy, 1),
       unit: "%",
       hint: "同時 2 機以上・面積加重",
