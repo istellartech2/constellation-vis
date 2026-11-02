@@ -1,4 +1,6 @@
 import * as satellite from "satellite.js";
+import { analysisTimes } from "./analysisTime";
+import { summarizeCounts } from "./accessMetrics";
 import * as THREE from "three";
 import type { SatelliteSpec } from "./satellites";
 import { toSatrec } from "./satellites";
@@ -265,27 +267,23 @@ export function visibilityStats(
   const satRecs = toSatrecs(sats);
   const prepared = prepareObserver(station);
   const startMs = start.getTime();
-  const endMs = startMs + durationHours * 3600 * 1000;
+  const times = analysisTimes(startMs, durationHours * 3600, stepSec);
   const counts: number[] = [];
-  for (let ms = startMs; ms <= endMs; ms += stepSec * 1000) {
+  for (const ms of times) {
     counts.push(countVisibleSatellitesForObserver(satRecs, prepared, new Date(ms), fov));
   }
-  const steps = counts.length;
-  const total = counts.reduce((a, b) => a + b, 0);
-  const sorted = counts.slice().sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  const median =
-    sorted.length % 2 === 0
-      ? (sorted[mid - 1] + sorted[mid]) / 2
-      : sorted[mid];
-  const visibleStepCount = counts.filter((c) => c > 0).length;
-  const nonZeroRate = visibleStepCount / steps;
-  const visibleSeconds = visibleStepCount * stepSec;
+  const weighted = counts.slice(0, -1).map((count, i) => ({ count, seconds: (times[i + 1] - times[i]) / 1000 }));
+  const totalSeconds = durationHours * 3600;
+  const total = weighted.reduce((sum, s) => sum + s.count * s.seconds, 0);
+  const sorted = weighted.toSorted((a, b) => a.count - b.count);
+  let cumulative = 0;
+  const median = sorted.find((s) => { cumulative += s.seconds; return cumulative >= totalSeconds / 2; })?.count ?? 0;
+  const visibleSeconds = weighted.reduce((sum, s) => sum + (s.count > 0 ? s.seconds : 0), 0);
   return {
-    avg: total / steps,
+    avg: total / totalSeconds,
     median,
-    nonZeroRate,
-    visibleStepCount,
+    nonZeroRate: visibleSeconds / totalSeconds,
+    visibleStepCount: weighted.filter((s) => s.count > 0).length,
     visibleSeconds,
     visibleHours: visibleSeconds / 3600,
   };
@@ -335,10 +333,7 @@ export function calculateStationAccessData(
   const result: StationVisibilitySample[] = [];
 
   const startMs = start.getTime();
-  const endMs = startMs + durationHours * 3600 * 1000;
-  const stepMs = stepSeconds * 1000;
-
-  for (let ms = startMs; ms <= endMs; ms += stepMs) {
+  for (const ms of analysisTimes(startMs, durationHours * 3600, stepSeconds)) {
     const current = new Date(ms);
     const gmst = satellite.gstime(current);
     const counts = observers.map(() => 0);
@@ -450,9 +445,8 @@ export function generateVisibilityReport(
   const lines: string[] = [header];
 
   const startMs = start.getTime();
-  const endMs = startMs + durationHours * 3600 * 1000;
-
-  for (let ms = startMs, t = 0; ms <= endMs; ms += stepSec * 1000, t += stepSec) {
+  for (const ms of analysisTimes(startMs, durationHours * 3600, stepSec)) {
+    const t = (ms - startMs) / 1000;
     const current = new Date(ms);
     const counts = observers.map(() => 0);
     observers.forEach((obs, gi) => {
@@ -475,58 +469,15 @@ export function calculateAvailabilityMetrics(
   maxInterruptionTime: number;
   avgInterruptionTime: number;
 }> {
-  const intervalMinutes = intervalSeconds / 60;
-  
-  return stationIndices.map(stationIndex => {
-    // Extract visibility data for this station
-    const stationData = visibilityData.map(timePoint => 
-      timePoint.stations[stationIndex]?.visibleCount || 0
-    );
-    
-    // Calculate time availability (percentage of time with satellites visible)
-    const availablePoints = stationData.filter(count => count > 0).length;
-    const timeAvailability = (availablePoints / stationData.length) * 100;
-    
-    // Calculate interruption frequency and times
-    let interruptionFrequency = 0;
-    const interruptionDurations: number[] = [];
-    let currentInterruptionStart = -1;
-    
-    for (let i = 0; i < stationData.length; i++) {
-      if (stationData[i] === 0) {
-        if (currentInterruptionStart === -1) {
-          // Start of interruption
-          currentInterruptionStart = i;
-          if (i > 0) interruptionFrequency++; // Don't count initial state
-        }
-      } else {
-        if (currentInterruptionStart !== -1) {
-          // End of interruption
-          const duration = (i - currentInterruptionStart) * intervalMinutes;
-          interruptionDurations.push(duration);
-          currentInterruptionStart = -1;
-        }
-      }
-    }
-    
-    // Handle case where data ends during interruption
-    if (currentInterruptionStart !== -1) {
-      const duration = (stationData.length - currentInterruptionStart) * intervalMinutes;
-      interruptionDurations.push(duration);
-    }
-    
-    const maxInterruptionTime = interruptionDurations.length > 0 
-      ? Math.max(...interruptionDurations) 
-      : 0;
-    const avgInterruptionTime = interruptionDurations.length > 0 
-      ? interruptionDurations.reduce((sum, dur) => sum + dur, 0) / interruptionDurations.length 
-      : 0;
-    
+  const durationSeconds = visibilityData.length > 1
+    ? (visibilityData.at(-1)!.timestamp - visibilityData[0].timestamp) / 1000 : 0;
+  return stationIndices.map((index) => {
+    const metrics = summarizeCounts(visibilityData.map((s) => s.stations[index]?.visibleCount ?? 0), intervalSeconds, durationSeconds);
     return {
-      timeAvailability,
-      interruptionFrequency,
-      maxInterruptionTime,
-      avgInterruptionTime
+      timeAvailability: metrics.availabilityPct,
+      interruptionFrequency: metrics.interruptionCount,
+      maxInterruptionTime: metrics.maxGapMin,
+      avgInterruptionTime: metrics.avgGapMin,
     };
   });
 }

@@ -9,6 +9,7 @@
 //   is well under a metre at a 60 s knot spacing);
 // - the result is a flat Uint16Array, cheap to transfer out of a worker.
 import * as satellite from "satellite.js";
+import { analysisTimes } from "./analysisTime";
 import type { SatelliteSpec } from "./satellites";
 import { toSatrec } from "./satellites";
 import type { GroundStation } from "./groundStations";
@@ -25,6 +26,7 @@ export const KNOT_SECONDS = 60;
 export interface AccessGrid {
   startMs: number;
   stepMs: number;
+  endMs: number;
   stepCount: number;
   stationCount: number;
   /** Visible-satellite count at [step * stationCount + station]. */
@@ -209,7 +211,12 @@ export function computeAccessGrid(
 ): AccessGrid {
   const startMs = start.getTime();
   const stepMs = stepSeconds * 1000;
-  const stepCount = Math.floor((durationHours * 3600) / stepSeconds) + 1;
+  const times = analysisTimes(startMs, durationHours * 3600, stepSeconds);
+  const stepCount = times.length;
+  const endMs = times[times.length - 1];
+  if (sats.length > 65_535 || stepCount * stations.length > 20_000_000) {
+    throw new Error("解析対象が多すぎます。地点数・期間を減らすか刻みを大きくしてください");
+  }
   const stationCount = stations.length;
   const counts = new Uint16Array(stepCount * stationCount);
   const observers = stations.map(prepare);
@@ -224,7 +231,7 @@ export function computeAccessGrid(
   const sinG = new Float64Array(stepCount);
   const gmst = new Float64Array(stepCount);
   for (let i = 0; i < stepCount; i++) {
-    const g = satellite.gstime(new Date(startMs + i * stepMs));
+    const g = satellite.gstime(new Date(times[i]));
     gmst[i] = g;
     cosG[i] = Math.cos(g);
     sinG[i] = Math.sin(g);
@@ -243,7 +250,7 @@ export function computeAccessGrid(
     let k0Ms = Number.NaN;
 
     for (let step = 0; step < stepCount; step++) {
-      const ms = startMs + step * stepMs;
+      const ms = times[step];
       let rx: number, ry: number, rz: number, vx: number, vy: number, vz: number;
 
       if (interpolate) {
@@ -326,7 +333,7 @@ export function computeAccessGrid(
     onProgress?.((si + 1) / recs.length);
   }
 
-  return { startMs, stepMs, stepCount, stationCount, counts };
+  return { startMs, endMs, stepMs, stepCount, stationCount, counts };
 }
 
 /** One station's counts over time (copied out of the strided grid). */
@@ -349,7 +356,7 @@ export function gridToSamples(
   const out: StationVisibilitySample[] = [];
   for (let first = 0; first < grid.stepCount; first += n) {
     const last = Math.min(grid.stepCount, first + n);
-    const timestamp = grid.startMs + first * grid.stepMs;
+    const timestamp = Math.min(grid.endMs, grid.startMs + first * grid.stepMs);
     out.push({
       time: new Date(timestamp).toISOString().slice(11, 19),
       timestamp,

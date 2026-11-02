@@ -143,7 +143,7 @@ export default function AnalysisTab({
         <EntryButton
           icon={<Globe2 className="h-4 w-4" />}
           title="全球アクセス設計"
-          subtitle="地球各地点での通信可能性を評価"
+          subtitle="選択した経線上の緯度別アクセスを評価"
           onClick={() => handleAnalysisClick("全球アクセス設計")}
         />
       </PanelSection>
