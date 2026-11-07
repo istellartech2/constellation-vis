@@ -10,6 +10,7 @@ import {
   PAPER_ATLAS_EARTH_MODE,
   isLayeredEarthMode,
   isMonochromeEarthMode,
+  earthTextureBudget,
   normalizeEarthTextureMode,
   resolveLayeredEarthAssets,
 } from "./earthTextures";
@@ -61,6 +62,16 @@ describe("earthTextures", () => {
     expect(low.qualityTier).toBe("4k");
     expect(low.dayMap).toEqual({ initial: EARTH_ASSETS.dayNatural.low });
     expect(low.lightsMap.upgrade).toBeUndefined();
+  });
+
+  it("keeps memory-constrained devices such as iPad at 4k", () => {
+    expect(earthTextureBudget(16384, false)).toBe(16384);
+    expect(earthTextureBudget(16384, true)).toBe(4096);
+    expect(earthTextureBudget(2048, true)).toBe(2048);
+    const ipad = resolveLayeredEarthAssets(NATURAL_EARTH_MODE, earthTextureBudget(16384, true));
+    expect(ipad.qualityTier).toBe("4k");
+    expect(ipad.dayMap.upgrade).toBeUndefined();
+    expect(ipad.oceanMask.upgrade).toBeUndefined();
   });
 
   it("dims the brighter map so both globes read alike under the same sun", () => {
