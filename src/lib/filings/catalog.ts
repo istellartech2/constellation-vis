@@ -61,9 +61,6 @@ export const FILING_SYSTEMS: readonly FilingSystem[] = [
   { id: "opti", name: "OPTI", operator: "", description: "日本が申請した計画配置。", series: [
     { id: "default", label: "申請" },
   ] },
-  { id: "spacex-odc", name: "SpaceX 宇宙データセンター", operator: "SpaceX", description: "FCCの公示。完全な配置は未取得。", series: [
-    { id: "default", label: "FCC公示" },
-  ] },
 ];
 
 const ITU_PUBLICATION = "https://www.itu.int/ITU-R/space/asreceived/Publication/DisplayPublication/";
@@ -106,7 +103,6 @@ export const FILING_CATALOG: readonly FilingCatalogEntry[] = [
   itu(70633, { system: "bluebird", series: "default", name: "J-BLUEBIRD-NGSO", country: "日本", reference: "J2026-83392", date: "2026-09-04", satellites: 136, submission: "調整要求" }),
   itu(68577, { system: "opti", series: "default", name: "OPTI-KANSEN", country: "日本", reference: "J2026-81256", date: "2026-04-30", description: "今回の変更対象は構成2の100機。", sha256: "50cd45f0cdba80e5169c7edbb7ce2cc1d99affccf34d3a1b726d0ce7b3ab7310", preferredConfiguration: "2", note: "添付注記NOTE 7：今回の変更は構成2のEPFD特性のみ。構成1の削除フラグは費用計算用で、計画の撤回を意味しません。両構成を合計した200機を同時配備として扱いません。" }),
   itu(68546, { system: "opti", series: "default", name: "OPTI-K-V", country: "日本", reference: "J2026-81225", date: "2026-04-30", description: "主な傾斜角が40°・46°・50°の3つの代替構成。", sha256: "ab918763474abab8314a05a43c529bfeaddc6a6f2bdbcb16e04b3b3bf82c1c4f", preferredConfiguration: "1", note: "添付注記NOTE 9：3構成は排他的な代替案です。各579機を合計した1,737機が同時に配備されるという意味ではありません。変更申請なので過去の申請全体を網羅するとは限りません。" }),
-  { id: "spacex-orbital-data-center", system: "spacex-odc", series: "default", name: "SpaceX 宇宙データセンター", country: "米国", agency: "FCC", url: "https://docs.fcc.gov/public/attachments/DA-26-113A1.pdf", date: "2026-02", description: "最大100万機・高度500〜2,000 kmの範囲のみで、完全な配置は未取得。ITU申請との対応も未確認。" },
 ];
 
 /** True when the entry links to an SNS MDB the importer can place. */

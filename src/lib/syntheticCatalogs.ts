@@ -72,53 +72,6 @@ export function sunRightAscensionDeg(epochMs: number): number {
   return ((Math.atan2(s.y, s.x) / DEG) % 360 + 360) % 360;
 }
 
-/**
- * Starmind estimate, from public reporting only (see docs/synthetic-catalogs.md):
- * - FCC filing (SAT-LOA-20260108-00016, Jan 2026): up to 1,000,000 satellites,
- *   500–2,000 km, narrow shells of up to 50 km, sun-synchronous inclinations.
- * - "remain constantly in the sunlight" → dawn–dusk (terminator) SSO, LTAN 18:00.
- * Assumed here (not published): one shell every 50 km from 500 to 2,000 km with
- * equal shares, planes spread ±STARMIND_RAAN_SPREAD_DEG around the terminator,
- * Walker-style phasing within a shell.
- */
-export const STARMIND_SHELL_ALTITUDES_KM = Array.from({ length: 31 }, (_, k) => 500 + 50 * k);
-export const STARMIND_LTAN_HOURS = 18;
-export const STARMIND_RAAN_SPREAD_DEG = 8;
-
-function starmindCatalog(count: number, epochMs: number, satnumBase: number): SatelliteCatalog {
-  const cat = createCatalog(count);
-  // LTAN 18:00 → ascending node 6 h (90°) east of the mean Sun.
-  const raanCenter = sunRightAscensionDeg(epochMs) + (STARMIND_LTAN_HOURS - 12) * 15;
-  const shells = STARMIND_SHELL_ALTITUDES_KM;
-  let row = 0;
-  shells.forEach((altKm, s) => {
-    const n = Math.floor(count / shells.length) + (s < count % shells.length ? 1 : 0);
-    if (n <= 0) return;
-    const inclinationDeg = sunSynchronousInclinationDeg(altKm);
-    const mm = meanMotionRevDay(altKm);
-    const planes = Math.max(1, Math.round(Math.sqrt(n / 4)));
-    const perPlane = Math.ceil(n / planes);
-    for (let k = 0; k < n; k++) {
-      const p = Math.floor(k / perPlane);
-      const j = k % perPlane;
-      const t = planes === 1 ? 0 : p / (planes - 1) - 0.5;
-      setCatalogRow(cat, row, {
-        satnum: satnumBase + row,
-        epochMs,
-        meanMotionRevDay: mm,
-        eccentricity: 0.0001,
-        inclinationDeg,
-        raanDeg: (((raanCenter + 2 * STARMIND_RAAN_SPREAD_DEG * t) % 360) + 360) % 360,
-        argPerigeeDeg: 0,
-        // Offset neighbouring planes and shells so slots do not line up at the poles.
-        meanAnomalyDeg: ((360 * j) / perPlane + (360 * p) / (planes * perPlane) + s * 7.3) % 360,
-      });
-      row++;
-    }
-  });
-  return cat;
-}
-
 /** Small deterministic PRNG so synthetic catalogs are reproducible. */
 function mulberry32(seed: number) {
   let a = seed >>> 0;
@@ -129,6 +82,80 @@ function mulberry32(seed: number) {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/**
+ * Starmind estimate, from public reporting only (see docs/synthetic-catalogs.md):
+ * - FCC filing (SAT-LOA-20260108-00016, Jan 2026): up to 1,000,000 satellites,
+ *   500–2,000 km, narrow shells of up to 50 km, sun-synchronous inclinations.
+ * - "remain constantly in the sunlight" → dawn–dusk (terminator) SSO, LTAN 18:00.
+ * Assumed here (not published): one shell every 50 km from 500 to 2,000 km with
+ * equal shares, planes spread ±STARMIND_RAAN_SPREAD_DEG around the terminator.
+ * Layout inside a shell, chosen so the drawn satellites can never collide
+ * under the secular J2 model the GPU layer uses:
+ * - every orbit plane gets its own altitude (spread evenly over the shell,
+ *   assigned to planes in shuffled order) and the orbits are circular, so
+ *   satellites in different planes always sit at different radii;
+ * - satellites in one plane share one orbit and are equally spaced, and with
+ *   identical rates that spacing never changes.
+ * Each plane also gets a random node inside its RAAN slot and a random phase
+ * origin, so slots do not line up across planes (at 10^5–10^6 satellites an
+ * aligned Walker lattice reads as stripes).
+ */
+export const STARMIND_SHELL_ALTITUDES_KM = Array.from({ length: 31 }, (_, k) => 500 + 50 * k);
+export const STARMIND_LTAN_HOURS = 18;
+export const STARMIND_RAAN_SPREAD_DEG = 8;
+/** Plane altitudes span ±this (km) around the shell centre, leaving a gap between shells. */
+export const STARMIND_ALTITUDE_HALF_WIDTH_KM = 20;
+
+function starmindCatalog(count: number, epochMs: number, satnumBase: number, seed = 7): SatelliteCatalog {
+  const cat = createCatalog(count);
+  const rand = mulberry32(seed);
+  // LTAN 18:00 → ascending node 6 h (90°) east of the mean Sun.
+  const raanCenter = sunRightAscensionDeg(epochMs) + (STARMIND_LTAN_HOURS - 12) * 15;
+  const shells = STARMIND_SHELL_ALTITUDES_KM;
+  const dh = STARMIND_ALTITUDE_HALF_WIDTH_KM;
+  let row = 0;
+  shells.forEach((altKm, s) => {
+    const n = Math.floor(count / shells.length) + (s < count % shells.length ? 1 : 0);
+    if (n <= 0) return;
+    // SSO inclination is smooth in altitude: interpolate across the shell
+    // instead of solving it per plane.
+    const incLo = sunSynchronousInclinationDeg(altKm - dh);
+    const incHi = sunSynchronousInclinationDeg(altKm + dh);
+    const perPlane = Math.ceil(n / Math.max(1, Math.round(Math.sqrt(n / 4))));
+    const planes = Math.ceil(n / perPlane);
+    const planeWidth = (2 * STARMIND_RAAN_SPREAD_DEG) / planes;
+    // Shuffled altitude levels so altitude does not step with RAAN.
+    const level = Array.from({ length: planes }, (_, i) => i);
+    for (let i = planes - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      [level[i], level[j]] = [level[j], level[i]];
+    }
+    for (let p = 0; p < planes; p++) {
+      const u = (level[p] + 0.5) / planes;
+      const planeAltKm = altKm + dh * (2 * u - 1);
+      const mm = meanMotionRevDay(planeAltKm);
+      const inclinationDeg = incLo + (incHi - incLo) * u;
+      const raanDeg = raanCenter - STARMIND_RAAN_SPREAD_DEG + planeWidth * (p + rand());
+      const phase0 = rand() * 360;
+      const inPlane = Math.min(perPlane, n - p * perPlane);
+      for (let j = 0; j < inPlane; j++) {
+        setCatalogRow(cat, row, {
+          satnum: satnumBase + row,
+          epochMs,
+          meanMotionRevDay: mm,
+          eccentricity: 0,
+          inclinationDeg,
+          raanDeg: ((raanDeg % 360) + 360) % 360,
+          argPerigeeDeg: 0,
+          meanAnomalyDeg: (phase0 + (360 * j) / inPlane) % 360,
+        });
+        row++;
+      }
+    }
+  });
+  return cat;
 }
 
 const WALKER_SHELLS = [
