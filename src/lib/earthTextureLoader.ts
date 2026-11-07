@@ -75,6 +75,33 @@ export const whenIdle = (timeoutMs = 2000) =>
     else setTimeout(resolve, 300);
   });
 
+/**
+ * True on devices whose tabs cannot afford the 8k earth maps: every iPhone
+ * and iPad (iPadOS reports itself as a Mac, so check for touch), and
+ * browsers that report 4 GB of memory or less.
+ */
+export function isMemoryConstrainedDevice(): boolean {
+  const nav = navigator as Navigator & { deviceMemory?: number };
+  const appleMobile =
+    /iPad|iPhone|iPod/.test(nav.userAgent) || (/Mac/.test(nav.userAgent) && nav.maxTouchPoints > 1);
+  return appleMobile || (typeof nav.deviceMemory === "number" && nav.deviceMemory < 8);
+}
+
+let earthContextLost = false;
+
+/**
+ * Record a lost WebGL context. The 8k maps may be what exhausted the GPU, so
+ * every globe built after this, for the rest of the page's life, stays at 4k
+ * rather than risk losing the context again in a loop.
+ */
+export function noteEarthContextLost(): void {
+  earthContextLost = true;
+}
+
+export function hasLostEarthContext(): boolean {
+  return earthContextLost;
+}
+
 /** Skip optional 8k downloads when the user asked the browser to save data. */
 export function prefersReducedData(): boolean {
   const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;

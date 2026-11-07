@@ -43,6 +43,7 @@ import {
   DARK_MONOCHROME_EARTH_MODE,
   EARTH_ASSETS,
   PAPER_ATLAS_EARTH_MODE,
+  earthTextureBudget,
   isLayeredEarthMode,
   resolveLayeredEarthAssets,
   resolveProgressiveTexture,
@@ -50,9 +51,12 @@ import {
   type ProgressiveTexture,
 } from "./earthTextures";
 import {
+  hasLostEarthContext,
   hideBootSplash,
+  isMemoryConstrainedDevice,
   loadEarthImage,
   nextFrame,
+  noteEarthContextLost,
   prefersReducedData,
   setBootSplashStatus,
   whenIdle,
@@ -2256,6 +2260,14 @@ export default class SatelliteScene {
     }
   }
 
+  /** Largest earth texture side to load on this GPU and device. */
+  private earthTextureSize() {
+    return earthTextureBudget(
+      this.renderer.capabilities.maxTextureSize,
+      isMemoryConstrainedDevice() || hasLostEarthContext(),
+    );
+  }
+
   private createEarth() {
     const group = new THREE.Group();
     const geometry = new THREE.SphereGeometry(1, 128, 128);
@@ -2265,6 +2277,7 @@ export default class SatelliteScene {
     const abortController = new AbortController();
     const initialLoads: Promise<void>[] = [];
     const upgrades: (() => Promise<void>)[] = [];
+    const restores: (() => void)[] = [];
 
     let disposed = false;
     disposeFns.push(() => {
@@ -2299,6 +2312,13 @@ export default class SatelliteScene {
       this.renderer.initTexture(texture);
       decoded.release();
       disposeFns.push(() => texture.dispose());
+      // A failed upload (out of GPU memory, or the context was lost) leaves
+      // a texture that samples black; keep the previous image instead.
+      const gl = this.renderer.getContext();
+      if (gl.isContextLost() || gl.getError() === gl.OUT_OF_MEMORY) {
+        texture.dispose();
+        throw new Error("GPU upload failed");
+      }
       return texture;
     };
 
@@ -2319,13 +2339,24 @@ export default class SatelliteScene {
         current.dispose();
         current = texture;
       };
-      const load = (path: string) =>
-        fetchTexture(path, colorSpace).then(replace, (error: unknown) => {
+      const load = (path: string, isUpgrade = false) =>
+        fetchTexture(path, colorSpace).then((texture) => {
+          // An 8k image still decoding when the context was lost is dropped.
+          if (isUpgrade && hasLostEarthContext()) texture?.dispose();
+          else replace(texture);
+        }, (error: unknown) => {
           if (!disposed) console.warn(`Earth texture failed to load: ${path}`, error);
         });
       initialLoads.push(load(source.initial));
       const { upgrade } = source;
-      if (upgrade) upgrades.push(() => load(upgrade));
+      if (upgrade) upgrades.push(() => load(upgrade, true));
+      // The decoded pixels were released after upload, so a restored context
+      // has nothing to re-upload: show the flat color and fetch the small
+      // image again (never the 8k one, which may be what lost the context).
+      restores.push(() => {
+        if (!(current instanceof THREE.DataTexture)) replace(placeholder(fallback, colorSpace));
+        void load(source.initial);
+      });
       return stand;
     };
 
@@ -2338,7 +2369,7 @@ export default class SatelliteScene {
       ? this.params.earthTexture
       : null;
     const layeredAssets = layeredEarthMode
-      ? resolveLayeredEarthAssets(layeredEarthMode, this.renderer.capabilities.maxTextureSize)
+      ? resolveLayeredEarthAssets(layeredEarthMode, this.earthTextureSize())
       : null;
 
     const surfaceMesh = layeredAssets
@@ -2405,6 +2436,20 @@ export default class SatelliteScene {
       }
     }
 
+    // iOS Safari drops WebGL contexts under memory pressure or in the
+    // background; three restores the scene but cannot restore our images.
+    const canvas = this.renderer.domElement;
+    const handleContextLost = () => noteEarthContextLost();
+    const handleContextRestored = () => {
+      if (!disposed) for (const restore of restores) restore();
+    };
+    canvas.addEventListener("webglcontextlost", handleContextLost);
+    canvas.addEventListener("webglcontextrestored", handleContextRestored);
+    disposeFns.push(() => {
+      canvas.removeEventListener("webglcontextlost", handleContextLost);
+      canvas.removeEventListener("webglcontextrestored", handleContextRestored);
+    });
+
     disposeFns.unshift(() => {
       surfaceMesh.geometry.dispose();
       (surfaceMesh.material as THREE.Material).dispose();
@@ -2425,7 +2470,8 @@ export default class SatelliteScene {
       if (upgrades.length === 0 || prefersReducedData()) return;
       await whenIdle();
       for (const upgrade of upgrades) {
-        if (disposed) return;
+        // After a context loss the globe stays at 4k.
+        if (disposed || hasLostEarthContext()) return;
         await upgrade();
         await nextFrame();
       }
@@ -2472,7 +2518,7 @@ export default class SatelliteScene {
     // Reuse the data mask without loading day imagery, clouds, or city lights.
     const oceanMask: THREE.IUniform<THREE.Texture> = { value: null! };
     oceanMask.value = loadProgressiveTexture(
-      resolveProgressiveTexture(EARTH_ASSETS.oceanMask, this.renderer.capabilities.maxTextureSize),
+      resolveProgressiveTexture(EARTH_ASSETS.oceanMask, this.earthTextureSize()),
       (texture) => {
         oceanMask.value = texture;
       },

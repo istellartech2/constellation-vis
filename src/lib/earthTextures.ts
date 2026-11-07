@@ -121,6 +121,16 @@ export function isMonochromeEarthMode(mode: EarthTextureMode): mode is Monochrom
   return mode === DARK_MONOCHROME_EARTH_MODE || mode === PAPER_ATLAS_EARTH_MODE;
 }
 
+/**
+ * Largest earth texture side worth loading. Phones and tablets report 16k
+ * textures yet cap a tab's memory well below the ~0.5 GB that three 8k maps
+ * take on the GPU with mipmaps (plus their decoded copies); past that, iPad
+ * Safari fails the upload and the globe draws black. Those devices stay at 4k.
+ */
+export function earthTextureBudget(maxTextureSize: number, memoryConstrained: boolean): number {
+  return memoryConstrained ? Math.min(maxTextureSize, 4096) : maxTextureSize;
+}
+
 /** Start from the small texture and upgrade only when the GPU can hold 8k. */
 export function resolveProgressiveTexture(
   texture: TieredTexture,
