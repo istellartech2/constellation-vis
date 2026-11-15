@@ -13,6 +13,7 @@ function makeTrack(samples: TrajectorySample[]): TrajectoryTrack {
     sourceFrame: "ECEF",
     samples,
     events: [],
+    attitudeRules: [],
   };
 }
 

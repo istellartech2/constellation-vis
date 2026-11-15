@@ -4,7 +4,7 @@ import EarthTextureSelector from "./EarthTextureSelector";
 import { Button } from "./button";
 import { FileInput, Trash2, Globe, Satellite, Compass, Layers, FolderOpen, Bookmark, Save, Plus, X } from "lucide-react";
 import PanelSection from "./PanelSection";
-import TrajectorySection from "./TrajectorySection";
+import TrajectorySection, { type TrajectoryPlayback } from "./TrajectorySection";
 import type { TrajectoryTrack } from "../../lib/trajectory/types";
 import { CheckRow, ColorChip, HelpTip, SegmentedControl } from "./compactControls";
 import type SatelliteScene from "../../lib/visualization";
@@ -35,7 +35,8 @@ interface Props {
   onApplyView: (settings: ViewSettings) => void;
   trajectories: TrajectoryTrack[];
   onTrajectoriesChange: (tracks: TrajectoryTrack[]) => void;
-  onJumpToTime: (date: Date) => void;
+  /** Trajectory seek / follow / playback controls (owned by App). */
+  trajectoryPlayback: TrajectoryPlayback;
   /** Current simulation time (ms), for trajectory readouts and default epochs. */
   currentSimMs: number;
 }
@@ -52,7 +53,7 @@ export default function OptionTab({
   onApplyView,
   trajectories,
   onTrajectoriesChange,
-  onJumpToTime,
+  trajectoryPlayback,
   currentSimMs,
 }: Props) {
   const set = onDisplayChange;
@@ -351,12 +352,7 @@ export default function OptionTab({
       <TrajectorySection
         trajectories={trajectories}
         onTrajectoriesChange={onTrajectoriesChange}
-        onJumpToTime={(date) => {
-          // A launch track is Earth-fixed and lasts minutes: in ECI the globe
-          // turns it out of the focused view, so jump in the ECEF frame.
-          if (display.viewFrame !== "ecef") set({ viewFrame: "ecef" });
-          onJumpToTime(date);
-        }}
+        playback={trajectoryPlayback}
         currentSimMs={currentSimMs}
         sceneRef={sceneRef}
       />

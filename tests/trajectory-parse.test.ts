@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import * as satellite from "satellite.js";
+import * as THREE from "three";
 import {
   parseTrajectoryFile,
   parseUtcTimestamp,
@@ -302,6 +303,15 @@ describe("toTrajectoryTrack", () => {
     expect(c.color).toBe(TRAJECTORY_PALETTE[1]);
     expect(a.id).not.toBe(b.id);
     expect(a.samples).toBe(track.samples);
+    expect(a.attitudeRules).toEqual([]);
+    expect(a.model).toBeUndefined();
+  });
+
+  it("defaults missing attitudeRules to an empty list", () => {
+    const { track } = expectOk(parseTrajectoryFile(`# epoch: ${EPOCH}\nt,lat,lon,alt\n0,0,0,0\n1,0,0,1\n`, "a.csv"));
+    const { attitudeRules: _omit, ...rest } = track;
+    void _omit;
+    expect(toTrajectoryTrack(rest as typeof track, 0).attitudeRules).toEqual([]);
   });
 });
 
@@ -312,10 +322,139 @@ describe("sample CSVs", () => {
       const result = expectOk(parseTrajectoryFile(text, file));
       expect(result.warnings).toEqual([]);
       expect(result.track.sourceFrame).toBe("LLA");
-      expect(result.track.epochMs).toBe(EPOCH_MS);
+      expect(result.track.epochMs).toBe(Date.UTC(2026, 10, 15, 18));
       expect(result.track.samples.length).toBeGreaterThan(100);
+      expect(result.track.model).toMatch(/^starship-v3-(booster|ship)$/);
+      expect(result.track.attitudeRules.length).toBeGreaterThanOrEqual(2);
+      expect(result.track.attitudeRules[0]).toEqual({ timeMs: Date.UTC(2026, 10, 15, 18), mode: "prograde" });
       expect(result.track.events.length).toBeGreaterThanOrEqual(3);
       expect(result.track.name).toContain("Synthetic");
     });
   }
+});
+
+function rotate(q: { w: number; x: number; y: number; z: number }, v: [number, number, number]) {
+  return new THREE.Vector3(...v).applyQuaternion(new THREE.Quaternion(q.x, q.y, q.z, q.w));
+}
+
+describe("model and attitude headers", () => {
+  it("reads model and attitude rules (relative and ISO times, options), sorted", () => {
+    const csv = [
+      `# epoch: ${EPOCH}`,
+      "# model: starship-v3-ship",
+      "# attitude: 100, aoa, aoa=70, transition=30",
+      "# attitude: 0, prograde",
+      "# attitude: 2026-11-15T12:00:50Z, Retrograde",
+      "# attitude: 5, sideways",
+      "# attitude: 6, aoa",
+      "t,lat,lon,alt",
+      "0,0,0,0",
+      "1,0,0,1",
+    ].join("\n");
+    const result = expectOk(parseTrajectoryFile(csv, "a.csv"));
+    expect(result.track.model).toBe("starship-v3-ship");
+    expect(result.track.attitudeRules).toEqual([
+      { timeMs: EPOCH_MS, mode: "prograde" },
+      { timeMs: EPOCH_MS + 50_000, mode: "retrograde" },
+      { timeMs: EPOCH_MS + 100_000, mode: "aoa", aoaDeg: 70, transitionS: 30 },
+    ]);
+    expect(result.warnings.length).toBe(2);
+    expect(result.warnings[0]).toContain("6行目");
+  });
+
+  it("reads ECEF quaternion columns as body → ECEF", () => {
+    const h = Math.SQRT1_2;
+    const csv = [`# epoch: ${EPOCH}`, "# attitude_frame: ECEF", "t,lat,lon,alt,qw,qx,qy,qz", `0,0,0,0,${h},0,0,${h}`, `1,0,0,1,1,0,0,0`].join("\n");
+    const result = expectOk(parseTrajectoryFile(csv, "q.csv"));
+    expect(result.warnings).toEqual([]);
+    const nose = rotate(result.track.samples[0].attitude!, [1, 0, 0]);
+    expect(nose.y).toBeCloseTo(1, 9);
+    expect(result.track.samples[1].attitude!.w).toBeCloseTo(1, 12);
+  });
+
+  it("converts ENU quaternions (q0 scalar first) with each sample's own lat/lon", () => {
+    // Identity in ENU at lat 0 / lon 90: body X = east = ECEF −X, body Z = up = ECEF +Y.
+    const csv = [`# epoch: ${EPOCH}`, "# attitude_frame: ENU", "t,lat,lon,alt,q0,q1,q2,q3", "0,0,90,0,2,0,0,0", "1,0,90,1,1,0,0,0"].join("\n");
+    const { track } = expectOk(parseTrajectoryFile(csv, "q.csv"));
+    const q = track.samples[0].attitude!;
+    expect(Math.hypot(q.w, q.x, q.y, q.z)).toBeCloseTo(1, 12);
+    const nose = rotate(q, [1, 0, 0]);
+    const zAxis = rotate(q, [0, 0, 1]);
+    expect(nose.x).toBeCloseTo(-1, 6);
+    expect(zAxis.y).toBeCloseTo(1, 6);
+  });
+
+  it("rotates ECI quaternions by GMST", () => {
+    const csv = [`# epoch: ${EPOCH}`, "# attitude_frame: ECI", "t,lat,lon,alt,qw,qx,qy,qz", "0,0,0,0,1,0,0,0", "1,0,0,1,1,0,0,0"].join("\n");
+    const { track } = expectOk(parseTrajectoryFile(csv, "q.csv"));
+    const g = satellite.gstime(new Date(EPOCH_MS));
+    const nose = rotate(track.samples[0].attitude!, [1, 0, 0]);
+    // ECI +X in ECEF: (cos g, −sin g, 0)
+    expect(nose.x).toBeCloseTo(Math.cos(g), 6);
+    expect(nose.y).toBeCloseTo(-Math.sin(g), 6);
+  });
+
+  it("warns and assumes ECEF when quaternions have no attitude_frame", () => {
+    const csv = [`# epoch: ${EPOCH}`, "t,lat,lon,alt,qw,qx,qy,qz", "0,0,0,0,1,0,0,0", "1,0,0,1,1,0,0,0"].join("\n");
+    const result = expectOk(parseTrajectoryFile(csv, "q.csv"));
+    expect(result.warnings.some((w) => w.includes("attitude_frame"))).toBe(true);
+  });
+
+  it("reads rocket-style azimuth / elevation / roll columns in local ENU", () => {
+    const csv = [
+      `# epoch: ${EPOCH}`,
+      "t,lat,lon,alt,att_azimuth_deg,att_elevation_deg,att_roll_deg",
+      "0,0,0,0,0,90,0",
+      "1,0,0,1,90,0,0",
+      "2,0,0,2,90,0,90",
+    ].join("\n");
+    const { track } = expectOk(parseTrajectoryFile(csv, "a.csv"));
+    // Vertical at lat 0 / lon 0: nose = ECEF +X, belly toward azimuth 0 (north = +Z).
+    expect(rotate(track.samples[0].attitude!, [1, 0, 0]).x).toBeCloseTo(1, 6);
+    expect(rotate(track.samples[0].attitude!, [0, 0, 1]).z).toBeCloseTo(1, 6);
+    // Level, east: nose +Y, belly down (−X).
+    expect(rotate(track.samples[1].attitude!, [1, 0, 0]).y).toBeCloseTo(1, 6);
+    expect(rotate(track.samples[1].attitude!, [0, 0, 1]).x).toBeCloseTo(-1, 6);
+    // Roll +90: belly to north (+Z).
+    expect(rotate(track.samples[2].attitude!, [0, 0, 1]).z).toBeCloseTo(1, 6);
+  });
+
+  it("accepts pitch_deg / heading_deg aliases without roll", () => {
+    const csv = [`# epoch: ${EPOCH}`, "t,lat,lon,alt,heading_deg,pitch_deg", "0,0,0,0,90,0", "1,0,0,1,90,0"].join("\n");
+    const { track } = expectOk(parseTrajectoryFile(csv, "a.csv"));
+    expect(rotate(track.samples[0].attitude!, [1, 0, 0]).y).toBeCloseTo(1, 6);
+  });
+
+  it("rejects an unknown attitude_frame and a non-numeric quaternion", () => {
+    expect(expectError(parseTrajectoryFile(`# attitude_frame: LVLH\n# epoch: ${EPOCH}\nt,lat,lon,alt\n0,0,0,0\n1,0,0,1\n`, "a.csv"))).toContain(
+      "1行目",
+    );
+    const bad = [`# epoch: ${EPOCH}`, "# attitude_frame: ECEF", "t,lat,lon,alt,qw,qx,qy,qz", "0,0,0,0,1,0,0,0", "1,0,0,1,x,0,0,0"].join("\n");
+    expect(expectError(parseTrajectoryFile(bad, "a.csv"))).toContain("5行目");
+  });
+});
+
+describe("mount header", () => {
+  it("parses an upper-stage stacking offset in T+ seconds", () => {
+    const text = [
+      "# epoch: 2026-11-15T18:00:00Z",
+      "# mount: 160, 72.3",
+      "time_s,lat_deg,lon_deg,alt_km",
+      "0,26,-97,0",
+      "10,26,-97,1",
+    ].join("\n");
+    const result = parseTrajectoryFile(text, "ship.csv");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.track.mount).toEqual({ untilMs: Date.parse("2026-11-15T18:02:40Z"), offsetM: 72.3 });
+  });
+
+  it("warns and ignores a malformed mount", () => {
+    const text = ["# epoch: 2026-11-15T18:00:00Z", "# mount: 160", "time_s,lat_deg,lon_deg,alt_km", "0,26,-97,0", "10,26,-97,1"].join("\n");
+    const result = parseTrajectoryFile(text, "ship.csv");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.track.mount).toBeUndefined();
+    expect(result.warnings.some((w) => w.includes("mount"))).toBe(true);
+  });
 });

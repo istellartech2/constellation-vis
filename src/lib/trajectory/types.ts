@@ -19,6 +19,18 @@ export interface EcefVector {
   z: number;
 }
 
+/**
+ * Unit quaternion rotating BODY-frame vectors into ECEF (v_ecef = q · v_body · q*).
+ * Body frame: +X = longitudinal axis toward the nose, +Z = reference "belly"
+ * side (windward on a belly-first re-entry), +Y = Z × X (right-handed).
+ */
+export interface BodyQuaternion {
+  w: number;
+  x: number;
+  y: number;
+  z: number;
+}
+
 /** One tabulated state. `velocity` is present only when the file supplied it. */
 export interface TrajectorySample {
   /** Absolute time, ms since the Unix epoch (UTC). */
@@ -27,6 +39,29 @@ export interface TrajectorySample {
   position: EcefVector;
   /** ECEF (Earth-relative) velocity in km/s, if given in the source. */
   velocity?: EcefVector;
+  /** Tabulated attitude (body → ECEF), when the file supplied attitude columns. */
+  attitude?: BodyQuaternion;
+}
+
+/**
+ * Rule-based attitude, for tracks without tabulated attitude (e.g. a
+ * trajectory reconstructed from webcast telemetry). From `timeMs` on:
+ *  - "prograde":   nose along the Earth-relative velocity
+ *  - "retrograde": nose against it
+ *  - "vertical":   nose along local up (geodetic normal)
+ *  - "aoa":        nose rotated from prograde toward local up by `aoaDeg`
+ *                  in the velocity/up plane, belly (+Z) facing the flow
+ *                  (belly-first re-entry ≈ aoa 60–70°)
+ * Mode changes are blended over `transitionS` seconds (default 8 s).
+ */
+export type AttitudeMode = "prograde" | "retrograde" | "vertical" | "aoa";
+
+export interface AttitudeRule {
+  timeMs: number;
+  mode: AttitudeMode;
+  /** Only for "aoa". */
+  aoaDeg?: number;
+  transitionS?: number;
 }
 
 /** A named instant on the track (e.g. "MECO", "Hot staging", "Splashdown"). */
@@ -50,6 +85,25 @@ export interface TrajectoryTrack {
   events: TrajectoryEvent[];
   /** Optional reference epoch (e.g. lift-off) used for "T+" readouts, ms UTC. */
   epochMs?: number;
+  /**
+   * Attitude rules sorted by time (from `# attitude:` headers). Ignored when
+   * the samples carry tabulated attitude. Empty → default prograde, blended
+   * to vertical at low speed.
+   */
+  attitudeRules: AttitudeRule[];
+  /**
+   * 3D model: a built-in key (see the model registry in
+   * `src/lib/trajectory/models.ts`) or a URL/object-URL of a .glb. Undefined →
+   * marker dot only.
+   */
+  model?: string;
+  /**
+   * Upper stage riding on another vehicle (from `# mount: <until>, <offset_m>`):
+   * until `untilMs` the model is drawn `offsetM` metres further along its own
+   * nose axis, i.e. stacked on the lower stage that shares the same track
+   * points during the joint ascent.
+   */
+  mount?: { untilMs: number; offsetM: number };
 }
 
 /** Interpolated state at an arbitrary time inside the track span. */

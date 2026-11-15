@@ -6,7 +6,12 @@
  * Error and warning strings are Japanese because they are shown in the UI.
  */
 import * as satellite from "satellite.js";
+import * as THREE from "three";
+import { enuAnglesToQuaternion, enuToEcefQuaternion } from "./attitude";
 import type {
+  AttitudeMode,
+  AttitudeRule,
+  BodyQuaternion,
   EcefVector,
   TrajectoryEvent,
   TrajectoryParseResult,
@@ -168,7 +173,14 @@ type ColumnRole =
   | "z"
   | "vx"
   | "vy"
-  | "vz";
+  | "vz"
+  | "qw"
+  | "qx"
+  | "qy"
+  | "qz"
+  | "att_az"
+  | "att_el"
+  | "att_roll";
 
 interface ColumnSpec {
   role: ColumnRole;
@@ -188,6 +200,7 @@ const SPEED_UNITS: Record<string, number> = {
 };
 const ANGLE_UNITS: Record<string, number> = { "": 1, deg: 1, degree: 1, degrees: 1 };
 const TIME_UNITS: Record<string, number> = { "": 1, s: 1, sec: 1, utc: 1, iso: 1 };
+const UNITLESS: Record<string, number> = { "": 1 };
 
 const ROLE_ALIASES: Array<{ role: ColumnRole; bases: string[]; units: Record<string, number> }> = [
   { role: "time", bases: ["time", "t", "utc", "epoch", "datetime"], units: TIME_UNITS },
@@ -200,6 +213,15 @@ const ROLE_ALIASES: Array<{ role: ColumnRole; bases: string[]; units: Record<str
   { role: "vx", bases: ["vx", "x_dot", "xdot"], units: SPEED_UNITS },
   { role: "vy", bases: ["vy", "y_dot", "ydot"], units: SPEED_UNITS },
   { role: "vz", bases: ["vz", "z_dot", "zdot"], units: SPEED_UNITS },
+  // Attitude quaternion body → attitude_frame, scalar first (q0 = qw).
+  { role: "qw", bases: ["qw", "q0"], units: UNITLESS },
+  { role: "qx", bases: ["qx", "q1"], units: UNITLESS },
+  { role: "qy", bases: ["qy", "q2"], units: UNITLESS },
+  { role: "qz", bases: ["qz", "q3"], units: UNITLESS },
+  // Rocket-style attitude angles in local ENU.
+  { role: "att_az", bases: ["att_azimuth", "att_az", "heading", "yaw"], units: ANGLE_UNITS },
+  { role: "att_el", bases: ["att_elevation", "att_el", "pitch"], units: ANGLE_UNITS },
+  { role: "att_roll", bases: ["att_roll", "roll"], units: ANGLE_UNITS },
 ];
 
 /** "Alt (km)" → "alt_km", "vx [m/s]" → "vx_m_s". */
@@ -249,13 +271,81 @@ interface PendingEvent {
   label: string;
 }
 
+interface PendingAttitudeRule {
+  line: number;
+  time: string;
+  mode: AttitudeMode;
+  aoaDeg?: number;
+  transitionS?: number;
+}
+
+type AttitudeFrame = "ECEF" | "ECI" | "ENU";
+
+const ATTITUDE_MODES: readonly AttitudeMode[] = ["prograde", "retrograde", "vertical", "aoa"];
+
+/** `<time>, <mode>[, aoa=<deg>][, transition=<s>]` → pending rule, or an error message. */
+function parseAttitudeHeader(value: string, line: number): PendingAttitudeRule | string {
+  const parts = value.split(",").map((p) => p.trim());
+  if (parts.length < 2 || !parts[0]) return `${line}行目: attitude は「時刻, モード」の形式で指定してください`;
+  const mode = parts[1].toLowerCase() as AttitudeMode;
+  if (!ATTITUDE_MODES.includes(mode)) {
+    return `${line}行目: 姿勢モード "${parts[1]}" には対応していません（prograde / retrograde / vertical / aoa）`;
+  }
+  const rule: PendingAttitudeRule = { line, time: parts[0], mode };
+  for (const option of parts.slice(2)) {
+    const kv = /^([a-z_]+)\s*=\s*(.+)$/i.exec(option);
+    const num = kv ? parseNumber(kv[2]) : Number.NaN;
+    const key = kv?.[1].toLowerCase();
+    if (key === "aoa" && Number.isFinite(num)) rule.aoaDeg = num;
+    else if (key === "transition" && Number.isFinite(num) && num >= 0) rule.transitionS = num;
+    else return `${line}行目: attitude のオプション "${option}" を読み取れません（aoa=<度>, transition=<秒>）`;
+  }
+  if (mode === "aoa" && rule.aoaDeg === undefined) return `${line}行目: aoa モードには aoa=<度> が必要です`;
+  return rule;
+}
+
+/** Relative seconds (needs epoch) or ISO time of a header line; NaN when unreadable. */
+function headerTimeMs(time: string, epochMs: number | undefined): number | "no-epoch" {
+  const seconds = parseNumber(time);
+  if (Number.isFinite(seconds)) return epochMs === undefined ? "no-epoch" : epochMs + seconds * 1000;
+  return parseUtcTimestamp(time);
+}
+
+const RAD2DEG = 180 / Math.PI;
+const scratchQ = new THREE.Quaternion();
+const scratchFrameQ = new THREE.Quaternion();
+
+/** Geodetic latitude/longitude (deg) of an ECEF position. */
+function ecefLatLon(p: EcefVector): { latDeg: number; lonDeg: number } {
+  const geo = satellite.eciToGeodetic(p, 0);
+  return { latDeg: geo.latitude * RAD2DEG, lonDeg: geo.longitude * RAD2DEG };
+}
+
+/** body → `frame` quaternion (already in scratchQ) → body → ECEF. */
+function attitudeToEcef(frame: AttitudeFrame, timeMs: number, position: EcefVector): BodyQuaternion {
+  if (frame === "ENU") {
+    const { latDeg, lonDeg } = ecefLatLon(position);
+    scratchQ.premultiply(enuToEcefQuaternion(latDeg, lonDeg, scratchFrameQ));
+  } else if (frame === "ECI") {
+    // ECI → ECEF is a rotation by −GMST about +Z (the scene's convention).
+    scratchFrameQ.setFromAxisAngle(new THREE.Vector3(0, 0, 1), -satellite.gstime(new Date(timeMs)));
+    scratchQ.premultiply(scratchFrameQ);
+  }
+  scratchQ.normalize();
+  return { w: scratchQ.w, x: scratchQ.x, y: scratchQ.y, z: scratchQ.z };
+}
+
 function parseCsv(text: string, fileName: string, options: TrajectoryParseOptions): TrajectoryParseResult {
   const warnings: string[] = [];
   const lines = text.split(/\r\n|\n|\r/);
   let name: string | undefined;
   let frameHeader: TrajectorySourceFrame | undefined;
   let epochMs: number | undefined;
+  let model: string | undefined;
+  let attitudeFrame: AttitudeFrame | undefined;
   const pendingEvents: PendingEvent[] = [];
+  const pendingRules: PendingAttitudeRule[] = [];
+  let pendingMount: { line: number; time: string; offsetM: number } | undefined;
 
   let header: { columns: (ColumnSpec | null)[]; line: number } | null = null;
   let separator: "comma" | "tab" | "space" = "comma";
@@ -280,6 +370,26 @@ function parseCsv(text: string, fileName: string, options: TrajectoryParseOption
         const ms = parseUtcTimestamp(value);
         if (!Number.isFinite(ms)) throw new TrajectoryParseError(`${lineNo}行目: epoch の時刻を読み取れません`);
         epochMs = ms;
+      } else if (key === "model") {
+        if (value) model = value;
+      } else if (key === "mount") {
+        const parts = value.split(",").map((s) => s.trim());
+        const offsetM = parseNumber(parts[1] ?? "");
+        if (parts.length !== 2 || !Number.isFinite(offsetM)) {
+          warnings.push(`${lineNo}行目: mount は「分離時刻, 下段の長さ(m)」の形式で指定してください`);
+        } else {
+          pendingMount = { line: lineNo, time: parts[0], offsetM };
+        }
+      } else if (key === "attitude") {
+        const rule = parseAttitudeHeader(value, lineNo);
+        if (typeof rule === "string") warnings.push(rule);
+        else pendingRules.push(rule);
+      } else if (key === "attitude_frame") {
+        const v = value.trim().toUpperCase();
+        if (v === "ECEF" || v === "ECF" || v === "ITRF") attitudeFrame = "ECEF";
+        else if (v === "ECI" || v === "TEME" || v === "J2000" || v === "EME2000" || v === "GCRF") attitudeFrame = "ECI";
+        else if (v === "ENU") attitudeFrame = "ENU";
+        else throw new TrajectoryParseError(`${lineNo}行目: 姿勢の座標系 "${value}" には対応していません（ECEF / ECI / ENU）`);
       } else if (key === "event") {
         const comma = value.indexOf(",");
         if (comma < 0) {
@@ -328,6 +438,19 @@ function parseCsv(text: string, fileName: string, options: TrajectoryParseOption
   }
   if (rows.length === 0) throw new TrajectoryParseError("データ行がありません");
 
+  const quatRoles = ["qw", "qx", "qy", "qz"] as const;
+  const quatCount = quatRoles.filter((r) => columnIndex.has(r)).length;
+  const hasQuat = quatCount === 4;
+  if (quatCount > 0 && !hasQuat) warnings.push("姿勢クォータニオンの列（qw, qx, qy, qz）が揃っていないため無視しました");
+  const hasAngles = !hasQuat && columnIndex.has("att_az") && columnIndex.has("att_el");
+  if (!hasQuat && (columnIndex.has("att_az") !== columnIndex.has("att_el"))) {
+    warnings.push("姿勢角は方位角と仰角の両方の列が必要なため無視しました");
+  }
+  if (hasQuat && !attitudeFrame) {
+    attitudeFrame = "ECEF";
+    warnings.push("姿勢の座標系（# attitude_frame:）がないため、クォータニオンを機体→ECEF として読み込みました");
+  }
+
   // Decide time mode from the first data row.
   const firstTime = rows[0].cells[timeCol.index] ?? "";
   const relative = Number.isFinite(parseNumber(firstTime));
@@ -342,14 +465,43 @@ function parseCsv(text: string, fileName: string, options: TrajectoryParseOption
     }
   }
 
-  const required = (frame === "LLA" ? ["lat", "lon", "alt"] : ["x", "y", "z"]) as ColumnRole[];
+  const required = [
+    ...(frame === "LLA" ? ["lat", "lon", "alt"] : ["x", "y", "z"]),
+    ...(hasQuat ? quatRoles : []),
+    ...(hasAngles ? ["att_az", "att_el"] : []),
+  ] as ColumnRole[];
   const maxIndex = Math.max(
     timeCol.index,
     ...required.map((r) => columnIndex.get(r)!.index),
   );
 
   const samples: TrajectorySample[] = [];
+  let cellsForAttitude: string[] = [];
+  const readCell = (role: ColumnRole): number => {
+    const col = columnIndex.get(role);
+    return col ? parseNumber(cellsForAttitude[col.index]) * col.scale : Number.NaN;
+  };
+  /** Attitude of the current row (body → ECEF), or undefined when the file has none. */
+  const readAttitude = (position: EcefVector, timeMs: number, line: number): BodyQuaternion | undefined => {
+    if (hasQuat) {
+      const [w, x, y, z] = quatRoles.map(readCell);
+      if (![w, x, y, z].every(Number.isFinite)) throw new TrajectoryParseError(`${line}行目: 数値として読めない値があります`);
+      if (Math.hypot(w, x, y, z) < 1e-9) throw new TrajectoryParseError(`${line}行目: クォータニオンの大きさが 0 です`);
+      scratchQ.set(x, y, z, w).normalize();
+      return attitudeToEcef(attitudeFrame ?? "ECEF", timeMs, position);
+    }
+    if (hasAngles) {
+      const az = readCell("att_az");
+      const el = readCell("att_el");
+      const roll = columnIndex.has("att_roll") ? readCell("att_roll") : 0;
+      if (![az, el, roll].every(Number.isFinite)) throw new TrajectoryParseError(`${line}行目: 数値として読めない値があります`);
+      enuAnglesToQuaternion(az, el, roll, scratchQ);
+      return attitudeToEcef("ENU", timeMs, position);
+    }
+    return undefined;
+  };
   for (const { line, cells } of rows) {
+    cellsForAttitude = cells;
     if (cells.length <= maxIndex) throw new TrajectoryParseError(`${line}行目: 列数が足りません`);
     const rawTime = cells[timeCol.index];
     let timeMs: number;
@@ -373,7 +525,9 @@ function parseCsv(text: string, fileName: string, options: TrajectoryParseOption
         throw new TrajectoryParseError(`${line}行目: 数値として読めない値があります`);
       }
       if (Math.abs(lat) > 90) throw new TrajectoryParseError(`${line}行目: 緯度が範囲外です`);
-      samples.push({ timeMs, position: llaToEcef(lat, lon, alt) });
+      const position = llaToEcef(lat, lon, alt);
+      const attitude = readAttitude(position, timeMs, line);
+      samples.push({ timeMs, position, ...(attitude ? { attitude } : {}) });
       continue;
     }
     const position = { x: read("x"), y: read("y"), z: read("z") };
@@ -390,10 +544,41 @@ function parseCsv(text: string, fileName: string, options: TrajectoryParseOption
     }
     if (frame === "ECI") {
       const converted = eciStateToEcef(timeMs, position, velocity);
-      samples.push({ timeMs, position: converted.position, ...(converted.velocity ? { velocity: converted.velocity } : {}) });
+      const attitude = readAttitude(converted.position, timeMs, line);
+      samples.push({
+        timeMs,
+        position: converted.position,
+        ...(converted.velocity ? { velocity: converted.velocity } : {}),
+        ...(attitude ? { attitude } : {}),
+      });
     } else {
-      samples.push({ timeMs, position, ...(velocity ? { velocity } : {}) });
+      const attitude = readAttitude(position, timeMs, line);
+      samples.push({ timeMs, position, ...(velocity ? { velocity } : {}), ...(attitude ? { attitude } : {}) });
     }
+  }
+
+  const attitudeRules: AttitudeRule[] = [];
+  for (const rule of pendingRules) {
+    const timeMs = headerTimeMs(rule.time, epochMs);
+    if (timeMs === "no-epoch") {
+      warnings.push(`${rule.line}行目: 基準時刻がないため、相対時刻の姿勢指定を無視しました`);
+      continue;
+    }
+    if (!Number.isFinite(timeMs)) {
+      warnings.push(`${rule.line}行目: 姿勢指定の時刻を読み取れないため無視しました`);
+      continue;
+    }
+    attitudeRules.push({
+      timeMs,
+      mode: rule.mode,
+      ...(rule.aoaDeg !== undefined ? { aoaDeg: rule.aoaDeg } : {}),
+      ...(rule.transitionS !== undefined ? { transitionS: rule.transitionS } : {}),
+    });
+  }
+  // Stable sort keeps file order for equal times.
+  attitudeRules.sort((a, b) => a.timeMs - b.timeMs);
+  if (attitudeRules.length > 0 && (hasQuat || hasAngles)) {
+    warnings.push("姿勢の列があるため、# attitude: の指定は使用されません");
   }
 
   const events: TrajectoryEvent[] = [];
@@ -417,6 +602,16 @@ function parseCsv(text: string, fileName: string, options: TrajectoryParseOption
   }
   events.sort((a, b) => a.timeMs - b.timeMs);
 
+  let mount: { untilMs: number; offsetM: number } | undefined;
+  if (pendingMount) {
+    const untilMs = headerTimeMs(pendingMount.time, epochMs);
+    if (untilMs === "no-epoch" || !Number.isFinite(untilMs)) {
+      warnings.push(`${pendingMount.line}行目: mount の分離時刻を読み取れないため無視しました`);
+    } else {
+      mount = { untilMs, offsetM: pendingMount.offsetM };
+    }
+  }
+
   const finalSamples = finalizeSamples(samples, warnings);
   return {
     ok: true,
@@ -426,6 +621,9 @@ function parseCsv(text: string, fileName: string, options: TrajectoryParseOption
       samples: finalSamples,
       events,
       ...(epochMs !== undefined ? { epochMs } : {}),
+      attitudeRules,
+      ...(model ? { model } : {}),
+      ...(mount ? { mount } : {}),
     },
     warnings,
   };
@@ -533,6 +731,7 @@ function parseOem(text: string, fileName: string): TrajectoryParseResult {
       sourceFrame: frames.has("ECI") ? "ECI" : "ECEF",
       samples: finalSamples,
       events: [],
+      attitudeRules: [],
     },
     warnings,
   };
@@ -580,6 +779,7 @@ export function toTrajectoryTrack(parsed: ParsedTrack, index: number): Trajector
   const paletteIndex = ((index % TRAJECTORY_PALETTE.length) + TRAJECTORY_PALETTE.length) % TRAJECTORY_PALETTE.length;
   return {
     ...parsed,
+    attitudeRules: parsed.attitudeRules ?? [],
     id: `trajectory-${index}-${trackCounter.toString(36)}`,
     color: TRAJECTORY_PALETTE[paletteIndex],
     visible: true,

@@ -1,0 +1,313 @@
+/**
+ * 3D vehicle models for trajectory tracks.
+ *
+ * Every model is normalised into a template whose local axes are the BODY
+ * frame of ./types.ts (+X nose, +Z belly, +Y = Z × X) and whose units are
+ * metres:
+ *  - rockets ("base" anchor): origin at the base (engine end) on the axis;
+ *    the geometric pivot is `pivotBody` = (L/2, 0, 0);
+ *  - satellite-bus ("center" anchor): origin = pivot = geometric centre.
+ *
+ * Built-in GLBs (uchusen-rockets, MIT; see public/models/) are glTF +Y nose
+ * with the origin at the base. The ship's heat-shield tiles sit on glTF +Z
+ * (material "tile", centroid z > 0; the bare steel is on −Z), so glTF +Z is
+ * the belly: body (X, Y, Z) = glTF (+Y, −X, +Z), a proper rotation (−90°
+ * about Z).
+ *
+ * Unknown GLBs (user files / URLs) are normalised by bounding box: the
+ * longest axis becomes body X with the nose toward + of that axis (glTF +Y
+ * when Y is longest, the common "up" for rocket models), the base is the
+ * minimum along that axis at the lateral bbox centre, and the remaining axes
+ * keep a right-handed order. Their roll is therefore arbitrary.
+ *
+ * Templates are cached at module level keyed by model string, so scene
+ * rebuilds never refetch. Instances are `clone(true)` and SHARE geometry and
+ * materials with the template: renderers must never dispose them; they call
+ * `releaseTrajectoryModel` instead. Built-ins stay cached for the app's
+ * lifetime; user GLBs are disposed 10 s after their last user releases them
+ * (so a scene rebuild, which disposes the old renderer first, reuses them).
+ */
+import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+
+export interface TrajectoryModelInfo {
+  key: string;
+  label: string;
+  /** Overall length (rockets) or largest span (satellite), metres. */
+  lengthM: number;
+}
+
+export const TRAJECTORY_MODELS: readonly TrajectoryModelInfo[] = [
+  { key: "starship-v3-booster", label: "Starship V3 ブースター", lengthM: 72.3 },
+  { key: "starship-v3-ship", label: "Starship V3 シップ", lengthM: 52.1 },
+  { key: "generic-rocket", label: "汎用ロケット", lengthM: 40 },
+  { key: "satellite-bus", label: "衛星バス", lengthM: 10.4 },
+];
+
+const GLB_KEYS = new Set(["starship-v3-booster", "starship-v3-ship"]);
+
+export interface TrajectoryModelTemplate {
+  /** Model string this template was loaded for. */
+  model: string;
+  /** Body-frame root (metres). Clone it; never dispose its geometry/materials directly. */
+  root: THREE.Object3D;
+  lengthM: number;
+  /** Rotation pivot in body coordinates (geometric centre). */
+  pivotBody: THREE.Vector3;
+  /** What the track position refers to: the base (engine end) or the centre. */
+  anchor: "base" | "center";
+}
+
+/** Registry length for a built-in key, else undefined. */
+export function trajectoryModelLengthM(model: string | undefined): number | undefined {
+  return TRAJECTORY_MODELS.find((m) => m.key === model)?.lengthM;
+}
+
+/**
+ * URL of a model: built-in GLBs resolve relative to the document, like
+ * `EARTH_ASSETS` in ../earthTextures.ts (`./models/<key>.glb`); procedural
+ * keys have no URL; anything else is taken as a URL / object URL.
+ */
+export function trajectoryModelUrl(model: string): string | null {
+  if (GLB_KEYS.has(model)) return `./models/${model}.glb`;
+  if (model === "generic-rocket" || model === "satellite-bus") return null;
+  return model;
+}
+
+/** glTF (+Y nose, +Z belly) → body (+X nose, +Z belly): −90° about Z. */
+export const GLTF_TO_BODY = Object.freeze(
+  new THREE.Quaternion().setFromRotationMatrix(
+    new THREE.Matrix4().makeBasis(new THREE.Vector3(0, -1, 0), new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, 1)),
+  ),
+) as THREE.Quaternion;
+
+/** Body frame → scene world: rotY(rotAngle) · rotX(−90°) · (body → ECEF). */
+export function bodyToWorldQuaternion(
+  bodyToEcef: { w: number; x: number; y: number; z: number },
+  rotAngle: number,
+  out: THREE.Quaternion,
+): THREE.Quaternion {
+  // ECEF → overlay-local (x, z, −y) is rotX(−90°); then the GMST group rotation.
+  const h = rotAngle / 2;
+  const s = Math.SQRT1_2;
+  // qY(rot) · qX(−90°)
+  const ay = Math.sin(h);
+  const aw = Math.cos(h);
+  // (aw, 0, ay, 0) · (s, −s, 0, 0)  [w, x, y, z]
+  const w = aw * s;
+  const x = -aw * s;
+  const y = ay * s;
+  const z = ay * s;
+  out.set(x, y, z, w);
+  return out.multiply(scratchQuat.set(bodyToEcef.x, bodyToEcef.y, bodyToEcef.z, bodyToEcef.w));
+}
+const scratchQuat = new THREE.Quaternion();
+
+// ---------------------------------------------------------------------------
+// Normalisation
+// ---------------------------------------------------------------------------
+
+/**
+ * Wrap a glTF scene into a body-frame template. `builtIn` GLBs keep their
+ * own origin (base on the axis); others are normalised by bounding box.
+ */
+export function templateFromGltfScene(scene: THREE.Object3D, model: string, builtIn: boolean): TrajectoryModelTemplate {
+  scene.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(scene);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const inner = new THREE.Group();
+  inner.add(scene);
+  const base = new THREE.Vector3();
+  let lengthM: number;
+  if (builtIn || (size.y >= size.x && size.y >= size.z)) {
+    inner.quaternion.copy(GLTF_TO_BODY);
+    lengthM = size.y;
+    if (builtIn) base.set(0, box.min.y, 0);
+    else base.set(center.x, box.min.y, center.z);
+  } else if (size.x >= size.z) {
+    // Nose +X: identity (body Y = glTF Y, body Z = glTF Z).
+    lengthM = size.x;
+    base.set(box.min.x, center.y, center.z);
+  } else {
+    // Nose +Z: body X = glTF Z, body Y = glTF X, body Z = glTF Y (cyclic, det +1).
+    inner.quaternion.setFromRotationMatrix(
+      new THREE.Matrix4().makeBasis(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1), new THREE.Vector3(1, 0, 0)),
+    );
+    lengthM = size.z;
+    base.set(center.x, center.y, box.min.z);
+  }
+  // p_body = R (p_gltf − base)
+  inner.position.copy(base).applyQuaternion(inner.quaternion).negate();
+  const root = new THREE.Group();
+  root.name = `TrajectoryModel:${model}`;
+  root.add(inner);
+  return {
+    model,
+    root,
+    lengthM: lengthM > 0 ? lengthM : 1,
+    pivotBody: new THREE.Vector3(lengthM / 2, 0, 0),
+    anchor: "base",
+  };
+}
+
+export async function parseGlbTemplate(data: ArrayBuffer, model: string): Promise<TrajectoryModelTemplate> {
+  const gltf = await new GLTFLoader().parseAsync(data, "");
+  return templateFromGltfScene(gltf.scene, model, GLB_KEYS.has(model));
+}
+
+// ---------------------------------------------------------------------------
+// Procedural models
+// ---------------------------------------------------------------------------
+
+/** ~40 m two-colour rocket: cylinder + nose cone + four fins, built glTF-style then rotated to body. */
+function buildGenericRocket(): TrajectoryModelTemplate {
+  const radius = 1.85;
+  const bodyLength = 32;
+  const coneLength = 8;
+  const white = new THREE.MeshStandardMaterial({ color: 0xe9ecef, metalness: 0.25, roughness: 0.55 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x2b2f36, metalness: 0.4, roughness: 0.6 });
+  const gltfLike = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, bodyLength, 32), white);
+  body.position.y = bodyLength / 2;
+  const cone = new THREE.Mesh(new THREE.ConeGeometry(radius, coneLength, 32), white);
+  cone.position.y = bodyLength + coneLength / 2;
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(radius * 1.01, radius * 1.01, 1.2, 32), dark);
+  band.position.y = bodyLength * 0.62;
+  const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.45, radius * 0.75, 1.6, 24, 1, true), dark);
+  nozzle.position.y = -0.8;
+  gltfLike.add(body, cone, band, nozzle);
+  const finGeometry = new THREE.BoxGeometry(0.25, 5, 2.6);
+  for (let i = 0; i < 4; i += 1) {
+    const fin = new THREE.Mesh(finGeometry, dark);
+    const a = (i * Math.PI) / 2;
+    fin.position.set(Math.cos(a) * (radius + 1.2), 2.5, Math.sin(a) * (radius + 1.2));
+    fin.rotation.y = -a;
+    gltfLike.add(fin);
+  }
+  // Shift so the nozzle exit is the base (y = 0).
+  gltfLike.position.y = 1.6;
+  const lengthM = bodyLength + coneLength + 1.6;
+  const inner = new THREE.Group();
+  inner.quaternion.copy(GLTF_TO_BODY);
+  inner.add(gltfLike);
+  const root = new THREE.Group();
+  root.name = "TrajectoryModel:generic-rocket";
+  root.add(inner);
+  return { model: "generic-rocket", root, lengthM, pivotBody: new THREE.Vector3(lengthM / 2, 0, 0), anchor: "base" };
+}
+
+/** Box bus with two solar wings along body ±Y (≈10.4 m span) and an antenna on +Z. Origin = centre. */
+function buildSatelliteBus(): TrajectoryModelTemplate {
+  const foil = new THREE.MeshStandardMaterial({ color: 0xc9a54a, metalness: 0.7, roughness: 0.35 });
+  const panel = new THREE.MeshStandardMaterial({ color: 0x1f3a7a, metalness: 0.5, roughness: 0.35, side: THREE.DoubleSide });
+  const metal = new THREE.MeshStandardMaterial({ color: 0xd0d4da, metalness: 0.6, roughness: 0.4 });
+  const root = new THREE.Group();
+  root.name = "TrajectoryModel:satellite-bus";
+  root.add(new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.8, 1.8), foil));
+  const wingGeometry = new THREE.BoxGeometry(1.6, 4, 0.06);
+  const armGeometry = new THREE.CylinderGeometry(0.06, 0.06, 0.3, 8);
+  for (const side of [-1, 1]) {
+    const wing = new THREE.Mesh(wingGeometry, panel);
+    wing.position.set(0, side * (0.9 + 0.3 + 2), 0);
+    const arm = new THREE.Mesh(armGeometry, metal);
+    arm.position.set(0, side * 1.05, 0);
+    root.add(wing, arm);
+  }
+  // Antenna dish toward the belly (+Z, nadir in a belly-down attitude).
+  const dish = new THREE.Mesh(new THREE.ConeGeometry(0.6, 0.35, 24, 1, true), metal);
+  dish.rotation.x = Math.PI / 2;
+  dish.position.z = 0.9 + 0.2;
+  root.add(dish);
+  return { model: "satellite-bus", root, lengthM: 10.4, pivotBody: new THREE.Vector3(), anchor: "center" };
+}
+
+// ---------------------------------------------------------------------------
+// Module-level cache
+// ---------------------------------------------------------------------------
+
+interface CacheEntry {
+  promise: Promise<TrajectoryModelTemplate>;
+  template: TrajectoryModelTemplate | null;
+  refs: number;
+  builtIn: boolean;
+}
+
+const cache = new Map<string, CacheEntry>();
+
+function isBuiltIn(model: string): boolean {
+  return TRAJECTORY_MODELS.some((m) => m.key === model);
+}
+
+async function loadTemplate(model: string): Promise<TrajectoryModelTemplate> {
+  if (model === "generic-rocket") return buildGenericRocket();
+  if (model === "satellite-bus") return buildSatelliteBus();
+  const url = trajectoryModelUrl(model)!;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`model ${url}: HTTP ${response.status}`);
+  return parseGlbTemplate(await response.arrayBuffer(), model);
+}
+
+/**
+ * Get (loading once) the template for `model` and take a reference. Pair
+ * every call with {@link releaseTrajectoryModel}.
+ */
+export function acquireTrajectoryModel(model: string): Promise<TrajectoryModelTemplate> {
+  let entry = cache.get(model);
+  if (!entry) {
+    const created: CacheEntry = { promise: loadTemplate(model), template: null, refs: 0, builtIn: isBuiltIn(model) };
+    created.promise.then(
+      (t) => {
+        created.template = t;
+        // Released before it finished loading.
+        if (created.refs === 0 && !created.builtIn && cache.get(model) === created) {
+          disposeTemplate(t);
+          cache.delete(model);
+        }
+      },
+      () => {
+        // Let a later acquire retry.
+        if (cache.get(model) === created) cache.delete(model);
+      },
+    );
+    cache.set(model, created);
+    entry = created;
+  }
+  entry.refs += 1;
+  return entry.promise;
+}
+
+/** User GLBs linger this long after their last release, so a scene rebuild does not refetch them. */
+const USER_MODEL_EVICT_DELAY_MS = 10_000;
+
+export function releaseTrajectoryModel(model: string): void {
+  const entry = cache.get(model);
+  if (!entry) return;
+  entry.refs = Math.max(0, entry.refs - 1);
+  if (entry.refs > 0 || entry.builtIn || !entry.template) return;
+  setTimeout(() => {
+    if (cache.get(model) !== entry || entry.refs > 0 || !entry.template) return;
+    disposeTemplate(entry.template);
+    cache.delete(model);
+  }, USER_MODEL_EVICT_DELAY_MS);
+}
+
+/** Per-renderer instance; shares geometry and materials with the template. */
+export function instantiateTrajectoryModel(template: TrajectoryModelTemplate): THREE.Object3D {
+  return template.root.clone(true);
+}
+
+function disposeTemplate(template: TrajectoryModelTemplate): void {
+  template.root.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    mesh.geometry.dispose();
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const material of materials) {
+      for (const value of Object.values(material)) {
+        if (value instanceof THREE.Texture) value.dispose();
+      }
+      material.dispose();
+    }
+  });
+}

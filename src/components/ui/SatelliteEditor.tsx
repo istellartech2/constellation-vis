@@ -17,6 +17,7 @@ import NoticeDialog from "./NoticeDialog";
 import AnalysisTab, { type AnalysisType } from "./AnalysisTab";
 import OptionTab from "./OptionTab";
 import type { TrajectoryTrack } from "../../lib/trajectory/types";
+import type { TrajectoryPlayback } from "./TrajectorySection";
 import CommTab from "./CommTab";
 import ExternalDataDialog, { type ImportSource } from "./ExternalDataDialog";
 import type { PlacedFiling } from "./import/FilingPanel";
@@ -101,8 +102,8 @@ interface Props {
   /** Tabulated trajectory tracks shown on the globe (表示 tab). */
   trajectories: TrajectoryTrack[];
   onTrajectoriesChange: (tracks: TrajectoryTrack[]) => void;
-  /** Restart the simulation at `date` (rebuilds the scene). */
-  onJumpToTime: (date: Date) => void;
+  /** Trajectory seek / follow / playback controls (owned by App). */
+  trajectoryPlayback: TrajectoryPlayback;
 }
 
 /** Analyses and ISL routing only see editor satellites; say so when that matters. */
@@ -147,7 +148,7 @@ export default function SatelliteEditor({
   onLayerColorModeChange,
   trajectories,
   onTrajectoriesChange,
-  onJumpToTime,
+  trajectoryPlayback,
 }: Props) {
   const [importSource, setImportSource] = useState<ImportSource>("celestrak");
   const [uiTheme, setUiTheme] = useUiTheme();
@@ -568,7 +569,7 @@ export default function SatelliteEditor({
                 onApplyView={onApplyView}
                 trajectories={trajectories}
                 onTrajectoriesChange={onTrajectoriesChange}
-                onJumpToTime={onJumpToTime}
+                trajectoryPlayback={trajectoryPlayback}
                 currentSimMs={currentSimMs}
               />
             </TabsContent>

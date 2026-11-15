@@ -139,5 +139,14 @@ export function useSatelliteScene(
     sceneRef.current?.setTrajectories(params.trajectories ?? []);
   }, [params.trajectories]);
 
+  // Trajectory follow camera, applied live (after the tracks above, so a
+  // newly added track can be followed in the same commit). Construction
+  // reads the latest id itself, so the follow survives rebuilds.
+  // onTrajectoryFollowEnd should be stable; it is read from the params the
+  // scene was built with.
+  useEffect(() => {
+    sceneRef.current?.setTrajectoryFollow(params.trajectoryFollowId ?? null);
+  }, [params.trajectoryFollowId]);
+
   return sceneRef;
 }

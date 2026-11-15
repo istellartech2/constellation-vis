@@ -13,6 +13,7 @@ import { isMassMode } from "./lib/massSatelliteLayer";
 import { formatGroundStationInfo } from "./lib/formatGroundStationInfo";
 import { type SatelliteCameraMode } from "./lib/visualization";
 import type { TrajectoryTrack } from "./lib/trajectory/types";
+import type { TrajectoryPlayback } from "./components/ui/TrajectorySection";
 import {
   loadLastView,
   saveLastView,
@@ -191,6 +192,10 @@ function App() {
   // Tabulated trajectory tracks (e.g. a launch's booster and ship). Display
   // only; swapped live into the scene without a rebuild.
   const [trajectories, setTrajectories] = useState<TrajectoryTrack[]>([]);
+  // Track the camera rides with (trajectory follow), or null. The scene
+  // clears it via onTrajectoryFollowEnd when it drops the follow itself.
+  const [trajectoryFollowId, setTrajectoryFollowId] = useState<string | null>(null);
+  const handleTrajectoryFollowEnd = useCallback(() => setTrajectoryFollowId(null), []);
   const visibleLayerCount = catalogLayers.reduce((sum, l) => sum + (l.visible ? l.catalog.count : 0), 0);
   const filingCount = useMemo(
     () => satellites.filter(s => s.meta?.dataStatus === "filing").length
@@ -219,6 +224,8 @@ function App() {
     catalogStyles,
     layerColorMode,
     trajectories,
+    trajectoryFollowId,
+    onTrajectoryFollowEnd: handleTrajectoryFollowEnd,
     groundStations,
     satRadius: display.satRadius,
     pointStyle: display.pointStyle,
@@ -271,10 +278,35 @@ function App() {
       setIslSettings(d.isl ?? createDefaultIslSettings());
       setCameraMode(settings.camera.mode);
       cameraSnapshotRef.current = settings.camera;
+      // While following a trajectory the scene keeps a free view as the
+      // framing to return to; ending the follow then restores it.
       sceneRef.current?.applyCameraSnapshot(settings.camera);
+      setTrajectoryFollowId(null);
       saveLastView(settings);
     },
     [sceneRef, applyDisplay],
+  );
+
+  // Trajectory playback: seeks move the live scene's clock (no rebuild, so
+  // the scenario start time in the editor is untouched); following forces the
+  // free camera, since the satellite camera modes take precedence.
+  const trajectoryPlayback = useMemo<TrajectoryPlayback>(
+    () => ({
+      followId: trajectoryFollowId,
+      onFollowChange: (id) => {
+        if (id !== null) setCameraMode("free");
+        setTrajectoryFollowId(id);
+      },
+      onPlayFrom: (id, date) => {
+        sceneRef.current?.seekTo(date);
+        setCameraMode("free");
+        setTrajectoryFollowId(id);
+        setSpeedExp(0);
+        setUserPaused(false);
+      },
+      onSeek: (date) => sceneRef.current?.seekTo(date),
+    }),
+    [trajectoryFollowId, sceneRef],
   );
 
   // Snapshot the live view (current display + latest camera framing) on demand,
@@ -414,7 +446,7 @@ function App() {
         onLayerColorModeChange={setLayerColorMode}
         trajectories={trajectories}
         onTrajectoriesChange={setTrajectories}
-        onJumpToTime={setStartTime}
+        trajectoryPlayback={trajectoryPlayback}
       />
     </div>
   );

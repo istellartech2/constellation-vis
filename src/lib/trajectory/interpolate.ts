@@ -106,6 +106,25 @@ function evalSegment(
 const scratchPos = new Float64Array(3);
 const scratchVel = new Float64Array(3);
 
+/**
+ * Allocation-free ECEF position (km) and, when `outVel` is given, velocity
+ * (km/s) at `timeMs`, written as x, y, z into the given arrays. Same Hermite
+ * interpolation as {@link trajectoryStateAt}. False outside the span.
+ */
+export function trajectoryEcefAt(
+  track: TrajectoryTrack,
+  timeMs: number,
+  outPos: Float64Array,
+  outVel?: Float64Array,
+): boolean {
+  const samples = track.samples;
+  const n = samples.length;
+  if (n < 2 || !(timeMs >= samples[0].timeMs) || !(timeMs <= samples[n - 1].timeMs)) return false;
+  const i = findSegment(samples, timeMs);
+  evalSegment(samples, Math.min(i, n - 2), timeMs, outPos, 0, outVel, 0);
+  return true;
+}
+
 /** Interpolated state, or null when timeMs is outside [first, last] sample time. */
 export function trajectoryStateAt(track: TrajectoryTrack, timeMs: number): TrajectoryState | null {
   const samples = track.samples;

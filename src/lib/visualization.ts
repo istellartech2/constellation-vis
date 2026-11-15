@@ -128,6 +128,26 @@ const THIRDPERSON_MIN_PITCH = THREE.MathUtils.degToRad(-70);
 const THIRDPERSON_MAX_PITCH = THREE.MathUtils.degToRad(82);
 const FOLLOW_LERP_ALPHA = 0.14;
 
+/** Scene units (Earth equatorial radii) per metre. */
+const SCENE_UNITS_PER_M = 1 / 6_378_137;
+/** Trajectory follow: closest zoom as a fraction of the vehicle length. */
+const TRAJECTORY_FOLLOW_MIN_LENGTHS = 0.6;
+/** Trajectory follow: initial distance in vehicle lengths. */
+const TRAJECTORY_FOLLOW_START_LENGTHS = 3;
+/** Trajectory follow: farthest zoom, enough for a ~2000 km regional overview. */
+const TRAJECTORY_FOLLOW_MAX_DISTANCE = 2_500_000 * SCENE_UNITS_PER_M;
+/** Initial camera elevation above the local horizon, seen from the side. */
+const TRAJECTORY_FOLLOW_START_ELEVATION = THREE.MathUtils.degToRad(12);
+/** Below ~5 m/s of horizontal speed the flight direction is taken from the track ahead. */
+const TRAJECTORY_FOLLOW_MIN_HORIZONTAL_SPEED_SQ = (5 * SCENE_UNITS_PER_M) ** 2;
+const TRAJECTORY_FOLLOW_ZOOM_SPEED = 3;
+/** Main-camera near plane outside the trajectory follow (Earth radii). */
+const DEFAULT_CAMERA_NEAR = 0.1;
+/** Cloud shell radius (createEarthClouds); hidden while the follow camera is below it. */
+const CLOUD_SHELL_SCALE = 1.008;
+/** Thin shells drawn on the globe (borders 1.0005, night lights 1.001); depth-biased while following. */
+const SURFACE_SHELL_MAX_SCALE = 1.002;
+
 /** Pre-allocated capacity for the ISL path LineSegments geometry. */
 const ISL_PATH_INITIAL_SEGMENTS = 64;
 const ISL_RECOMPUTE_MIN_REAL_MS = 200;
@@ -245,6 +265,18 @@ export interface SatelliteSceneParams {
    * sim clock. Swapped live via {@link SatelliteScene.setTrajectories}.
    */
   trajectories?: TrajectoryTrack[];
+  /**
+   * Trajectory track the camera rides with (see
+   * {@link SatelliteScene.setTrajectoryFollow}), or null/undefined for none.
+   * Read at construction and applied live by useSatelliteScene.
+   */
+  trajectoryFollowId?: string | null;
+  /**
+   * Fired when the scene drops the trajectory follow on its own (track
+   * removed or hidden, a satellite camera mode selected, a saved view applied
+   * in a satellite mode). Not fired for an explicit setTrajectoryFollow(null).
+   */
+  onTrajectoryFollowEnd?: () => void;
   groundStations: GroundStation[];
   satRadius: number;
   /** Fixed-pixel dots, shadow dimming and glint for every satellite renderer. Applied live. */
@@ -475,6 +507,22 @@ export default class SatelliteScene {
   private thirdPersonPitch = THIRDPERSON_DEFAULT_PITCH;
   private cameraMode: SatelliteCameraMode;
 
+  // --- Trajectory follow camera (see setTrajectoryFollow) ---
+  private trajectoryFollowId: string | null = null;
+  /** Free-camera framing to restore when the follow ends; also what saved views see meanwhile. */
+  private trajectoryFollowReturn: CameraSnapshot | null = null;
+  /** Frame the vehicle from scratch on the next followed frame. */
+  private trajectoryFollowNeedsFraming = false;
+  private readonly trajectoryFollowPos = new THREE.Vector3();
+  private readonly trajectoryFollowVel = new THREE.Vector3();
+  private readonly trajectoryFollowUp = new THREE.Vector3(0, 1, 0);
+  private readonly trajectoryFollowPrevUp = new THREE.Vector3(0, 1, 0);
+  private trajectoryFollowShellsBiased = false;
+  /** Tracks last handed to setTrajectories. */
+  private trajectoryTracks: TrajectoryTrack[] = [];
+  /** Track whose event labels the renderer currently shows. */
+  private focusedTrajectoryTrack: string | null = null;
+
   private params: SatelliteSceneParams;
 
   constructor(params: SatelliteSceneParams) {
@@ -521,8 +569,13 @@ export default class SatelliteScene {
     // Notify React when the user finishes manipulating the camera so the view
     // can be persisted. 'end' fires once per drag/zoom gesture, avoiding the
     // per-frame churn of saving on every change.
-    const handleControlsEnd = () =>
+    // While following a trajectory, the camera sits metres from the vehicle;
+    // that framing is never persisted (getCameraSnapshot reports the framing
+    // to return to instead), so skip the report altogether.
+    const handleControlsEnd = () => {
+      if (this.trajectoryFollowId !== null) return;
       this.params.onCameraChange?.(this.getCameraSnapshot());
+    };
     this.controls.addEventListener("end", handleControlsEnd);
     this.disposeFns.push(() =>
       this.controls.removeEventListener("end", handleControlsEnd),
@@ -780,6 +833,7 @@ export default class SatelliteScene {
     // array, and useSatelliteScene swaps it live afterwards.
     this.trajectoryRenderer = new TrajectoryRenderer(this.scene);
     this.setTrajectories(this.params.trajectories ?? []);
+    if (this.params.trajectoryFollowId) this.setTrajectoryFollow(this.params.trajectoryFollowId);
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
@@ -949,6 +1003,8 @@ export default class SatelliteScene {
 
   setCameraMode(mode: SatelliteCameraMode) {
     if (mode === this.cameraMode) return;
+    // The satellite camera modes take precedence over a trajectory follow.
+    if (mode !== "free") this.endTrajectoryFollow(true);
     this.cameraMode = mode;
     if (mode === "free") {
       this.resetFreeCamera();
@@ -1012,19 +1068,27 @@ export default class SatelliteScene {
    * rebuilt, and visibility toggles just show/hide the existing geometry.
    */
   setTrajectories(tracks: TrajectoryTrack[]) {
+    this.trajectoryTracks = tracks;
     this.trajectoryRenderer.setTracks(tracks);
   }
 
   /**
-   * Point the free camera straight down at a trajectory track's current
-   * position (or its first sample when the sim time is outside its span),
-   * from close range. Honours the free-camera frame (ECI/ECEF/GSE holder
-   * rotation). Does nothing in the follow camera modes or for unknown ids.
+   * Overview of a trajectory track: point the free camera straight down at
+   * its current position (or its first sample when the sim time is outside
+   * its span), from close range. Honours the free-camera frame (ECI/ECEF/GSE
+   * holder rotation) and does not change it. Does nothing while following a
+   * trajectory, in the satellite camera modes, or for unknown ids.
    */
   focusTrajectory(id: string) {
-    if (this.cameraMode !== "free") return;
-    const local = this.trajectoryRenderer.localPositionAt(id, this.currentSimDate.getTime(), this.tempVectorA);
-    if (!local) return;
+    if (this.cameraMode !== "free" || this.trajectoryFollowId !== null) return;
+    const track = this.trajectoryTracks.find((t) => t.id === id);
+    if (!track || track.samples.length === 0) return;
+    const simMs = this.currentSimDate.getTime();
+    const first = track.samples[0].timeMs;
+    const last = track.samples[track.samples.length - 1].timeMs;
+    const t = simMs < first || simMs > last ? first : simMs;
+    const local = this.tempVectorA;
+    if (!this.trajectoryRenderer.localStateAt(id, t, local, this.tempVectorC)) return;
     // Earth-fixed → world (the overlay group is rotated by GMST), then into
     // the camera holder's local frame where OrbitControls operate.
     local.applyAxisAngle(UP_AXIS, satellite.gstime(this.currentSimDate));
@@ -1050,12 +1114,82 @@ export default class SatelliteScene {
     this.params.onCameraChange?.(this.getCameraSnapshot());
   }
 
+  /**
+   * Ride along with trajectory track `id` (null: stop). The camera holder is
+   * held Earth-fixed so the ground does not turn, OrbitControls orbit and
+   * zoom around the vehicle (limits scaled to its model length) with the
+   * local vertical as "up", and the vehicle is re-centred rigidly each
+   * frame from the same sim time used for drawing. The first followed frame
+   * frames the vehicle from the side. Ignored in the satellite camera modes
+   * (ends the follow, with onTrajectoryFollowEnd). Stopping restores the
+   * free-camera framing from before the follow.
+   */
+  setTrajectoryFollow(id: string | null) {
+    if (id === this.trajectoryFollowId) return;
+    if (id === null) {
+      this.endTrajectoryFollow(false);
+      return;
+    }
+    if (this.cameraMode !== "free") {
+      this.endTrajectoryFollow(false);
+      this.params.onTrajectoryFollowEnd?.();
+      return;
+    }
+    if (this.trajectoryFollowId === null) this.trajectoryFollowReturn = this.getCameraSnapshot();
+    this.trajectoryFollowId = id;
+    this.trajectoryFollowNeedsFraming = true;
+  }
+
+  getTrajectoryFollow(): string | null {
+    return this.trajectoryFollowId;
+  }
+
+  /**
+   * Jump the simulation clock to `date` without rebuilding the scene. Playback
+   * speed is unchanged. Time-dependent state that assumes continuous time
+   * (selected satellite's trail and orbit line, ISL path) is restarted.
+   */
+  seekTo(date: Date) {
+    const ms = date.getTime();
+    if (!Number.isFinite(ms)) return;
+    this.simulationClock.reset(ms, performance.now());
+    this.currentSimDate = new Date(ms);
+    this.params.onSimTimeChange?.(this.currentSimDate);
+    this.lastSimTimeNotificationMs = ms;
+    if (this.params.timeRef.current) this.params.timeRef.current.textContent = this.formatTime(this.currentSimDate);
+    // Selected satellite: restart its trail at the new time (a forward jump
+    // must not back-fill the skipped interval) and redraw its orbit from now.
+    if (this.selectedIndex !== null) {
+      this.updateTrack();
+      if (this.groundTrackLine) {
+        this.groundTrackCount = 0;
+        this.groundTrackNextSampleMs = ms;
+        this.updateGroundTrack(satellite.gstime(this.currentSimDate));
+      }
+    }
+    // ISL: drop the old path (its edges are meaningless at the new time),
+    // ignore any in-flight compute, and recompute now — even while paused. A
+    // jump is not an autonomous handover, so it is not counted as a switch.
+    this.islWorkerRequestId++;
+    this.islComputeInFlight = false;
+    this.islForceRecompute = true;
+    this.islPreviousPathEdgeKeys = null;
+    if (this.islLastResult !== null) {
+      this.islLastResult = null;
+      this.applyIslPathToScene(null);
+      this.params.onIslResult?.(null);
+    }
+  }
+
   /** Capture the current camera framing for persistence. */
   getSimulationTime(): Date {
     return new Date(this.currentSimDate.getTime());
   }
 
   getCameraSnapshot(): CameraSnapshot {
+    // Never expose the close follow framing (saved views, persistence): it
+    // would restore a camera metres above some point on the ground.
+    if (this.trajectoryFollowId !== null && this.trajectoryFollowReturn) return { ...this.trajectoryFollowReturn };
     return {
       mode: this.cameraMode,
       position: [this.camera.position.x, this.camera.position.y, this.camera.position.z],
@@ -1072,6 +1206,16 @@ export default class SatelliteScene {
    * pitch drive {@link updateCameraFollow} on subsequent frames.
    */
   applyCameraSnapshot(snap: CameraSnapshot) {
+    if (this.trajectoryFollowId !== null) {
+      // While following, a free framing (e.g. the saved view re-applied after
+      // a rebuild) becomes the framing to return to; a satellite mode ends
+      // the follow first.
+      if (snap.mode === "free" && isFiniteCameraSnapshot(snap)) {
+        this.trajectoryFollowReturn = snap;
+        return;
+      }
+      this.endTrajectoryFollow(true);
+    }
     if (!isFiniteCameraSnapshot(snap)) {
       // A broken saved view (see isFiniteCameraSnapshot): fall back to the
       // default framing and report it so the stored view is overwritten.
@@ -1731,7 +1875,11 @@ export default class SatelliteScene {
     this.kmlRenderer.updateRotation(rotAngle);
     this.trajectoryRenderer.update(simDate, rotAngle);
     const { x: sx, y: sy, z: sz } = sunVectorECI(simDate);
-    const frame = this.cameraMode === "free" ? this.params.viewFrame : "eci";
+    // The trajectory follow rides in the Earth-fixed frame: the holder then
+    // matches the trajectory overlay group exactly (same rotation.y about the
+    // origin), so overlay-local positions are holder-local positions.
+    const following = this.trajectoryFollowId !== null && this.cameraMode === "free";
+    const frame = following ? "ecef" : this.cameraMode === "free" ? this.params.viewFrame : "eci";
     if (frame === "gse") {
       this.setSunFixedHolder(sx, sz, -sy);
     } else {
@@ -1740,7 +1888,7 @@ export default class SatelliteScene {
     // OrbitControls orbits in the holder's local frame, but Object3D.lookAt
     // reads `camera.up` in world space. Keep it on the holder's +Y so a tilted
     // (GSE) holder keeps ecliptic north up instead of re-rolling to ECI north.
-    if (this.cameraMode === "free") {
+    if (this.cameraMode === "free" && !following) {
       this.camera.up.copy(UP_AXIS).applyQuaternion(this.cameraHolder.quaternion);
     }
 
@@ -1929,11 +2077,220 @@ export default class SatelliteScene {
     if (this.params.timeRef.current) this.params.timeRef.current.textContent = this.formatTime(simDate);
 
     this.updateCameraFollow(hasSelectedSat, hasSelectedVelocity);
+    const followingTrajectory = following && this.updateTrajectoryFollow(simDate.getTime());
     if (this.cameraMode === "free") {
       this.controls.update();
     }
+    if (followingTrajectory) this.finishTrajectoryFollowFrame();
+    if (this.focusedTrajectoryTrack !== this.trajectoryFollowId) {
+      this.focusedTrajectoryTrack = this.trajectoryFollowId;
+      this.trajectoryRenderer.setFocusedTrack(this.trajectoryFollowId);
+    }
     this.renderer.render(this.scene, this.camera);
+    // Vehicle models: a second, camera-relative metre-scale pass with its own
+    // depth (early-outs when there is nothing to draw).
+    this.trajectoryRenderer.renderVehicles(this.renderer, this.camera, simDate, rotAngle);
   };
+
+  /**
+   * Per-frame trajectory follow, before OrbitControls.update(): fetch the
+   * vehicle's Earth-fixed state at `simMs` (clamped into the track span, so a
+   * seek just before lift-off holds on the pad), move the orbit target onto
+   * it and translate the camera by the same amount — no lag. The camera's
+   * offset is carried along with the local vertical so its view of the
+   * horizon stays put over a long downrange flight. Returns false (and ends
+   * the follow) when the track is gone or hidden.
+   */
+  private updateTrajectoryFollow(simMs: number): boolean {
+    const id = this.trajectoryFollowId;
+    if (id === null) return false;
+    const track = this.trajectoryTracks.find((t) => t.id === id);
+    if (!track || !track.visible || track.samples.length === 0) {
+      this.endTrajectoryFollow(true);
+      return false;
+    }
+    const first = track.samples[0].timeMs;
+    const last = track.samples[track.samples.length - 1].timeMs;
+    const t = Math.min(Math.max(simMs, first), last);
+    const pos = this.trajectoryFollowPos;
+    const vel = this.trajectoryFollowVel;
+    // Not drawable (e.g. a degenerate track the renderer skipped): hold the
+    // camera where it is rather than dropping the follow on a transient.
+    if (!this.trajectoryRenderer.localStateAt(id, t, pos, vel)) return true;
+    if (t !== simMs) vel.set(0, 0, 0);
+    if (pos.lengthSq() < 1e-12) return true;
+    const up = this.trajectoryFollowUp.copy(pos).normalize();
+    const lengthM = Math.max(this.trajectoryRenderer.vehicleLengthM(id), 1);
+    const length = lengthM * SCENE_UNITS_PER_M;
+    this.controls.minDistance = TRAJECTORY_FOLLOW_MIN_LENGTHS * length;
+    this.controls.maxDistance = Math.max(TRAJECTORY_FOLLOW_MAX_DISTANCE, 10 * length);
+    // The zoom range spans ~5 decades (metres to a regional view): faster
+    // wheel/pinch steps so it does not take hundreds of notches.
+    this.controls.zoomSpeed = TRAJECTORY_FOLLOW_ZOOM_SPEED;
+
+    const offset = this.tempVectorD;
+    if (this.trajectoryFollowNeedsFraming) {
+      this.trajectoryFollowNeedsFraming = false;
+      this.trajectoryFollowDirection(track, t, up, vel, offset);
+      offset.multiplyScalar(TRAJECTORY_FOLLOW_START_LENGTHS * length);
+      this.controls.enabled = true;
+    } else {
+      offset.subVectors(this.camera.position, this.controls.target);
+      this.tempQuaternionB.setFromUnitVectors(this.trajectoryFollowPrevUp, up);
+      offset.applyQuaternion(this.tempQuaternionB);
+    }
+    this.trajectoryFollowPrevUp.copy(up);
+    this.controls.target.copy(pos);
+    this.camera.position.copy(pos).add(offset);
+    // Near the ground keep the camera above the vehicle's local horizontal
+    // plane, so orbiting does not dive under the globe; high up, any angle.
+    const altitude = pos.length() - 1;
+    this.controls.maxPolarAngle = altitude > 3 * offset.length() ? Math.PI : Math.PI / 2;
+    this.setOrbitControlsUp(up);
+    return true;
+  }
+
+  /**
+   * Unit direction from the vehicle to the initial camera: horizontal and
+   * perpendicular to the flight direction (ascent and return seen in
+   * profile, not straight down), raised slightly above the local horizon.
+   */
+  private trajectoryFollowDirection(
+    track: TrajectoryTrack,
+    t: number,
+    up: THREE.Vector3,
+    vel: THREE.Vector3,
+    out: THREE.Vector3,
+  ): THREE.Vector3 {
+    const downrange = this.tempVectorB.copy(vel).addScaledVector(up, -vel.dot(up));
+    if (downrange.lengthSq() < TRAJECTORY_FOLLOW_MIN_HORIZONTAL_SPEED_SQ) {
+      // Vertical lift-off or a hold on the pad: use where the track goes.
+      const first = track.samples[0].timeMs;
+      const last = track.samples[track.samples.length - 1].timeMs;
+      const later = this.tempVectorC;
+      const here = this.tempVectorA;
+      if (
+        this.trajectoryRenderer.localStateAt(track.id, Math.min(last, Math.max(t, first) + 120_000), later, out) &&
+        this.trajectoryRenderer.localStateAt(track.id, t, here, out)
+      ) {
+        downrange.subVectors(later, here);
+        downrange.addScaledVector(up, -downrange.dot(up));
+      }
+    }
+    if (downrange.lengthSq() < 1e-20) {
+      // Still nothing: due east (the scene's +Y is the Earth's axis).
+      downrange.crossVectors(UP_AXIS, up);
+      if (downrange.lengthSq() < 1e-12) downrange.set(1, 0, 0);
+    }
+    downrange.normalize();
+    const side = this.tempVectorC.crossVectors(up, downrange).normalize();
+    return out
+      .copy(side)
+      .multiplyScalar(Math.cos(TRAJECTORY_FOLLOW_START_ELEVATION))
+      .addScaledVector(up, Math.sin(TRAJECTORY_FOLLOW_START_ELEVATION))
+      .normalize();
+  }
+
+  /**
+   * OrbitControls caches the rotation from `object.up` to +Y at construction
+   * (`_quat` / `_quatInverse`, three r186) and orbits about that axis. Point
+   * it at the holder-local vertical `up` while following; identity restores
+   * the default (+Y) behaviour.
+   */
+  private setOrbitControlsUp(up: THREE.Vector3) {
+    const internals = this.controls as unknown as { _quat?: THREE.Quaternion; _quatInverse?: THREE.Quaternion };
+    if (!internals._quat || !internals._quatInverse) return;
+    internals._quat.setFromUnitVectors(up, UP_AXIS);
+    internals._quatInverse.copy(internals._quat).invert();
+  }
+
+  /**
+   * After OrbitControls.update() while following: re-aim the camera (its
+   * lookAt reads the target as a world point and camera.up in world space;
+   * both are holder-local here), then fit the near plane and the thin Earth
+   * shells to the close range.
+   */
+  private finishTrajectoryFollowFrame() {
+    const target = this.controls.target;
+    const up = this.trajectoryFollowUp;
+    this.tempMatrix.lookAt(this.camera.position, target, up);
+    this.camera.quaternion.setFromRotationMatrix(this.tempMatrix);
+    this.camera.up.copy(up).applyQuaternion(this.cameraHolder.quaternion);
+
+    // Near plane: well inside the camera–vehicle distance (models are drawn
+    // in their own pass, so this only has to keep trails and the globe), but
+    // no smaller than needed to resolve the 0.0005-radius border shell out
+    // at the horizon: depth resolution there is ≈ h²/(near·2²⁴) with
+    // h² = |cam|² − 1. Far stays 1000: with far ≫ near the resolution does
+    // not depend on far, so shrinking it would buy nothing.
+    const distance = this.camera.position.distanceTo(target);
+    const horizonSq = Math.max(this.camera.position.lengthSq() - 1, 0);
+    const near = THREE.MathUtils.clamp(
+      Math.min(Math.max(0.2 * distance, horizonSq / 2000), 0.5 * distance),
+      1e-7,
+      DEFAULT_CAMERA_NEAR,
+    );
+    this.setCameraNear(near);
+    // Below the cloud shell its double-sided sphere would roof the sky.
+    this.setCloudsVisible(this.params.showClouds && this.camera.position.length() > CLOUD_SHELL_SCALE + 0.0005);
+    this.setSurfaceShellDepthBias(true);
+  }
+
+  private setCameraNear(near: number) {
+    if (Math.abs(this.camera.near - near) <= near * 0.02) return;
+    this.camera.near = near;
+    this.camera.updateProjectionMatrix();
+  }
+
+  /**
+   * Pull the thin overlays drawn on the globe (country borders, night
+   * lights) a few depth steps toward the camera, so they keep winning the
+   * depth test against the surface under the tiny near plane of the follow
+   * camera. Unchanged outside the follow.
+   */
+  private setSurfaceShellDepthBias(on: boolean) {
+    if (!on && !this.trajectoryFollowShellsBiased) return;
+    this.trajectoryFollowShellsBiased = on;
+    for (const child of this.earthGroup.children) {
+      const mesh = child as THREE.Mesh;
+      if (!mesh.isMesh) continue;
+      const scale = mesh.scale.x;
+      if (scale <= 1 || scale > SURFACE_SHELL_MAX_SCALE) continue;
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const material of materials) {
+        material.polygonOffset = on;
+        material.polygonOffsetFactor = on ? -1 : 0;
+        material.polygonOffsetUnits = on ? -4 : 0;
+      }
+    }
+  }
+
+  /**
+   * Stop the trajectory follow (no-op when not following): restore the free
+   * framing from before it, the near plane, zoom limits, OrbitControls' up
+   * axis, clouds and shell depth bias. `notify` fires onTrajectoryFollowEnd
+   * (the scene dropped it on its own).
+   */
+  private endTrajectoryFollow(notify: boolean) {
+    if (this.trajectoryFollowId === null) return;
+    this.trajectoryFollowId = null;
+    this.trajectoryFollowNeedsFraming = false;
+    const back = this.trajectoryFollowReturn;
+    this.trajectoryFollowReturn = null;
+    this.setOrbitControlsUp(UP_AXIS);
+    this.controls.minDistance = 1.05;
+    this.controls.maxDistance = 30;
+    this.controls.zoomSpeed = 1;
+    this.controls.maxPolarAngle = Math.PI;
+    this.setCameraNear(DEFAULT_CAMERA_NEAR);
+    this.setCloudsVisible(this.params.showClouds);
+    this.setSurfaceShellDepthBias(false);
+    if (this.cameraMode === "free") {
+      if (back && back.mode === "free" && isFiniteCameraSnapshot(back)) this.applyCameraSnapshot(back);
+      else this.resetFreeCamera();
+    }
+    if (notify) this.params.onTrajectoryFollowEnd?.();
+  }
 
   private ensureLinkCapacity(links: number) {
     if (links * 6 <= this.linkPositions.length) return;

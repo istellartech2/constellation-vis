@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { FileInput, Route, Trash2, X, SkipBack } from "lucide-react";
+import { FileInput, Route, Trash2, X, Play, Crosshair, Globe } from "lucide-react";
 import { Button } from "./button";
 import { Checkbox } from "./checkbox";
 import PanelSection from "./PanelSection";
@@ -8,12 +8,24 @@ import type SatelliteScene from "../../lib/visualization";
 import type { TrajectoryTrack } from "../../lib/trajectory/types";
 import { parseTrajectoryFile, toTrajectoryTrack } from "../../lib/trajectory/parse";
 import { trajectoryStateAt } from "../../lib/trajectory/interpolate";
+import { TRAJECTORY_MODELS } from "../../lib/trajectory/models";
+
+/** Playback controls owned by App (scene seek, follow state, speed). */
+export interface TrajectoryPlayback {
+  /** Track the camera currently follows, or null. */
+  followId: string | null;
+  /** Start (id) or stop (null) following a track. */
+  onFollowChange: (id: string | null) => void;
+  /** Seek to `date`, follow `id`, play at 1×. */
+  onPlayFrom: (id: string, date: Date) => void;
+  /** Seek the simulation clock (no scene rebuild). */
+  onSeek: (date: Date) => void;
+}
 
 interface Props {
   trajectories: TrajectoryTrack[];
   onTrajectoriesChange: (tracks: TrajectoryTrack[]) => void;
-  /** Restart the simulation at `date`; rebuilds the scene. */
-  onJumpToTime: (date: Date) => void;
+  playback: TrajectoryPlayback;
   currentSimMs: number;
   sceneRef?: RefObject<SatelliteScene | null>;
 }
@@ -27,10 +39,16 @@ interface FileMessage {
 const HELP_TEXT =
   "時刻付きの位置データ（ロケットの打ち上げ軌跡など）を読み込み、シミュレーション時刻に合わせて再生します。" +
   "対応形式: ヘッダー付き CSV（緯度・経度・高度 / ECEF / ECI）と CCSDS OEM。" +
+  "「開始から」で軌道の開始直前へ移動し、等倍で機体に追従して再生します。" +
   "表示される位置はファイルの内容そのままです（再構成データなら推定値です）。";
 
-/** Lead before the first sample when jumping to a track's start. */
+/** Lead before the first sample when starting playback of a track. */
 const JUMP_LEAD_MS = 5000;
+
+/** <select> values that are not model keys. */
+const MODEL_NONE = "";
+const MODEL_CUSTOM = "__custom__";
+const MODEL_PICK = "__pick__";
 
 function formatUtc(ms: number): string {
   return new Date(ms).toISOString().replace("T", " ").slice(0, 19);
@@ -54,11 +72,22 @@ function readAsText(file: File): Promise<string> {
   });
 }
 
-/** 表示タブ: 時系列の軌道データ（打ち上げ軌跡など）の読み込みと再生状況。 */
+const isObjectUrl = (model: string | undefined): model is string => !!model && model.startsWith("blob:");
+
+function revokeModel(model: string | undefined) {
+  if (isObjectUrl(model)) URL.revokeObjectURL(model);
+}
+
+const spanOf = (track: TrajectoryTrack) => ({
+  first: track.samples[0].timeMs,
+  last: track.samples[track.samples.length - 1].timeMs,
+});
+
+/** 表示タブ: 時系列の軌道データ（打ち上げ軌跡など）の読み込み・再生・追従。 */
 export default function TrajectorySection({
   trajectories,
   onTrajectoriesChange,
-  onJumpToTime,
+  playback,
   currentSimMs,
   sceneRef,
 }: Props) {
@@ -66,11 +95,21 @@ export default function TrajectorySection({
   const [messages, setMessages] = useState<FileMessage[]>([]);
   // Monotonic index for colours/ids so a remove-then-add never reuses one.
   const nextIndexRef = useRef(trajectories.length);
-  const focusTimerRef = useRef<number | null>(null);
+  // Display names of loaded .glb files, by track id (object URLs carry none).
+  const [glbNames, setGlbNames] = useState<Record<string, string>>({});
 
+  // Scrubbing: the thumb follows the pointer locally, and the scene is
+  // seeked at most once per animation frame.
+  const [scrubMs, setScrubMs] = useState<number | null>(null);
+  const pendingSeekRef = useRef<number | null>(null);
+  const seekFrameRef = useRef<number | null>(null);
+  const onSeekRef = useRef(playback.onSeek);
+  useEffect(() => {
+    onSeekRef.current = playback.onSeek;
+  });
   useEffect(
     () => () => {
-      if (focusTimerRef.current !== null) window.clearTimeout(focusTimerRef.current);
+      if (seekFrameRef.current !== null) cancelAnimationFrame(seekFrameRef.current);
     },
     [],
   );
@@ -120,37 +159,150 @@ export default function TrajectorySection({
     input.click();
   };
 
-  const updateTrack = (id: string, patch: Partial<Pick<TrajectoryTrack, "visible">>) =>
+  const updateTrack = (id: string, patch: Partial<Pick<TrajectoryTrack, "visible" | "model">>) =>
     onTrajectoriesChange(trajectories.map((t) => (t.id === id ? { ...t, ...patch } : t)));
 
-  const removeTrack = (id: string) => onTrajectoriesChange(trajectories.filter((t) => t.id !== id));
+  // Object URLs are revoked only when their track drops them (remove, model
+  // change, clear all) — never on unmount: tracks outlive this tab.
+  const removeTrack = (id: string) => {
+    const track = trajectories.find((t) => t.id === id);
+    revokeModel(track?.model);
+    if (playback.followId === id) playback.onFollowChange(null);
+    onTrajectoriesChange(trajectories.filter((t) => t.id !== id));
+  };
 
   const clearAll = () => {
+    trajectories.forEach((t) => revokeModel(t.model));
+    if (playback.followId !== null) playback.onFollowChange(null);
     onTrajectoriesChange([]);
     setMessages([]);
+    setGlbNames({});
   };
 
-  const jumpToStart = (track: TrajectoryTrack) => {
-    const before = sceneRef?.current ?? null;
-    onJumpToTime(new Date(track.samples[0].timeMs - JUMP_LEAD_MS));
-    if (!track.visible) updateTrack(track.id, { visible: true });
-    // The jump changes startTime, which rebuilds the scene asynchronously
-    // (useSatelliteScene constructs it ~10 ms after React commits). Poll
-    // until a *new* scene instance exists, then focus it; focusing the old
-    // instance would be lost when it is disposed. Bounded to ~2 s.
-    if (focusTimerRef.current !== null) window.clearTimeout(focusTimerRef.current);
-    let tries = 0;
-    const attempt = () => {
-      focusTimerRef.current = null;
-      const scene = sceneRef?.current ?? null;
-      if (scene && scene !== before) {
-        scene.focusTrajectory(track.id);
-        return;
-      }
-      if (++tries < 40) focusTimerRef.current = window.setTimeout(attempt, 50);
-    };
-    focusTimerRef.current = window.setTimeout(attempt, 30);
+  const setModel = (track: TrajectoryTrack, model: string | undefined, glbName?: string) => {
+    if (model === track.model) return;
+    revokeModel(track.model);
+    setGlbNames((prev) => {
+      const next = { ...prev };
+      if (glbName) next[track.id] = glbName;
+      else delete next[track.id];
+      return next;
+    });
+    updateTrack(track.id, { model });
   };
+
+  const pickGlb = (track: TrajectoryTrack) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".glb,model/gltf-binary";
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      setModel(track, URL.createObjectURL(file), file.name);
+    };
+    input.click();
+  };
+
+  const handleModelChange = (track: TrajectoryTrack, value: string) => {
+    if (value === MODEL_PICK) pickGlb(track);
+    else if (value === MODEL_CUSTOM) return;
+    else setModel(track, value === MODEL_NONE ? undefined : value);
+  };
+
+  const playFromStart = (track: TrajectoryTrack) => {
+    if (!track.visible) updateTrack(track.id, { visible: true });
+    playback.onPlayFrom(track.id, new Date(spanOf(track).first - JUMP_LEAD_MS));
+  };
+
+  const toggleFollow = (track: TrajectoryTrack) => {
+    if (playback.followId === track.id) {
+      playback.onFollowChange(null);
+      return;
+    }
+    if (!track.visible) updateTrack(track.id, { visible: true });
+    playback.onFollowChange(track.id);
+  };
+
+  const showOverview = (track: TrajectoryTrack) => {
+    if (!track.visible) updateTrack(track.id, { visible: true });
+    // Stop the follow on the scene right away (restoring the free camera),
+    // so the overview framing below is not undone when App's state catches up.
+    const scene = sceneRef?.current ?? null;
+    scene?.setTrajectoryFollow(null);
+    scene?.focusTrajectory(track.id);
+    if (playback.followId !== null) playback.onFollowChange(null);
+  };
+
+  // Scrub target: the followed track, else the first visible one in span.
+  const scrubTrack =
+    trajectories.find((t) => t.id === playback.followId) ??
+    trajectories.find((t) => {
+      if (!t.visible) return false;
+      const { first, last } = spanOf(t);
+      return currentSimMs >= first && currentSimMs <= last;
+    }) ??
+    null;
+
+  const scrubTo = (ms: number) => {
+    setScrubMs(ms);
+    pendingSeekRef.current = ms;
+    if (seekFrameRef.current !== null) return;
+    seekFrameRef.current = requestAnimationFrame(() => {
+      seekFrameRef.current = null;
+      const target = pendingSeekRef.current;
+      pendingSeekRef.current = null;
+      if (target !== null) onSeekRef.current(new Date(target));
+    });
+  };
+  const endScrub = () => {
+    // Flush a seek still waiting for its frame, so the released thumb does
+    // not jump back to the previous time for a frame.
+    const target = pendingSeekRef.current;
+    if (target !== null) {
+      if (seekFrameRef.current !== null) cancelAnimationFrame(seekFrameRef.current);
+      seekFrameRef.current = null;
+      pendingSeekRef.current = null;
+      onSeekRef.current(new Date(target));
+    }
+    setScrubMs(null);
+  };
+
+  const renderScrubber = (track: TrajectoryTrack) => {
+    const { first, last } = spanOf(track);
+    const epoch = track.epochMs ?? first;
+    const shownMs = Math.min(Math.max(scrubMs ?? currentSimMs, first), last);
+    const spanS = Math.max(1, Math.round((last - first) / 1000));
+    const valueS = Math.round((shownMs - first) / 1000);
+    return (
+      <div className="space-y-1 rounded border border-line bg-raised px-2 py-1.5">
+        <div className="flex items-center justify-between gap-2 text-xs">
+          <span className="min-w-0 truncate text-fg" title={track.name}>
+            {track.name}
+          </span>
+          <span className="shrink-0 font-medium tabular-nums text-fg">{formatTPlus(shownMs - epoch)}</span>
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={spanS}
+          step={1}
+          value={valueS}
+          aria-label={`「${track.name}」の再生位置`}
+          onChange={(e) => scrubTo(first + Number(e.target.value) * 1000)}
+          onPointerUp={endScrub}
+          onKeyUp={endScrub}
+          onBlur={endScrub}
+          className="w-full"
+        />
+        <div className="flex justify-between text-[11px] text-fg-subtle tabular-nums">
+          <span>{formatTPlus(first - epoch)}</span>
+          <span>{formatTPlus(last - epoch)}</span>
+        </div>
+      </div>
+    );
+  };
+
+  const buttonClass = "h-7 gap-1 px-2 text-xs text-fg-muted hover:text-fg";
 
   return (
     <PanelSection
@@ -196,13 +348,20 @@ export default function TrajectorySection({
         </ul>
       )}
 
+      {scrubTrack && renderScrubber(scrubTrack)}
+
       {trajectories.length > 0 && (
         <ul className="space-y-2">
           {trajectories.map((track) => {
-            const first = track.samples[0].timeMs;
-            const last = track.samples[track.samples.length - 1].timeMs;
+            const { first, last } = spanOf(track);
             const state = track.visible ? trajectoryStateAt(track, currentSimMs) : null;
             const checkboxId = `trajectory-visible-${track.id}`;
+            const following = playback.followId === track.id;
+            const modelValue = !track.model
+              ? MODEL_NONE
+              : TRAJECTORY_MODELS.some((m) => m.key === track.model)
+                ? track.model
+                : MODEL_CUSTOM;
             return (
               <li key={track.id} className="rounded border border-line bg-raised px-2 py-1.5">
                 <div className="flex min-w-0 items-center gap-2">
@@ -220,16 +379,6 @@ export default function TrajectorySection({
                   <label htmlFor={checkboxId} className="min-w-0 flex-1 truncate text-sm text-fg cursor-pointer" title={track.name}>
                     {track.name}
                   </label>
-                  <Button
-                    onClick={() => jumpToStart(track)}
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 gap-1 px-2 text-xs text-fg-muted hover:text-fg"
-                    title="シミュレーション時刻を軌道の開始直前へ移動し、カメラを向けます"
-                  >
-                    <SkipBack className="w-3.5 h-3.5" />
-                    開始へ
-                  </Button>
                   <button
                     type="button"
                     onClick={() => removeTrack(track.id)}
@@ -239,6 +388,57 @@ export default function TrajectorySection({
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-1">
+                  <Button
+                    onClick={() => playFromStart(track)}
+                    variant="ghost"
+                    size="sm"
+                    className={buttonClass}
+                    title="軌道の開始直前へ移動し、機体に追従して等倍で再生します"
+                  >
+                    <Play className="w-3.5 h-3.5" />
+                    開始から
+                  </Button>
+                  <Button
+                    onClick={() => toggleFollow(track)}
+                    variant="ghost"
+                    size="sm"
+                    aria-pressed={following}
+                    className={following ? "h-7 gap-1 px-2 text-xs bg-raised-hover text-fg" : buttonClass}
+                    title={following ? "追従をやめて元の視点に戻します" : "カメラを機体に追従させます（ドラッグで回転、ホイールで拡大縮小）"}
+                  >
+                    <Crosshair className="w-3.5 h-3.5" />
+                    {following ? "追従中" : "追従"}
+                  </Button>
+                  <Button
+                    onClick={() => showOverview(track)}
+                    variant="ghost"
+                    size="sm"
+                    className={buttonClass}
+                    title="追従をやめ、軌道の現在位置を真上から見下ろします"
+                  >
+                    <Globe className="w-3.5 h-3.5" />
+                    全体
+                  </Button>
+                  <select
+                    value={modelValue}
+                    onChange={(e) => handleModelChange(track, e.target.value)}
+                    aria-label={`「${track.name}」の3Dモデル`}
+                    title="3Dモデル"
+                    className="ml-auto h-7 max-w-[11rem] min-w-0 truncate rounded border border-line bg-raised px-1 text-xs text-fg"
+                  >
+                    <option value={MODEL_NONE}>なし（点のみ）</option>
+                    {TRAJECTORY_MODELS.map((m) => (
+                      <option key={m.key} value={m.key}>
+                        {m.label}
+                      </option>
+                    ))}
+                    {modelValue === MODEL_CUSTOM && (
+                      <option value={MODEL_CUSTOM}>{glbNames[track.id] ?? "GLBファイル"}</option>
+                    )}
+                    <option value={MODEL_PICK}>GLBファイル…</option>
+                  </select>
                 </div>
                 <div className="mt-0.5 text-[11px] text-fg-subtle tabular-nums">
                   {formatUtc(first)} – {formatUtc(last)} UTC
