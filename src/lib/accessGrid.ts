@@ -15,8 +15,9 @@ import { toSatrec } from "./satellites";
 import type { GroundStation } from "./groundStations";
 import type { AttitudeTimeContext } from "./attitude/satelliteAttitude";
 import {
-  attitudeContextFor,
+  attitudeContextsFor,
   computeFovBoresightEcf,
+  prepareFovAttitudeGroups,
   normalizeVisibilityCriteria,
   type FovAttitude,
   type SatelliteFovCriteria,
@@ -42,9 +43,11 @@ export interface AccessGridOptions {
   fov?: SatelliteFovCriteria;
   /**
    * Attitude law for the FOV boresight (only used with `fov`). Omitted or
-   * 地球指向 keeps the legacy LVLH pointing. Its `stations` are the scenario's
-   * ground stations, independent of the grid's `stations` (which may be
-   * latitude probes).
+   * 地球指向 keeps the legacy LVLH pointing. Its `settings` are the global
+   * setting; each satellite's shell / satellite override (`spec.attitude`) is
+   * applied on top. Omitted, overrides are ignored too (Earth pointing). Its
+   * `stations` are the scenario's ground stations, independent of the grid's
+   * `stations` (which may be latitude probes).
    */
   attitude?: FovAttitude;
   /** Comparison must not silently accept a missing satellite state. */
@@ -253,15 +256,25 @@ export function computeAccessGrid(
   // Interpolate only when knots are coarser than the output step.
   const knotMs = KNOT_SECONDS * 1000;
   const interpolate = stepMs < knotMs;
-  // Sun / station data per step, shared by every satellite (undefined = LVLH).
-  const attitudeCtx: (AttitudeTimeContext | undefined)[] | null = fov && attitude && attitude.settings.mode !== "lvlh"
-    ? times.map((ms) => attitudeContextFor(attitude, new Date(ms)))
+  // Sun / station data per step and per distinct resolved attitude, shared by
+  // every satellite with that setting (undefined = LVLH). Null when every
+  // satellite is plain 地球指向: the legacy path, bit for bit.
+  const attitudeGroups = fov ? prepareFovAttitudeGroups(attitude, sats) : null;
+  const groupCtx: (AttitudeTimeContext | undefined)[][] | null = attitudeGroups
+    ? attitudeGroups.groups.map(() => new Array<AttitudeTimeContext | undefined>(stepCount))
     : null;
+  if (attitudeGroups && groupCtx) {
+    for (let step = 0; step < stepCount; step++) {
+      const contexts = attitudeContextsFor(attitudeGroups, new Date(times[step]));
+      for (let g = 0; g < contexts.length; g++) groupCtx[g][step] = contexts[g];
+    }
+  }
   const cosHalf = fov ? Math.cos(satellite.degreesToRadians(fov.halfAngleDeg)) : 0;
   const recs = sats.map((s) => toSatrec(s));
 
   for (let si = 0; si < recs.length; si++) {
     const rec = recs[si];
+    const attitudeCtx = groupCtx ? groupCtx[attitudeGroups!.groupOf[si]] : null;
     let k0: Knot | null = null;
     let k1: Knot | null = null;
     let k0Ms = Number.NaN;

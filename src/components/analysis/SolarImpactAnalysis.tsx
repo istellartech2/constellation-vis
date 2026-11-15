@@ -8,6 +8,7 @@ import {
   type SatelliteAttitudeSettings,
   type SolarArrayType,
 } from "../../lib/attitude/types";
+import { attitudeOverrideLabel, resolveSatelliteAttitude } from "../../lib/attitude/resolve";
 import ReactECharts from "echarts-for-react";
 import {
   analyzeSolarPower,
@@ -719,6 +720,11 @@ export default function SolarImpactAnalysis({
   const compareNetChartRef = useRef<ChartRef | null>(null);
 
   const selectedSatellite = satellites.find((item) => item.id === selectedSatelliteId) ?? satellites[0];
+  // The selected satellite's own attitude: the global one unless its shell /
+  // satellite entry overrides it.
+  const satelliteAttitude = resolveSatelliteAttitude(selectedSatellite?.spec, attitude);
+  const attitudeSourceLabel = attitudeOverrideLabel(selectedSatellite?.spec);
+  const [resultAttitudeSource, setResultAttitudeSource] = useState<string | null>(null);
 
   const resolvedSatelliteId = selectedSatellite?.id ?? "";
   if (selectedSatelliteId !== resolvedSatelliteId) setSelectedSatelliteId(resolvedSatelliteId);
@@ -727,7 +733,7 @@ export default function SolarImpactAnalysis({
   // startTime is a fresh Date on every render, so it enters as its ISO string.
   const conditionsKey = JSON.stringify({
     input,
-    attitude,
+    attitude: satelliteAttitude,
     solarArrayType,
     satelliteId: selectedSatellite?.id ?? null,
     spec: selectedSatellite?.spec ?? null,
@@ -768,10 +774,11 @@ export default function SolarImpactAnalysis({
         selectedSatellite.spec,
         selectedSatellite.label,
         startTime,
-        { ...input, attitude, solarArrayType },
+        { ...input, attitude: satelliteAttitude, solarArrayType },
         { stations: groundStations },
       );
       setResult(analysis);
+      setResultAttitudeSource(attitudeSourceLabel);
       setResultKey(runKey);
     } catch (analysisError) {
       setError(analysisError instanceof Error ? analysisError.message : "太陽光影響解析でエラーが発生しました");
@@ -1037,7 +1044,7 @@ export default function SolarImpactAnalysis({
                   aria-disabled={stale || undefined}
                 >
                 <div className="solar-section-note" data-testid="solar-conditions">
-                  <div>{`条件: 姿勢 ${ATTITUDE_LABELS[result.analysisInput.attitude.mode]} · パネル ${ARRAY_TYPE_LABELS[result.analysisInput.solarArrayType]}`}</div>
+                  <div>{`条件: 姿勢 ${ATTITUDE_LABELS[result.analysisInput.attitude.mode]}${resultAttitudeSource ? `（${resultAttitudeSource}）` : ""} · パネル ${ARRAY_TYPE_LABELS[result.analysisInput.solarArrayType]}`}</div>
                   <div>
                     {`発電係数 姿勢から計算 ${formatNumber(result.factorComparison.attitudeFactor, 2)} ／ 手入力 ${formatNumber(result.factorComparison.manualFactor, 2)}`}
                     {`（採用: ${result.factorComparison.applied === "attitude" ? "姿勢から計算" : "手入力"}）`}

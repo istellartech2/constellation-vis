@@ -34,7 +34,7 @@ interface Props {
   satellites: SatelliteSpec[];
   islSettings: IslSettings;
   islShellRanges: IslShellRange[];
-  /** Satellite attitude law (通信タブ › 姿勢); used by 地上局アクセス設計 and 日照・電力成立性評価. */
+  /** Global satellite attitude law (通信タブ › 姿勢); used by 地上局アクセス設計 and 日照・電力成立性評価, which apply each satellite's shell / satellite override on top. */
   attitude?: SatelliteAttitudeSettings;
   /** 地上局アクセス設計 「衛星の視野も可視条件に加える」 (remembered with the view) and its change handler. */
   stationAccessUseSatelliteFov?: boolean;

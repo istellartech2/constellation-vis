@@ -3,6 +3,10 @@ import { FileText, Globe, Orbit, Rows3, Satellite } from "lucide-react";
 import { Button } from "./button";
 import { GEO_SEMI_MAJOR_AXIS_KM, geoElementsFromLongitude } from "../../lib/astronomy";
 import { Label } from "./label";
+import AttitudeOverrideFields from "./AttitudeOverrideFields";
+import CollapsibleSubsection from "./CollapsibleSubsection";
+import { attitudeOverrideSummary } from "../../lib/attitude/resolve";
+import type { SatelliteAttitudeOverride } from "../../lib/attitude/types";
 import EditorDialogShell, { EditorDetailPane, EditorDialogFooter, EditorSplitBody } from "./EditorDialogShell";
 import EditorItemList, { KindBadge, listAddButtonClass } from "./EditorItemList";
 import { LOCAL_SATNUM_MIN, nextLocalSatnum } from "../../lib/localSatnum";
@@ -42,6 +46,8 @@ import {
 interface Props {
   open: boolean;
   satText: string;
+  /** Ground station names of the scenario (姿勢 › 地上局指向). */
+  stationNames?: readonly string[];
   /** Saves the edited TOML and applies it to the 3D view. */
   onApply: (text: string) => void;
   onClose: () => void;
@@ -124,7 +130,7 @@ function summaryForEntry(entry: SatelliteEditorEntry, chiefName?: string): strin
   }
 }
 
-export default function SatelliteTomlEditorDialog({ open, satText, onApply, onClose }: Props) {
+export default function SatelliteTomlEditorDialog({ open, satText, stationNames = [], onApply, onClose }: Props) {
   const [config, setConfig] = useState<SatelliteEditorConfig>({ entries: [] });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const errors = useMemo(() => validateSatelliteEditorConfig(config).errors, [config]);
@@ -289,9 +295,54 @@ export default function SatelliteTomlEditorDialog({ open, satText, onApply, onCl
               onChange={(updater) => updateSelectedEntry((entry) => updater(entry as FormationSatelliteEntry))}
             />
           )}
+          {selectedEntry && (
+            <EntryAttitudeSection
+              entry={selectedEntry}
+              index={selectedIndex}
+              errors={errors}
+              stationNames={stationNames}
+              onChange={(attitude) => updateSelectedEntry((entry) => ({ ...entry, attitude }))}
+            />
+          )}
         </EditorDetailPane>
       </EditorSplitBody>
     </EditorDialogShell>
+  );
+}
+
+/** 姿勢 of one entry (a formation's applies to every deputy), collapsed with a summary badge. */
+function EntryAttitudeSection({
+  entry,
+  index,
+  errors,
+  stationNames,
+  onChange,
+}: {
+  entry: SatelliteEditorEntry;
+  index: number;
+  errors: SatelliteEditorValidationError[];
+  stationNames: readonly string[];
+  onChange: (attitude: SatelliteAttitudeOverride | undefined) => void;
+}) {
+  const hasError = errors.some((e) => e.field.startsWith(`entry.${index}.attitude_`));
+  const summary = attitudeOverrideSummary(entry.attitude) ?? "全体設定";
+  return (
+    <div className="px-4 pb-4">
+      <CollapsibleSubsection
+        key={entry.id}
+        title="姿勢"
+        defaultOpen={hasError}
+        badge={<span className={`rounded px-1.5 py-0.5 text-[11px] font-normal ${entry.attitude ? "bg-brand-soft text-brand-text" : "bg-sunken text-fg-subtle"}`}>{summary}</span>}
+      >
+        <AttitudeOverrideFields
+          value={entry.attitude}
+          onChange={onChange}
+          stationNames={stationNames}
+          scope={entry.kind === "formation" ? "この編隊の deputy 全機" : "この衛星"}
+          errorFor={(key) => errorForField(errors, index, key)}
+        />
+      </CollapsibleSubsection>
+    </div>
   );
 }
 

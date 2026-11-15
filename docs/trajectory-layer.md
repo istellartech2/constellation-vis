@@ -189,8 +189,9 @@ It is a pure function of time (scrubbing backwards is exact):
 `starship-v3-ship` (52.1 m) — code-made meshes from uchusen-rockets (MIT, see
 [third-party](THIRD-PARTY.md)) in `public/models/`, fetched as
 `./models/<key>.glb` like the Earth textures — plus procedural
-`generic-rocket` (~40 m, cylinder + cone + fins) and `satellite-bus` (box with
-two wings along body ±Y, 10.4 m span). Any other `model` string is fetched as
+`generic-rocket` (~40 m, cylinder + cone + fins) and `satellite-bus` (shown
+as 「標準バス」 in the model selector; box with two wings along body ±Y, 10.4 m
+span — also the model of the 「近接」 satellite camera). Any other `model` string is fetched as
 a `.glb` URL / object URL.
 
 - Built-in GLBs: metres, glTF +Y = nose, origin at the base on the axis, no
@@ -244,10 +245,12 @@ a `.glb` URL / object URL.
   modelled).
 - **Ground reference.** Below 10 km altitude a faint disc with a polar grid
   (radius 3 km, fading out from 5 km) is drawn tangent to the WGS84
-  ellipsoid at sea level under the vehicle. The globe mesh is a 128-segment
-  sphere whose facets sit up to ~2 km below the true surface and has no
-  terrain, so at close range the model may appear to hover over the textured
-  globe; the disc is the actual sea-level reference.
+  ellipsoid at sea level under the vehicle. The globe has no terrain, and its
+  standard 128 × 128 sphere has facets up to ~1.9 km below the true surface
+  (chord sag `R(1 − cos(π/128))` along a parallel). While riding low, the
+  globe is swapped to a finer sphere (see [Earth geometry
+  swap](#earth-geometry-swap)), leaving ~0.1–0.2 km; the disc is the actual
+  sea-level reference.
 - `localStateAt(id, t, pos, vel)` gives the true (unlifted) Hermite position
   and velocity in overlay-local units; `vehicleLengthM(id)` the model length
   (registry length before loading, 50 m without a model).
@@ -259,10 +262,19 @@ a `.glb` URL / object URL.
   `onSimTimeChange` at once, restarts the selected satellite's ground-track
   trail and orbit line from the new time (no back-filling on forward jumps)
   and forces an ISL recompute. The editor's start time is not touched.
-- **Follow.** One follow mechanism ("ride") serves both a trajectory track and the selected satellite's 「近接」 camera (see [satellite attitude](satellite-attitude.md)); for tracks: scene param `trajectoryFollowId` (applied in the constructor and
-  live, so it survives rebuilds) with `onTrajectoryFollowEnd` when the scene
-  drops it (track removed or hidden, a satellite camera mode chosen, a
-  satellite-mode view applied). While following:
+- **Follow ("ride").** One mechanism serves both a trajectory track (追従)
+  and the selected editor satellite's 「近接」 camera (see [satellite
+  attitude](satellite-attitude.md)). The two differ only in the subject and
+  the camera holder: Earth-fixed for a track, the satellite's LVLH frame
+  (+X along-track, +Y radial) in 近接, so the satellite sits still and the
+  Earth turns below; the 近接 model is drawn with the satellite's own
+  resolved attitude (global 通信タブ setting plus any shell / satellite
+  override, `attitude/resolve.ts`). For tracks: scene param
+  `trajectoryFollowId` (applied in the constructor and live, so it survives
+  rebuilds) with `onTrajectoryFollowEnd` when the scene drops it (track
+  removed or hidden, a satellite camera mode chosen, a satellite-mode view
+  applied); 近接 ends with `onCloseUpEnd` when no editor satellite is
+  selected. While riding:
   - the camera holder turns with the Earth (same rotation as the overlay
     group), so overlay coordinates are camera-holder coordinates and the
     ground does not spin;
@@ -276,6 +288,17 @@ a `.glb` URL / object URL.
   - the main camera's near plane shrinks with the follow distance (restored to
     0.1 on exit); country borders / night lights get a polygon offset and the
     cloud shell is hidden while the camera is below it;
+  - ground-station markers (64 km spheres) and their cones within 200 km of
+    the camera are hidden (and not pickable), so a station at the launch site
+    does not swallow the view; they reappear when the ride ends or the camera
+    moves away;
+  - after a scene rebuild (e.g. a settings change) the same ride resumes
+    with the user's orbit offset: `useSatelliteScene` captures
+    `getRideOffset()` (camera − target and the local vertical, in holder
+    coordinates) before disposal and passes it as `initialRideOffset`; the
+    first ride frame rotates it onto the current vertical and clamps it to
+    the zoom limits. A ride started by the user still frames from the
+    default angle;
   - the saved/persisted view is never overwritten; ending the follow restores
     the previous free-camera framing.
 - **Panel** (表示 → 軌道データ): per track "▶ 開始から" (seek to first sample −
@@ -283,10 +306,26 @@ a `.glb` URL / object URL.
   selector (built-ins or a local .glb), and a scrub slider (T+ mm:ss) for the
   followed track or the first visible track in span; the live readout shows
   T+, altitude (km) and speed (km/h).
-- **Known gaps.** After a scene rebuild the follow re-frames side-on rather
-  than keeping the user's orbit offset; the graticule (lines, no polygon
-  offset) may shimmer near the horizon at very close zoom; a ground station
-  sphere (radius ~64 km) at a launch site would swallow the follow camera.
+- **Known gaps.** The graticule (lines, no polygon offset) may shimmer near
+  the horizon at very close zoom; the detailed globe still has no terrain.
+
+### Earth geometry swap
+
+While riding with the camera below 300 km altitude, every globe layer
+(surface, borders, night lights, clouds, atmosphere shells — they differ
+only by scale) is switched to one shared high-segment sphere, built lazily;
+above 350 km (hysteresis) or when the ride ends the original 128 × 128
+geometries are put back and the detailed one is disposed. Free-camera views
+never build it.
+
+| Sphere | Vertices | Indices | Sag (parallel / meridian) | Memory (pos+normal+uv+index) |
+| --- | --- | --- | --- | --- |
+| standard 128 × 128 | 16 641 | 97 536 | 1.92 / 0.48 km | ~0.9 MB |
+| detailed 512 × 256 | 131 841 | 783 360 | 0.12 / 0.12 km | ~7.4 MB |
+| memory-constrained devices (iPad etc., `isMemoryConstrainedDevice`) 384 × 192 | 74 305 | 440 064 | 0.21 / 0.21 km | ~4.1 MB |
+
+Width and height segments keep equal angular spacing (2π/w = π/h), since the
+sag of the 128 × 128 sphere comes from its width segments.
 
 ## Sample data
 

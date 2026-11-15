@@ -20,13 +20,38 @@
 export type SatelliteAttitudeMode = "lvlh" | "yawSteering" | "station" | "sun" | "inertial";
 
 export interface SatelliteAttitudeSettings {
+  /** 基本の姿勢. */
   mode: SatelliteAttitudeMode;
-  /** Ground station name for "station" (reconciled like the ISL endpoints). */
+  /** Ground station name for "station" and for `trackStationDuringPass` (reconciled like the ISL endpoints). */
   stationName?: string;
   /** Boresight right ascension / declination for "inertial", degrees. */
   inertialRaDeg: number;
   inertialDecDeg: number;
+  /**
+   * Scheduling (運用スケジュール). Priority, highest first:
+   *  1. `trackStationDuringPass` and the station is above its minimum
+   *     elevation → "station" pointing;
+   *  2. `eclipseMode` set and the satellite is in Earth's shadow → that mode;
+   *  3. otherwise `mode`.
+   * Undefined fields keep today's single-mode behaviour.
+   */
+  eclipseMode?: SatelliteAttitudeMode;
+  trackStationDuringPass?: boolean;
+  /**
+   * Maximum slew rate, deg/s. Undefined or ≤ 0 → mode switches are instant.
+   * When set, a switch blends from the previous mode's attitude to the new
+   * one at this rate (still a pure function of time, so scrubbing is exact).
+   */
+  maxSlewRateDegS?: number;
 }
+
+/**
+ * Per-shell / per-satellite override stored with the scenario
+ * (`SatelliteSpec.attitude`, constellation shell TOML keys `attitude_*`).
+ * Any field left undefined inherits the global setting (通信タブ). An
+ * override with `mode` set replaces the whole attitude law.
+ */
+export type SatelliteAttitudeOverride = Partial<SatelliteAttitudeSettings>;
 
 /** 固定（−Z面） / 1軸追尾（Y軸まわり）. */
 export type SolarArrayType = "fixed" | "singleAxis";

@@ -20,12 +20,14 @@ import { toSatrec } from "../../lib/satellites";
 import { sunVectorECI } from "../../lib/astronomy";
 import type { GroundStation } from "../../lib/groundStations";
 import {
-  effectiveAttitudeMode,
-  satelliteAttitudeEci,
+  attitudeStateProviderFromSatrec,
+  prepareAttitudeContext,
+  satelliteAttitudeStateFromContext,
   sensorBoresightEci,
   solarArrayIncidence,
 } from "../../lib/attitude/satelliteAttitude";
-import { ATTITUDE_MODE_SHORT_LABELS } from "../../lib/attitude/settings";
+import { activeAttitudeLabel } from "../../lib/attitude/settings";
+import { attitudeOverrideLabel, resolveSatelliteAttitude } from "../../lib/attitude/resolve";
 import type { SatelliteAttitudeSettings, SolarArrayType } from "../../lib/attitude/types";
 import { satelliteDisplayName, satelliteIdentifiers } from "../../lib/analysisSatellites";
 
@@ -66,14 +68,23 @@ function attitudeReadout(
   crossTrackDeg: number,
 ): AttitudeReadout | null {
   let pv: ReturnType<typeof satellite.propagate>;
+  let rec: satellite.SatRec;
   try {
-    pv = satellite.propagate(toSatrec(spec), at);
+    rec = toSatrec(spec);
+    pv = satellite.propagate(rec, at);
   } catch {
     return null;
   }
   if (!pv?.position || !pv.velocity) return null;
   const pos = pv.position;
-  const q = satelliteAttitudeEci(pos, pv.velocity, at, settings, stations);
+  // Same law (incl. 運用スケジュール and the slew limit) as the 3D cones / 近接 model.
+  const state = satelliteAttitudeStateFromContext(
+    pos,
+    pv.velocity,
+    prepareAttitudeContext(at, resolveSatelliteAttitude(spec, settings), stations),
+    attitudeStateProviderFromSatrec(rec),
+  );
+  const q = state.q;
   const sun = sunVectorECI(at);
   const n = Math.hypot(sun.x, sun.y, sun.z) || 1;
   const { cosIncidence } = solarArrayIncidence(q, { x: sun.x / n, y: sun.y / n, z: sun.z / n }, arrayType);
@@ -83,7 +94,9 @@ function attitudeReadout(
   const b = Math.hypot(boresight.x, boresight.y, boresight.z);
   const cosNadir = r > 0 && b > 0 ? -(pos.x * boresight.x + pos.y * boresight.y + pos.z * boresight.z) / (r * b) : NaN;
   return {
-    modeLabel: ATTITUDE_MODE_SHORT_LABELS[effectiveAttitudeMode(settings, stations)],
+    // Unscheduled: the configured mode's label, as before (地上局指向 keeps its
+    // name while the station is hidden). Scheduled: the active mode and why.
+    modeLabel: activeAttitudeLabel(state),
     sunlit,
     incidenceDeg: cosIncidence > 0 ? satellite.radiansToDegrees(Math.acos(Math.min(1, cosIncidence))) : null,
     cosIncidence: sunlit ? cosIncidence : 0,
@@ -241,6 +254,8 @@ export default function SatelliteInfo({
   const attitude = isEditorSatellite
     ? attitudeReadout(spec, simTime, satelliteAttitude, solarArrayType, groundStations, fovAlongTrackDeg, fovCrossTrackDeg)
     : null;
+  // 「シェル設定」/「衛星設定」 when this satellite overrides the global attitude.
+  const attitudeSourceLabel = isEditorSatellite ? attitudeOverrideLabel(spec) : null;
 
   // Same naming as the analysis pickers (日照・電力 etc.).
   const identifiers = satelliteIdentifiers(spec);
@@ -366,6 +381,14 @@ export default function SatelliteInfo({
                   {attitude.modeLabel}
                 </button>
               </dd>
+              {attitudeSourceLabel && (
+                <>
+                  <dt className="whitespace-nowrap text-fg-muted">設定元</dt>
+                  <dd className="m-0 text-right whitespace-nowrap text-fg" title="シナリオタブの編集画面で変更できます">
+                    {attitudeSourceLabel}
+                  </dd>
+                </>
+              )}
               <dt className="whitespace-nowrap text-fg-muted">パネル入射角</dt>
               <dd className="m-0 text-right font-mono tabular-nums text-fg whitespace-nowrap">{incidenceText(attitude)}</dd>
               <dt className="whitespace-nowrap text-fg-muted">発電効率（cos）</dt>

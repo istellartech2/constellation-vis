@@ -1,0 +1,134 @@
+{
+  "id": "flight15",
+  "title": "スターシップ 第15回飛行",
+  "subtitle": "2026年11月13日（日本時間14日）打上げ · ブースター22号機 / シップ42号機",
+  "disclaimer": "公開情報からの推定再現（非公式）",
+  "tracks": [
+    { "key": "booster", "url": "demos/flight15/booster.csv", "label": "BOOSTER" },
+    { "key": "ship", "url": "demos/flight15/ship.csv", "label": "SHIP" }
+  ],
+  "chapters": [
+    {
+      "id": "liftoff",
+      "title": "打上げ",
+      "caption": "アメリカ・テキサス州の発射場「スターベース」から、巨大ロケット「スターシップ」の15回目の飛行が始まります（日本時間11月14日 午前7時47分）。下段のブースター「スーパーヘビー」が33基のエンジンで、上段の宇宙船「シップ」を押し上げます。",
+      "start": "T-00:00:10",
+      "end": "T+00:01:10",
+      "speed": 1,
+      "camera": { "type": "follow", "track": "booster" },
+      "telemetry": ["booster", "ship"]
+    },
+    {
+      "id": "max-q",
+      "title": "最大動圧と上昇",
+      "caption": "打上げから約1分後、機体が受ける空気の力がいちばん大きくなる「最大動圧（マックスQ）」を通過します。このあいだエンジンの出力を少し絞って機体への負担を減らし、その後は空気の薄い高空へ向けてどんどん加速します。",
+      "start": "T+00:01:10",
+      "end": "T+00:02:15",
+      "speed": 10,
+      "speedChanges": [{ "at": "T+00:02:05", "speed": 1 }],
+      "camera": { "type": "follow", "track": "booster" },
+      "telemetry": ["booster", "ship"]
+    },
+    {
+      "id": "hot-staging",
+      "title": "ホットステージング（段の分離）",
+      "caption": "打上げから約2分20秒後、ブースターのエンジンが止まり、上段のシップが自分のエンジンに点火しながら切り離されます。エンジンを噴かしたまま分離するこの方式を「ホットステージング」と呼びます。",
+      "start": "T+00:02:15",
+      "end": "T+00:02:40",
+      "speed": 1,
+      "camera": { "type": "follow", "track": "booster" },
+      "telemetry": ["booster", "ship"]
+    },
+    {
+      "id": "boostback",
+      "title": "ブースターの帰還（ブーストバック）",
+      "caption": "役目を終えたブースターはくるりと向きを変え、エンジンを再び点火して発射場の方向へ引き返します（ブーストバック）。このとき33基中32基のエンジンが再点火しました。そのまま落ちてきて、発射塔で受け止めてもらう「キャッチ」を目指します。",
+      "start": "T+00:02:40",
+      "end": "T+00:06:10",
+      "speed": 10,
+      "camera": { "type": "follow", "track": "booster" },
+      "telemetry": ["booster", "ship"]
+    },
+    {
+      "id": "catch-abort",
+      "title": "キャッチ中止・洋上へ",
+      "caption": "着陸のためにエンジンを再点火しましたが、機体の自動判断で発射塔でのキャッチは中止されました（誘導・制御の不具合や、燃料がわずかに少なかったことが理由と報じられています）。ブースターはあらかじめ決められていた沖合の予備地点へ向かい、海の上でエンジンを止めたあと、着水の直前に安全のため計画どおり破壊されました。安全を優先する仕組みが働いた結果で、飛行全体の失敗ではありません（海上の位置は公表されておらず、推定です）。",
+      "start": "T+00:06:10",
+      "end": "T+00:07:30",
+      "speed": 1,
+      "speedChanges": [{ "at": "T+00:06:45", "speed": 2 }],
+      "camera": { "type": "follow", "track": "booster" },
+      "telemetry": ["booster"]
+    },
+    {
+      "id": "ship-to-space",
+      "title": "シップは宇宙へ",
+      "caption": "一方、上段のシップは自分のエンジンで加速を続け、打上げから約8分後にエンジンを止めました。このときシップはすでに宇宙空間にいて、あと少し加速すれば地球を回り続けられる速さに達しています。",
+      "start": "T+00:07:30",
+      "end": "T+00:08:30",
+      "speed": 5,
+      "camera": { "type": "follow", "track": "ship" },
+      "telemetry": ["ship"]
+    },
+    {
+      "id": "orbit-starlink",
+      "title": "軌道投入とスターリンク分離",
+      "caption": "打上げ約26分後、シップは約20秒エンジンを噴かして（秒速約92mの加速）、高度約276〜278kmの円に近い軌道に入りました。35分後からの約40分間で、通信衛星「スターリンク」26機を宇宙へ放出しました（この画面では衛星は表示していません）。",
+      "start": "T+00:08:30",
+      "end": "T+01:20:00",
+      "speed": 120,
+      "camera": { "type": "globe", "track": "ship" },
+      "telemetry": ["ship"]
+    },
+    {
+      "id": "orbiting",
+      "title": "地球を約14周",
+      "caption": "シップは軌道に入ってから約21時間、地球のまわりを回り続けました。1周はおよそ90分で、そのたびに昼と夜を繰り返します。ここでは実際の約3000倍の速さで早送りしています。",
+      "start": "T+01:20:00",
+      "end": "T+21:35:00",
+      "speed": 3000,
+      "camera": { "type": "globe", "track": "ship", "chase": false },
+      "telemetry": ["ship"]
+    },
+    {
+      "id": "deorbit",
+      "title": "軌道離脱",
+      "caption": "打上げから約21時間36分後、シップは進行方向と逆向きにエンジンを約10秒噴かしました（軌道離脱噴射）。わずかにスピードを落とすことで軌道が下がり、約35分後に太平洋のハワイ西方あたり（推定）で大気圏に入ります。",
+      "start": "T+21:35:00",
+      "end": "T+22:10:46",
+      "speed": 120,
+      "camera": { "type": "globe", "track": "ship", "distance": 2 },
+      "telemetry": ["ship"]
+    },
+    {
+      "id": "reentry",
+      "title": "大気圏再突入",
+      "caption": "打上げ約22時間11分後、シップは大気圏に再突入します。機体の腹側に並んだ耐熱タイル（熱から機体を守るタイル）を前に向け、まわりの空気が高温になる中、空気の抵抗をブレーキにして大きく減速していきます。",
+      "start": "T+22:10:46",
+      "end": "T+22:29:30",
+      "speed": 30,
+      "camera": { "type": "follow", "track": "ship" },
+      "telemetry": ["ship"]
+    },
+    {
+      "id": "tower-catch",
+      "title": "発射塔でキャッチ",
+      "caption": "音速より遅くなったシップは西からテキサスの海岸に近づき、町を避けるように飛んでサウスパドレ島の北を通過し、メキシコ湾の上で南へ向きを変えます。着陸の直前にエンジン3基に点火して機体を立て、発射塔の2本の腕（通称「チョップスティック」）に受け止められました。上段のシップが発射塔でキャッチされたのは、これが初めてです。",
+      "start": "T+22:29:30",
+      "end": "T+22:32:40",
+      "speed": 1,
+      "camera": { "type": "follow", "track": "ship" },
+      "telemetry": ["ship"]
+    }
+  ],
+  "ending": {
+    "title": "飛行完了",
+    "caption": "約22時間32分の飛行で、ブースターは安全のため洋上で処分され、シップは初めて発射塔に受け止められました。\nこの再現は公開された情報から推定したもので、実際の経路・速度・高度とは異なります。"
+  },
+  "sources": [
+    { "label": "Wikipedia", "url": "https://en.wikipedia.org/wiki/Starship_flight_15" },
+    { "label": "Space.com", "url": "https://www.space.com/space-exploration/launches-spacecraft/spacex-starship-flight-15-chopsticks-double-catch-super-heavy-ship" },
+    { "label": "drohnen.de", "url": "https://www.drohnen.de/97929/starship-flight-15-live-ship-catch-en/" },
+    { "label": "KeepTrack", "url": "https://keeptrack.space/x-report/spacex-brief-2026-11-15" }
+  ]
+}

@@ -18,6 +18,7 @@ import AnalysisTab, { type AnalysisType } from "./AnalysisTab";
 import OptionTab from "./OptionTab";
 import type { TrajectoryTrack } from "../../lib/trajectory/types";
 import type { TrajectoryPlayback } from "./TrajectorySection";
+import type { DemoEntry } from "../../lib/tour/types";
 import CommTab from "./CommTab";
 import ExternalDataDialog, { type ImportSource } from "./ExternalDataDialog";
 import type { PlacedFiling } from "./import/FilingPanel";
@@ -41,6 +42,7 @@ import type { GroundStation } from "../../lib/groundStations";
 import { defaultComparisonConditions, DEFAULT_COMPARISON_TARGET, type ComparisonDocument, type ComparisonScenario } from "../../lib/constellationComparison";
 import { comparisonScenarioInputs } from "../../lib/comparison/outages";
 import { satellitesToToml } from "../../utils/celestrakUtils";
+import { countAttitudeOverrides } from "../../lib/attitude/resolve";
 import { serializeGroundStations } from "../../lib/groundStationSerializer";
 
 /**
@@ -118,6 +120,13 @@ interface Props {
   onTrajectoriesChange: (tracks: TrajectoryTrack[]) => void;
   /** Trajectory seek / follow / playback controls (owned by App). */
   trajectoryPlayback: TrajectoryPlayback;
+  /** Start a guided tour from the 表示 tab's 「デモ」 section. */
+  onStartDemo?: (demo: DemoEntry) => void;
+  /**
+   * Presentation mode (guided tour): the panel is closed and hidden but stays
+   * mounted (it owns the scenario text); its open state comes back afterwards.
+   */
+  presentation?: boolean;
 }
 
 /** Analyses and ISL routing only see editor satellites; say so when that matters. */
@@ -163,9 +172,13 @@ export default function SatelliteEditor({
   trajectories,
   onTrajectoriesChange,
   trajectoryPlayback,
+  onStartDemo,
+  presentation = false,
   selectedSatelliteIndex = null,
 }: Props) {
   const [importSource, setImportSource] = useState<ImportSource>("celestrak");
+  // 通信タブ note: satellites using a shell / satellite attitude of their own.
+  const attitudeOverrideCount = useMemo(() => countAttitudeOverrides(satellites), [satellites]);
   const [uiTheme, setUiTheme] = useUiTheme();
   const catalogCount = catalogLayers.reduce((sum, l) => sum + l.catalog.count, 0);
   const remoteAppliedRef = useRef(false);
@@ -200,6 +213,16 @@ export default function SatelliteEditor({
   }
   const [open, setOpen] = useState(false);
   const sheet = useSheetDrag(() => setOpen(false));
+  // Presentation mode closes the panel (clearing the HUD offsets set below)
+  // and reopens it afterwards if it was open.
+  const [openBeforePresentation, setOpenBeforePresentation] = useState<boolean | null>(null);
+  if (presentation && openBeforePresentation === null) {
+    setOpenBeforePresentation(open);
+    setOpen(false);
+  } else if (!presentation && openBeforePresentation !== null) {
+    setOpen(openBeforePresentation);
+    setOpenBeforePresentation(null);
+  }
 
   // Let floating HUD elements (playback bar, satellite card) slide right of
   // the open panel on wide screens instead of being covered by it.
@@ -439,7 +462,7 @@ export default function SatelliteEditor({
   }
 
   return (
-    <>
+    <div className={presentation ? "hidden" : "contents"}>
       <NoticeDialog open={notice !== null} onClose={() => setNotice(null)} title="お知らせ" description={notice ?? ""} />
       <ExternalDataDialog
         open={importOpen}
@@ -575,6 +598,7 @@ export default function SatelliteEditor({
                 islFocusRequested={islFocusRequested}
                 onIslFocusHandled={() => setIslFocusRequested(false)}
                 islScopeNote={<ScopeNote editorCount={satellites.length} catalogCount={catalogCount} />}
+                attitudeOverrideCount={attitudeOverrideCount}
                 display={display}
                 onDisplayChange={onDisplayChange}
                 fovConeMinHeight={fovConeMinHeight}
@@ -612,6 +636,7 @@ export default function SatelliteEditor({
                 onTrajectoriesChange={onTrajectoriesChange}
                 trajectoryPlayback={trajectoryPlayback}
                 currentSimMs={currentSimMs}
+                onStartDemo={onStartDemo}
               />
             </TabsContent>
           </Tabs>
@@ -639,6 +664,6 @@ export default function SatelliteEditor({
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }

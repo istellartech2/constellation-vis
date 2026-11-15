@@ -168,6 +168,14 @@ export const UI_EXEMPT_KEYS: readonly string[] = [
   "mission_lat_max",
   "mission_alt_min",
   "mission_alt_max",
+  // `ShellAttitudeSection` (姿勢) — mode select plus mode-specific fields.
+  "attitude_mode",
+  "attitude_station",
+  "attitude_ra_deg",
+  "attitude_dec_deg",
+  "attitude_eclipse_mode",
+  "attitude_track_station",
+  "attitude_slew_deg_s",
 ];
 
 // --- shared field builders -------------------------------------------------

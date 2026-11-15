@@ -13,7 +13,7 @@ import {
   type SatelliteAttitudeSettings,
   type SolarArrayType,
 } from "./attitude/types";
-import { satelliteAttitudeEci, solarArrayIncidence } from "./attitude/satelliteAttitude";
+import { attitudeStateProviderFromSatrec, hasAttitudeSchedule, satelliteAttitudeEci, solarArrayIncidence } from "./attitude/satelliteAttitude";
 export { buildSelectableSatellites, type SelectableSatellite } from "./analysisSatellites";
 
 export type SolarSweepParameter =
@@ -279,6 +279,8 @@ function simulateSolarPower(
   const times = analysisTimes(startTime.getTime(), durationMinutes * 60, stepSeconds);
   const attitudeMode = input.generationFactorMode === "attitude";
   const wantIncidence = attitudeMode || alwaysIncidence;
+  // Past states for the slew limit (one satellite, so the backward scan is affordable).
+  const stateAt = wantIncidence && hasAttitudeSchedule(input.attitude, stations) ? attitudeStateProviderFromSatrec(rec) : undefined;
 
   for (let step = 0; step < times.length; step += 1) {
     const date = new Date(times[step]);
@@ -296,6 +298,8 @@ function simulateSolarPower(
         date,
         input.attitude,
         stations,
+        undefined,
+        stateAt,
       );
       const incidence = solarArrayIncidence(q, sunVectorECI(date), input.solarArrayType);
       incidenceFactor = incidence.cosIncidence;

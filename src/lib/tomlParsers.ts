@@ -1,6 +1,7 @@
 import type { SatelliteSpec } from "./satellites";
 import type { GroundStation, VisibilityMode } from "./groundStations";
 import type { IslShellRange } from "./isl/types";
+import { attitudeOverrideFromRecord } from "./attitude/resolve";
 import {
   expandSatelliteEditorConfig,
   parseSatelliteEditorConfig,
@@ -93,6 +94,15 @@ export interface ConstellationShellConfig {
   mission_lat_max?: number;
   mission_alt_min?: number;
   mission_alt_max?: number;
+
+  // --- per-shell attitude override (see attitude/resolve.ts) ---
+  attitude_mode?: string;
+  attitude_station?: string;
+  attitude_ra_deg?: number;
+  attitude_dec_deg?: number;
+  attitude_eclipse_mode?: string;
+  attitude_track_station?: boolean;
+  attitude_slew_deg_s?: number;
 }
 
 /** The eleven fields that existed before the multi-pattern schema. */
@@ -154,7 +164,14 @@ function generateFromShellsDetailed(con: ConstellationConfig, baseOffset: number
     const startIndex = baseOffset + sats.length;
     const generated = generateShell(shell, epoch, nextSatnum);
     nextSatnum = generated.nextSatnum;
-    sats.push(...generated.specs);
+    // Per-shell attitude: one shared override object for the whole shell. Only
+    // attached when present, so scenarios without one serialize unchanged.
+    const attitude = attitudeOverrideFromRecord(shell as unknown as Record<string, unknown>);
+    if (attitude) {
+      for (const spec of generated.specs) sats.push({ ...spec, attitude, attitudeSource: "shell" });
+    } else {
+      sats.push(...generated.specs);
+    }
 
     // `planeSizes` and `wrapPlanes` are only written when they say something
     // the default greedy plane layout does not — `IslShellRange` is serialized
@@ -218,6 +235,9 @@ function shellFromRecord(row: Record<string, TomlScalar>): ConstellationShellCon
       shell[spec.key] = typeof raw === "string" && raw !== "" ? raw : undefined;
     } else if (spec.kind === "intArray") {
       shell[spec.key] = Array.isArray(raw) ? raw.map((v) => Number(v)) : undefined;
+    } else if (spec.kind === "boolean") {
+      // The line scanner leaves a bare `true` / `false` as a string.
+      shell[spec.key] = raw === "true" ? true : raw === "false" ? false : undefined;
     }
   }
 

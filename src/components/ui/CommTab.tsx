@@ -1,17 +1,23 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Radio, ScanEye } from "lucide-react";
 import PanelSection from "./PanelSection";
 import IslSection from "./IslSection";
+import CollapsibleSubsection from "./CollapsibleSubsection";
 import { CheckRow, ColorRow, FieldGroup, FieldSlider } from "./compactControls";
 import type { GroundStation } from "../../lib/groundStations";
 import type { LayerColorMode } from "../../lib/catalogLayers";
 import type { DisplayOptions } from "../../lib/viewState";
 import type { IslPathResult, IslSettings, IslShellRange } from "../../lib/isl/types";
 import type { SatelliteAttitudeMode, SatelliteAttitudeSettings } from "../../lib/attitude/types";
+import { parseNumericInput } from "../../lib/numericInput";
 import {
   ATTITUDE_MODE_OPTIONS,
+  ATTITUDE_MODE_SHORT_LABELS,
+  attitudeScheduleSummary,
   INERTIAL_DEC_RANGE_DEG,
+  MAX_SLEW_RATE_RANGE_DEG_S,
   INERTIAL_RA_RANGE_DEG,
+  PASS_STATION_MISSING_WARNING,
   STATION_MISSING_WARNING,
   SUN_POINTING_ACCESS_WARNING,
 } from "../../lib/attitude/settings";
@@ -44,6 +50,8 @@ interface Props {
   /** Scroll the ISL part into view (the ISL HUD opened this tab), then report it handled. */
   islFocusRequested?: boolean;
   onIslFocusHandled?: () => void;
+  /** Editor satellites whose shell / own TOML overrides the attitude below (note shown when > 0). */
+  attitudeOverrideCount?: number;
 }
 
 /** One plain-language sentence under a section title saying what it decides. */
@@ -72,6 +80,7 @@ export default function CommTab({
   islScopeNote,
   islFocusRequested = false,
   onIslFocusHandled,
+  attitudeOverrideCount = 0,
   ...isl
 }: Props) {
   const islRef = useRef<HTMLDivElement | null>(null);
@@ -160,7 +169,7 @@ export default function CommTab({
       <div id="comm-attitude" className="scroll-mt-2 border-t border-line pt-3">
       <PanelSection title="衛星の姿勢とセンサ" icon={<ScanEye />}>
         <div className="space-y-4">
-          <Lead>衛星の向き（姿勢）と、機体に載せたセンサ（カメラやアンテナ）が見る範囲です。エディタの全衛星に共通です。</Lead>
+          <Lead>衛星の向き（姿勢）と、機体に載せたセンサ（カメラやアンテナ）が見る範囲です。エディタの全衛星の基本設定で、姿勢はシェル・衛星ごとに上書きできます（シナリオタブの各編集画面）。</Lead>
 
           <FieldGroup title="姿勢" analysis>
             <AttitudeFields
@@ -168,6 +177,11 @@ export default function CommTab({
               groundStations={groundStations}
               onChange={(satelliteAttitude) => onDisplayChange({ satelliteAttitude })}
             />
+            {attitudeOverrideCount > 0 && (
+              <p className="text-[11px] leading-relaxed text-fg-subtle">
+                {attitudeOverrideCount} 機はシェル／衛星ごとの姿勢設定を使います
+              </p>
+            )}
           </FieldGroup>
           <p className="-mt-2 text-[11px] leading-relaxed text-fg-subtle">
             {"使用する解析: 地上局アクセス設計（\"衛星の視野も可視条件に加える\"がオンの時）、日照・電力（\"姿勢から計算\"の時）"}
@@ -296,29 +310,12 @@ function AttitudeFields({
 
       {attitude.mode === "station" && (
         <div className="space-y-2">
-          {!noStations && (
-            <label className="flex flex-col gap-1 text-xs text-fg">
-              <span>向ける地上局</span>
-              <select
-                className="w-full rounded bg-raised px-1 py-1 text-xs text-fg"
-                aria-label="向ける地上局"
-                value={stationFound ? attitude.stationName : ""}
-                onChange={(e) => onChange({ ...attitude, stationName: e.target.value })}
-              >
-                {!stationFound && <option value="">選択してください</option>}
-                {groundStations.map((gs) => (
-                  <option key={gs.name} value={gs.name}>
-                    {gs.name}（最低仰角 {gs.minElevationDeg}°）
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
+          {!noStations && <StationSelect attitude={attitude} groundStations={groundStations} onChange={onChange} />}
           {!stationFound && <Warning>{STATION_MISSING_WARNING}</Warning>}
           {noStations && <p className="text-xs text-fg-subtle">地上局がありません。シナリオタブで追加できます。</p>}
           {stationFound && (
             <p className="text-[11px] leading-relaxed text-fg-subtle">
-              局の最低仰角を超えた瞬間に局へ向き、下回った瞬間に地球指向へ戻ります（旋回時間は考えません）。
+              局の最低仰角を超えたら局へ向き、下回ったら地球指向へ戻ります。旋回の速さは「運用スケジュール」の最大レートで決まります（空欄なら即時）。
             </p>
           )}
         </div>
@@ -352,6 +349,194 @@ function AttitudeFields({
       )}
 
       {attitude.mode === "sun" && <Warning>{SUN_POINTING_ACCESS_WARNING}</Warning>}
+
+      <ScheduleFields attitude={attitude} groundStations={groundStations} onChange={onChange} />
     </div>
+  );
+}
+
+/** 「地上局指向」 station select, shared by the base mode and the pass option. */
+function StationSelect({
+  attitude,
+  groundStations,
+  onChange,
+}: {
+  attitude: SatelliteAttitudeSettings;
+  groundStations: GroundStation[];
+  onChange: (next: SatelliteAttitudeSettings) => void;
+}) {
+  const stationFound = groundStations.some((gs) => gs.name === attitude.stationName);
+  return (
+    <label className="flex flex-col gap-1 text-xs text-fg">
+      <span>向ける地上局</span>
+      <select
+        className="w-full rounded bg-raised px-1 py-1 text-xs text-fg"
+        aria-label="向ける地上局"
+        value={stationFound ? attitude.stationName : ""}
+        onChange={(e) => onChange({ ...attitude, stationName: e.target.value })}
+      >
+        {!stationFound && <option value="">選択してください</option>}
+        {groundStations.map((gs) => (
+          <option key={gs.name} value={gs.name}>
+            {gs.name}（最低仰角 {gs.minElevationDeg}°）
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+/**
+ * 運用スケジュール: station pass > eclipse > base mode, and the slew-rate
+ * limit. Collapsed by default with a one-line summary; opens by itself when
+ * something is set.
+ */
+function ScheduleFields({
+  attitude,
+  groundStations,
+  onChange,
+}: {
+  attitude: SatelliteAttitudeSettings;
+  groundStations: GroundStation[];
+  onChange: (next: SatelliteAttitudeSettings) => void;
+}) {
+  const noStations = groundStations.length === 0;
+  const stationFound = groundStations.some((gs) => gs.name === attitude.stationName);
+  const hasSchedule = !!attitude.trackStationDuringPass || !!attitude.eclipseMode || !!attitude.maxSlewRateDegS;
+  const [open, setOpen] = useState(hasSchedule);
+  const baseIsStation = attitude.mode === "station";
+
+  const setTrack = (on: boolean) => {
+    if (!on) {
+      const { trackStationDuringPass: _drop, ...rest } = attitude;
+      void _drop;
+      onChange(rest);
+      return;
+    }
+    onChange({
+      ...attitude,
+      trackStationDuringPass: true,
+      ...(!stationFound && !noStations ? { stationName: groundStations[0].name } : {}),
+    });
+  };
+  const setEclipse = (value: string) => {
+    const { eclipseMode: _drop, ...rest } = attitude;
+    void _drop;
+    if (!value) {
+      onChange(rest);
+      return;
+    }
+    const mode = value as SatelliteAttitudeMode;
+    onChange({
+      ...rest,
+      eclipseMode: mode,
+      ...(mode === "station" && !stationFound && !noStations ? { stationName: groundStations[0].name } : {}),
+    });
+  };
+  const setRate = (rate: number | null) => {
+    const { maxSlewRateDegS: _drop, ...rest } = attitude;
+    void _drop;
+    onChange(rate && rate > 0 ? { ...rest, maxSlewRateDegS: rate } : rest);
+  };
+
+  return (
+    <div className="space-y-1 pt-1">
+      <CollapsibleSubsection title="運用スケジュール" open={open} onOpenChange={setOpen}>
+        <p className="text-[11px] leading-relaxed text-fg-muted">
+          優先順位: 地上局通過中 → 日陰 → 基本の姿勢。
+        </p>
+        {baseIsStation && !attitude.eclipseMode ? (
+          <p className="text-[11px] leading-relaxed text-fg-subtle">基本が地上局指向のため、通過中は常に局を向きます。</p>
+        ) : (
+          <>
+            <CheckRow
+              id="attitude-track-station"
+              checked={!!attitude.trackStationDuringPass}
+              onChange={setTrack}
+              label={noStations ? "地上局が見えている間は地上局指向にする（地上局がありません）" : "地上局が見えている間は地上局指向にする"}
+            />
+            {attitude.trackStationDuringPass && (
+              <Indented>
+                {!noStations && !baseIsStation && <StationSelect attitude={attitude} groundStations={groundStations} onChange={onChange} />}
+                {!stationFound && <Warning>{PASS_STATION_MISSING_WARNING}</Warning>}
+              </Indented>
+            )}
+          </>
+        )}
+
+        <label className="flex flex-col gap-1 text-xs text-fg">
+          <span>日陰の間の姿勢</span>
+          <select
+            className="w-full rounded bg-raised px-1 py-1 text-xs text-fg"
+            aria-label="日陰の間の姿勢"
+            value={attitude.eclipseMode ?? ""}
+            onChange={(e) => setEclipse(e.target.value)}
+          >
+            <option value="">基本と同じ</option>
+            {ATTITUDE_MODE_OPTIONS.map((o) => (
+              <option
+                key={o.mode}
+                value={o.mode}
+                disabled={o.mode === "station" && noStations && attitude.eclipseMode !== "station"}
+              >
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {attitude.eclipseMode === "station" && !baseIsStation && !attitude.trackStationDuringPass && !noStations && (
+          <StationSelect attitude={attitude} groundStations={groundStations} onChange={onChange} />
+        )}
+        {attitude.eclipseMode === "inertial" && attitude.mode !== "inertial" && (
+          <p className="text-[11px] leading-relaxed text-fg-subtle">
+            赤経・赤緯は基本の慣性指向と共通です（{attitude.inertialRaDeg.toFixed(1)}°, {attitude.inertialDecDeg.toFixed(1)}°）。
+          </p>
+        )}
+
+        <SlewRateInput value={attitude.maxSlewRateDegS} onChange={setRate} />
+        <p className="text-[11px] leading-relaxed text-fg-subtle">
+          姿勢が切り替わるとき、この速さで回ります（{ATTITUDE_MODE_SHORT_LABELS.yawSteering}の180°反転も含む）。空欄なら即時に切り替えます。
+        </p>
+      </CollapsibleSubsection>
+      {!open && <p className="text-[11px] leading-relaxed text-fg-subtle">{attitudeScheduleSummary(attitude)}</p>}
+    </div>
+  );
+}
+
+/** 姿勢変更の最大レート (°/s); empty = 即時. Keeps the typed text as a draft. */
+function SlewRateInput({ value, onChange }: { value: number | undefined; onChange: (v: number | null) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const [min, max] = MAX_SLEW_RATE_RANGE_DEG_S;
+  return (
+    <label className="flex items-center justify-between gap-2 text-xs text-fg">
+      <span>姿勢変更の最大レート</span>
+      <span className="inline-flex items-center gap-1">
+        <input
+          type="number"
+          inputMode="decimal"
+          aria-label="姿勢変更の最大レート"
+          placeholder="即時"
+          min={min}
+          max={max}
+          step={0.1}
+          value={draft ?? (value && value > 0 ? String(value) : "")}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            if (e.target.value.trim() === "") {
+              onChange(null);
+              return;
+            }
+            const n = parseNumericInput(e.target.value);
+            if (Number.isFinite(n)) onChange(n > 0 ? Math.min(max, n) : null);
+          }}
+          onBlur={() => setDraft(null)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") setDraft(null);
+          }}
+          className="w-16 rounded border border-line-strong bg-sunken px-1.5 py-0.5 text-right text-xs tabular-nums text-fg focus:border-brand focus:outline-none"
+        />
+        <span className="text-fg-muted">°/s</span>
+      </span>
+    </label>
   );
 }

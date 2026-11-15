@@ -1,4 +1,5 @@
 import type { OrbitalElements, SatelliteMetadata } from "./satellites";
+import type { SatelliteAttitudeOverride } from "./attitude/types";
 import { LOCAL_SATNUM_MIN } from "./localSatnum";
 
 export type ManualSatelliteType = "tle" | "elements" | "geo";
@@ -63,6 +64,8 @@ export interface ManualSatelliteEntry {
   tle?: SatelliteEditorTle;
   elements?: OrbitalElements;
   geo?: SatelliteEditorGeo;
+  /** Per-satellite attitude (`attitude_*` keys); undefined = global (通信タブ). */
+  attitude?: SatelliteAttitudeOverride;
 }
 
 export interface FormationBaseEntry {
@@ -72,6 +75,8 @@ export interface FormationBaseEntry {
   chiefSatnum: number;
   epoch?: Date;
   formationMode: FormationMode;
+  /** Attitude of every deputy (`attitude_*` keys); undefined = global (通信タブ). */
+  attitude?: SatelliteAttitudeOverride;
 }
 
 export interface CustomFormationEntry extends FormationBaseEntry {

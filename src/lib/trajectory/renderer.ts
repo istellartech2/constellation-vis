@@ -71,6 +71,8 @@ const DEFAULT_VEHICLE_LENGTH_M = 50;
 const MODEL_MIN_PX = 2;
 /** Models projected at least this large replace the marker dot. */
 const MODEL_HIDE_MARKER_PX = 6;
+/** How long before a track's first sample its model is shown standing at that sample (pad countdown). */
+const PREFLIGHT_HOLD_MS = 15 * 60_000;
 const GROUND_DISC_RADIUS_M = 3000;
 const GROUND_DISC_MAX_ALT_KM = 10;
 const GROUND_DISC_FADE_START_KM = 5;
@@ -522,7 +524,11 @@ export class TrajectoryRenderer {
       object.visible = false;
       slot.disc.visible = false;
       if (!entry.track.visible) continue;
-      if (!trajectoryEcefAt(entry.track, simMs, scratchEcefPos)) continue;
+      // Before lift-off the vehicle stands on the pad: hold the first sample
+      // for up to PREFLIGHT_HOLD_MS so a countdown shows the rocket.
+      const firstMs = entry.track.samples[0].timeMs;
+      const drawMs = simMs < firstMs && firstMs - simMs <= PREFLIGHT_HOLD_MS ? firstMs : simMs;
+      if (!trajectoryEcefAt(entry.track, drawMs, scratchEcefPos)) continue;
       const p = scratchEcefPos;
       const lx = p[0] / EARTH_RADIUS_EQUATOR_KM;
       const ly = p[2] / EARTH_RADIUS_POLAR_KM;
@@ -537,9 +543,9 @@ export class TrajectoryRenderer {
       const px = (lengthM * pxPerRad) / Math.max(dist, 1e-3);
       if (px < MODEL_MIN_PX) continue;
 
-      const state = trajectoryStateAt(entry.track, simMs);
+      const state = trajectoryStateAt(entry.track, drawMs);
       if (!state) continue;
-      const q = trajectoryAttitudeAt(entry.track, simMs, state, this.bodyQuat);
+      const q = trajectoryAttitudeAt(entry.track, drawMs, state, this.bodyQuat);
       if (!q) continue;
       entry.hideMarker = px >= MODEL_HIDE_MARKER_PX;
 

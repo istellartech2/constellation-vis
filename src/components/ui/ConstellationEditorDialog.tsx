@@ -24,6 +24,8 @@ import { computeShellDerived, type ShellDerived } from "../../lib/constellationP
 interface Props {
   open: boolean;
   constText: string;
+  /** Ground station names of the scenario (shell 姿勢 › 地上局指向). */
+  stationNames?: readonly string[];
   /** Saves the edited TOML and applies it to the 3D view. */
   onApply: (text: string) => void;
   onClose: () => void;
@@ -62,6 +64,7 @@ type Mode = "shells" | "mission";
 export default function ConstellationEditorDialog({
   open,
   constText,
+  stationNames,
   onApply,
   onClose,
 }: Props) {
@@ -301,6 +304,7 @@ export default function ConstellationEditorDialog({
                 shellIndex={selectedShellIndex}
                 errors={errors}
                 onChange={handleShellChange}
+                stationNames={stationNames}
                 onRedesign={(shell) => openMission(constraintsFromShell(shell))}
               />
             )}

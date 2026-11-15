@@ -15,6 +15,11 @@ import { type SatelliteCameraMode } from "./lib/visualization";
 import { reconcileAttitudeStation } from "./lib/attitude/satelliteAttitude";
 import type { TrajectoryTrack } from "./lib/trajectory/types";
 import type { TrajectoryPlayback } from "./components/ui/TrajectorySection";
+import TourPlayer from "./components/tour/TourPlayer";
+import { useGuidedTour } from "./components/tour/useGuidedTour";
+import { loadDemoIndex } from "./lib/tour/load";
+import { demoIdFromSearch } from "./lib/tour/parse";
+import type { DemoEntry } from "./lib/tour/types";
 import {
   loadLastView,
   saveLastView,
@@ -127,10 +132,25 @@ function App() {
   const [isPaused, setIsPaused] = useState(false);
   const [userPaused, setUserPaused] = useState(false);
   const savedSpeedRef = useRef(INITIAL_SPEED);
+  // Guided tour speed override (× real time, may exceed the playback bar's
+  // range); never persisted. Null outside a tour.
+  const [tourSpeed, setTourSpeed] = useState<number | null>(null);
+  // True while a guided tour is loading or running: the view is not persisted.
+  const tourActiveRef = useRef(false);
 
   useEffect(() => {
-    speedRef.current = isPaused || userPaused ? 0 : Math.pow(10, speedExp);
-  }, [speedExp, isPaused, userPaused]);
+    speedRef.current = isPaused || userPaused ? 0 : (tourSpeed ?? Math.pow(10, speedExp));
+  }, [speedExp, isPaused, userPaused, tourSpeed]);
+  // A tour chapter seeks and changes speed in the same step: write the new
+  // speed straight into speedRef so the first frames after the seek do not
+  // run at the previous chapter's speed (e.g. 3000×) and overshoot.
+  const applyTourSpeed = useCallback(
+    (speed: number | null) => {
+      setTourSpeed(speed);
+      if (!(isPaused || userPaused)) speedRef.current = speed ?? Math.pow(10, speedExp);
+    },
+    [isPaused, userPaused, speedExp],
+  );
 
   // Keep the 地上局指向 station reference in step with a new station list
   // (like reconcileIslEndpoints): called wherever the stations are replaced.
@@ -141,8 +161,12 @@ function App() {
     });
   }, []);
 
+  // The initial station list has arrived (its scene rebuild resets the clock,
+  // so a ?demo= tour waits for it).
+  const [stationsReady, setStationsReady] = useState(false);
   useEffect(() => {
     loadGroundStations().then((stations) => {
+      setStationsReady(true);
       if (scenarioCommittedRef.current) return;
       setGroundStations(stations);
       reconcileAttitude(stations);
@@ -173,6 +197,7 @@ function App() {
 
   // Persist the latest view whenever a display setting changes.
   useEffect(() => {
+    if (tourActiveRef.current) return;
     saveLastView(
       buildViewSettings(displayRef.current, cameraSnapshotRef.current ?? fallbackCamera),
     );
@@ -181,6 +206,8 @@ function App() {
 
   // Stable handler: scene reports its framing on drag/zoom-end and mode changes.
   const handleCameraChange = useCallback((snap: CameraSnapshot) => {
+    // A tour's framings are not the user's view; 終了 restores the one from before.
+    if (tourActiveRef.current) return;
     cameraSnapshotRef.current = snap;
     saveLastView(buildViewSettings(displayRef.current, snap));
   }, []);
@@ -332,6 +359,75 @@ function App() {
     [trajectoryFollowId, sceneRef],
   );
 
+  // Guided tour (presentation mode): drives tracks, seek, speed and camera,
+  // and puts them back on 終了.
+  const guidedTour = useGuidedTour({
+    sceneRef,
+    cameraSnapshotRef,
+    trajectories,
+    setTrajectories,
+    trajectoryFollowId,
+    setTrajectoryFollowId,
+    cameraMode,
+    setCameraMode,
+    userPaused,
+    setUserPaused,
+    setTourSpeed: applyTourSpeed,
+  });
+  const tourStatus = guidedTour.state.status;
+  const presentation = tourStatus !== "idle";
+  useLayoutEffect(() => {
+    tourActiveRef.current = presentation;
+  }, [presentation]);
+  const { start: startTour, stop: stopTour } = guidedTour;
+  const startDemo = useCallback((demo: DemoEntry) => void startTour(demo.tour), [startTour]);
+  const endTour = useCallback(() => {
+    stopTour();
+    // A tour opened from ?demo= should not restart on reload.
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("demo")) {
+      url.searchParams.delete("demo");
+      window.history.replaceState(window.history.state, "", url);
+    }
+  }, [stopTour]);
+
+  // ?demo=<id>: start that tour once the globe and the station list are up.
+  const autoDemoRef = useRef(false);
+  const autoDemoDoneRef = useRef(false);
+  useEffect(() => {
+    if (!stationsReady || autoDemoRef.current || autoDemoDoneRef.current) return;
+    const id = demoIdFromSearch(window.location.search);
+    if (id === null) return;
+    autoDemoRef.current = true;
+    let cancelled = false;
+    let timer = 0;
+    loadDemoIndex(import.meta.env.BASE_URL).then((demos) => {
+      const demo = demos.find((d) => d.id === id);
+      if (cancelled) return;
+      if (!demo) {
+        console.warn(`[tour] demo "${id}" is not listed in demos/index.json`);
+        return;
+      }
+      // Give the station-list rebuild (10 ms deferred) time to land first.
+      const tryStart = () => {
+        if (cancelled) return;
+        if (!sceneRef.current) {
+          timer = window.setTimeout(tryStart, 100);
+          return;
+        }
+        autoDemoDoneRef.current = true;
+        startDemo(demo);
+      };
+      timer = window.setTimeout(tryStart, 50);
+    });
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      // StrictMode re-runs the effect: allow the second run to start it.
+      autoDemoRef.current = false;
+    };
+  }, [stationsReady, sceneRef, startDemo]);
+
   // Snapshot the live view (current display + latest camera framing) on demand,
   // e.g. when the user clicks "save view".
   const getCurrentView = useCallback(
@@ -356,7 +452,7 @@ function App() {
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
       <div ref={mountRef} style={{ width: "100%", height: "100%" }} />
-      {(filingCount > 0 || visibleLayerCount > 0 || isMassMode(satellites.length)) && (
+      {!presentation && (filingCount > 0 || visibleLayerCount > 0 || isMassMode(satellites.length)) && (
         <div className="pointer-events-none absolute top-3 left-1/2 z-10 flex max-w-[75vw] -translate-x-1/2 flex-col items-center gap-1">
           {filingCount > 0 && (
             <div className="glass flex items-center gap-2 rounded-full px-3 py-1 text-xs text-fg" role="status" title="実際の衛星位置・配備状況を示しません">
@@ -382,6 +478,7 @@ function App() {
           )}
         </div>
       )}
+      <div className={presentation ? "hidden" : "contents"}>
       <SatelliteInfo
         satellites={satellites}
         catalog={catalog}
@@ -401,7 +498,8 @@ function App() {
         onOpenAttitudeSettings={() => requestTab({ tab: "isl", anchor: "comm-attitude" })}
         onOpenPowerAnalysis={() => requestTab({ tab: "analysis", analysis: "日照・電力成立性評価" })}
       />
-      {gsInfoText && (
+      </div>
+      {gsInfoText && !presentation && (
         <pre
           ref={gsInfoRef}
           className={`hud-text${display.whiteBackground ? " hud-text-on-white" : ""}`}
@@ -425,13 +523,14 @@ function App() {
         paused={userPaused}
         onPausedChange={setUserPaused}
         timeRef={timeRef}
+        hidden={presentation}
       />
-      <IslHud
+      {!presentation && <IslHud
         islSettings={islSettings}
         islResult={islResult}
         islSwitchCount={islSwitchCount}
         onClick={() => requestTab({ tab: "isl" })}
-      />
+      />}
       <SatelliteEditor
         display={display}
         onDisplayChange={updateDisplay}
@@ -479,6 +578,17 @@ function App() {
         trajectories={trajectories}
         onTrajectoriesChange={setTrajectories}
         trajectoryPlayback={trajectoryPlayback}
+        onStartDemo={startDemo}
+        presentation={presentation}
+      />
+      <TourPlayer
+        state={guidedTour.state}
+        sceneRef={sceneRef}
+        paused={userPaused}
+        speed={tourSpeed}
+        onTogglePause={guidedTour.togglePause}
+        onGoTo={guidedTour.goTo}
+        onStop={endTour}
       />
     </div>
   );

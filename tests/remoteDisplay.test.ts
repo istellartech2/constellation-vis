@@ -47,6 +47,13 @@ describe("validateRemoteDisplay: attitude fields", () => {
     });
   });
 
+  it("accepts the 運用スケジュール fields", () => {
+    expect(validateRemoteDisplay({ satelliteAttitude: { mode: "sun", eclipseMode: "lvlh", trackStationDuringPass: true, stationName: "Tokyo", maxSlewRateDegS: 0.5 } })).toEqual({
+      satelliteAttitude: { mode: "sun", stationName: "Tokyo", inertialRaDeg: 0, inertialDecDeg: 0, eclipseMode: "lvlh", trackStationDuringPass: true, maxSlewRateDegS: 0.5 },
+    });
+    expect(() => validateRemoteDisplay({ satelliteAttitude: { mode: "sun", maxSlewRateDegS: 100 } })).toThrow("maxSlewRateDegS");
+  });
+
   it("rejects bad attitude objects", () => {
     expect(() => validateRemoteDisplay({ satelliteAttitude: null })).toThrow("must be an object");
     expect(() => validateRemoteDisplay({ satelliteAttitude: [] })).toThrow("must be an object");

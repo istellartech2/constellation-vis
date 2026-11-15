@@ -24,9 +24,15 @@
  *                the Sun line, +Y = −orbit normal (as in LVLH) decides the roll.
  * - inertial:    +Z toward RA/Dec, +X toward celestial north projected onto
  *                the plane ⟂ +Z; at the celestial poles ECI +X is used.
+ *
+ * 運用スケジュール (optional): station pass > eclipse > base mode, with an
+ * optional slew-rate limit between laws; see
+ * {@link satelliteAttitudeStateFromContext}. Without it the single-law path
+ * is the exact code from before scheduling.
  */
 import * as satellite from "satellite.js";
 import { sunVectorECI } from "../astronomy";
+import { earthShadowFraction } from "../illumination";
 import type { GroundStation } from "../groundStations";
 import type {
   AttitudeQuaternion,
@@ -171,18 +177,47 @@ interface PreparedStation {
 }
 
 /**
+ * Past satellite state for the slew scan: ECI (TEME) position km and velocity
+ * km/s at `ms` (epoch milliseconds), or null when propagation fails.
+ */
+export type AttitudeStateProvider = (ms: number) => { position: AttitudeVec3; velocity: AttitudeVec3 } | null;
+
+/**
+ * The 運用スケジュール part of a context. Present only when the settings can
+ * switch between laws over time (pass tracking, an eclipse mode that differs
+ * from the base, or a slew rate on a law that switches by itself); absent, the
+ * single-law fast path runs exactly as before scheduling existed.
+ */
+export interface AttitudeSchedule {
+  /** Time of this context (epoch ms). */
+  ms: number;
+  /** Mode in eclipse after the station fallback; null when unused or equal to the base. */
+  eclipseMode: SatelliteAttitudeMode | null;
+  /** 地上局が見えている間は地上局指向 (the station exists). */
+  trackPass: boolean;
+  /** deg/s; 0 = instant switches. */
+  slewRateDegS: number;
+  settings: SatelliteAttitudeSettings;
+  stations: readonly GroundStation[];
+  /** Contexts of past scan times (shared by every satellite using this context). */
+  cache: Map<number, AttitudeTimeContext>;
+}
+
+/**
  * Everything an attitude law needs that depends only on the time (and the
  * settings), so loops over many satellites at one time step compute it once.
  */
 export interface AttitudeTimeContext {
-  /** Mode after the station fallback ({@link effectiveAttitudeMode}). */
+  /** Base mode after the station fallback ({@link effectiveAttitudeMode}). */
   mode: SatelliteAttitudeMode;
   gmst: number;
-  /** Unit Sun direction in ECI; only for the modes that use it. */
+  /** Unit Sun direction in ECI; only when some candidate mode uses it. */
   sunEci: AttitudeVec3 | null;
   station: PreparedStation | null;
   /** Unit boresight for "inertial". */
   inertialZ: AttitudeVec3 | null;
+  /** Scheduling / slew; absent or null → the single-law path. */
+  schedule?: AttitudeSchedule | null;
 }
 
 /**
@@ -194,21 +229,83 @@ export function effectiveAttitudeMode(
   settings: SatelliteAttitudeSettings,
   stations: readonly GroundStation[],
 ): SatelliteAttitudeMode {
-  if (settings.mode === "station") {
-    return stations.some((s) => s.name === settings.stationName) ? "station" : "lvlh";
-  }
-  return settings.mode;
+  return modeWithFallback(settings.mode, settings, stations);
 }
 
-export function prepareAttitudeContext(
+function modeWithFallback(
+  mode: SatelliteAttitudeMode,
+  settings: SatelliteAttitudeSettings,
+  stations: readonly GroundStation[],
+): SatelliteAttitudeMode {
+  if (mode === "station") {
+    return stations.some((s) => s.name === settings.stationName) ? "station" : "lvlh";
+  }
+  return mode;
+}
+
+interface ScheduleParts {
+  eclipseMode: SatelliteAttitudeMode | null;
+  trackPass: boolean;
+  slewRateDegS: number;
+}
+
+/** The effective scheduling of `settings`, or null when it is a single law with instant switches. */
+function scheduleParts(settings: SatelliteAttitudeSettings, stations: readonly GroundStation[]): ScheduleParts | null {
+  const base = effectiveAttitudeMode(settings, stations);
+  const stationFound = stations.some((s) => s.name === settings.stationName);
+  const eclipse = settings.eclipseMode ? modeWithFallback(settings.eclipseMode, settings, stations) : null;
+  const eclipseMode = eclipse && eclipse !== base ? eclipse : null;
+  // With base 地上局指向 the pass already points at the station, except in
+  // eclipse (an eclipse mode would otherwise win), so keep it only then.
+  const trackPass = !!settings.trackStationDuringPass && stationFound && (base !== "station" || !!eclipseMode);
+  const rate = settings.maxSlewRateDegS;
+  const slewRateDegS = typeof rate === "number" && Number.isFinite(rate) && rate > 0 ? rate : 0;
+  // A single law can still switch by itself: 地上局指向 (局が見えたら局へ) and
+  // the yaw-steering 180° flip. Others never switch, so a rate alone is moot.
+  const selfSwitching = base === "station" || base === "yawSteering";
+  if (!eclipseMode && !trackPass && !(slewRateDegS > 0 && selfSwitching)) return null;
+  return { eclipseMode, trackPass, slewRateDegS };
+}
+
+/**
+ * Whether these settings reduce to the legacy 地球指向 (LVLH) pointing at all
+ * times: base mode LVLH (after the station fallback) and no 運用スケジュール
+ * that could switch it. Callers that keep a bit-identical LVLH path must test
+ * this instead of `settings.mode === "lvlh"`.
+ */
+export function isPlainLvlhAttitude(
+  settings: SatelliteAttitudeSettings,
+  stations: readonly GroundStation[],
+): boolean {
+  return effectiveAttitudeMode(settings, stations) === "lvlh" && !scheduleParts(settings, stations);
+}
+
+/** Context counterpart of {@link isPlainLvlhAttitude}. */
+export function isPlainLvlhContext(ctx: AttitudeTimeContext): boolean {
+  return ctx.mode === "lvlh" && !ctx.schedule;
+}
+
+/** Whether the settings switch laws over time (pass / eclipse / slew). */
+export function hasAttitudeSchedule(
+  settings: SatelliteAttitudeSettings,
+  stations: readonly GroundStation[],
+): boolean {
+  return !!scheduleParts(settings, stations);
+}
+
+function buildContext(
   date: Date,
   settings: SatelliteAttitudeSettings,
   stations: readonly GroundStation[],
+  mode: SatelliteAttitudeMode,
+  parts: ScheduleParts | null,
 ): AttitudeTimeContext {
-  const mode = effectiveAttitudeMode(settings, stations);
   const gmst = satellite.gstime(date);
+  const modes = new Set<SatelliteAttitudeMode>([mode]);
+  if (parts?.eclipseMode) modes.add(parts.eclipseMode);
+  if (parts?.trackPass) modes.add("station");
   let station: PreparedStation | null = null;
-  if (mode === "station") {
+  if (modes.has("station")) {
     const gs = stations.find((s) => s.name === settings.stationName)!;
     const lat = gs.latitudeDeg * DEG;
     const lon = gs.longitudeDeg * DEG;
@@ -219,7 +316,7 @@ export function prepareAttitudeContext(
     };
   }
   let inertialZ: AttitudeVec3 | null = null;
-  if (mode === "inertial") {
+  if (modes.has("inertial")) {
     const ra = (Number.isFinite(settings.inertialRaDeg) ? settings.inertialRaDeg : 0) * DEG;
     const dec = (Number.isFinite(settings.inertialDecDeg) ? settings.inertialDecDeg : 0) * DEG;
     inertialZ = v3(Math.cos(dec) * Math.cos(ra), Math.cos(dec) * Math.sin(ra), Math.sin(dec));
@@ -227,10 +324,21 @@ export function prepareAttitudeContext(
   return {
     mode,
     gmst,
-    sunEci: mode === "sun" || mode === "yawSteering" ? sunVectorECI(date) : null,
+    sunEci: modes.has("sun") || modes.has("yawSteering") ? sunVectorECI(date) : null,
     station,
     inertialZ,
+    schedule: parts
+      ? { ms: date.getTime(), ...parts, settings, stations, cache: new Map() }
+      : null,
   };
+}
+
+export function prepareAttitudeContext(
+  date: Date,
+  settings: SatelliteAttitudeSettings,
+  stations: readonly GroundStation[],
+): AttitudeTimeContext {
+  return buildContext(date, settings, stations, effectiveAttitudeMode(settings, stations), scheduleParts(settings, stations));
 }
 
 /** Whether the satellite is at or above the station's minimum elevation. */
@@ -246,12 +354,12 @@ function stationVisible(pos: AttitudeVec3, gmst: number, st: PreparedStation): b
   return dx * st.up.x + dy * st.up.y + dz * st.up.z >= st.sinMinElevation * range;
 }
 
-/** {@link satelliteAttitudeEci} with the time-only part precomputed. */
-export function satelliteAttitudeFromContext(
+/** The single-law attitude (no scheduling): the code path from before 運用スケジュール. */
+function singleLawAttitude(
   posEciKm: AttitudeVec3,
   velEciKmS: AttitudeVec3 | undefined,
   ctx: AttitudeTimeContext,
-  out: AttitudeQuaternion = { w: 1, x: 0, y: 0, z: 0 },
+  out: AttitudeQuaternion,
 ): AttitudeQuaternion {
   const lv = lvlhAxes(posEciKm, velEciKmS);
   const nadir = lv.nadir ?? v3(0, 0, -1);
@@ -295,6 +403,329 @@ export function satelliteAttitudeFromContext(
   }
 }
 
+// ------------------------------------------------------------- scheduling
+
+/**
+ * The law actually in force, resolved to a discrete state: 地上局指向 split
+ * into "station" (局が見えている) and "lvlh", the yaw-steering solution by its
+ * sign. A change of key is a switch the slew limit applies to.
+ */
+type LawKey = "lvlh" | "station" | "sun" | "inertial" | "yaw+" | "yaw-";
+
+/** Why the active mode applies: the base mode, a station pass, or eclipse. */
+export type AttitudeModeReason = "base" | "pass" | "eclipse";
+
+interface ResolvedLaw {
+  key: LawKey;
+  /** The mode chosen by the schedule (before 地上局指向's own fallback to LVLH). */
+  mode: SatelliteAttitudeMode;
+  reason: AttitudeModeReason;
+}
+
+function keyMode(key: LawKey): SatelliteAttitudeMode {
+  return key === "yaw+" || key === "yaw-" ? "yawSteering" : key;
+}
+
+/** Discrete key of `mode` at this state (station visibility, yaw sign). */
+function lawKeyOf(mode: SatelliteAttitudeMode, pos: AttitudeVec3, lv: ReturnType<typeof lvlhAxes>, ctx: AttitudeTimeContext): LawKey {
+  switch (mode) {
+    case "station":
+      return lv.nadir && ctx.station && stationVisible(pos, ctx.gmst, ctx.station) ? "station" : "lvlh";
+    case "yawSteering": {
+      const nadir = lv.nadir ?? v3(0, 0, -1);
+      const s = ctx.sunEci!;
+      const d = dot(s, nadir);
+      const sp = v3(s.x - d * nadir.x, s.y - d * nadir.y, s.z - d * nadir.z);
+      if (norm(sp) <= PARALLEL_EPS) return "lvlh";
+      return lv.x && dot(unit(sp)!, lv.x) < 0 ? "yaw-" : "yaw+";
+    }
+    default:
+      return mode;
+  }
+}
+
+/** Shadow test shared with the rest of the app (`isInEarthShadow`: Sun midpoint behind the limb). */
+function inEarthShadow(pos: AttitudeVec3, ms: number): boolean {
+  return earthShadowFraction(pos, new Date(ms)) >= 0.5;
+}
+
+function resolveLaw(pos: AttitudeVec3, lv: ReturnType<typeof lvlhAxes>, ctx: AttitudeTimeContext, sch: AttitudeSchedule): ResolvedLaw {
+  if (sch.trackPass && lv.nadir && ctx.station && stationVisible(pos, ctx.gmst, ctx.station)) {
+    return { key: "station", mode: "station", reason: "pass" };
+  }
+  if (sch.eclipseMode && inEarthShadow(pos, sch.ms)) {
+    return { key: lawKeyOf(sch.eclipseMode, pos, lv, ctx), mode: sch.eclipseMode, reason: "eclipse" };
+  }
+  return { key: lawKeyOf(ctx.mode, pos, lv, ctx), mode: ctx.mode, reason: "base" };
+}
+
+/** Attitude of one discrete law (the same frames as {@link singleLawAttitude}). */
+function lawAttitude(
+  key: LawKey,
+  pos: AttitudeVec3,
+  lv: ReturnType<typeof lvlhAxes>,
+  ctx: AttitudeTimeContext,
+  out: AttitudeQuaternion,
+): AttitudeQuaternion {
+  const nadir = lv.nadir ?? v3(0, 0, -1);
+  const lvlh = () => frameFromZ(nadir, [lv.x], out);
+  switch (key) {
+    case "yaw+":
+    case "yaw-": {
+      const s = ctx.sunEci!;
+      const d = dot(s, nadir);
+      const sp = v3(s.x - d * nadir.x, s.y - d * nadir.y, s.z - d * nadir.z);
+      if (norm(sp) <= PARALLEL_EPS) return lvlh();
+      const spu = unit(sp)!;
+      const sign = key === "yaw-" ? -1 : 1;
+      return frameFromZ(nadir, [v3(sign * spu.x, sign * spu.y, sign * spu.z), lv.x], out);
+    }
+    case "station": {
+      const st = ctx.station;
+      if (!st || !lv.nadir) return lvlh();
+      const c = Math.cos(ctx.gmst);
+      const s = Math.sin(ctx.gmst);
+      const stEci = v3(st.ecf.x * c - st.ecf.y * s, st.ecf.x * s + st.ecf.y * c, st.ecf.z);
+      const z = unit(v3(stEci.x - pos.x, stEci.y - pos.y, stEci.z - pos.z));
+      if (!z) return lvlh();
+      return frameFromZ(z, [lv.x, lv.w ? cross(v3(-lv.w.x, -lv.w.y, -lv.w.z), z) : null], out);
+    }
+    case "sun": {
+      const s = ctx.sunEci!;
+      const z = v3(-s.x, -s.y, -s.z);
+      return frameFromZ(z, [lv.x, lv.w ? cross(v3(-lv.w.x, -lv.w.y, -lv.w.z), z) : null], out);
+    }
+    case "inertial":
+      return frameFromZ(ctx.inertialZ!, [ECI_Z], out);
+    case "lvlh":
+    default:
+      return lvlh();
+  }
+}
+
+/** Rotation angle between two unit quaternions (rad, 0–π). */
+export function quaternionAngle(a: AttitudeQuaternion, b: AttitudeQuaternion): number {
+  const d = Math.abs(a.w * b.w + a.x * b.x + a.y * b.y + a.z * b.z);
+  return 2 * Math.acos(Math.min(1, d));
+}
+
+/** Shortest-path slerp, canonical sign (w ≥ 0). */
+function slerp(a: AttitudeQuaternion, b: AttitudeQuaternion, f: number, out: AttitudeQuaternion): AttitudeQuaternion {
+  let bw = b.w, bx = b.x, by = b.y, bz = b.z;
+  let d = a.w * bw + a.x * bx + a.y * by + a.z * bz;
+  if (d < 0) {
+    d = -d;
+    bw = -bw;
+    bx = -bx;
+    by = -by;
+    bz = -bz;
+  }
+  let ka: number, kb: number;
+  if (d > 0.9999995) {
+    ka = 1 - f;
+    kb = f;
+  } else {
+    const th = Math.acos(d);
+    const s = Math.sin(th);
+    ka = Math.sin((1 - f) * th) / s;
+    kb = Math.sin(f * th) / s;
+  }
+  const w = ka * a.w + kb * bw;
+  const x = ka * a.x + kb * bx;
+  const y = ka * a.y + kb * by;
+  const z = ka * a.z + kb * bz;
+  const n = Math.hypot(w, x, y, z) * (w < 0 ? -1 : 1);
+  out.w = w / n;
+  out.x = x / n;
+  out.y = y / n;
+  out.z = z / n;
+  return out;
+}
+
+/** `q ⊗ R_Z(angle)`: rotate the body about its own +Z. Canonical sign. */
+function rotateAboutBodyZ(q: AttitudeQuaternion, angle: number, out: AttitudeQuaternion): AttitudeQuaternion {
+  const c = Math.cos(angle / 2);
+  const s = Math.sin(angle / 2);
+  const w = q.w * c - q.z * s;
+  const x = q.x * c + q.y * s;
+  const y = q.y * c - q.x * s;
+  const z = q.z * c + q.w * s;
+  const n = Math.hypot(w, x, y, z) * (w < 0 ? -1 : 1);
+  out.w = w / n;
+  out.x = x / n;
+  out.y = y / n;
+  out.z = z / n;
+  return out;
+}
+
+/** Scan step of the slew search (s). A switch shorter than this can be missed. */
+export const SLEW_SCAN_STEP_S = 10;
+/** Resolution of the switch time (s). */
+export const SLEW_SWITCH_RESOLUTION_S = 0.1;
+
+function contextAt(sch: AttitudeSchedule, ms: number, base: AttitudeTimeContext): AttitudeTimeContext {
+  let c = sch.cache.get(ms);
+  if (!c) {
+    const parts: ScheduleParts = { eclipseMode: sch.eclipseMode, trackPass: sch.trackPass, slewRateDegS: sch.slewRateDegS };
+    c = buildContext(new Date(ms), sch.settings, sch.stations, base.mode, parts);
+    // Past contexts only resolve laws; they share the parent cache key space.
+    c.schedule!.cache = sch.cache;
+    sch.cache.set(ms, c);
+  }
+  return c;
+}
+
+interface PastLaw {
+  key: LawKey;
+  ctx: AttitudeTimeContext;
+  pos: AttitudeVec3;
+  lv: ReturnType<typeof lvlhAxes>;
+}
+
+function pastLaw(ms: number, sch: AttitudeSchedule, base: AttitudeTimeContext, stateAt: AttitudeStateProvider): PastLaw | null {
+  const st = stateAt(ms);
+  if (!st || !finite(st.position)) return null;
+  const ctx = contextAt(sch, ms, base);
+  const lv = lvlhAxes(st.position, st.velocity);
+  return { key: resolveLaw(st.position, lv, ctx, ctx.schedule!).key, ctx, pos: st.position, lv };
+}
+
+/** Slew in progress: from which law, to which, how far along. */
+export interface AttitudeSlewInfo {
+  fromMode: SatelliteAttitudeMode;
+  toMode: SatelliteAttitudeMode;
+  /** 0–1. */
+  progress: number;
+  /** Seconds left. */
+  remainingS: number;
+  /** Total slew angle (deg). */
+  angleDeg: number;
+  /** Switch time (epoch ms). */
+  switchMs: number;
+}
+
+/** Active attitude with the scheduling decision, for readouts (satellite card). */
+export interface AttitudeState {
+  q: AttitudeQuaternion;
+  /** Mode chosen by the schedule (地上局指向 keeps its name while the station is hidden). */
+  mode: SatelliteAttitudeMode;
+  reason: AttitudeModeReason;
+  /** Whether the settings switch laws over time at all. */
+  scheduled: boolean;
+  slew: AttitudeSlewInfo | null;
+}
+
+/**
+ * {@link satelliteAttitudeFromContext} with the scheduling decision.
+ *
+ * Slew (maxSlewRateDegS > 0, `stateAt` given): find the latest switch t_s of
+ * the discrete law by scanning back on the absolute 10 s grid over 180°/rate,
+ * bisect the bracketing cell (fixed endpoints, so t_s does not depend on the
+ * query time) to 0.1 s, and blend from the previous law's attitude to the new
+ * one over T = angle(q_prev(t_s), q_new(t_s)) / rate. The yaw-steering flip
+ * (two solutions 180° apart) turns about body +Z instead of a slerp, whose
+ * shortest path is undefined there. A switch during an unfinished slew starts
+ * from the previous law's own attitude (not chained).
+ */
+export function satelliteAttitudeStateFromContext(
+  posEciKm: AttitudeVec3,
+  velEciKmS: AttitudeVec3 | undefined,
+  ctx: AttitudeTimeContext,
+  stateAt?: AttitudeStateProvider,
+  out: AttitudeQuaternion = { w: 1, x: 0, y: 0, z: 0 },
+): AttitudeState {
+  const sch = ctx.schedule;
+  if (!sch) {
+    return { q: singleLawAttitude(posEciKm, velEciKmS, ctx, out), mode: ctx.mode, reason: "base", scheduled: false, slew: null };
+  }
+  const lv = lvlhAxes(posEciKm, velEciKmS);
+  const now = resolveLaw(posEciKm, lv, ctx, sch);
+  const base: AttitudeState = { q: out, mode: now.mode, reason: now.reason, scheduled: true, slew: null };
+  if (!(sch.slewRateDegS > 0) || !stateAt || !finite(posEciKm)) {
+    lawAttitude(now.key, posEciKm, lv, ctx, out);
+    return base;
+  }
+
+  const rate = sch.slewRateDegS;
+  const stepMs = Math.min(SLEW_SCAN_STEP_S * 1000, Math.max(1000, (180 / rate) * 1000));
+  const windowMs = (180 / rate) * 1000;
+  const t = sch.ms;
+  // Scan back over the absolute grid (multiples of the step, all < t), so
+  // every query time sees the same cells.
+  let g = Math.ceil(t / stepMs) * stepMs - stepMs;
+  let old: PastLaw | null = null;
+  const minMs = t - windowMs - stepMs;
+  for (; g >= minMs; g -= stepMs) {
+    const p = pastLaw(g, sch, ctx, stateAt);
+    if (!p) break;
+    if (p.key !== now.key) {
+      old = p;
+      break;
+    }
+  }
+  if (!old) {
+    lawAttitude(now.key, posEciKm, lv, ctx, out);
+    return base;
+  }
+  // Bisect the cell [g, g + step] on fixed endpoints: key(lo) is the old law.
+  const oldKey = old.key;
+  let lo = g;
+  let hi = g + stepMs;
+  const resMs = SLEW_SWITCH_RESOLUTION_S * 1000;
+  while (hi - lo > resMs) {
+    const mid = (lo + hi) / 2;
+    const p = pastLaw(mid, sch, ctx, stateAt);
+    if (p && p.key === oldKey) lo = mid;
+    else hi = mid;
+  }
+  const ts = Math.min(hi, t);
+  const atSwitch = pastLaw(ts, sch, ctx, stateAt);
+  const flip = (oldKey === "yaw+" && now.key === "yaw-") || (oldKey === "yaw-" && now.key === "yaw+");
+  let angle: number;
+  if (flip) angle = Math.PI;
+  else if (atSwitch) {
+    const qa = lawAttitude(oldKey, atSwitch.pos, atSwitch.lv, atSwitch.ctx, { w: 1, x: 0, y: 0, z: 0 });
+    const qb = lawAttitude(now.key, atSwitch.pos, atSwitch.lv, atSwitch.ctx, { w: 1, x: 0, y: 0, z: 0 });
+    angle = quaternionAngle(qa, qb);
+  } else angle = 0;
+  const durationMs = (angle / DEG / rate) * 1000;
+  const elapsed = t - ts;
+  if (!(durationMs > 0) || elapsed >= durationMs) {
+    lawAttitude(now.key, posEciKm, lv, ctx, out);
+    return base;
+  }
+  const f = Math.max(0, elapsed / durationMs);
+  const qPrev = lawAttitude(oldKey, posEciKm, lv, ctx, { w: 1, x: 0, y: 0, z: 0 });
+  if (flip) rotateAboutBodyZ(qPrev, Math.PI * f, out);
+  else slerp(qPrev, lawAttitude(now.key, posEciKm, lv, ctx, { w: 1, x: 0, y: 0, z: 0 }), f, out);
+  base.slew = {
+    fromMode: keyMode(oldKey),
+    toMode: keyMode(now.key),
+    progress: f,
+    remainingS: (durationMs - elapsed) / 1000,
+    angleDeg: angle / DEG,
+    switchMs: ts,
+  };
+  return base;
+}
+
+/**
+ * {@link satelliteAttitudeEci} with the time-only part precomputed. Without a
+ * 運用スケジュール this is the single-law code path unchanged. `stateAt`
+ * (past states of this satellite) is needed only for the slew limit; without
+ * it, switches are instant.
+ */
+export function satelliteAttitudeFromContext(
+  posEciKm: AttitudeVec3,
+  velEciKmS: AttitudeVec3 | undefined,
+  ctx: AttitudeTimeContext,
+  out: AttitudeQuaternion = { w: 1, x: 0, y: 0, z: 0 },
+  stateAt?: AttitudeStateProvider,
+): AttitudeQuaternion {
+  if (!ctx.schedule) return singleLawAttitude(posEciKm, velEciKmS, ctx, out);
+  return satelliteAttitudeStateFromContext(posEciKm, velEciKmS, ctx, stateAt, out).q;
+}
+
 /** Body → ECI (TEME) attitude quaternion of one satellite at `date`. */
 export function satelliteAttitudeEci(
   posEciKm: AttitudeVec3,
@@ -303,8 +734,22 @@ export function satelliteAttitudeEci(
   settings: SatelliteAttitudeSettings,
   stations: readonly GroundStation[],
   out?: AttitudeQuaternion,
+  stateAt?: AttitudeStateProvider,
 ): AttitudeQuaternion {
-  return satelliteAttitudeFromContext(posEciKm, velEciKmS, prepareAttitudeContext(date, settings, stations), out);
+  return satelliteAttitudeFromContext(posEciKm, velEciKmS, prepareAttitudeContext(date, settings, stations), out, stateAt);
+}
+
+/** {@link AttitudeStateProvider} from an SGP4 record (null when propagation fails). */
+export function attitudeStateProviderFromSatrec(rec: satellite.SatRec): AttitudeStateProvider {
+  return (ms) => {
+    try {
+      const pv = satellite.propagate(rec, new Date(ms));
+      if (!pv?.position || !pv.velocity) return null;
+      return { position: pv.position, velocity: pv.velocity };
+    } catch {
+      return null;
+    }
+  };
 }
 
 /**
@@ -348,17 +793,18 @@ export function solarArrayIncidence(
 
 /**
  * Keep the 地上局指向 station reference in step with the scenario's stations
- * (like `reconcileIslEndpoints`). A missing name is *kept* while the mode is
- * "station" so the UI can warn 「選んだ地上局が見つからないため…」 (the
- * effective mode is lvlh meanwhile); it is dropped in other modes. Station
- * mode without a name picks the first station. Returns `settings` itself
+ * (like `reconcileIslEndpoints`). A missing name is *kept* while the station
+ * is in use (mode or eclipse mode "station", or 地上局が見えている間は地上局指向)
+ * so the UI can warn 「選んだ地上局が見つからないため…」 (the station part
+ * is ignored meanwhile); otherwise it is dropped. In use without a name picks
+ * the first station. Returns `settings` itself
  * when nothing changes.
  */
 export function reconcileAttitudeStation(
   settings: SatelliteAttitudeSettings,
   stations: readonly GroundStation[],
 ): SatelliteAttitudeSettings {
-  if (settings.mode === "station") {
+  if (attitudeUsesStation(settings)) {
     if (settings.stationName === undefined && stations.length > 0) {
       return { ...settings, stationName: stations[0].name };
     }
@@ -370,4 +816,9 @@ export function reconcileAttitudeStation(
     return rest;
   }
   return settings;
+}
+
+/** Whether any part of the settings points at the station (base, eclipse or pass). */
+export function attitudeUsesStation(settings: SatelliteAttitudeSettings): boolean {
+  return settings.mode === "station" || settings.eclipseMode === "station" || !!settings.trackStationDuringPass;
 }

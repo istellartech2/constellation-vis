@@ -228,6 +228,8 @@ export class MassSatelliteLayer {
   private readonly scratch = new Float64Array(3);
   private readonly scratchVel = new Float64Array(3);
   private readonly density: { size: number; alpha: number };
+  private satRadius: number;
+  private selectedPointHidden = false;
   /** Per-row layer index; kept on the CPU for pick filtering and in-place regrouping. */
   private readonly layerIndexes: Uint8Array;
   private readonly layerAttr: THREE.BufferAttribute;
@@ -245,6 +247,7 @@ export class MassSatelliteLayer {
    * materials, so pixel size, shading and glint follow one set of uniforms.
    */
   constructor(catalog: SatelliteCatalog, startMs: number, satRadius: number, colors: MassLayerColors, style: PointStyleUniforms = createPointStyleUniforms()) {
+    this.satRadius = satRadius;
     this.count = catalog.count;
     this.orbits = j2OrbitsFromCatalog(catalog);
     this.refMs = startMs;
@@ -317,8 +320,23 @@ export class MassSatelliteLayer {
   }
 
   setSatRadius(radius: number) {
+    this.satRadius = radius;
     this.material.uniforms.uSize.value = radius * 2 * this.density.size;
-    this.material.uniforms.uSelectedSize.value = radius * 2 * 1.8;
+    this.applySelectedSize();
+  }
+
+  /**
+   * Hide the selected satellite's point (size 0), e.g. while the 近接 model
+   * replaces it. Kept across {@link setSatRadius}.
+   */
+  setSelectedPointHidden(hidden: boolean) {
+    if (hidden === this.selectedPointHidden) return;
+    this.selectedPointHidden = hidden;
+    this.applySelectedSize();
+  }
+
+  private applySelectedSize() {
+    this.material.uniforms.uSelectedSize.value = this.selectedPointHidden ? 0 : this.satRadius * 2 * 1.8;
   }
 
   setSelected(index: number | null) {

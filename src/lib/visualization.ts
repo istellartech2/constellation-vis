@@ -47,10 +47,13 @@ import {
   computeTiltedConeHeight,
 } from "./orbitalCoordinates";
 import {
+  isPlainLvlhAttitude,
+  isPlainLvlhContext,
   prepareAttitudeContext,
   satelliteAttitudeFromContext,
   sensorBoresightEci,
   solarArrayIncidence,
+  type AttitudeStateProvider,
   type AttitudeTimeContext,
 } from "./attitude/satelliteAttitude";
 import {
@@ -60,6 +63,7 @@ import {
   type SatelliteAttitudeSettings,
   type SolarArrayType,
 } from "./attitude/types";
+import { attitudeSettingsKey, resolveSatelliteAttitude } from "./attitude/resolve";
 import { bodyToWorldQuaternion } from "./trajectory/models";
 import {
   DARK_MONOCHROME_EARTH_MODE,
@@ -189,6 +193,28 @@ const DEFAULT_CAMERA_NEAR = 0.1;
 const CLOUD_SHELL_SCALE = 1.008;
 /** Thin shells drawn on the globe (borders 1.0005, night lights 1.001); depth-biased while following. */
 const SURFACE_SHELL_MAX_SCALE = 1.002;
+/**
+ * Globe sphere segments (width × height) while riding close to the ground.
+ * The standard 128 × 128 sphere's facets sag up to ~1.9 km below the true
+ * surface (chord sag R(1 − cos(π/128)) along a parallel), so a vehicle on
+ * the pad appears to hover. 512 × 256 (equal angular spacing in both
+ * directions) cuts that to ~0.12 km; 384 × 192 (~0.21 km) on memory-
+ * constrained devices.
+ */
+const EARTH_DETAIL_SEGMENTS: readonly [number, number] = [512, 256];
+const EARTH_DETAIL_SEGMENTS_CONSTRAINED: readonly [number, number] = [384, 192];
+/** Swap to the detailed globe below this camera altitude while riding (Earth radii), back above the second (hysteresis). */
+const EARTH_DETAIL_ENTER_ALTITUDE = 300 / EARTH_RADIUS_EQUATOR_KM;
+const EARTH_DETAIL_EXIT_ALTITUDE = 350 / EARTH_RADIUS_EQUATOR_KM;
+/**
+ * FOV cones follow the slew limit (最大レート) only up to this many editor
+ * satellites: each slewing cone scans its own past states (~20–30
+ * propagations per frame). Above it cones switch instantly; the 近接 model
+ * always slews.
+ */
+const CONE_SLEW_MAX_SATELLITES = 64;
+/** While riding, ground-station markers and cones closer than this to the camera are hidden (Earth radii). */
+const RIDE_STATION_HIDE_DISTANCE = 200 / EARTH_RADIUS_EQUATOR_KM;
 
 /** Pre-allocated capacity for the ISL path LineSegments geometry. */
 const ISL_PATH_INITIAL_SEGMENTS = 64;
@@ -290,7 +316,24 @@ type TextureLoaderFn = (
 export type SatelliteCameraMode = "free" | "earthCenter" | "thirdPerson" | "closeUp";
 
 /** What the ride-along camera follows: a trajectory track (追従) or the selected satellite (近接). */
-type RideSubject = { kind: "trajectory"; id: string } | { kind: "satellite" };
+export type RideSubject = { kind: "trajectory"; id: string } | { kind: "satellite" };
+
+/**
+ * The user's orbit offset around a ride subject, carried across a scene
+ * rebuild (useSatelliteScene) so the camera is not re-framed side-on.
+ * Holder-local: Earth-fixed for a trajectory, the satellite's LVLH for 近接.
+ */
+export interface RideOffsetSnapshot {
+  subject: RideSubject;
+  /** Camera − orbit target, scene units. */
+  offset: [number, number, number];
+  /** Local vertical at the subject when captured (unit). */
+  up: [number, number, number];
+}
+
+function sameRideSubject(a: RideSubject, b: RideSubject): boolean {
+  return a.kind === b.kind && (a.kind !== "trajectory" || a.id === (b as { id: string }).id);
+}
 
 export interface SatelliteSceneParams {
   mountRef: React.RefObject<HTMLDivElement | null>;
@@ -334,6 +377,12 @@ export interface SatelliteSceneParams {
    * "free". Not fired for setCameraMode.
    */
   onCloseUpEnd?: () => void;
+  /**
+   * Construction only: orbit offset to resume when the scene starts the same
+   * ride (trajectory follow or 近接) it was captured from
+   * ({@link SatelliteScene.getRideOffset}); otherwise ignored.
+   */
+  initialRideOffset?: RideOffsetSnapshot | null;
   /** Attitude law of the editor satellites (FOV cones, 近接 model). Applied live. Default 地球指向. */
   satelliteAttitude?: SatelliteAttitudeSettings;
   /** Solar array type of the 近接 model (1軸追尾 turns the wings). Applied live. Default fixed. */
@@ -451,6 +500,11 @@ export default class SatelliteScene {
   private readonly earthAnimationBindings: EarthAnimationBinding[];
   private readonly setCountryBordersVisible: (visible: boolean) => void;
   private readonly setCloudsVisible: (visible: boolean) => void;
+  /** Swap the globe to the high-segment sphere (close rides) or back. */
+  private readonly setEarthDetailed: (on: boolean) => void;
+  private earthDetailed = false;
+  /** Whether some station marker is hidden because it is near the ride camera. */
+  private rideStationsHidden = false;
   private readonly graticule: THREE.LineSegments;
   private readonly ecliptic: THREE.Line;
   private readonly geoOrbit: THREE.Line;
@@ -497,8 +551,20 @@ export default class SatelliteScene {
   private readonly fovMissBoresightDistances: Float32Array;
   private readonly fovMissBoresightMaterial: THREE.LineDashedMaterial;
   private readonly fovMissBoresights: THREE.LineSegments;
-  /** Attitude context of this frame for the cones (null: 地球指向, today's code path). */
-  private frameAttitude: AttitudeTimeContext | null = null;
+  /**
+   * Editor satellites' resolved attitude (global setting + shell/satellite
+   * overrides, attitude/resolve.ts), bucketed by equal settings. Rebuilt
+   * when the global setting object changes; the satellites themselves only
+   * change with a scene rebuild.
+   */
+  private attitudeGroupsGlobal: SatelliteAttitudeSettings | null = null;
+  private attitudeGroups: SatelliteAttitudeSettings[] = [];
+  /** Group of each editor satellite; null: every satellite is in group 0 (no overrides). */
+  private satAttitudeGroup: Uint32Array | null = null;
+  /** This frame's attitude context per group for the cones (null entry: 地球指向, today's code path). */
+  private frameAttitudes: (AttitudeTimeContext | null)[] = [];
+  /** Past-state lookups of editor satellites for the slew limit, by index (created on demand). */
+  private readonly attitudeStateProviders = new Map<number, AttitudeStateProvider>();
   private readonly attitudeQuat: AttitudeQuaternion = { w: 1, x: 0, y: 0, z: 0 };
   private readonly fovConeColor: THREE.Color;
   private readonly satelliteVisibleColor: THREE.Color;
@@ -590,6 +656,8 @@ export default class SatelliteScene {
   private rideReturn: CameraSnapshot | null = null;
   /** Frame the subject from scratch on the next ridden frame. */
   private rideNeedsFraming = false;
+  /** Offset to frame the next ride frame with instead of the default (rebuilds). */
+  private pendingRideOffset: RideOffsetSnapshot | null = null;
   /** Subject position / velocity in camera-holder coordinates (scene units, per second). */
   private readonly ridePos = new THREE.Vector3();
   private readonly rideVel = new THREE.Vector3();
@@ -617,6 +685,13 @@ export default class SatelliteScene {
   private trajectoryTracks: TrajectoryTrack[] = [];
   /** Track whose event labels the renderer currently shows. */
   private focusedTrajectoryTrack: string | null = null;
+  /** Guided tours: track the free globe camera keeps centred (see setGlobeChase). */
+  private globeChaseId: string | null = null;
+  private globeChaseLastRealMs: number | null = null;
+  private readonly globeChaseDir = new THREE.Vector3();
+  private readonly globeChaseVel = new THREE.Vector3();
+  private readonly globeChaseQuat = new THREE.Quaternion();
+  private readonly globeChaseIdentity = new THREE.Quaternion();
 
   private params: SatelliteSceneParams;
 
@@ -712,6 +787,7 @@ export default class SatelliteScene {
     this.setCountryBordersVisible(params.showCountryBorders);
     this.setCloudsVisible = earth.setCloudsVisible;
     this.setCloudsVisible(params.showClouds);
+    this.setEarthDetailed = earth.setDetailed;
     this.earthGroup.scale.set(1, EARTH_FLATTENING, 1);
     this.scene.add(this.earthGroup);
 
@@ -980,6 +1056,16 @@ export default class SatelliteScene {
     // 近接 survives a rebuild only while a satellite is selected; the first
     // frame drops it (onCloseUpEnd) otherwise.
     if (this.cameraMode === "closeUp") this.startSatelliteRide(null);
+    // Rebuilt mid-ride: resume the user's orbit offset (the first frame,
+    // below, would otherwise frame the subject from the default angle).
+    const resume = this.params.initialRideOffset;
+    if (
+      resume && this.ride && sameRideSubject(resume.subject, this.ride)
+      && [...resume.offset, ...resume.up].every(Number.isFinite)
+      && Math.hypot(...resume.offset) > 0 && Math.hypot(...resume.up) > 0
+    ) {
+      this.pendingRideOffset = resume;
+    }
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
@@ -1067,7 +1153,8 @@ export default class SatelliteScene {
       getPointerNdc(event);
       raycaster.params.Points!.threshold = this.params.satRadius * 2;
       raycaster.setFromCamera(pointer, this.camera);
-      const stationHits = raycaster.intersectObjects(this.stationMeshes, false);
+      // Raycasting ignores `visible`: skip markers hidden near the ride camera.
+      const stationHits = raycaster.intersectObjects(this.stationMeshes, false).filter((hit) => hit.object.visible);
       if (stationHits.length > 0) {
         const hitObj = stationHits[0].object as THREE.Object3D;
         const idx = this.stationMeshes.findIndex((m) => m === hitObj);
@@ -1285,6 +1372,84 @@ export default class SatelliteScene {
   }
 
   /**
+   * Whole-globe framing for the free camera (guided tours): look at the
+   * Earth's centre from `distance` Earth radii (default: fit the globe to the
+   * screen, as the default view), from the direction of track `id`'s current
+   * position (clamped into its span) or, without a track, from the current
+   * direction. Not reported through onCameraChange. Does nothing while
+   * following a trajectory or in the satellite camera modes.
+   */
+  frameGlobe(id: string | null = null, distance?: number) {
+    if (this.cameraMode !== "free" || this.ride !== null) return;
+    this.syncCameraHolder(this.currentSimDate, satellite.gstime(this.currentSimDate));
+    const dir = this.globeChaseDir;
+    if (!(id !== null && this.trackDirectionInHolder(id, this.currentSimDate, dir))) {
+      dir.subVectors(this.camera.position, this.controls.target);
+      if (dir.lengthSq() < 1e-12) dir.copy(DEFAULT_CAMERA_POSITION);
+      dir.normalize();
+    }
+    const vHalf = THREE.MathUtils.degToRad(this.camera.fov / 2);
+    const hHalf = Math.atan(Math.tan(vHalf) * this.camera.aspect);
+    const fitDistance = Math.max(DEFAULT_CAMERA_POSITION.length(), 1.15 / Math.sin(Math.min(vHalf, hHalf)));
+    const d = THREE.MathUtils.clamp(distance ?? fitDistance, this.controls.minDistance, this.controls.maxDistance);
+    this.controls.enabled = true;
+    this.controls.target.copy(DEFAULT_CAMERA_TARGET);
+    this.camera.position.copy(dir).multiplyScalar(d);
+    this.camera.up.copy(UP_AXIS).applyQuaternion(this.cameraHolder.quaternion);
+    this.camera.lookAt(this.cameraHolder.localToWorld(this.tempVectorB.copy(DEFAULT_CAMERA_TARGET)));
+    this.controls.update();
+  }
+
+  /**
+   * Guided tours: while the free camera is not following anything, turn it
+   * about the Earth's centre each frame so trajectory track `id` stays in
+   * the middle of the view (smoothed, the distance — zoom — is kept). Null
+   * stops it. Not persisted; the scene never sets it on its own.
+   */
+  setGlobeChase(id: string | null) {
+    this.globeChaseId = id;
+    this.globeChaseLastRealMs = null;
+  }
+
+  /** Unit direction of track `id` at `simDate` (clamped into its span) in camera-holder coordinates. */
+  private trackDirectionInHolder(id: string, simDate: Date, out: THREE.Vector3): boolean {
+    const track = this.trajectoryTracks.find((t) => t.id === id);
+    if (!track || track.samples.length === 0) return false;
+    const first = track.samples[0].timeMs;
+    const last = track.samples[track.samples.length - 1].timeMs;
+    const t = Math.min(Math.max(simDate.getTime(), first), last);
+    if (!this.trajectoryRenderer.localStateAt(id, t, out, this.globeChaseVel)) return false;
+    out.applyAxisAngle(UP_AXIS, satellite.gstime(simDate));
+    this.tempQuaternionA.copy(this.cameraHolder.quaternion).invert();
+    out.applyQuaternion(this.tempQuaternionA);
+    if (out.lengthSq() < 1e-12) return false;
+    out.normalize();
+    return true;
+  }
+
+  /** Per-frame globe chase (before OrbitControls.update), see {@link setGlobeChase}. */
+  private updateGlobeChase(simDate: Date, nowReal: number) {
+    const id = this.globeChaseId;
+    if (id === null) return;
+    const dtS = this.globeChaseLastRealMs === null ? 0 : Math.min(0.5, (nowReal - this.globeChaseLastRealMs) / 1000);
+    const first = this.globeChaseLastRealMs === null;
+    this.globeChaseLastRealMs = nowReal;
+    const dir = this.globeChaseDir;
+    if (!this.trackDirectionInHolder(id, simDate, dir)) return;
+    this.controls.target.copy(DEFAULT_CAMERA_TARGET);
+    const offset = this.tempVectorB.copy(this.camera.position);
+    const distance = offset.length();
+    if (distance < 1e-6) return;
+    offset.divideScalar(distance);
+    // Exponential smoothing (time constant 0.5 s); snap on the first frame.
+    const alpha = first ? 1 : 1 - Math.exp(-dtS / 0.5);
+    this.globeChaseQuat.setFromUnitVectors(offset, dir);
+    this.globeChaseQuat.slerpQuaternions(this.globeChaseIdentity, this.globeChaseQuat, alpha);
+    offset.applyQuaternion(this.globeChaseQuat);
+    this.camera.position.copy(offset).multiplyScalar(distance);
+  }
+
+  /**
    * Ride along with trajectory track `id` (null: stop). The camera holder is
    * held Earth-fixed so the ground does not turn, OrbitControls orbit and
    * zoom around the vehicle (limits scaled to its model length) with the
@@ -1308,6 +1473,23 @@ export default class SatelliteScene {
     if (this.ride === null) this.rideReturn = this.getCameraSnapshot();
     this.ride = { kind: "trajectory", id };
     this.rideNeedsFraming = true;
+    this.pendingRideOffset = null;
+  }
+
+  /**
+   * The current ride's orbit offset (null when not riding or not framed
+   * yet), for {@link SatelliteSceneParams.initialRideOffset} after a rebuild.
+   */
+  getRideOffset(): RideOffsetSnapshot | null {
+    if (this.ride === null) return null;
+    if (this.rideNeedsFraming) return this.pendingRideOffset;
+    const offset = this.tempVectorA.subVectors(this.camera.position, this.controls.target);
+    const up = this.ridePrevUp;
+    return {
+      subject: { ...this.ride },
+      offset: [offset.x, offset.y, offset.z],
+      up: [up.x, up.y, up.z],
+    };
   }
 
   /**
@@ -1319,6 +1501,7 @@ export default class SatelliteScene {
     this.rideReturn = back && back.mode === "free" && isFiniteCameraSnapshot(back) ? back : this.defaultFreeSnapshot();
     this.ride = { kind: "satellite" };
     this.rideNeedsFraming = true;
+    this.pendingRideOffset = null;
     this.rideSatValid = false;
     // Hide the dot before the camera moves in (see closeUpDotGraceFrames).
     this.closeUpDotGraceFrames = CLOSE_UP_DOT_GRACE_FRAMES;
@@ -2167,8 +2350,8 @@ export default class SatelliteScene {
     this.linkCount = 0;
     this.fovConeCount = 0;
     this.fovMissCount = 0;
-    // One attitude context per frame for every cone (null: 地球指向 → today's path).
-    this.frameAttitude = this.params.showSatelliteFovCones ? this.coneAttitudeContext(simDate) : null;
+    // One attitude context per frame per attitude group (null: 地球指向 → today's path).
+    this.prepareFrameAttitudes(simDate);
     const satPosition = this.tempVectorB;
 
     const julianDate = satellite.jday(simDate);
@@ -2222,7 +2405,7 @@ export default class SatelliteScene {
         }
 
         if (this.params.showSatelliteFovCones) {
-          this.pushFovCone(pv.position, pv.velocity ?? null, satPosition, sinHalfAngle, cosHalfAngle);
+          this.pushFovCone(i, pv.position, pv.velocity ?? null, satPosition, sinHalfAngle, cosHalfAngle);
         }
       } else {
         // Propagation failed: explicitly mark satellite as hidden (no link, no cone).
@@ -2257,7 +2440,7 @@ export default class SatelliteScene {
         hasSelectedSat = true;
         hasSelectedVelocity = !!st.velocity;
         if (this.params.showSatelliteFovCones && selected < this.satCount) {
-          this.pushFovCone(st.position, st.velocity, satPosition, sinHalfAngle, cosHalfAngle);
+          this.pushFovCone(selected, st.position, st.velocity, satPosition, sinHalfAngle, cosHalfAngle);
         }
       }
     }
@@ -2289,10 +2472,12 @@ export default class SatelliteScene {
 
     this.updateCameraFollow(hasSelectedSat, hasSelectedVelocity);
     const riding = following && this.updateRide(simDate.getTime());
+    if (this.cameraMode === "free" && !following && this.globeChaseId !== null) this.updateGlobeChase(simDate, nowReal);
     if (this.cameraMode === "free" || this.cameraMode === "closeUp") {
       this.controls.update();
     }
     if (riding) this.finishRideFrame();
+    this.updateRideStationMarkers(riding);
     this.updateSatelliteVehicle(simDate, riding);
     if (this.focusedTrajectoryTrack !== this.trajectoryFollowId) {
       this.focusedTrajectoryTrack = this.trajectoryFollowId;
@@ -2362,9 +2547,19 @@ export default class SatelliteScene {
     const offset = this.tempVectorD;
     if (this.rideNeedsFraming) {
       this.rideNeedsFraming = false;
-      if (track) this.trajectoryFollowDirection(track, t, up, vel, offset);
-      else this.satelliteFollowDirection(up, vel, offset);
-      offset.multiplyScalar(TRAJECTORY_FOLLOW_START_LENGTHS * length);
+      const resume = this.pendingRideOffset;
+      this.pendingRideOffset = null;
+      if (resume) {
+        // Rebuilt mid-ride: the offset from before, carried to today's vertical.
+        offset.fromArray(resume.offset);
+        this.tempQuaternionB.setFromUnitVectors(this.tempVectorC.fromArray(resume.up).normalize(), up);
+        offset.applyQuaternion(this.tempQuaternionB);
+        offset.setLength(THREE.MathUtils.clamp(offset.length(), this.controls.minDistance, this.controls.maxDistance));
+      } else {
+        if (track) this.trajectoryFollowDirection(track, t, up, vel, offset);
+        else this.satelliteFollowDirection(up, vel, offset);
+        offset.multiplyScalar(TRAJECTORY_FOLLOW_START_LENGTHS * length);
+      }
       this.controls.enabled = true;
     } else {
       offset.subVectors(this.camera.position, this.controls.target);
@@ -2488,6 +2683,43 @@ export default class SatelliteScene {
     // Below the cloud shell its double-sided sphere would roof the sky.
     this.setCloudsVisible(this.params.showClouds && this.camera.position.length() > CLOUD_SHELL_SCALE + 0.0005);
     this.setSurfaceShellDepthBias(true);
+    // Low over the ground the 128-segment facets (~2 km sag) show: use the
+    // detailed globe there (hysteresis, so it is not rebuilt on every wobble).
+    const cameraAltitude = this.camera.position.length() - 1;
+    const detailed = this.earthDetailed
+      ? cameraAltitude < EARTH_DETAIL_EXIT_ALTITUDE
+      : cameraAltitude < EARTH_DETAIL_ENTER_ALTITUDE;
+    if (detailed || this.earthDetailed) this.setEarthDetailed(detailed);
+    this.earthDetailed = detailed;
+  }
+
+  /**
+   * While riding, hide ground-station markers (64 km spheres) and their
+   * cones within {@link RIDE_STATION_HIDE_DISTANCE} of the camera, so a
+   * station at the launch site does not swallow the view. Station meshes
+   * are scene children (world space); the camera is holder-local.
+   */
+  private updateRideStationMarkers(riding: boolean) {
+    if (!riding) {
+      if (!this.rideStationsHidden) return;
+      this.rideStationsHidden = false;
+      for (const mesh of this.stationMeshes) mesh.visible = true;
+      // The per-frame station loop restores the cones' own visibility.
+      return;
+    }
+    const cameraWorld = this.tempVectorA.copy(this.camera.position).applyMatrix4(this.cameraHolder.matrixWorld);
+    const limitSq = RIDE_STATION_HIDE_DISTANCE * RIDE_STATION_HIDE_DISTANCE;
+    let anyHidden = false;
+    this.stationMeshes.forEach((mesh, idx) => {
+      const near = mesh.position.distanceToSquared(cameraWorld) < limitSq;
+      mesh.visible = !near;
+      if (near) {
+        anyHidden = true;
+        const cone = this.stationConeMeshes[idx];
+        if (cone) cone.visible = false;
+      }
+    });
+    this.rideStationsHidden = anyHidden;
   }
 
   private setCameraNear(near: number) {
@@ -2605,6 +2837,7 @@ export default class SatelliteScene {
     if (this.ride === null) return;
     this.ride = null;
     this.rideNeedsFraming = false;
+    this.pendingRideOffset = null;
     this.rideSatValid = false;
     const back = this.rideReturn;
     this.rideReturn = null;
@@ -2616,6 +2849,10 @@ export default class SatelliteScene {
     this.setCameraNear(DEFAULT_CAMERA_NEAR);
     this.setCloudsVisible(this.params.showClouds);
     this.setSurfaceShellDepthBias(false);
+    if (this.earthDetailed) {
+      this.earthDetailed = false;
+      this.setEarthDetailed(false);
+    }
     this.closeUpDotGraceFrames = 0;
     this.setSelectedDotHidden(false);
     this.trajectoryRenderer.setSatelliteVehicle(null);
@@ -2632,18 +2869,79 @@ export default class SatelliteScene {
   // --- 近接: satellite model, attitude overlays, attitude cones ---------------
 
   /**
-   * Attitude settings of the editor satellites (defaults when unset).
+   * Global attitude setting of the editor satellites (通信タブ; defaults when unset).
    */
   private attitudeSettings(): SatelliteAttitudeSettings {
     return this.params.satelliteAttitude ?? DEFAULT_SATELLITE_ATTITUDE;
   }
 
-  /** Per-frame attitude context for the FOV cones; null for 地球指向 (today's exact code path). */
-  private coneAttitudeContext(simDate: Date): AttitudeTimeContext | null {
-    const settings = this.params.satelliteAttitude;
-    if (!settings || settings.mode === "lvlh") return null;
+  /** (Re)bucket the editor satellites by resolved attitude when the global setting changed. */
+  private ensureAttitudeGroups() {
+    const global = this.attitudeSettings();
+    if (global === this.attitudeGroupsGlobal) return;
+    this.attitudeGroupsGlobal = global;
+    this.attitudeGroups = [global];
+    this.satAttitudeGroup = null;
+    const specs = this.params.satellites;
+    const keys = new Map<string, number>([[attitudeSettingsKey(global), 0]]);
+    for (let i = 0; i < specs.length; i++) {
+      const resolved = resolveSatelliteAttitude(specs[i], global);
+      if (resolved === global) continue;
+      const key = attitudeSettingsKey(resolved);
+      let group = keys.get(key);
+      if (group === undefined) {
+        group = this.attitudeGroups.length;
+        keys.set(key, group);
+        this.attitudeGroups.push(resolved);
+      }
+      if (group === 0) continue;
+      this.satAttitudeGroup ??= new Uint32Array(specs.length);
+      this.satAttitudeGroup[i] = group;
+    }
+  }
+
+  /** Resolved attitude settings of editor satellite `index`. */
+  private satelliteAttitudeSettings(index: number): SatelliteAttitudeSettings {
+    this.ensureAttitudeGroups();
+    return this.attitudeGroups[this.satAttitudeGroup?.[index] ?? 0];
+  }
+
+  /**
+   * Attitude context for one settings group at `simDate`; null keeps
+   * today's exact 地球指向 cone (plain LVLH, or a 地上局指向 whose station is
+   * gone, without a schedule).
+   */
+  private attitudeContext(simDate: Date, settings: SatelliteAttitudeSettings): AttitudeTimeContext | null {
+    if (isPlainLvlhAttitude(settings, this.params.groundStations)) return null;
     const ctx = prepareAttitudeContext(simDate, settings, this.params.groundStations);
-    return ctx.mode === "lvlh" ? null : ctx;
+    return isPlainLvlhContext(ctx) ? null : ctx;
+  }
+
+  /**
+   * Past states of editor satellite `index` for the slew limit, from the
+   * propagator that draws it (SGP4, or the GPU layer's J2 twin). Fresh
+   * objects: the layers' stateAt reuses its scratch.
+   */
+  private attitudeStateProvider(index: number): AttitudeStateProvider {
+    let provider = this.attitudeStateProviders.get(index);
+    if (!provider) {
+      provider = (ms) => {
+        const st = this.propagateIndex(index, new Date(ms));
+        if (!st?.velocity) return null;
+        const { position: p, velocity: v } = st;
+        return { position: { x: p.x, y: p.y, z: p.z }, velocity: { x: v.x, y: v.y, z: v.z } };
+      };
+      this.attitudeStateProviders.set(index, provider);
+    }
+    return provider;
+  }
+
+  /** Per-frame attitude contexts of every group for the FOV cones (empty when cones are off). */
+  private prepareFrameAttitudes(simDate: Date) {
+    this.frameAttitudes.length = 0;
+    if (!this.params.showSatelliteFovCones) return;
+    this.ensureAttitudeGroups();
+    for (const settings of this.attitudeGroups) this.frameAttitudes.push(this.attitudeContext(simDate, settings));
   }
 
   /**
@@ -2660,9 +2958,17 @@ export default class SatelliteScene {
       this.setSelectedDotHidden(entering);
       return;
     }
-    const settings = this.attitudeSettings();
+    // rideSatValid implies an editor satellite is selected.
+    const index = this.selectedIndex!;
+    const settings = this.satelliteAttitudeSettings(index);
     const ctx = prepareAttitudeContext(simDate, settings, this.params.groundStations);
-    const q = satelliteAttitudeFromContext(this.rideSatEciPos, this.rideSatEciVel, ctx, this.attitudeQuat);
+    const q = satelliteAttitudeFromContext(
+      this.rideSatEciPos,
+      this.rideSatEciVel,
+      ctx,
+      this.attitudeQuat,
+      this.attitudeStateProvider(index),
+    );
     const bodyToWorld = bodyToWorldQuaternion(q, 0, this.rideBodyToWorld);
     const sun = sunVectorECI(simDate);
     const sunNorm = Math.hypot(sun.x, sun.y, sun.z) || 1;
@@ -2697,15 +3003,10 @@ export default class SatelliteScene {
    * dot ~100 km across would otherwise fill the view metres from the camera.
    */
   private setSelectedDotHidden(hidden: boolean) {
-    if (hidden === this.selectedDotHidden && !hidden) return;
+    if (hidden === this.selectedDotHidden) return;
     this.selectedDotHidden = hidden;
     this.cpuHideSelectedUniform.value = hidden ? 1 : 0;
-    if (this.massLayer) {
-      // MassSatelliteLayer has no setter for this; its uniform is reset by
-      // setSatRadius, so it is re-applied every frame while hidden.
-      const uniforms = (this.massLayer as unknown as { material?: THREE.ShaderMaterial }).material?.uniforms;
-      if (uniforms?.uSelectedSize) uniforms.uSelectedSize.value = hidden ? 0 : this.params.satRadius * 2 * 1.8;
-    }
+    this.massLayer?.setSelectedPointHidden(hidden);
   }
 
   private ensureLinkCapacity(links: number) {
@@ -2752,19 +3053,22 @@ export default class SatelliteScene {
   /**
    * Append one FOV cone instance. 地球指向 (the default): today's exact
    * geometry, skipped when the cone does not reach the Earth. Other
-   * attitudes: the boresight of this frame's attitude law; a cone whose axis
+   * attitudes (satellite `index`'s resolved setting, shell/satellite overrides
+   * included): the boresight of this frame's attitude law; a cone whose axis
    * misses the Earth is drawn grey and fainter (to its edge's Earth
    * intersection, else to the satellite's altitude).
    */
   private pushFovCone(
+    index: number,
     positionEci: Vec3,
     velocityEci: Vec3 | null,
     satPosition: THREE.Vector3,
     sinHalfAngle: number,
     cosHalfAngle: number,
   ) {
-    if (this.frameAttitude) {
-      this.pushAttitudeFovCone(this.frameAttitude, positionEci, velocityEci, satPosition);
+    const attitude = this.frameAttitudes[this.satAttitudeGroup?.[index] ?? 0];
+    if (attitude) {
+      this.pushAttitudeFovCone(index, attitude, positionEci, velocityEci, satPosition);
       return;
     }
     if (this.fovConeCount >= this.fovCones.instanceMatrix.count) return;
@@ -2817,8 +3121,15 @@ export default class SatelliteScene {
 
   private readonly boresightScratch = { x: 0, y: 0, z: 0 };
 
-  private pushAttitudeFovCone(ctx: AttitudeTimeContext, positionEci: Vec3, velocityEci: Vec3 | null, satPosition: THREE.Vector3) {
-    const q = satelliteAttitudeFromContext(positionEci, velocityEci ?? undefined, ctx, this.attitudeQuat);
+  private pushAttitudeFovCone(
+    index: number,
+    ctx: AttitudeTimeContext,
+    positionEci: Vec3,
+    velocityEci: Vec3 | null,
+    satPosition: THREE.Vector3,
+  ) {
+    const stateAt = this.satCount <= CONE_SLEW_MAX_SATELLITES ? this.attitudeStateProvider(index) : undefined;
+    const q = satelliteAttitudeFromContext(positionEci, velocityEci ?? undefined, ctx, this.attitudeQuat, stateAt);
     const dir = sensorBoresightEci(q, this.params.fovConeAlongTrackDeg, this.params.fovConeCrossTrackDeg, this.boresightScratch);
     const hits = boresightPointsAtEarth(positionEci, dir, EARTH_RADIUS_EQUATOR_KM);
     const mesh = hits ? this.fovCones : this.fovMissCones;
@@ -2907,7 +3218,7 @@ export default class SatelliteScene {
         -st.position.y / EARTH_RADIUS_EQUATOR_KM,
       );
       this.pushLink(gsScene[s], satPosition);
-      if (conesOn && i !== lastSat) this.pushFovCone(st.position, st.velocity, satPosition, sinHalfAngle, cosHalfAngle);
+      if (conesOn && i !== lastSat) this.pushFovCone(i, st.position, st.velocity, satPosition, sinHalfAngle, cosHalfAngle);
       lastSat = i;
     }
   }
@@ -3343,6 +3654,41 @@ export default class SatelliteScene {
       (surfaceMesh.material as THREE.Material).dispose();
     });
 
+    // Close rides: one shared high-segment sphere replaces every layer's
+    // 128-segment geometry (they differ only by mesh.scale), see
+    // EARTH_DETAIL_SEGMENTS. Lazily built, disposed when the ride climbs
+    // out or ends; the originals are kept in userData and put back.
+    let detailedGeometry: THREE.SphereGeometry | null = null;
+    const setDetailed = (on: boolean) => {
+      if (on) {
+        if (!detailedGeometry) {
+          const [w, h] = isMemoryConstrainedDevice() ? EARTH_DETAIL_SEGMENTS_CONSTRAINED : EARTH_DETAIL_SEGMENTS;
+          detailedGeometry = new THREE.SphereGeometry(1, w, h);
+        }
+        // Re-run every ride frame: overlays created lazily mid-ride
+        // (borders, clouds) start on the 128-segment clone.
+        for (const child of group.children) {
+          const mesh = child as THREE.Mesh;
+          if (!mesh.isMesh || mesh.geometry === detailedGeometry || !(mesh.geometry instanceof THREE.SphereGeometry)) continue;
+          mesh.userData.standardGeometry = mesh.geometry;
+          mesh.geometry = detailedGeometry;
+        }
+        return;
+      }
+      if (!detailedGeometry) return;
+      for (const child of group.children) {
+        const mesh = child as THREE.Mesh;
+        const standard = mesh.userData.standardGeometry as THREE.BufferGeometry | undefined;
+        if (!mesh.isMesh || !standard) continue;
+        mesh.geometry = standard;
+        delete mesh.userData.standardGeometry;
+      }
+      detailedGeometry.dispose();
+      detailedGeometry = null;
+    };
+    // First: the other disposers free `mesh.geometry`, which must be the originals.
+    disposeFns.unshift(() => setDetailed(false));
+
     // Startup: report progress, reveal the globe once the small images are
     // on the GPU, then fetch the 8k images one at a time so they neither
     // compete with the first images for bandwidth nor stack GPU uploads.
@@ -3371,6 +3717,7 @@ export default class SatelliteScene {
       animatedMaterials,
       setCountryBordersVisible,
       setCloudsVisible,
+      setDetailed,
     };
   }
 

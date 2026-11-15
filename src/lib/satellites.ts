@@ -1,3 +1,4 @@
+import type { SatelliteAttitudeOverride } from "./attitude/types";
 import * as satellite from "satellite.js";
 
 /** Classical orbital elements used for defining a satellite. */
@@ -32,9 +33,21 @@ export interface SatelliteMetadata {
   noradCatId?: number;
 }
 
+/**
+ * `attitude` overrides the global attitude (通信タブ) for this satellite; see
+ * `attitude/resolve.ts`. `attitudeSource` records whether it came from a
+ * constellation shell or a `[[satellites]]` entry (for the UI label only).
+ * Both are omitted — not `undefined` — when there is no override, so
+ * `satellites.generated.ts` stays unchanged for scenarios without one.
+ */
+interface SatelliteAttitudeFields {
+  attitude?: SatelliteAttitudeOverride;
+  attitudeSource?: "shell" | "satellite";
+}
+
 export type SatelliteSpec =
-  | { type: "tle"; lines: [string, string]; meta?: SatelliteMetadata }
-  | { type: "elements"; elements: OrbitalElements; meta?: SatelliteMetadata };
+  | ({ type: "tle"; lines: [string, string]; meta?: SatelliteMetadata } & SatelliteAttitudeFields)
+  | ({ type: "elements"; elements: OrbitalElements; meta?: SatelliteMetadata } & SatelliteAttitudeFields);
 
 /** Convert epoch date to `YYDDD.DDDDDDDD` format used by TLEs. */
 function formatTleEpoch(date: Date): string {

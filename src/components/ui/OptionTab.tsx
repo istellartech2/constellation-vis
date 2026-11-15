@@ -5,6 +5,8 @@ import { Button } from "./button";
 import { FileInput, Trash2, Globe, Satellite, Compass, Layers, FolderOpen, Bookmark, Save, Plus, X } from "lucide-react";
 import PanelSection from "./PanelSection";
 import TrajectorySection, { type TrajectoryPlayback } from "./TrajectorySection";
+import DemoSection from "../tour/DemoSection";
+import type { DemoEntry } from "../../lib/tour/types";
 import type { TrajectoryTrack } from "../../lib/trajectory/types";
 import { CheckRow, ColorChip, HelpTip, SegmentedControl } from "./compactControls";
 import type SatelliteScene from "../../lib/visualization";
@@ -39,6 +41,8 @@ interface Props {
   trajectoryPlayback: TrajectoryPlayback;
   /** Current simulation time (ms), for trajectory readouts and default epochs. */
   currentSimMs: number;
+  /** Start a guided tour (「デモ」 section; hidden when absent or no demos exist). */
+  onStartDemo?: (demo: DemoEntry) => void;
 }
 
 /**
@@ -55,6 +59,7 @@ export default function OptionTab({
   onTrajectoriesChange,
   trajectoryPlayback,
   currentSimMs,
+  onStartDemo,
 }: Props) {
   const set = onDisplayChange;
   const [loadedKMLs, setLoadedKMLs] = useState<string[]>([]);
@@ -361,6 +366,8 @@ export default function OptionTab({
           </ul>
         )}
       </PanelSection>
+
+      {onStartDemo && <DemoSection onStart={onStartDemo} />}
 
       <TrajectorySection
         trajectories={trajectories}

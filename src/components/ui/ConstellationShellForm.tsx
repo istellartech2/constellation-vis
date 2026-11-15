@@ -12,6 +12,9 @@ import RgtConstraintSection from "./RgtConstraintSection";
 import ShellFailureSection from "./ShellFailureSection";
 import ShellFormBanner, { type ShellFormBannerItem } from "./ShellFormBanner";
 import { Label } from "./label";
+import AttitudeOverrideFields from "./AttitudeOverrideFields";
+import { ATTITUDE_TOML_KEYS, attitudeOverrideSummary } from "../../lib/attitude/resolve";
+import type { SatelliteAttitudeOverride } from "../../lib/attitude/types";
 
 interface Props {
   shell: ConstellationShell;
@@ -21,6 +24,8 @@ interface Props {
   onChange: (updates: Partial<ConstellationShell>) => void;
   /** Reopens the mission wizard prefilled from this shell's `mission_*` fields. */
   onRedesign?: (shell: ConstellationShell) => void;
+  /** Ground station names of the scenario, for the 姿勢 section. */
+  stationNames?: readonly string[];
 }
 
 /** Patterns whose orbit is a repeat-ground-track solution, so RGT is primary. */
@@ -42,6 +47,7 @@ export default function ConstellationShellForm({
   errors,
   onChange,
   onRedesign,
+  stationNames = [],
 }: Props) {
   const pattern = patternIdOf(shell);
   const [migrationNote, setMigrationNote] = useState<string | null>(null);
@@ -140,6 +146,8 @@ export default function ConstellationShellForm({
           </div>
           {!rgtInBasic && <div className="pt-1">{rgtSection}</div>}
         </CollapsibleSubsection>
+        <ShellAttitudeSection shell={shell} shellIndex={shellIndex} errors={errors}
+          stationNames={stationNames} onChange={onChange} />
       </section>
 
       <aside aria-label="シェルの計算結果" className="min-w-0 border-t xl:border-t-0 xl:border-l border-line bg-sunken p-4 space-y-4 xl:overflow-y-auto">
@@ -168,6 +176,58 @@ export default function ConstellationShellForm({
         )}
       </aside>
     </div>
+  );
+}
+
+/** The shell's `attitude_*` keys as an override, unvalidated (the form shows what is stored). */
+function shellAttitude(shell: ConstellationShell): SatelliteAttitudeOverride | undefined {
+  const record = shell as unknown as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [field, key] of Object.entries(ATTITUDE_TOML_KEYS)) {
+    if (record[key] !== undefined && record[key] !== "") out[field] = record[key];
+  }
+  return Object.keys(out).length > 0 ? (out as SatelliteAttitudeOverride) : undefined;
+}
+
+/** 姿勢 (per-shell attitude override), collapsed with a one-line summary badge. */
+function ShellAttitudeSection({
+  shell,
+  shellIndex,
+  errors,
+  stationNames,
+  onChange,
+}: {
+  shell: ConstellationShell;
+  shellIndex: number;
+  errors: ValidationError[];
+  stationNames: readonly string[];
+  onChange: (updates: Partial<ConstellationShell>) => void;
+}) {
+  const value = shellAttitude(shell);
+  const hasError = errors.some((e) => e.field.startsWith(`shell.${shellIndex}.attitude_`));
+  const summary = attitudeOverrideSummary(value) ?? "全体設定";
+  const handleChange = (next: SatelliteAttitudeOverride | undefined) => {
+    // Every key is written (undefined clears it), so leaving a mode drops its fields.
+    const updates: Record<string, unknown> = {};
+    for (const [field, key] of Object.entries(ATTITUDE_TOML_KEYS)) {
+      updates[key] = next?.[field as keyof SatelliteAttitudeOverride];
+    }
+    onChange(updates as Partial<ConstellationShell>);
+  };
+  return (
+    <CollapsibleSubsection
+      title="姿勢"
+      defaultOpen={hasError}
+      badge={<span className={`rounded px-1.5 py-0.5 text-[11px] font-normal ${value ? "bg-brand-soft text-brand-text" : "bg-sunken text-fg-subtle"}`}>{summary}</span>}
+    >
+      <AttitudeOverrideFields
+        value={value}
+        onChange={handleChange}
+        stationNames={stationNames}
+        scope="このシェルの全衛星"
+        errorFor={(key) => errors.find((e) => e.field === `shell.${shellIndex}.${key}`)?.message}
+      />
+    </CollapsibleSubsection>
   );
 }
 

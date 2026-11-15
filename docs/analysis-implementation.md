@@ -218,7 +218,7 @@ FOV条件 = acos(clamp(b_ecf_hat · (r_station-r_sat)_hat, -1, 1)) <= halfAngle
 可視 = 局の可視条件 && FOV条件
 ```
 
-地球指向以外の姿勢では `b = sensorBoresightEci(satelliteAttitudeEci(...), alongTrackDeg, crossTrackDeg)`。太陽方向・地上局 ECI などの時刻依存部分は `attitudeContextFor` で時刻ステップごとに 1 回だけ計算し、全衛星で共有する（`accessGrid.ts` も同じ）。
+地球指向以外の姿勢では `b = sensorBoresightEci(satelliteAttitudeEci(...), alongTrackDeg, crossTrackDeg)`。衛星ごとの姿勢は通信タブの全体設定にシェル／衛星ごとの上書き（TOML の `attitude_*`、`SatelliteSpec.attitude`）を重ねた `resolveSatelliteAttitude(spec, global)`（`attitude/resolve.ts`）。`prepareFovAttitudeGroups` が解決後の設定が等しい衛星をまとめ、太陽方向・地上局 ECI などの時刻依存部分は `attitudeContextFor` で時刻ステップごと・設定グループごとに 1 回だけ計算して共有する（`accessGrid.ts` も同じ）。全衛星が運用スケジュールなしの地球指向に解決されるときは従来の LVLH 経路をそのまま通る。`FovAttitude` を渡さない呼び出し（全球アクセス、設計比較）は上書きも使わず地球指向。運用スケジュール（通過中は地上局指向・日陰の姿勢）は基本モードが地球指向でも適用する。地上局アクセスの解析は過去状態を渡さないので最大レート（旋回）を使わず切替は瞬時として数える（全衛星・全ステップで過去を走査すると重いため）。日照・電力成立性（1 機）は過去状態を渡すので旋回も反映する。
 
 地球指向で速度が使えない場合は純 nadir にフォールバックする（取付角は無視）。円錐の半角は全開口角の半分。全球アクセス UI、CLI の `calculateLinkGeometry`、ISL、ミッション設計はこの表示設定の FOV・姿勢を渡さないので、同じ衛星でも結果が一致するとは限らない。コンステレーション設計比較は比較条件に保存した FOV を使い、姿勢は常に地球指向で評価する。
 
@@ -654,9 +654,9 @@ Worker 越しに渡すものはすべて structured-clone 可能なプレーン�
 | 最大オフナディア（既定） | +Infinity | `normalizeVisibilityCriteria` |
 | 全球アクセス緯度刻み | 1 deg（181 局） | `GlobalAccessAnalysis.tsx` |
 | FOV 円錐の縁走査刻み | 5 deg | `orbitalCoordinates.ts` |
-| 衛星の姿勢 | 地球指向（LVLH）。全エディタ衛星に共通 | `attitude/types.ts` `DEFAULT_SATELLITE_ATTITUDE` |
+| 衛星の姿勢 | 地球指向（LVLH）。シェル／衛星ごとの `attitude_*` がなければ全エディタ衛星に共通 | `attitude/types.ts` `DEFAULT_SATELLITE_ATTITUDE` |
 | 慣性指向の赤経／赤緯 | 0 deg / 0 deg | 同上 |
-| 地上局指向の切替仰角 | 指定局自身の `minElevationDeg`（瞬時切替） | `attitude/satelliteAttitude.ts` |
+| 地上局指向の切替仰角 | 指定局自身の `minElevationDeg`（最大レートがなければ瞬時切替） | `attitude/satelliteAttitude.ts` |
 | 太陽電池パネル | 固定（−Z 面） | `attitude/types.ts` `DEFAULT_SOLAR_ARRAY_TYPE` |
 | ISL 最大距離 | 5000 km | `isl/types.ts` `DEFAULT_LINK_MODEL` |
 | ISL 視線余裕 | 80 km | 同上 |
@@ -691,7 +691,7 @@ Worker 越しに渡すものはすべて structured-clone 可能なプレーン�
 | 通信経路 | 単一 A/B 間の経路コスト。帯域・輻輳・冗長経路・パケット動作を扱わず、地上リンクのデューティとも統合しない | [ISL の制限](isl-routing.md#limitations) |
 | 寿命・推進剤 | 簡易大気とレート積分。密度モデル・楕円軌道近似・刻みの誤差保証はない | §8・[摂動モデル](perturbation.md) |
 | 日照・電力 | 太陽円盤の遮蔽率で半影を含む発電を評価。固定の日照追尾係数、代表 4 日の比較。年間全日の最悪条件は評価しない | §10 |
-| 衛星の姿勢 | 全エディタ衛星に 1 つの姿勢則（シェル・衛星ごとの姿勢は未対応）。時間によるモード切替（日陰で太陽指向など）、旋回角速度・角加速度の制限（地上局指向は瞬時に切り替わる）、姿勢誤差・擾乱、ヨー制御の 180° 反転時の旋回、パネルの自己影・アンテナパターンは扱わない。表示レイヤー（GPU J2）には姿勢がない。設計比較は常に地球指向 | [satellite-attitude.md](satellite-attitude.md) |
+| 衛星の姿勢 | 全体設定 1 つに、シェル／衛星ごとの上書き（`attitude_*`、[constellation-patterns.md](constellation-patterns.md) §10）。運用スケジュール（通過中・日陰）と最大レートの旋回は 3D・衛星カード・日照/電力で反映、地上局アクセス解析では切替は瞬時。角加速度制限、旋回途中の再切替の連結、10 秒未満の切替、姿勢誤差・擾乱、パネルの自己影・アンテナパターンは扱わない。表示レイヤー（GPU J2）には姿勢がない。設計比較・全球アクセスは常に地球指向 | [satellite-attitude.md](satellite-attitude.md) |
 | ミッション設計 | Walker Delta / Star の全球・緯度帯探索。Flower 系、任意ポリゴン、需要分布、ISL 接続性は対象外 | [設計の限界](constellation-design.md#limitations) |
 
 RGT/J2 補正と J3 は [RGT §4.1](RGTorbit.md#implemented-rates)・[摂動モデル](perturbation.md)、長期維持・電力サイジングの近似は §8・§10 を参照。エポックから離れた解析では、入力データの有効性も確認すること。

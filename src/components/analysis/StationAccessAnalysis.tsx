@@ -20,10 +20,11 @@ import {
 import { BusyOverlay, ChartCard, EmptyState, KpiStrip, type Kpi } from "./AnalysisLayout";
 import type { StationVisibilitySample } from "../../lib/visibility";
 import { gridToSamples } from "../../lib/accessGrid";
-import { parseGroundStationsToml } from "../../lib/config";
+import { parseConstellationToml, parseGroundStationsToml, parseSatellitesToml } from "../../lib/config";
+import { countAttitudeOverrides } from "../../lib/attitude/resolve";
 import { AnalysisCancelledError, useAccessGridJob } from "./utils/useAccessGridJob";
 import { DEFAULT_SATELLITE_ATTITUDE, type SatelliteAttitudeSettings } from "../../lib/attitude/types";
-import { effectiveAttitudeMode } from "../../lib/attitude/satelliteAttitude";
+import { effectiveAttitudeMode, hasAttitudeSchedule, isPlainLvlhAttitude } from "../../lib/attitude/satelliteAttitude";
 import { ATTITUDE_MODE_SHORT_LABELS, STATION_MISSING_WARNING, SUN_POINTING_ACCESS_WARNING } from "../../lib/attitude/settings";
 
 /** Propagation settings sent to the worker; also quoted in the empty state. */
@@ -85,8 +86,23 @@ export default function StationAccessAnalysis({
     }
   }, [gsText]);
   const effectiveMode = effectiveAttitudeMode(attitude, scenarioStations);
+  // 地球指向 with no 運用スケジュール (an eclipse / pass schedule switches even an LVLH base).
+  const plainLvlh = isPlainLvlhAttitude(attitude, scenarioStations);
+  const scheduleNote = hasAttitudeSchedule(attitude, scenarioStations) ? "＋運用スケジュール" : "";
+  // Satellites with a shell / satellite attitude of their own (applied with the FOV).
+  const overrideCount = useMemo(() => {
+    try {
+      return countAttitudeOverrides([
+        ...(satText ? parseSatellitesToml(satText) : []),
+        ...(constText ? parseConstellationToml(constText) : []),
+      ]);
+    } catch {
+      return 0;
+    }
+  }, [satText, constText]);
+  const overrideNote = overrideCount > 0 ? `（${overrideCount} 機はシェル／衛星ごとの姿勢）` : "";
   const conditions = useSatelliteFov
-    ? `条件: 姿勢 ${ATTITUDE_MODE_SHORT_LABELS[effectiveMode]} · 視野半角 ${fovHalfAngleDeg}°`
+    ? `条件: 姿勢 ${ATTITUDE_MODE_SHORT_LABELS[effectiveMode]}${scheduleNote}${overrideNote} · 視野半角 ${fovHalfAngleDeg}°`
     : "条件: 地上局側の可視条件のみ（衛星の姿勢・視野は使いません）";
   const [resultConditions, setResultConditions] = useState<string | null>(null);
   const compactChart = useCompactChart();
@@ -238,7 +254,7 @@ export default function StationAccessAnalysis({
           視野: 進行方向への取付角 {fovAlongTrackDeg}° ・ 横方向への取付角 {fovCrossTrackDeg}°
           （変更は 通信タブ › 衛星の姿勢とセンサ）
           {useSatelliteFov && " — 地上局側の最低仰角・可視判定モードとの AND 条件。"}
-          {useSatelliteFov && effectiveMode === "lvlh" &&
+          {useSatelliteFov && plainLvlh && overrideCount === 0 &&
             `地球指向で取付角 0° のときは最大オフナディア ${fovHalfAngleDeg}° と同じ意味です。`}
         </span>
         <span className="font-medium text-fg">
@@ -247,9 +263,9 @@ export default function StationAccessAnalysis({
             <span className="font-normal text-fg-subtle">（表示中の結果は「{resultConditions.replace(/^条件: /, "")}」で計算。解析開始で更新）</span>
           )}
         </span>
-        {!useSatelliteFov && effectiveMode !== "lvlh" && (
+        {!useSatelliteFov && (!plainLvlh || overrideCount > 0) && (
           <span className="text-fg-subtle">
-            現在の姿勢（{ATTITUDE_MODE_SHORT_LABELS[effectiveMode]}）は使われていません。使うには上のチェックをオンにしてください
+            現在の姿勢（{ATTITUDE_MODE_SHORT_LABELS[effectiveMode]}{scheduleNote}{overrideNote}）は使われていません。使うには上のチェックをオンにしてください
           </span>
         )}
         {useSatelliteFov && attitude.mode === "station" && effectiveMode === "lvlh" && (

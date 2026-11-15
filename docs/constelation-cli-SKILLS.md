@@ -76,6 +76,8 @@ downlinkFrequencyHz = 20000000000
 
 Use `type = "tle"` with `line1` and `line2` instead of element fields when TLE input is available. Keep all times in UTC and all frequencies in Hz.
 
+Satellite and constellation-shell entries may carry the app's per-satellite attitude keys (`attitude_mode`, `attitude_station`, `attitude_ra_deg`, `attitude_dec_deg`, `attitude_eclipse_mode`, `attitude_track_station`, `attitude_slew_deg_s`). The CLI accepts and ignores them: its link analysis is geometric (elevation, range, Doppler) and does not model the satellite attitude or sensor FOV.
+
 Ground stations accept the existing visibility fields:
 
 - `visibilityMode = "elevation_only" | "off_nadir_only" | "and"`

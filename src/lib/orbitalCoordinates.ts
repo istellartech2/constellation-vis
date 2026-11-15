@@ -6,7 +6,7 @@ import * as THREE from "three";
 import type { GroundStation } from "./groundStations";
 import type { AttitudeVec3, SatelliteAttitudeSettings } from "./attitude/types";
 import {
-  effectiveAttitudeMode,
+  isPlainLvlhAttitude,
   satelliteAttitudeEci,
   sensorBoresightEci,
 } from "./attitude/satelliteAttitude";
@@ -439,7 +439,7 @@ export function sensorBoresightEciForAttitude(
   alongTrackDeg: number,
   crossTrackDeg: number,
 ): AttitudeVec3 | null {
-  if (!attitude || effectiveAttitudeMode(attitude, stations) === "lvlh") {
+  if (!attitude || isPlainLvlhAttitude(attitude, stations)) {
     if (!velocityECI) return null;
     const d = computeSensorDirectionEci(positionECI, velocityECI, alongTrackDeg, crossTrackDeg);
     return d ? { x: d.x, y: d.y, z: d.z } : null;
@@ -469,7 +469,7 @@ export function fovConeQuaternionForAttitude(
   alongTrackDeg: number,
   crossTrackDeg: number,
 ): THREE.Quaternion | null {
-  if (!attitude || effectiveAttitudeMode(attitude, stations) === "lvlh") {
+  if (!attitude || isPlainLvlhAttitude(attitude, stations)) {
     return velocityECI ? computeFovConeQuaternion(positionECI, velocityECI, alongTrackDeg, crossTrackDeg) : null;
   }
   const dir = sensorBoresightEciForAttitude(positionECI, velocityECI, date, attitude, stations, alongTrackDeg, crossTrackDeg);

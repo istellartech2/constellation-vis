@@ -315,6 +315,12 @@ describe("satellite attitude settings", () => {
     expect(toDisplaySettings(d, 0, DISPLAY.isl)).toMatchObject({ satelliteAttitude: attitude, solarArrayType: "singleAxis", showBodySunDirection: true });
   });
 
+  it("round-trips the 運用スケジュール fields", () => {
+    const attitude = { mode: "sun" as const, stationName: "Tokyo", inertialRaDeg: 0, inertialDecDeg: 0, eclipseMode: "lvlh" as const, trackStationDuringPass: true, maxSlewRateDegS: 1 };
+    store({ version: 2, camera: CAMERA, display: { ...DISPLAY, satelliteAttitude: attitude } });
+    expect(loadLastView()!.display.satelliteAttitude).toEqual(attitude);
+  });
+
   it("drops damaged attitude fields", () => {
     for (const bad of [null, [], { mode: "spin" }, { mode: "inertial", inertialDecDeg: 400 }]) {
       store({ version: 2, camera: CAMERA, display: { ...DISPLAY, satelliteAttitude: bad, solarArrayType: "dual" } });

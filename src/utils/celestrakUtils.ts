@@ -1,5 +1,6 @@
 import type { SatelliteSpec } from "../lib/satellites";
 import { serializeFilingMetadata } from "../lib/filings/metadata";
+import { attitudeOverrideTomlLines } from "../lib/attitude/resolve";
 import { isLocalSatellite, nextLocalSatnum } from "../lib/localSatnum";
 
 const MU = 398600.4418; // km^3/s^2
@@ -326,13 +327,16 @@ export function satellitesToToml(list: SatelliteSpec[]): string {
             (s.meta.objectId ? `objectId = ${JSON.stringify(s.meta.objectId)}\n` : "") +
             (s.meta.noradCatId !== undefined ? `noradCatId = ${s.meta.noradCatId}\n` : ""))
         : "");
+      // Per-satellite attitude (`attitude_*`), so spec → TOML → spec keeps it.
+      const attitude = attitudeOverrideTomlLines(s.attitude).map(line => "\n" + line).join("");
       if (s.type === "tle") {
         return (
           "[[satellites]]\n" +
           'type = "tle"\n' +
           meta +
           `line1 = ${JSON.stringify(s.lines[0])}\n` +
-          `line2 = ${JSON.stringify(s.lines[1])}`
+          `line2 = ${JSON.stringify(s.lines[1])}` +
+          attitude
         );
       }
       const e = s.elements;
@@ -347,7 +351,8 @@ export function satellitesToToml(list: SatelliteSpec[]): string {
         `inclinationDeg = ${e.inclinationDeg}\n` +
         `raanDeg = ${e.raanDeg}\n` +
         `argPerigeeDeg = ${e.argPerigeeDeg}\n` +
-        `meanAnomalyDeg = ${e.meanAnomalyDeg}`
+        `meanAnomalyDeg = ${e.meanAnomalyDeg}` +
+        attitude
       );
     })
     .join("\n\n");

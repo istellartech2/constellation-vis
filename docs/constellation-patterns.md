@@ -513,8 +513,23 @@ RGT(Repeat Ground Track、反復地上軌跡)は独立した設計方式では�
 | `rgt_repeat_orbits`, `rgt_repeat_days` | int | – | 全(任意メモ) |
 | `mission_availability_target`, `mission_availability_basis` | number/string | –（旧データは areaAverage） | 全（目標可用率 (0,1] と評価基準 areaAverage / worstLatitude） |
 | `mission_objective`, `mission_min_elevation`, `mission_fold`, `mission_region`, `mission_lat_min`, `mission_lat_max`, `mission_alt_min`, `mission_alt_max` | string/number | – | 全(ミッション設計ウィザード由来、任意) |
+| `attitude_mode`, `attitude_eclipse_mode` | string | –(全体設定) | 全(シェルの姿勢。`lvlh` / `yawSteering` / `station` / `sun` / `inertial`) |
+| `attitude_station` | string | –(全体設定) | 全(地上局指向・通過中指向の局名) |
+| `attitude_ra_deg`, `attitude_dec_deg` | number | –(全体設定) | 全(慣性指向の赤経 0–360°・赤緯 −90–90°) |
+| `attitude_track_station` | bool | –(全体設定) | 全(地上局が見えている間は地上局指向) |
+| `attitude_slew_deg_s` | number | –(全体設定) | 全(姿勢変更の最大レート 0–90°/s。0 は即時) |
 
 `mission_*` はミッション設計ウィザード(`docs/constellation-design.md`)が候補をシェル化する際の由来情報で、生成される衛星要素には影響しない。
+
+### シェルの姿勢(`attitude_*`)
+
+省略したキーは通信タブ › 衛星の姿勢とセンサの全体設定に従う。同じキーは `[[satellites]]` の各エントリにも書ける(編隊エントリのキーは deputy 全機に適用)。解決規則は `src/lib/attitude/resolve.ts`:
+
+- `attitude_mode` を書くと姿勢則を置き換える。`attitude_eclipse_mode` / `attitude_track_station` は書いたものだけが効き(省略 = なし)、局名・赤経赤緯・最大レートは省略すると全体設定の値を使う。
+- `attitude_mode` を書かないときは書いたキーだけ全体設定を上書きする(例: `attitude_track_station = false` で全体設定の通過中指向をこのシェルだけ止める)。
+- 生成された衛星は `SatelliteSpec.attitude`(シェル内で共有の 1 オブジェクト)と `attitudeSource = "shell"` を持つ。キーがないシェルの衛星にはどちらのキーも付かないので、`satellites.generated.ts` は変わらない。
+- 実行時パーサは不正値を黙って捨てる。エディタの検証(`validateConfig`)と AI セッション API(`remoteScenario.ts`)は日本語のエラーにする。
+- 3D・地上局アクセス(衛星の視野あり)・日照/電力成立性(姿勢から計算)が衛星ごとに解決した姿勢を使う。設計比較・全球アクセス・CLI は姿勢を使わない(地球指向／幾何のみ)。
 
 ### 故障モデル(`failed_count` / `failure_percent` / `failure_seed`)
 
