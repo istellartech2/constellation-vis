@@ -134,6 +134,7 @@ export function useSatelliteScene(
     // Read every frame from the scene's params (cones, 近接 model/overlays).
     params.satelliteAttitude,
     params.solarArrayType,
+    params.satelliteModel,
     params.showBodyAxes,
     params.showBodySunDirection,
     params.presentation,

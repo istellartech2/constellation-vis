@@ -62,6 +62,8 @@ export interface OpenTabRequest {
   nonce: number;
   anchor?: string;
   analysis?: AnalysisType;
+  /** 表示 › 3Dモデル: expand the section ("reveal") or open the import dialog ("import"). */
+  model?: "reveal" | "import";
 }
 
 interface Props {
@@ -257,6 +259,7 @@ export default function SatelliteEditor({
   );
 
   const [islFocusRequested, setIslFocusRequested] = useState(false);
+  const [modelRequest, setModelRequest] = useState<{ kind: "reveal" | "import"; nonce: number } | null>(null);
   const [anchorRequest, setAnchorRequest] = useState<string | null>(null);
   const [handledTabRequest, setHandledTabRequest] = useState<typeof openTabRequest>(undefined);
   if (openTabRequest !== handledTabRequest) {
@@ -274,6 +277,8 @@ export default function SatelliteEditor({
       }
       const analysis = openTabRequest.analysis;
       if (analysis) setAnalysisRequest((p) => ({ type: analysis, nonce: (p?.nonce ?? 0) + 1 }));
+      const model = openTabRequest.model;
+      if (model) setModelRequest((p) => ({ kind: model, nonce: (p?.nonce ?? 0) + 1 }));
     }
   }
 
@@ -637,6 +642,7 @@ export default function SatelliteEditor({
                 trajectoryPlayback={trajectoryPlayback}
                 currentSimMs={currentSimMs}
                 onStartDemo={onStartDemo}
+                modelRequest={modelRequest}
               />
             </TabsContent>
           </Tabs>

@@ -20,6 +20,10 @@
  * minimum along that axis at the lateral bbox centre, and the remaining axes
  * keep a right-handed order. Their roll is therefore arbitrary.
  *
+ * Library models (`library:<id>`, see ../modelLibrary) are loaded from the
+ * browser's model library and normalised by their stored metadata
+ * (orientation, scale, origin, solar wings) — see buildLibraryTemplate.
+ *
  * Templates are cached at module level keyed by model string, so scene
  * rebuilds never refetch. Instances are `clone(true)` and SHARE geometry and
  * materials with the template: renderers must never dispose them; they call
@@ -30,6 +34,10 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { modelLibrary } from "../modelLibrary/store";
+import { buildLibraryTemplate, parseModelScene } from "../modelLibrary/template";
+import { bodyBoxSize, longestSide, metresPerModelUnit } from "../modelLibrary/orientation";
+import { LIBRARY_MODEL_PREFIX, libraryModelId, libraryModelKey } from "../modelLibrary/types";
 
 export interface TrajectoryModelInfo {
   key: string;
@@ -69,9 +77,20 @@ export interface TrajectoryModelTemplate {
   anchor: "base" | "center";
 }
 
-/** Registry length for a built-in key, else undefined. */
+/**
+ * Length known before loading: the registry length of a built-in key, or a
+ * library model's length from its metadata (body-X extent for a base
+ * origin, else the longest side — the template's lengthM); else undefined.
+ */
 export function trajectoryModelLengthM(model: string | undefined): number | undefined {
-  return (TRAJECTORY_MODELS.find((m) => m.key === model) ?? LANDMARK_MODELS.find((m) => m.key === model))?.lengthM;
+  const builtIn = (TRAJECTORY_MODELS.find((m) => m.key === model) ?? LANDMARK_MODELS.find((m) => m.key === model))?.lengthM;
+  if (builtIn !== undefined) return builtIn;
+  const id = libraryModelId(model);
+  const meta = id ? modelLibrary.get(id) : undefined;
+  if (!meta) return undefined;
+  const s = metresPerModelUnit(meta.scale, longestSide(meta.bboxSize));
+  const body = bodyBoxSize(meta.orientation, meta.bboxSize);
+  return (meta.origin === "base" ? body[0] : Math.max(...body)) * s || undefined;
 }
 
 /**
@@ -81,7 +100,7 @@ export function trajectoryModelLengthM(model: string | undefined): number | unde
  */
 export function trajectoryModelUrl(model: string): string | null {
   if (GLB_KEYS.has(model)) return `./models/${model}.glb`;
-  if (PROCEDURAL_KEYS.has(model)) return null;
+  if (PROCEDURAL_KEYS.has(model) || model.startsWith(LIBRARY_MODEL_PREFIX)) return null;
   return model;
 }
 
@@ -339,6 +358,8 @@ interface CacheEntry {
   template: TrajectoryModelTemplate | null;
   refs: number;
   builtIn: boolean;
+  /** Edited / deleted library model: dispose as soon as the last user lets go. */
+  invalidated: boolean;
 }
 
 const cache = new Map<string, CacheEntry>();
@@ -347,7 +368,15 @@ function isBuiltIn(model: string): boolean {
   return TRAJECTORY_MODELS.some((m) => m.key === model) || LANDMARK_MODELS.some((m) => m.key === model);
 }
 
+async function loadLibraryTemplate(model: string): Promise<TrajectoryModelTemplate> {
+  const id = libraryModelId(model);
+  const entry = id ? await modelLibrary.load(id) : null;
+  if (!entry) throw new Error(`model ${model}: not in the model library`);
+  return buildLibraryTemplate(await parseModelScene(entry.data), entry.meta, model);
+}
+
 async function loadTemplate(model: string): Promise<TrajectoryModelTemplate> {
+  if (model.startsWith(LIBRARY_MODEL_PREFIX)) return loadLibraryTemplate(model);
   if (model === "generic-rocket") return buildGenericRocket();
   if (model === "satellite-bus") return buildSatelliteBus();
   if (model === "launch-tower") return buildLaunchTower();
@@ -364,14 +393,20 @@ async function loadTemplate(model: string): Promise<TrajectoryModelTemplate> {
 export function acquireTrajectoryModel(model: string): Promise<TrajectoryModelTemplate> {
   let entry = cache.get(model);
   if (!entry) {
-    const created: CacheEntry = { promise: loadTemplate(model), template: null, refs: 0, builtIn: isBuiltIn(model) };
+    const created: CacheEntry = {
+      promise: loadTemplate(model),
+      template: null,
+      refs: 0,
+      builtIn: isBuiltIn(model),
+      invalidated: false,
+    };
     created.promise.then(
       (t) => {
         created.template = t;
-        // Released before it finished loading.
-        if (created.refs === 0 && !created.builtIn && cache.get(model) === created) {
+        // Released (or invalidated) before it finished loading.
+        if (created.refs === 0 && !created.builtIn && (cache.get(model) === created || created.invalidated)) {
           disposeTemplate(t);
-          cache.delete(model);
+          if (cache.get(model) === created) cache.delete(model);
         }
       },
       () => {
@@ -394,12 +429,55 @@ export function releaseTrajectoryModel(model: string): void {
   if (!entry) return;
   entry.refs = Math.max(0, entry.refs - 1);
   if (entry.refs > 0 || entry.builtIn || !entry.template) return;
+  if (entry.invalidated) {
+    disposeTemplate(entry.template);
+    cache.delete(model);
+    return;
+  }
   setTimeout(() => {
     if (cache.get(model) !== entry || entry.refs > 0 || !entry.template) return;
     disposeTemplate(entry.template);
     cache.delete(model);
   }, USER_MODEL_EVICT_DELAY_MS);
 }
+
+// ---------------------------------------------------------------------------
+// Invalidation (library model edited or deleted)
+// ---------------------------------------------------------------------------
+
+/**
+ * "release": drop every instance of `model` now (release its references);
+ * "reload": acquire it again (only after an edit, not a delete).
+ */
+export type TrajectoryModelInvalidationPhase = "release" | "reload";
+type InvalidationListener = (model: string, phase: TrajectoryModelInvalidationPhase) => void;
+const invalidationListeners = new Set<InvalidationListener>();
+
+/** Renderers subscribe to swap stale instances; returns the unsubscribe. */
+export function onTrajectoryModelInvalidated(listener: InvalidationListener): () => void {
+  invalidationListeners.add(listener);
+  return () => invalidationListeners.delete(listener);
+}
+
+/**
+ * Forget the cached template of `model`: listeners release their instances
+ * (disposing it once unused), the entry leaves the cache, and with `reload`
+ * listeners acquire the fresh template.
+ */
+export function invalidateTrajectoryModel(model: string, reload: boolean): void {
+  const entry = cache.get(model);
+  if (entry) entry.invalidated = true;
+  for (const l of [...invalidationListeners]) l(model, "release");
+  if (entry && cache.get(model) === entry) {
+    cache.delete(model);
+    if (entry.refs === 0 && entry.template) disposeTemplate(entry.template);
+    // Still referenced by someone who did not listen: it is now an orphan,
+    // left to the garbage collector (GPU buffers go with the WebGL context).
+  }
+  if (reload) for (const l of [...invalidationListeners]) l(model, "reload");
+}
+
+modelLibrary.onChange(({ kind, id }) => invalidateTrajectoryModel(libraryModelKey(id), kind === "update"));
 
 /** Per-renderer instance; shares geometry and materials with the template. */
 export function instantiateTrajectoryModel(template: TrajectoryModelTemplate): THREE.Object3D {

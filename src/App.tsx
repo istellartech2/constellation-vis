@@ -1,3 +1,5 @@
+import { libraryModelName, resolveSatelliteModel, useModelLibrary } from "./lib/modelLibrary/useModelLibrary";
+import { MODEL_SECTION_ANCHOR } from "./lib/modelLibrary/types";
 import type { RemoteDisplaySettings } from "./lib/remoteDisplay";
 import { useRef, useEffect, useLayoutEffect, useState, useCallback, useMemo } from "react";
 import PlaybackBar from "./components/ui/PlaybackBar";
@@ -268,6 +270,10 @@ function App() {
 
   const groundConeLength = Math.max(display.groundConeDistanceKm, 100) / EARTH_RADIUS_KM;
 
+  // 近接 satellite model: a library model missing from this browser falls back to 標準バス.
+  const modelLibrarySnapshot = useModelLibrary();
+  const effectiveSatelliteModel = resolveSatelliteModel(display.satelliteModel, modelLibrarySnapshot);
+  const satelliteModelName = libraryModelName(effectiveSatelliteModel, modelLibrarySnapshot) ?? "標準バス";
   const sceneRef = useSatelliteScene({
     mountRef,
     timeRef,
@@ -285,6 +291,7 @@ function App() {
     onCloseUpEnd: handleCloseUpEnd,
     satelliteAttitude: display.satelliteAttitude,
     solarArrayType: display.solarArrayType,
+    satelliteModel: effectiveSatelliteModel,
     showBodyAxes: display.showBodyAxes,
     showBodySunDirection: display.showBodySunDirection,
     groundStations,
@@ -395,12 +402,23 @@ function App() {
   // Derived state, adjusted during render (the scene hook above reads it on the next pass).
   if (scenePresentation !== presentation) setScenePresentation(presentation);
   const { start: startTour, stop: stopTour } = guidedTour;
-  const startDemo = useCallback((demo: DemoEntry) => void startTour(demo.tour), [startTour]);
+  const startDemo = useCallback(
+    (demo: DemoEntry) => {
+      // Put the demo in the address bar so it can be copied / shared (and a
+      // reload reopens it on the start screen); 終了 removes it again.
+      const url = new URL(window.location.href);
+      url.searchParams.set("demo", demo.id);
+      window.history.replaceState(window.history.state, "", url);
+      void startTour(demo.tour);
+    },
+    [startTour],
+  );
   // ?demo= opens on the start screen (「タップして開始」) instead of playing at once.
   const startDemoFromUrl = useCallback((demo: DemoEntry) => void startTour(demo.tour, { awaitStart: true }), [startTour]);
   const endTour = useCallback(() => {
     stopTour();
-    // A tour opened from ?demo= should not restart on reload.
+    // Drop ?demo= (set on start or from the shared link) so a reload after
+    // 終了 does not restart the tour.
     const url = new URL(window.location.href);
     if (url.searchParams.has("demo")) {
       url.searchParams.delete("demo");
@@ -513,6 +531,10 @@ function App() {
         fovAlongTrackDeg={display.fovConeAlongTrackDeg}
         fovCrossTrackDeg={display.fovConeCrossTrackDeg}
         onOpenAttitudeSettings={() => requestTab({ tab: "isl", anchor: "comm-attitude" })}
+        satelliteModelName={satelliteModelName}
+        onChangeSatelliteModel={() =>
+          requestTab({ tab: "option", anchor: MODEL_SECTION_ANCHOR, model: modelLibrarySnapshot.models.length > 0 ? "reveal" : "import" })
+        }
         onOpenPowerAnalysis={() => requestTab({ tab: "analysis", analysis: "日照・電力成立性評価" })}
       />
       </div>

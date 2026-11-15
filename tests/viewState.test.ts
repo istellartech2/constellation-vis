@@ -300,6 +300,14 @@ describe("satellite attitude settings", () => {
     expect(d.solarArrayType).toBe("fixed");
     expect(d.showBodyAxes).toBe(false);
     expect(d.showBodySunDirection).toBe(false);
+    expect(d.satelliteModel).toBe("satellite-bus");
+  });
+
+  it("round-trips the 近接 satellite model and ignores invalid values", () => {
+    const d = displayOptionsFromSaved({ ...DISPLAY, satelliteModel: "library:m1" }, 0.015);
+    expect(d.satelliteModel).toBe("library:m1");
+    expect(toDisplaySettings(d, 0, DISPLAY.isl).satelliteModel).toBe("library:m1");
+    expect(displayOptionsFromSaved({ ...DISPLAY, satelliteModel: "https://x/y.glb" }, 0.015).satelliteModel).toBe("satellite-bus");
   });
 
   it("round-trips the attitude fields", () => {

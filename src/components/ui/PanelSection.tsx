@@ -8,6 +8,11 @@ interface Props {
   collapsible?: boolean;
   defaultOpen?: boolean;
   action?: ReactNode;
+  /** Controlled open state (collapsible sections); omit for the internal state. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Element id (scroll anchor). */
+  id?: string;
 }
 
 export default function PanelSection({
@@ -17,8 +22,17 @@ export default function PanelSection({
   collapsible = false,
   defaultOpen = true,
   action,
+  open: openProp,
+  onOpenChange,
+  id,
 }: Props) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [openState, setOpenState] = useState(defaultOpen);
+  const open = openProp ?? openState;
+  const setOpen = (update: (p: boolean) => boolean) => {
+    const next = update(open);
+    if (openProp === undefined) setOpenState(next);
+    onOpenChange?.(next);
+  };
   const isOpen = collapsible ? open : true;
 
   const headerInner = (
@@ -44,7 +58,7 @@ export default function PanelSection({
   );
 
   return (
-    <section className="panel-section">
+    <section className="panel-section" id={id}>
       <div className="flex items-center justify-between gap-2 mb-2">
         {collapsible ? (
           <button
