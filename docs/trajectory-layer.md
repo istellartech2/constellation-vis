@@ -143,12 +143,20 @@ Detected by a `CCSDS_OEM_VERS =` line. XML OEM is rejected.
   sample has a single tangent). Returned velocity is the Hermite derivative (km/s),
   `speedKmS` its norm. Returns `null` outside `[first, last]`. Tangents are
   computed on the fly; nothing is cached on the track.
-- `sampleTrajectoryPath(track, { maxPoints = 4000, maxStepMs = 1000 })`: all
-  source samples plus interpolated points so that consecutive points are at
-  most `maxStepMs` apart. If that would exceed `maxPoints`, the inserted
-  points are reduced proportionally per segment; if the source alone has
-  `maxPoints` or more samples it is decimated (endpoints kept) without
-  densifying.
+- `sampleTrajectoryPath(track, { maxPoints = 50000, maxTurnDeg = 0.2,
+  maxSagKm = 0.001, maxStepMs })`: the drawn path. All source samples plus
+  Hermite points added **by shape, not time**: a segment that turns by θ
+  (tangent → chord → tangent) over a chord L is split into m pieces with
+  θ/m ≤ `maxTurnDeg` and sagitta L·θ/(8m²) ≤ `maxSagKm` (at most 256
+  pieces). Straight coasts get nothing; a flip or bank turn tabulated at 1 s
+  gets many. If the total would exceed `maxPoints`, both tolerances are
+  relaxed together (×1.5 steps) until it fits, so the tightest curves keep
+  their share. Flight 15's ship (5 679 samples, 22 h) draws ~47 000 points
+  (~1 m chord error); the old fixed cap of 4000 decimated it to every
+  ~1.4th sample, so entry and approach curves were drawn as coarse corners.
+  Source samples are only dropped (decimated, endpoints kept) when the table
+  alone has `maxPoints` rows or more. An explicit `maxStepMs` also caps the
+  time step.
 
 ## Attitude
 
@@ -221,7 +229,19 @@ a `.glb` URL / object URL.
 
 ## Rendering (`renderer.ts`)
 
-- Trails, markers and event dots live in the GMST-rotated Earth-fixed group.
+- Trails, markers and event dots live in the GMST-rotated Earth-fixed group,
+  stored in the overlay-local frame (ECEF as (x/Re, z/Rp, −y/Re), the
+  ellipsoid is the unit sphere there). The group is y-scaled by
+  `EARTH_FLATTENING` exactly like the globe, so a point at 0 km lies on the
+  drawn ellipsoid and the launch-site imagery. (Before, the group was
+  unscaled while the globe was flattened: a pad at 26° N sat ~4.1 km above
+  the drawn ground, ~8 km off along the meridian.) The vehicle pass applies
+  the same flattening when it places models, landmarks and ground discs,
+  and undoes it for the camera when it tests Earth occlusion and the lift.
+- The bright trail's live tip is the track's Hermite state at the sim time
+  (the same curve the path points and the model use), not a chord between
+  path points. Each frame only the one or two touched segments are uploaded
+  (`addUpdateRange`); a re-base uploads the buffers in full.
   Positions are stored unlifted; each frame every track group is scaled
   about the Earth's centre to lift it radially by `min(0.0001, 0.01 × camera
   distance to the NEAREST visible track tip)` radii — ~0.6 km from afar
@@ -268,7 +288,9 @@ a `.glb` URL / object URL.
   swap](#earth-geometry-swap)), leaving ~0.1–0.2 km; the disc is the actual
   sea-level reference.
 - `localStateAt(id, t, pos, vel)` gives the true (unlifted) Hermite position
-  and velocity in overlay-local units; `vehicleLengthM(id)` the model length
+  and velocity in the Earth-fixed, world-aligned frame before the GMST
+  rotation (ECEF / Re as (x, z, −y), i.e. flattened like the globe; the
+  follow camera and globe chase use it); `vehicleLengthM(id)` the model length
   (registry length before loading, 50 m without a model).
 - **End hold.** `track.holdEndMs` (default 0) keeps the model, marker and
   name label at the last sample for that long after the track ends (a

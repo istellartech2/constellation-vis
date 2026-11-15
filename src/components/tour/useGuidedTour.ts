@@ -114,6 +114,8 @@ export function useGuidedTour(host: GuidedTourHost) {
   const reducedMotionRef = useRef(false);
   // Camera change index applied in the current chapter (−1: the chapter camera).
   const appliedCameraRef = useRef(-1);
+  // In-chapter scrub: pause state to restore when the drag ends (null: not scrubbing).
+  const scrubRef = useRef<{ wasPaused: boolean } | null>(null);
 
   /** Swap in the tour tracks with this chapter's trail style (no geometry rebuild). */
   const applyTrails = useCallback(
@@ -240,6 +242,7 @@ export function useGuidedTour(host: GuidedTourHost) {
 
   const stop = useCallback(() => {
     loadTokenRef.current++;
+    scrubRef.current = null;
     const h = hostRef.current;
     const scene = h.sceneRef.current;
     const back = restoreRef.current;
@@ -337,7 +340,8 @@ export function useGuidedTour(host: GuidedTourHost) {
       const ms = scene.getSimulationTime().getTime();
       lastSimMs = ms;
       if (s.finished || s.awaitingStart) return;
-      const step = nextTourStep(s.tour, s.chapterIndex, ms);
+      // No auto-advance while the viewer drags the chapter scrubber.
+      const step = scrubRef.current ? ({ kind: "stay" } as const) : nextTourStep(s.tour, s.chapterIndex, ms);
       if (step.kind === "finish") {
         stateRef.current = { ...s, finished: true };
         setState((prev) => ({ ...prev, finished: true }));
@@ -380,5 +384,33 @@ export function useGuidedTour(host: GuidedTourHost) {
     h.setUserPaused(!h.userPaused);
   }, [goTo, begin]);
 
-  return { state, start, stop, goTo, togglePause, begin };
+  /**
+   * Seek inside the current chapter (the chapter scrubber). Clamped to
+   * [start, end − 1 ms] so it never triggers the auto-advance; speed and
+   * in-chapter camera changes follow on the next frame.
+   */
+  const seekInChapter = useCallback((ms: number) => {
+    const s = stateRef.current;
+    if (s.status !== "running" || !s.tour || s.awaitingStart || s.finished) return;
+    const chapter = s.tour.chapters[s.chapterIndex];
+    const t = Math.min(Math.max(ms, chapter.startMs), chapter.endMs - 1);
+    hostRef.current.sceneRef.current?.seekTo(new Date(t));
+  }, []);
+
+  /** Scrub drag started (true: pause, hold auto-advance) or ended (false: restore the pause state). */
+  const setScrubbing = useCallback((on: boolean) => {
+    const h = hostRef.current;
+    if (on) {
+      if (scrubRef.current) return;
+      scrubRef.current = { wasPaused: h.userPaused };
+      h.setUserPaused(true);
+      return;
+    }
+    const scrub = scrubRef.current;
+    if (!scrub) return;
+    scrubRef.current = null;
+    if (stateRef.current.status === "running") h.setUserPaused(scrub.wasPaused);
+  }, []);
+
+  return { state, start, stop, goTo, togglePause, begin, seekInChapter, setScrubbing };
 }

@@ -1467,16 +1467,17 @@ export default class SatelliteScene {
    * Earth's centre from `distance` Earth radii (default: fit the globe to the
    * screen, as the default view), from the direction of track `id`'s current
    * position (clamped into its span) or, without a track, from the current
-   * direction. `tiltDeg` tilts that direction toward the track's orbit normal
-   * (kept by the globe chase), so an orbit ring is seen from above instead of
-   * edge-on; the track then sits off-centre. Not reported through
+   * direction. `tiltDeg` (−85…85) tilts that direction toward the track's
+   * orbit normal (negative: away from it; kept by the globe chase), so an
+   * orbit ring is seen as an ellipse instead of edge-on; the track then sits
+   * off-centre. A small tilt gives a side-on view of a flat ellipse. Not reported through
    * onCameraChange. Does nothing while following a trajectory or in the
    * satellite camera modes.
    */
   frameGlobe(id: string | null = null, distance?: number, tiltDeg = 0) {
     if (this.cameraMode !== "free" || this.ride !== null) return;
     this.syncCameraHolder(this.currentSimDate, satellite.gstime(this.currentSimDate));
-    this.globeTiltRad = THREE.MathUtils.degToRad(THREE.MathUtils.clamp(tiltDeg, 0, 85));
+    this.globeTiltRad = THREE.MathUtils.degToRad(THREE.MathUtils.clamp(tiltDeg, -85, 85));
     const dir = this.globeChaseDir;
     if (!(id !== null && this.trackDirectionInHolder(id, this.currentSimDate, dir, this.globeTiltRad))) {
       dir.subVectors(this.camera.position, this.controls.target);
@@ -1521,7 +1522,7 @@ export default class SatelliteScene {
     if (!this.trajectoryRenderer.localStateAt(id, t, out, this.globeChaseVel)) return false;
     const gst = satellite.gstime(simDate);
     out.applyAxisAngle(UP_AXIS, gst);
-    if (tiltRad > 0 && out.lengthSq() > 1e-12) {
+    if (tiltRad !== 0 && out.lengthSq() > 1e-12) {
       // Inertial velocity = Earth-relative + ω × r, with ω along the scene's +Y.
       const vel = this.globeChaseVel.applyAxisAngle(UP_AXIS, gst);
       vel.x += EARTH_ROTATION_RAD_S * out.z;

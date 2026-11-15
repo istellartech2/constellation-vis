@@ -173,6 +173,7 @@ describe("presentation options", () => {
       [(t) => (t.landmarks = [{ key: "x", lat: 0, lon: 0 }, { key: "x", lat: 1, lon: 1 }]), "重複"],
       [(t) => (t.tracks[0].holdS = -1), "holdS"],
       [(t) => (t.chapters[2].camera = { type: "globe", track: "b", tiltDeg: 90 }), "tiltDeg"],
+      [(t) => (t.chapters[2].camera = { type: "globe", track: "b", tiltDeg: -90 }), "tiltDeg"],
       [(t) => (t.chapters[0].cameraChanges = [{ at: "T+00:00:10", camera: { type: "follow", track: "nope" } }]), "nope"],
     ];
     for (const [mutate, message] of cases) {
@@ -319,6 +320,19 @@ describe("formatting and entry points", () => {
       parseDemoIndex({ demos: [{ id: "ok", title: "OK", tour: "demos/ok/tour.json" }, { id: "bad id", title: "x", tour: "y" }, { id: "nt" }] }),
     ).toEqual([{ id: "ok", title: "OK", tour: "demos/ok/tour.json" }]);
     expect(parseDemoIndex(null)).toEqual([]);
+  });
+  it("keeps optional category / date / duration and drops malformed ones", () => {
+    expect(
+      parseDemoIndex({
+        demos: [
+          { id: "a", title: "A", tour: "t.json", category: "打上げ", date: "2026-11-13", durationMin: 9 },
+          { id: "b", title: "B", tour: "t.json", category: "", date: "13 Nov", durationMin: -1 },
+        ],
+      }),
+    ).toEqual([
+      { id: "a", title: "A", tour: "t.json", category: "打上げ", date: "2026-11-13", durationMin: 9 },
+      { id: "b", title: "B", tour: "t.json" },
+    ]);
   });
   it("resolves asset URLs against the base URL", () => {
     expect(resolveAssetUrl("demos/a.csv", "/")).toBe("/demos/a.csv");

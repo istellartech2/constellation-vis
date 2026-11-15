@@ -11,8 +11,11 @@ import * as satellite from "satellite.js";
 import type { TrajectorySample, TrajectoryState, TrajectoryTrack } from "./types";
 
 const RAD2DEG = 180 / Math.PI;
-const DEFAULT_MAX_POINTS = 4000;
-const DEFAULT_MAX_STEP_MS = 1000;
+/** Point cap of a drawn path (see sampleTrajectoryPath). */
+const DEFAULT_MAX_POINTS = 50_000;
+const DEFAULT_MAX_TURN_DEG = 0.2;
+const DEFAULT_MAX_SAG_KM = 0.001;
+const MAX_PIECES_PER_SEGMENT = 256;
 
 /** Index i such that samples[i].timeMs <= t <= samples[i+1].timeMs (assumes t inside the span). */
 function findSegment(samples: TrajectorySample[], t: number): number {
@@ -150,22 +153,53 @@ export function trajectoryStateAt(track: TrajectoryTrack, timeMs: number): Traje
   };
 }
 
+/** Angle (rad) between two 3-vectors given as components; 0 when either is (near) zero. */
+function angleBetween(ax: number, ay: number, az: number, bx: number, by: number, bz: number): number {
+  const la = Math.hypot(ax, ay, az);
+  const lb = Math.hypot(bx, by, bz);
+  if (!(la > 1e-12) || !(lb > 1e-12)) return 0;
+  const c = (ax * bx + ay * by + az * bz) / (la * lb);
+  return Math.acos(Math.min(1, Math.max(-1, c)));
+}
+
+export interface TrajectoryPathOptions {
+  /** Hard cap on the number of points (default {@link DEFAULT_MAX_POINTS}). */
+  maxPoints?: number;
+  /** Optional time cap: consecutive points at most this far apart (ms). Off by default. */
+  maxStepMs?: number;
+  /** Largest turn (deg) of the path between consecutive points (default 0.2). */
+  maxTurnDeg?: number;
+  /** Largest chord-to-curve deviation (km) between consecutive points (default 0.001, 1 m). */
+  maxSagKm?: number;
+}
+
 /**
- * Densified path for drawing: every source sample plus interpolated points so consecutive points are at most ~maxStepMs apart, capped to maxPoints total (default 4000). positions are ECEF km, xyz interleaved. timesMs strictly increasing.
+ * Densified path for drawing: every source sample plus Hermite-interpolated
+ * points where a straight chord would show, so the polyline follows the
+ * same curve as the vehicle (positions are ECEF km, xyz interleaved;
+ * timesMs strictly increasing).
  *
- * Defaults: maxPoints 4000, maxStepMs 1000. When the source alone has more
- * than maxPoints samples it is decimated (endpoints kept) without densifying.
- * When densifying would exceed maxPoints, inserted points are scaled down
- * proportionally per segment.
+ * Refinement is by shape, not time: a segment whose path turns by θ over a
+ * chord of length L is split into m pieces with θ/m ≤ maxTurnDeg and
+ * L·θ/(8m²) ≤ maxSagKm (the sagitta of each piece), at most
+ * MAX_PIECES_PER_SEGMENT. Straight coasts and the ~1° steps of a 20 s orbit
+ * table get few points; a flip or a bank turn tabulated at 1 s gets many.
+ * When the total would exceed maxPoints (default 50 000, ~7 MB of line
+ * buffers), both tolerances are relaxed together until it fits, so the
+ * tightest curves keep their share; source samples are never dropped unless
+ * the table alone has at least maxPoints rows (then it is decimated, both
+ * endpoints kept). An explicit maxStepMs also caps the time step.
  */
 export function sampleTrajectoryPath(
   track: TrajectoryTrack,
-  options: { maxPoints?: number; maxStepMs?: number } = {},
+  options: TrajectoryPathOptions = {},
 ): { timesMs: Float64Array; positions: Float64Array } {
   const samples = track.samples;
   const n = samples.length;
   const maxPoints = Math.max(2, Math.floor(options.maxPoints ?? DEFAULT_MAX_POINTS));
-  const maxStepMs = options.maxStepMs && options.maxStepMs > 0 ? options.maxStepMs : DEFAULT_MAX_STEP_MS;
+  const maxStepMs = options.maxStepMs && options.maxStepMs > 0 ? options.maxStepMs : 0;
+  const maxTurnRad = ((options.maxTurnDeg && options.maxTurnDeg > 0 ? options.maxTurnDeg : DEFAULT_MAX_TURN_DEG) * Math.PI) / 180;
+  const maxSagKm = options.maxSagKm && options.maxSagKm > 0 ? options.maxSagKm : DEFAULT_MAX_SAG_KM;
 
   if (n === 0) return { timesMs: new Float64Array(0), positions: new Float64Array(0) };
   if (n === 1) {
@@ -187,16 +221,56 @@ export function sampleTrajectoryPath(
     return { timesMs, positions };
   }
 
-  const extras = new Int32Array(n - 1);
-  let totalExtra = 0;
+  // Per segment: turn θ (tangent → chord → tangent) and θ·L, the shape measures.
+  const turn = new Float64Array(n - 1);
+  const turnLength = new Float64Array(n - 1);
+  const timeExtras = new Int32Array(n - 1);
+  const tangents = new Float64Array(6);
   for (let i = 0; i < n - 1; i += 1) {
-    const span = samples[i + 1].timeMs - samples[i].timeMs;
-    const e = Math.max(0, Math.ceil(span / maxStepMs) - 1);
-    extras[i] = e;
-    totalExtra += e;
+    const a = samples[i].position;
+    const b = samples[i + 1].position;
+    const cx = b.x - a.x;
+    const cy = b.y - a.y;
+    const cz = b.z - a.z;
+    const length = Math.hypot(cx, cy, cz);
+    if (maxStepMs > 0) {
+      const span = samples[i + 1].timeMs - samples[i].timeMs;
+      timeExtras[i] = Math.max(0, Math.ceil(span / maxStepMs) - 1);
+    }
+    if (!(length > 0)) continue;
+    tangentAt(samples, i, tangents, 0);
+    tangentAt(samples, i + 1, tangents, 3);
+    const theta =
+      angleBetween(tangents[0], tangents[1], tangents[2], cx, cy, cz) +
+      angleBetween(cx, cy, cz, tangents[3], tangents[4], tangents[5]);
+    turn[i] = theta;
+    turnLength[i] = theta * length;
   }
+
+  const extras = new Int32Array(n - 1);
+  const fill = (relax: number): number => {
+    const turnLimit = maxTurnRad * relax;
+    const sagLimit = 8 * maxSagKm * relax;
+    let total = 0;
+    for (let i = 0; i < n - 1; i += 1) {
+      const pieces = Math.max(
+        1,
+        Math.ceil(turn[i] / turnLimit),
+        Math.ceil(Math.sqrt(turnLength[i] / sagLimit)),
+      );
+      const e = Math.max(Math.min(pieces, MAX_PIECES_PER_SEGMENT) - 1, timeExtras[i]);
+      extras[i] = e;
+      total += e;
+    }
+    return total;
+  };
   const budget = maxPoints - n;
+  let totalExtra = fill(1);
+  for (let relax = 1.5, tries = 0; totalExtra > budget && tries < 24; relax *= 1.5, tries += 1) {
+    totalExtra = fill(relax);
+  }
   if (totalExtra > budget) {
+    // Only an explicit maxStepMs (or a tiny maxPoints) can get here: scale down evenly.
     const ratio = budget / totalExtra;
     totalExtra = 0;
     for (let i = 0; i < n - 1; i += 1) {

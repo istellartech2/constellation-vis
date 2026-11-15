@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { ChevronDown, ChevronUp, Pause, Play, RotateCcw, SkipBack, SkipForward, X } from "lucide-react";
 import { cn } from "../../lib/utils";
 import type SatelliteScene from "../../lib/visualization";
-import { chapterProgress, formatTourClock } from "../../lib/tour/parse";
+import { formatTourClock } from "../../lib/tour/parse";
+import type { ResolvedChapter } from "../../lib/tour/types";
 import {
   ascendingNodeTimes,
   formatAltitudeKm,
@@ -23,6 +24,10 @@ interface Props {
   onBegin: () => void;
   onGoTo: (index: number) => void;
   onStop: () => void;
+  /** Seek inside the current chapter (the chapter scrubber). */
+  onSeek: (ms: number) => void;
+  /** Scrub drag started / ended (pauses, then restores the pause state). */
+  onScrub: (active: boolean) => void;
 }
 
 /** Sim time for the HUD, polled from the scene (~8 Hz; App's simTime is 1 Hz). */
@@ -62,25 +67,35 @@ function useEarthReady(sceneRef: RefObject<SatelliteScene | null>, active: boole
 }
 
 /**
- * Report the screen areas the overlay covers (title on top, HUD + caption +
- * controls at the bottom) on <html>, so the scene centres its view in the
- * area between them (see SatelliteScene.updateViewInset).
+ * Report the screen areas the overlay covers on <html>, so the scene centres
+ * its view in the area between them (see SatelliteScene.updateViewInset):
+ * the title row on top, and at the bottom the control bar plus the caption
+ * card's one-line header. The caption's expanded text is left out, so
+ * opening / closing it does not move the camera; the telemetry HUD sits in a
+ * corner and is left out too.
  */
-function useViewInsets(top: RefObject<HTMLElement | null>, bottom: RefObject<HTMLElement | null>, active: boolean) {
+function useViewInsets(
+  top: RefObject<HTMLElement | null>,
+  controls: RefObject<HTMLElement | null>,
+  captionHeader: RefObject<HTMLElement | null>,
+  active: boolean,
+) {
   useEffect(() => {
     if (!active) return;
     const root = document.documentElement;
     const update = () => {
       const h = window.innerHeight;
       const t = top.current?.getBoundingClientRect();
-      const b = bottom.current?.getBoundingClientRect();
+      const c = controls.current?.getBoundingClientRect();
+      const header = captionHeader.current?.getBoundingClientRect();
+      // Collapsed caption card: header + its padding (16) + the gap above the bar (8).
+      const caption = header ? header.height + 24 : 0;
       root.dataset.tourInsetTop = String(Math.round(t ? Math.max(0, t.bottom) : 0));
-      root.dataset.tourInsetBottom = String(Math.round(b ? Math.max(0, h - b.top) : 0));
+      root.dataset.tourInsetBottom = String(Math.round(c ? Math.max(0, h - c.top) + caption : 0));
     };
     update();
     const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
-    if (top.current) observer?.observe(top.current);
-    if (bottom.current) observer?.observe(bottom.current);
+    for (const el of [top.current, controls.current, captionHeader.current]) if (el) observer?.observe(el);
     window.addEventListener("resize", update);
     return () => {
       observer?.disconnect();
@@ -88,36 +103,83 @@ function useViewInsets(top: RefObject<HTMLElement | null>, bottom: RefObject<HTM
       delete root.dataset.tourInsetTop;
       delete root.dataset.tourInsetBottom;
     };
-  }, [top, bottom, active]);
+  }, [top, controls, captionHeader, active]);
+}
+
+const CAPTION_STORAGE_KEY = "cv-tour-caption";
+
+/**
+ * Caption card open / collapsed to its one-line title. Remembered across
+ * tours (localStorage); without a stored choice it starts collapsed on
+ * phones (narrower than Tailwind's `sm`) and open elsewhere.
+ */
+function useCaptionOpen(): [boolean, () => void] {
+  const [open, setOpen] = useState(() => {
+    try {
+      const stored = localStorage.getItem(CAPTION_STORAGE_KEY);
+      if (stored === "open") return true;
+      if (stored === "collapsed") return false;
+    } catch {
+      /* storage unavailable */
+    }
+    return typeof window.matchMedia !== "function" || !window.matchMedia("(max-width: 639px)").matches;
+  });
+  const toggle = useCallback(() => {
+    setOpen((v) => {
+      try {
+        localStorage.setItem(CAPTION_STORAGE_KEY, v ? "collapsed" : "open");
+      } catch {
+        /* storage unavailable */
+      }
+      return !v;
+    });
+  }, []);
+  return [open, toggle];
 }
 
 const iconButton =
-  "inline-flex size-9 shrink-0 items-center justify-center rounded-full text-fg-muted transition-colors motion-reduce:transition-none hover:bg-raised-hover hover:text-fg disabled:pointer-events-none disabled:opacity-35";
+  "inline-flex size-8 shrink-0 items-center justify-center rounded-full text-fg-muted transition-colors motion-reduce:transition-none hover:bg-raised-hover hover:text-fg disabled:pointer-events-none disabled:opacity-35";
 
 /**
- * Presentation-mode overlay of a guided tour: a start screen, then the title
- * and disclaimer, a webcast-style telemetry HUD, the chapter caption, and
- * chapter navigation. Works from phone width up; the side panel and the
- * normal HUD are hidden by App while it is shown.
+ * Presentation-mode overlay of a guided tour: a start screen, then a layout
+ * that keeps the middle of the screen clear — title and disclaimer
+ * top-left, 終了 and a compact telemetry HUD top-right, and at the bottom a
+ * caption card (collapsible to one line) above a slim control bar with an
+ * in-chapter scrubber and the chapter dots. Works from phone width up; the
+ * side panel and the normal HUD are hidden by App while it is shown.
  */
-export default function TourPlayer({ state, sceneRef, paused, speed, onTogglePause, onBegin, onGoTo, onStop }: Props) {
+export default function TourPlayer({
+  state,
+  sceneRef,
+  paused,
+  speed,
+  onTogglePause,
+  onBegin,
+  onGoTo,
+  onStop,
+  onSeek,
+  onScrub,
+}: Props) {
   const { tour, status, chapterIndex, finished, tracks, awaitingStart } = state;
   const running = status === "running" && tour !== null;
   const simMs = useSceneSimMs(sceneRef, running && !awaitingStart);
   const earthReady = useEarthReady(sceneRef, running && awaitingStart);
-  const [captionOpen, setCaptionOpen] = useState(true);
+  const [captionOpen, toggleCaption] = useCaptionOpen();
   const topRef = useRef<HTMLDivElement | null>(null);
-  const bottomRef = useRef<HTMLDivElement | null>(null);
-  useViewInsets(topRef, bottomRef, running && !awaitingStart);
+  const controlsRef = useRef<HTMLDivElement | null>(null);
+  const captionHeaderRef = useRef<HTMLDivElement | null>(null);
+  useViewInsets(topRef, controlsRef, captionHeaderRef, running && !awaitingStart);
 
   // Keyboard: Space play/pause (or start), ←/→ chapters, Esc ends the tour.
+  // On the chapter scrubber the arrow keys move the slider instead.
   useEffect(() => {
     if (status === "idle") return;
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.repeat) return;
       const t = e.target as HTMLElement | null;
       if (t?.closest('[role="dialog"]')) return;
-      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      const onRange = t instanceof HTMLInputElement && t.type === "range";
+      if (t && !onRange && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
       if (e.key === "Escape") {
         e.preventDefault();
         onStop();
@@ -135,6 +197,8 @@ export default function TourPlayer({ state, sceneRef, paused, speed, onTogglePau
         if (t?.tagName === "BUTTON") return;
         e.preventDefault();
         onTogglePause();
+      } else if (onRange) {
+        return;
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
         onGoTo(chapterIndex + 1);
@@ -217,7 +281,6 @@ export default function TourPlayer({ state, sceneRef, paused, speed, onTogglePau
   }
 
   const nowMs = simMs ?? chapter.startMs;
-  const progress = chapterProgress(chapter, nowMs);
   const telemetry = chapter.telemetry
     .map((key) => {
       const track = tracks[key];
@@ -227,24 +290,27 @@ export default function TourPlayer({ state, sceneRef, paused, speed, onTogglePau
     })
     .filter((t) => t.value !== null);
   const orbit = counter ? orbitNumberAt(nodeTimes, counter.fromMs, nowMs, counter.total) : null;
+  // One notice line: the disclaimer plus the telemetry note (e.g. 「速度・高度は推定」).
+  const notice = [tour.disclaimer, telemetry.length > 0 ? tour.telemetryNote : undefined].filter(Boolean).join(" · ");
+  const showCaption = captionOpen || finished;
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-30 flex flex-col justify-between gap-2 p-3 pb-[calc(12px+env(safe-area-inset-bottom,0px))] pt-[calc(12px+env(safe-area-inset-top,0px))] text-fg">
-      {/* Title, disclaimer, 終了 */}
+    <div className="pointer-events-none fixed inset-0 z-30 flex flex-col gap-1.5 p-2 pb-[calc(16px+env(safe-area-inset-bottom,0px))] pt-[calc(8px+env(safe-area-inset-top,0px))] text-fg sm:gap-2 sm:p-3 sm:pb-[calc(16px+env(safe-area-inset-bottom,0px))] sm:pt-[calc(12px+env(safe-area-inset-top,0px))]">
+      {/* Title + notice (top-left), 終了 (top-right) */}
       <div ref={topRef} className="flex items-start gap-2">
-        <div className="glass pointer-events-auto min-w-0 flex-1 rounded-xl px-3 py-2 sm:flex-none sm:max-w-md">
-          <p className="text-sm font-semibold leading-tight sm:truncate">{tour.title}</p>
-          {tour.subtitle && <p className="text-[11px] leading-snug text-fg-muted sm:truncate">{tour.subtitle}</p>}
-          {tour.disclaimer && (
-            <p className="mt-1 inline-flex items-center rounded bg-warning-soft px-1.5 py-0.5 text-[11px] font-medium text-fg" role="note">
-              {tour.disclaimer}
+        <div className="glass pointer-events-auto min-w-0 rounded-lg px-2.5 py-1.5" title={tour.subtitle}>
+          <p className="truncate text-[13px] font-semibold leading-tight sm:text-sm">{tour.title}</p>
+          {notice && (
+            <p className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-fg-muted sm:truncate" role="note">
+              <span className="mr-1 inline-block size-1.5 -translate-y-px rounded-full bg-warning align-middle" aria-hidden="true" />
+              {notice}
             </p>
           )}
         </div>
         <button
           type="button"
           onClick={onStop}
-          className="glass pointer-events-auto ml-auto inline-flex h-9 shrink-0 items-center gap-1 rounded-full px-3 text-sm text-fg hover:bg-raised-hover"
+          className="glass pointer-events-auto ml-auto inline-flex h-8 shrink-0 items-center gap-1 rounded-full px-3 text-[13px] text-fg hover:bg-raised-hover"
           title="ツアーを終了して元の表示に戻ります (Esc)"
         >
           <X className="size-4" />
@@ -252,68 +318,59 @@ export default function TourPlayer({ state, sceneRef, paused, speed, onTogglePau
         </button>
       </div>
 
-      <div ref={bottomRef} className="mx-auto flex w-full max-w-2xl flex-col gap-2">
-        {/* Webcast-style telemetry */}
-        <div className="flex flex-col items-center gap-1">
-          <div
-            className="flex items-stretch justify-center gap-1.5 font-mono tabular-nums text-white sm:gap-2"
-            aria-label={tour.telemetryNote ? `テレメトリー（${tour.telemetryNote}）` : "テレメトリー"}
-          >
-            {telemetry.map((t, i) => (
-              <TelemetryBlock key={t.key} label={t.label} color={t.color} value={t.value!} order={i === 0 ? "first" : "rest"} />
-            ))}
-            <div
-              className={cn(
-                "flex flex-col items-center justify-center rounded-md bg-black/60 px-2.5 py-1 sm:px-3",
-                telemetry.length > 0 ? "order-1" : "",
-              )}
-            >
-              <span className="text-[11px] text-white/75">{tour.clockLabel ?? "基準時刻から"}</span>
-              <span className="text-sm font-semibold sm:text-base">{formatTourClock(nowMs - tour.epochMs)}</span>
-              {orbit !== null && (
-                <span className="text-[11px] text-white/75">
-                  周回 {orbit}
-                  {counter?.total !== undefined ? `/${counter.total}` : ""}
-                </span>
-              )}
-            </div>
-          </div>
-          {tour.telemetryNote && telemetry.length > 0 && (
-            <p className="rounded bg-black/50 px-1.5 text-[11px] leading-4 text-white/75">{tour.telemetryNote}</p>
-          )}
-        </div>
+      {/* Compact telemetry HUD (top-right corner) */}
+      <TelemetryHud
+        clockLabel={tour.clockLabel ?? "基準時刻から"}
+        clock={formatTourClock(nowMs - tour.epochMs)}
+        orbit={orbit !== null ? `周回 ${orbit}${counter?.total !== undefined ? `/${counter.total}` : ""}` : null}
+        rows={telemetry.map((t) => ({ key: t.key, label: t.label, color: t.color, value: t.value! }))}
+        note={tour.telemetryNote}
+      />
 
-        {/* Caption card */}
-        <div className="glass pointer-events-auto rounded-xl px-3 py-2.5 sm:px-4 sm:py-3" aria-live="polite">
+      <div className="flex-1" />
+
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-2">
+        {/* Caption card: one-line title, expandable */}
+        <div className="glass pointer-events-auto mx-auto w-full max-w-xl rounded-xl px-3 py-2" aria-live="polite">
           {finished ? (
             <EndCard title={tour.ending?.title ?? "ツアー終了"} caption={tour.ending?.caption ?? ""} sources={tour.sources} />
           ) : (
             <>
-              <div className="flex items-center gap-2">
-                <span className="shrink-0 text-[11px] font-medium text-brand-text tabular-nums">
-                  {chapterIndex + 1} / {tour.chapters.length}
-                </span>
-                <h2 className="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base">{chapter.title}</h2>
+              <div ref={captionHeaderRef}>
                 <button
                   type="button"
-                  onClick={() => setCaptionOpen((v) => !v)}
-                  className="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-fg-muted hover:bg-raised-hover hover:text-fg"
-                  aria-label={captionOpen ? "説明を隠す" : "説明を表示"}
-                  aria-expanded={captionOpen}
+                  onClick={toggleCaption}
+                  className="flex w-full items-center gap-2 text-left"
+                  aria-expanded={showCaption}
+                  aria-controls="tour-caption-text"
+                  title={showCaption ? "説明を隠す" : "説明を表示"}
                 >
-                  {captionOpen ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
+                  <span className="shrink-0 text-[11px] font-medium text-brand-text tabular-nums">
+                    {chapterIndex + 1}/{tour.chapters.length}
+                  </span>
+                  <h2 className="min-w-0 flex-1 truncate text-[13px] font-semibold sm:text-sm">{chapter.title}</h2>
+                  <span className="shrink-0 text-fg-muted" aria-hidden="true">
+                    {showCaption ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
+                  </span>
+                  <span className="sr-only">{showCaption ? "説明を隠す" : "説明を表示"}</span>
                 </button>
               </div>
-              {captionOpen && <p className="mt-1 text-[13px] leading-relaxed sm:text-sm">{chapter.caption}</p>}
-              <div className="mt-2 h-1 overflow-hidden rounded-full bg-raised" aria-hidden="true">
-                <div className="h-full bg-brand" style={{ width: `${progress * 100}%` }} />
-              </div>
+              {showCaption && (
+                <p id="tour-caption-text" className="mt-1 text-[13px] leading-relaxed">
+                  {chapter.caption}
+                </p>
+              )}
             </>
           )}
         </div>
 
-        {/* Controls */}
-        <div className="glass pointer-events-auto flex items-center gap-1 rounded-full px-1.5 py-1" role="group" aria-label="ツアーの操作">
+        {/* Slim control bar */}
+        <div
+          ref={controlsRef}
+          className="glass pointer-events-auto flex flex-wrap items-center gap-x-1 rounded-2xl px-1.5 py-1 sm:flex-nowrap sm:rounded-full"
+          role="group"
+          aria-label="ツアーの操作"
+        >
           <button
             type="button"
             className={iconButton}
@@ -327,7 +384,7 @@ export default function TourPlayer({ state, sceneRef, paused, speed, onTogglePau
           <button
             type="button"
             onClick={onTogglePause}
-            className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-brand text-brand-fg transition-colors motion-reduce:transition-none hover:bg-brand-hover"
+            className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-brand text-brand-fg transition-colors motion-reduce:transition-none hover:bg-brand-hover"
             aria-label={finished ? "最初から" : paused ? "再生" : "一時停止"}
             title={finished ? "最初から" : paused ? "再生 (Space)" : "一時停止 (Space)"}
           >
@@ -349,14 +406,32 @@ export default function TourPlayer({ state, sceneRef, paused, speed, onTogglePau
           >
             <SkipForward className="size-4" />
           </button>
-          {/* Auto margins centre the dots when they fit and keep the first one reachable when they scroll. */}
-          <ol className="mx-1 flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto overscroll-x-contain [scrollbar-width:none]" aria-label="章">
+          {finished ? (
+            <div className="min-w-0 flex-1" />
+          ) : (
+            <ChapterScrubber
+              key={chapter.id}
+              chapter={chapter}
+              nowMs={nowMs}
+              epochMs={tour.epochMs}
+              onSeek={onSeek}
+              onScrub={onScrub}
+            />
+          )}
+          <span className="w-12 shrink-0 pr-1 text-right text-[11px] font-medium tabular-nums text-fg-muted" title="再生速度（実時間の何倍か）">
+            {paused || finished ? "停止中" : speed !== null ? `${speed.toLocaleString("ja-JP")}×` : ""}
+          </span>
+          {/* Chapter dots: a second row on phones. Auto margins centre them when they fit and keep the first reachable when they scroll. */}
+          <ol
+            className="flex min-w-0 items-center gap-0.5 overflow-x-auto overscroll-x-contain [scrollbar-width:none] max-sm:order-last max-sm:w-full sm:max-w-[40%] sm:shrink"
+            aria-label="章"
+          >
             {tour.chapters.map((c, i) => (
               <li key={c.id} className={cn("shrink-0", i === 0 && "ml-auto", i === tour.chapters.length - 1 && "mr-auto")}>
                 <button
                   type="button"
                   onClick={() => onGoTo(i)}
-                  className="flex size-7 items-center justify-center rounded-full hover:bg-raised-hover sm:size-6"
+                  className="flex size-6 items-center justify-center rounded-full hover:bg-raised-hover sm:size-5"
                   aria-label={`${i + 1}. ${c.title}`}
                   aria-current={i === chapterIndex && !finished ? "step" : undefined}
                   title={`${i + 1}. ${c.title}`}
@@ -375,48 +450,165 @@ export default function TourPlayer({ state, sceneRef, paused, speed, onTogglePau
               </li>
             ))}
           </ol>
-          <span className="shrink-0 pr-2 text-xs font-medium tabular-nums text-fg-muted" title="再生速度（実時間の何倍か）">
-            {paused || finished ? "停止中" : speed !== null ? `${speed.toLocaleString("ja-JP")}×` : ""}
-          </span>
         </div>
       </div>
     </div>
   );
 }
 
-function TelemetryBlock({
-  label,
-  color,
-  value,
-  order,
+/**
+ * Seek bar limited to the current chapter, labelled with the T± time.
+ * Dragging pauses playback and auto-advance (onScrub) and seeks at most once
+ * per animation frame; releasing restores the pause state. Arrow / Page /
+ * Home / End keys move it without pausing.
+ */
+function ChapterScrubber({
+  chapter,
+  nowMs,
+  epochMs,
+  onSeek,
+  onScrub,
 }: {
+  chapter: ResolvedChapter;
+  nowMs: number;
+  epochMs: number;
+  onSeek: (ms: number) => void;
+  onScrub: (active: boolean) => void;
+}) {
+  const [dragMs, setDragMs] = useState<number | null>(null);
+  // Keyboard seek shown until the polled sim time moves (it lags by a frame or more).
+  const [keyed, setKeyed] = useState<{ ms: number; from: number } | null>(null);
+  const draggingRef = useRef(false);
+  const pendingRef = useRef<number | null>(null);
+  const rafRef = useRef(0);
+  const maxMs = chapter.endMs - 1;
+  const span = Math.max(1, maxMs - chapter.startMs);
+  const step = Math.max(100, Math.round(span / 500));
+  const shownMs = dragMs ?? (keyed && keyed.from === nowMs ? keyed.ms : nowMs);
+  const value = Math.min(Math.max(shownMs, chapter.startMs), maxMs);
+
+  const flush = useCallback(() => {
+    rafRef.current = 0;
+    const ms = pendingRef.current;
+    pendingRef.current = null;
+    if (ms !== null) onSeek(ms);
+  }, [onSeek]);
+
+  const endDrag = useCallback(() => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    flush();
+    setDragMs(null);
+    onScrub(false);
+  }, [flush, onScrub]);
+
+  // Release anywhere (the pointer may leave the slider while dragging).
+  useEffect(() => {
+    const up = () => endDrag();
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    window.addEventListener("blur", up);
+    return () => {
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      window.removeEventListener("blur", up);
+    };
+  }, [endDrag]);
+  // Leaving the chapter (or the tour) mid-drag ends the scrub.
+  useEffect(
+    () => () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      if (draggingRef.current) {
+        draggingRef.current = false;
+        onScrub(false);
+      }
+    },
+    [onScrub],
+  );
+
+  const clock = formatTourClock(value - epochMs);
+  return (
+    <div className="flex min-w-0 flex-1 items-center gap-2 px-1">
+      <input
+        type="range"
+        min={chapter.startMs}
+        max={maxMs}
+        step={step}
+        value={value}
+        aria-label={`「${chapter.title}」の再生位置`}
+        aria-valuetext={clock}
+        onPointerDown={() => {
+          if (draggingRef.current) return;
+          draggingRef.current = true;
+          onScrub(true);
+        }}
+        onLostPointerCapture={endDrag}
+        onChange={(e) => {
+          const ms = Number(e.target.value);
+          if (!draggingRef.current) {
+            setKeyed({ ms, from: nowMs });
+            onSeek(ms);
+            return;
+          }
+          setDragMs(ms);
+          pendingRef.current = ms;
+          if (!rafRef.current) rafRef.current = requestAnimationFrame(flush);
+        }}
+        className="h-6 min-w-0 flex-1 cursor-pointer touch-none accent-brand"
+      />
+      <span className="shrink-0 font-mono text-[11px] tabular-nums text-fg-muted">{clock}</span>
+    </div>
+  );
+}
+
+interface HudRow {
+  key: string;
   label: string;
   color: string | undefined;
   value: NonNullable<ReturnType<typeof tourTelemetryAt>>;
-  order: "first" | "rest";
+}
+
+/** Webcast-style readout in the top-right corner: T± clock, then one line per vehicle. */
+function TelemetryHud({
+  clockLabel,
+  clock,
+  orbit,
+  rows,
+  note,
+}: {
+  clockLabel: string;
+  clock: string;
+  orbit: string | null;
+  rows: HudRow[];
+  note?: string;
 }) {
   return (
-    <div className={cn("min-w-0 rounded-md bg-black/60 px-2 py-1 sm:px-3", order === "first" ? "order-0" : "order-2")}>
-      <div className="flex items-center gap-1.5 font-sans text-[11px] font-semibold text-white/90">
-        {color && <span className="size-2 shrink-0 rounded-full" style={{ background: color }} aria-hidden="true" />}
-        {label}
+    <div
+      className="ml-auto w-max min-w-40 rounded-lg bg-black/55 px-2.5 py-1.5 font-mono tabular-nums text-white"
+      aria-label={note && rows.length > 0 ? `テレメトリー（${note}）` : "テレメトリー"}
+    >
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="font-sans text-[10px] text-white/70">{clockLabel}</span>
+        {orbit && <span className="font-sans text-[10px] text-white/70">{orbit}</span>}
       </div>
-      {value.phase === "after" ? (
-        <div className="text-xs text-white/75 sm:text-sm">飛行終了</div>
-      ) : (
-        <div className="flex flex-wrap items-baseline gap-x-2 text-xs sm:text-sm">
-          <span>
-            <span className="font-sans text-[11px] text-white/75">速度 </span>
-            {formatSpeedKmh(value.speedKmh)}
-            <span className="text-[11px] text-white/75"> km/h</span>
-          </span>
-          <span>
-            <span className="font-sans text-[11px] text-white/75">高度 </span>
-            {formatAltitudeKm(value.altKm)}
-            <span className="text-[11px] text-white/75"> km</span>
-          </span>
+      <div className="text-sm font-semibold leading-5">{clock}</div>
+      {rows.map((r) => (
+        <div key={r.key} className="mt-0.5 flex items-baseline gap-1.5 text-[11px] leading-4 sm:text-xs">
+          {r.color && <span className="size-1.5 shrink-0 -translate-y-px self-center rounded-full" style={{ background: r.color }} aria-hidden="true" />}
+          <span className="shrink-0 font-sans font-semibold text-white/90">{r.label}</span>
+          {r.value.phase === "after" ? (
+            <span className="ml-auto text-white/70">飛行終了</span>
+          ) : (
+            <span className="ml-auto whitespace-nowrap">
+              {formatSpeedKmh(r.value.speedKmh)}
+              <span className="text-white/65"> km/h </span>
+              {formatAltitudeKm(r.value.altKm)}
+              <span className="text-white/65"> km</span>
+            </span>
+          )}
         </div>
-      )}
+      ))}
     </div>
   );
 }

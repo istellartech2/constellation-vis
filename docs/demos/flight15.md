@@ -23,15 +23,24 @@ so: 「公開情報からの推定再現（非公式）。速度・高度・経�
 - [Space.com: chopsticks double catch](https://www.space.com/space-exploration/launches-spacecraft/spacex-starship-flight-15-chopsticks-double-catch-super-heavy-ship)
 - [drohnen.de live report](https://www.drohnen.de/97929/starship-flight-15-live-ship-catch-en/)
 - [KeepTrack X-report, 2026-11-15](https://keeptrack.space/x-report/spacex-brief-2026-11-15)
+- [Wikipedia: Starship flight test 15](https://en.wikipedia.org/wiki/Starship_flight_test_15) (booster timeline)
+- [The Next Web: booster catch aborted](https://thenextweb.com/news/spacex-starship-flight-15-booster-catch-aborted)
+- [Starlust: booster catch called off](https://starlust.org/spacex-launches-starship-flight-15-booster-catch-called-off-history-still-on-the-cards/)
+- [KeepTrack X-report, 2026-11-14](https://keeptrack.space/x-report/spacex-brief-2026-11-14)
+
+All of these are secondary sources; no booster telemetry and no splashdown
+position were published.
 
 | Item | Value | Used as |
 | --- | --- | --- |
 | Lift-off | 2026-11-13T22:47:36Z | `# epoch:` of both files |
 | Max-Q throttle | T+0:58 | event (the model's own q peak is at T+0:49, see below) |
-| MECO / hot staging | T+2:19 / T+2:21 | booster thrust cut-off / separation, `# mount: 141, 72.3` |
+| MECO / hot staging | T+2:19 / T+2:21 | booster thrust cut-off / separation (ship engines on, booster off and flipping) |
 | Boostback | T+2:26–3:02 | burn window of the booster model |
 | Booster landing burn | T+6:10 | start of the terminal phase |
-| Catch abort | ~T+6:35 | booster leaves the tower for the contingency point offshore |
+| Booster landing burn | T+6:10, 13 engines (then fewer; engine count not modelled) | start of the terminal phase |
+| Catch abort / engine shut-down | T+6:35 (automatic abort of the divert to the tower, recorded at 6:35) | the booster stayed on its offshore aim point, hovered, shut down at 6:35 (event time) |
+| Booster loss | FTS after shut-down, just above the water | short fall; the track ends at the water, T+6:37.3 |
 | Ship engine cut-off | T+8:09 | SECO of the ascent model |
 | Insertion burn | T+26:10–26:30, ~92 m/s | prograde burn in the model |
 | Orbit | ~276 × 278 km, i = 30.5° | targets of the ascent solve |
@@ -56,39 +65,91 @@ One Bun script, no random numbers. 3D point mass in an Earth-centred inertial
 frame (ECEF via θ = GMST(T0) + ω t), J2 gravity, piecewise-exponential
 atmosphere (Vallado table), RK4. Output is geodetic LLA (WGS84).
 
+0. **Pad and heights.** The globe is the WGS84 ellipsoid (h = 0) without
+   geoid or terrain, the launch-site imagery lies 2 m above it, and the
+   `launch-tower` landmark's origin is the launch-mount axis at ground level.
+   The data therefore use *display heights above the drawn ground*: the
+   booster's base is at h = 0 at lift-off and the tower landmark belongs at
+   `altKm` 0 (or omitted). The true ellipsoidal height of the ground at Boca
+   Chica is about −25 m (geoid undulation ≈ −26 m, ground ≈ 1–3 m above sea
+   level); using it would sink the pad ~25 m into the imagery. The real
+   vehicle stands on the orbital launch mount, roughly 20 m above grade; the
+   procedural tower draws no mount table, so lifting the base to the mount
+   height would leave the stack floating next to the tower. If a mount is
+   ever drawn, raise `PAD_BASE_ALT_KM` in the script to its height.
 1. **Stack ascent (T+0–2:21).** Thrust-to-weight 1.37 at lift-off rising with
    propellant use (cap 3.2 g), a throttle bucket around max-Q, a 1.8° pitch
    kick at T+10–20 s and a gravity turn at azimuth 106.5° (from
    sin az = cos 30.5° / cos 26.0°). Kick and T/W are solved so that hot
-   staging is at ~66 km and ~5,600 km/h.
-2. **Ship ascent (T+2:21–8:09).** Linear-tangent pitch law with yaw steering
+   staging is at ~66 km and ~5,600 km/h. Both tracks are vehicle **bases**
+   (renderer convention: model centre = point + nose · L/2). The ship's
+   track is the booster's base + the booster's nose (exactly as the
+   `prograde` rule draws it, blending to vertical at low speed) × 72.3 m, and
+   its attitude is the booster's — so no `# mount:` header is needed.
+2. **Ship ascent (T+2:21–8:09).** The integration starts from the stack
+   state at T+2:21 moved 72.3 m along the stack axis (the ship's base on the
+   booster's top), so the ship separates continuously: ship thrust ≈0.9 g on,
+   booster unpowered and flipping (aoa 150° rule, pivot at its base), then
+   boostback from T+2:26. Linear-tangent pitch law with yaw steering
    into the 30.5° plane; three parameters solved by Newton so that, after a
    coast to apogee and the 92 m/s insertion burn at T+26:10–26:30, the orbit is
    276.0 × 278.0 km (min / max geocentric radius minus 6378.137 km over two
    revolutions; osculating elements are not used because J2 inflates them by
    several km for a near-circular orbit) and the burn sits at apogee.
    Result: SECO at ~168 km, ~26,500 km/h, ~1,170 km downrange.
-3. **Booster return.** Boostback acceleration and direction solved so the
-   ballistic arc (with drag) is 0.6 km east of the tower at 3.0 km altitude
-   at T+6:10. The landing burn, the hover by the tower, the automatic abort at
-   T+6:35, the divert to the contingency point, the hover, shut-down and fall
-   are smooth quintic segments (peak thrust ≈4.2 g). The track ends at water
-   impact, T+7:27.5 (the flight termination system fired just before).
+3. **Booster return.** Super Heavy's normal profile aims the boostback at an
+   **offshore** point and diverts to the tower only late, after a "go"; on
+   Flight 15 the automatic abort cancelled that divert, so the booster just
+   continued to its offshore aim point. The boostback (≈3.8 g, ~22° below
+   the horizontal toward uprange) is solved so the ballistic arc (with drag)
+   is at 3.8 km altitude at T+6:10, placed so that the landing burn's
+   residual drift ends exactly over the aim point (fixed-point iteration on
+   the drift; at ignition ≈450 m/s, 71 m/s of it horizontal, ~0.75 km uprange
+   of the aim point). Landing burn: every axis has a continuous acceleration
+   profile `a = a_ballistic·(1 − S_up) + B·S_up·(1 − S_down)` (smoothstep
+   blends: 1.5 s engine start-up from the ballistic value, plateau, taper);
+   vertically B and the taper start are solved so the booster stops 20 m
+   above the water at T+6:31; horizontally B brakes the residual drift until
+   the shut-down. Hover T+6:31–6:35, engine shut-down at **T+6:35** (the
+   reported abort time) with a 0.6 s thrust tail-off, free fall, water
+   impact at **T+6:37.3** at ≈20 m/s (the FTS fired just above the water).
+   Limits (thrust = kinematic acceleration − gravity − drag): peak 3.4 g,
+   lateral thrust ≤ 0.31 g, thrust tilt ≤ 16.4° from vertical.
+
+   The offshore distance is **an estimate**. Reported context (secondary
+   sources, unverified): Flight 6's aborted catch ended in a controlled
+   landing in the Gulf (Wikipedia gives ~32 km downrange; that booster
+   was diverted already at the boostback); Flight 10's booster briefly
+   hovered over the water before splashing down; Flights 13 and 14 ended
+   with Gulf splashdowns. For Flight 15 the abort came only at the
+   divert, so the booster was still on the near-shore aim point, which is
+   consistent with the fireball being visible from more than 10 miles away.
 4. **Orbit coast.** Numerical J2 + drag propagation for ~21 h.
 5. **Deorbit and entry (physics).** A retrograde burn at T+21:35:57–21:36:07,
    ≈60 m/s, solved so the trajectory crosses 100 km at T+22:10:46 (west of
    Hawaii). Lifting entry with L/D 0.5 and ballistic coefficient 250 kg/m²:
    vertical-lift fraction with ḣ damping, lateral lift steering toward the
-   coast crossing. Peak non-gravitational load ≈2.1 g. The physics ends at a
-   gate 150 s before the transonic time (≈39 km, 1.3 km/s, over Kenedy /
+   aim point ≈12 km north of the coast crossing (see 6). Peak non-gravitational load ≈2.1 g. The physics ends at a
+   gate 150 s before the transonic time (≈39 km, 1.3 km/s, 26.67° N 97.78° W, over
    Willacy county, north of the Rio Grande Valley cities, heading ESE).
-6. **Terminal phase (kinematic).** Straight line from the gate through the
-   coast crossing north of South Padre Island (26.30° N, 97.19° W), one
-   constant-radius right turn (≈17.5 km) over the Gulf to heading SSW, then
-   the final leg to the tower from bearing 15°. The speed and altitude
-   profiles are fitted to the published times: Mach 1.2 at T+22:29:34, Mach
-   0.8 at T+22:30:13, then a belly flop at terminal velocity (≈73 m/s at sea
-   level, horizontal glide 0.5→0.2 of the sink rate) to the landing burn at
+6. **Terminal phase (kinematic).** From the gate the horizontal path is
+   integrated from a speed profile and a **bank-limited turn**: lateral
+   acceleration rolled in over 25 s from the entry's value at the gate, held
+   at A, rolled out over 30 s ending at tE, heading rate ψ̇ = a_lat / v. So
+   the heading rate is continuous and the turn radius r = v² / a_lat =
+   v² / (g·tan φ) follows the speed. A, tE and the mid-course speed are solved
+   (Newton) so the track ends at the tower on heading 195° (final leg from
+   bearing 15°, NNE); the entry aim point is moved ≈12 km north of the coast
+   crossing (secant) so that the turn, which starts at the gate, crosses the
+   coast at 26.30° N, 97.19° W. Result: one right turn from heading 116°
+   (ESE) to 195° (SSW) over T+22:27:04–22:30:06, lateral 0.42 g
+   (equivalent bank 23°), radius ≥ 20.9 km; the path runs north of the Rio
+   Grande Valley cities (≈26.6° N over Willacy county), crosses the coast
+   north of South Padre Island heading SE, swings south ~3 km off the beach
+   and comes to the tower from the NNE. Speed and altitude profiles are
+   fitted to the published times: Mach 1.2 at T+22:29:34, Mach 0.8 at
+   T+22:30:13, then a belly flop at terminal velocity (≈73 m/s at sea level,
+   horizontal glide 0.5→0.2 of the sink rate) to the landing burn at
    ≈0.52 km, constant deceleration to the catch at T+22:32:28 with the ship's
    base 65 m above the pad.
 
@@ -97,7 +158,7 @@ atmosphere (Vallado table), RK4. Output is geodetic LLA (WGS84).
 Propagating the published orbit from the reconstructed insertion puts the
 ship ~2,200 km too far uprange at the entry time: no plausible lifting entry
 can then reach Starbase by the catch time. The ship is therefore advanced
-along its own orbit by **≈284 s (≈2,200 km)**, spread smoothly over the coast
+along its own orbit by **≈283 s (≈2,190 km)**, spread smoothly over the coast
 between T+1:47 and T+21:06 (smoothstep). This is ≈0.4 % faster apparent
 motion along the same orbit (plane and shape unchanged; no RAAN change); it is
 invisible in playback and the speeds shown stay within ~30 m/s of the
@@ -113,18 +174,19 @@ Entry interface (100 km) is just west of Hawaii (≈22.6° N, 156.9° W).
 
 | Estimate | Value |
 | --- | --- |
-| OLP-2 position | 25.9963° N, 97.1567° W (pad level = 0 km) |
+| OLP-2 position | 25.9963° N, 97.1567° W (pad = drawn ground, h = 0; see Method 0) |
 | Launch azimuth | 106.5° (from the inclination) |
 | Hot staging state | ~66 km, ~5,600 km/h, ~35 km downrange (steep, γ ≈ 51°) |
 | Max-Q | ~19 kPa at T+0:49 in the model (the published 0:58 is kept as the event) |
 | Boostback | ≈3.9 g, thrust ~22° below the horizontal toward uprange; booster apogee ~106 km at T+3:35 |
 | Booster drag | β ≈ 2,000 kg/m² (engines first, grid fins) |
-| Booster landing burn | ignition ~3 km, ~1,400 km/h |
-| Booster end point | 25.9945° N, 97.1217° W (~3.5 km east of the pad, offshore), impact T+7:27.5 |
+| Booster landing burn | ignition 3.8 km, ~1,620 km/h; peak 3.4 g, tilt ≤ 16.4°, lateral thrust ≤ 0.31 g |
+| Booster offshore aim point | 25.9945° N, 97.1217° W: ~3.5 km east of the pad, ~2.5–3 km off the beach — clear of pad and beach if the booster fails in the landing burn, yet a short (~3–4 km) divert to the tower when the catch is go |
+| Booster hover / impact | 20 m above the water T+6:31–6:35, shut-down T+6:35, impact T+6:37.3 |
 | Ship orbit drag | β ≈ 1,000 kg/m² (negligible at 277 km) |
 | Entry | interface = 100 km; L/D 0.5; β 250 kg/m²; aoa 67° |
-| Phase adjustment | ≈ +284 s along-track (see above) |
-| Terminal route | coast crossing 26.30° N 97.19° W; turn radius ≈17.5 km (≈1 g lateral at ~Mach 1.5); final leg from bearing 15° |
+| Phase adjustment | ≈ +283 s along-track (see above) |
+| Terminal route | coast crossing 26.30° N 97.19° W; one right turn, lateral ≤ 0.42 g (bank ≈ 23°), radius ≥ 20.9 km; final leg from bearing 15° |
 | Belly flop | terminal velocity ≈73 m/s at sea level, Mach 0.8 at ≈15 km |
 | Catch height | ship base 65 m above the pad |
 
@@ -134,10 +196,11 @@ Entry interface (100 km) is just west of Hawaii (≈22.6° N, 156.9° W).
   the boostback attitude, nose toward uprange and slightly down, matching the
   solved boostback thrust); `vertical` before the horizontal velocity
   reverses; `retrograde` (engines first) for the descent; `vertical` from the
-  landing burn.
+  landing-burn ignition (4 s blend) through the hover and the fall.
 - **Ship** — tabulated `qw, qx, qy, qz` columns (`# attitude_frame: ECEF`),
   computed by the script with the library's own rule modes
-  (`trajectoryAttitudeAt`) plus one custom mode: prograde ascent and orbit,
+  (`trajectoryAttitudeAt`) plus one custom mode: the booster's attitude while
+  stacked (identical quaternions, so the stack stays aligned), prograde ascent and orbit,
   retrograde around the deorbit burn, `aoa` 67° for the entry, a **level belly
   flop** (nose along the horizontal velocity, belly down) from subsonic, and
   `vertical` from the landing burn / flip. Tabulated attitude is used because
@@ -149,14 +212,55 @@ Entry interface (100 km) is just west of Hawaii (≈22.6° N, 156.9° W).
   path steepens below ~30 km; the nose then comes down to level by the
   subsonic time (≈15 km, T+22:30:13). The tour caption describes it that way.
 
+## Sampling
+
+Ship: 1 s to T+10 min (0.5 s around staging), 10 s coast to the insertion
+burn, 2 s around burns, 20 s in orbit, 2 s from 5 min before the entry
+interface, 1 s for the last 10 minutes, 0.5 s from the landing burn. Booster:
+1 s, 0.5 s around staging, 0.25 s from 10 s before the landing burn. Files:
+booster ≈ 20 KB, ship ≈ 435 KB.
+
+## Revision 2 (what changed)
+
+- **Separation.** `# mount: 141, 72.3` removed. The ship's track point is the
+  ship's base for the whole flight (stacked: booster base + axis × 72.3 m),
+  and its ascent integration starts from that state, so the ship no longer
+  drops onto the booster at T+2:21. Gap between the drawn bodies: 0 m at
+  separation, ≈23 m at +1 s, 75 m at +2 s, 173 m at +5 s, 960 m at +10 s
+  (base-to-booster-top distance along the flight: 14 m / 100 m / 890 m at
+  +2 / +5 / +10 s; the drawn gap is larger early because the booster flips
+  about its base).
+- **Booster end.** Was: approach to the tower, a 3.5 km kinematic "divert"
+  offshore after T+6:35 and impact at T+7:27.5 (peak 4.2 g, implausible
+  sideways translation). Now: boostback aims offshore, vertical landing burn
+  over the aim point with continuous, limited acceleration, hover
+  T+6:31–6:35, shut-down at T+6:35 (reported), impact T+6:37.3. Landing-burn ignition 3.0 → 3.8 km
+  (from ~450 m/s a 3 km start cannot stop by the hover time at a plausible
+  thrust).
+- **Ship final approach.** Was: straight line, one 17.5 km constant-radius
+  arc at ~Mach 1.5 (≈1 g, with heading-rate steps at both ends), straight
+  final leg. Now: one bank-limited turn with continuous heading rate
+  (≤ 0.42 g, bank ≈ 23°, radius ≥ 20.9 km) starting at the end of the
+  physics entry; the entry aims ≈12 km north of the coast crossing so the
+  turn still crosses the coast there.
+- **Sampling.** Ship 1 s for the last 10 minutes (was from T+22:28:34),
+  booster 0.25 s for the landing burn.
+
 ## Tests
 
 `tests/flight15-data.test.ts` checks: both files parse with zero warnings and
-total < 1 MB; epoch, models, mount; every event label and time; identical
-stacked ascent up to T+141 s with aligned noses; 276 × 278 km (±1.5) and
-30.5° (±0.1, from the inertial velocity) after insertion; 100 km at entry,
-Mach 1.2 / 0.8 at the transonic / subsonic times; arrival from the west,
-north of South Padre Island, south-bound over the Gulf; catch within 100 m of
-the pad at T+22:32:28 with a level belly flop and a vertical nose at the
-catch; booster ending offshore east of the pad at T+7:27.5; no velocity
-jumps.
+total < 1.5 MB; epoch, models, no mount; every event label and time; the
+stacked ascent (ship base = booster base + drawn booster nose × 72.3 m within
+0.5 m, booster base at h = 0 on the pad, aligned noses); a separation gap
+that grows monotonically from staging; 276 × 278 km (±1.5) and 30.5° (±0.1,
+from the inertial velocity) after insertion; 100 km at entry, Mach 1.2 / 0.8
+at the transonic / subsonic times; arrival from the west, north of South
+Padre Island, south-bound over the Gulf; the final turn (lateral ≤ 0.5 g,
+bank < 30°, radius > 15 km, no kinks in the lateral acceleration, final
+heading 195 ± 5°); sample spacing; catch within 100 m of the pad at
+T+22:32:28 with a level belly flop and a vertical nose at the catch; the
+booster staying > 3 km from the pad and < 1 km from its aim point from the
+landing burn on, hovering 15–60 m above the water at T+6:31–6:35, vertical,
+ending at the water at the aim point between T+6:35.5 and T+6:38.5; landing-burn
+limits (horizontal < 0.4 g kinematic incl. early drag, thrust tilt < 20°,
+total < 4.5 g, continuous acceleration); no velocity jumps.

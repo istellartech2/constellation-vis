@@ -40,7 +40,7 @@ import { Line2 } from "three/examples/jsm/lines/Line2.js";
 import { LineGeometry } from "three/examples/jsm/lines/LineGeometry.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
-import { sunVectorECI } from "../astronomy";
+import { EARTH_FLATTENING, sunVectorECI } from "../astronomy";
 import { geodeticUpEcef, trajectoryAttitudeAt, uprightBodyQuaternion } from "./attitude";
 import { sampleTrajectoryPath, trajectoryEcefAt, trajectoryStateAt } from "./interpolate";
 import {
@@ -60,9 +60,13 @@ const EARTH_RADIUS_POLAR_KM = 6356.7523142;
 /** Scene unit (one equatorial Earth radius) in metres. */
 const SCENE_UNIT_M = 6378137;
 
-// The scene's ECEF mapping (x/Re, z/Rp, -y/Re) turns the WGS84 ellipsoid into
-// the unit sphere, so scaling a track group about the origin lifts it
-// radially by an altitude offset. Positions are stored unlifted; each frame
+// Tracks are stored in an "overlay-local" frame, ECEF mapped as (x/Re, z/Rp,
+// -y/Re), which turns the WGS84 ellipsoid into the unit sphere, so scaling a
+// track group about the origin lifts it radially by an altitude offset and
+// Earth occlusion is a unit-sphere test. The root group is y-scaled by
+// EARTH_FLATTENING like the globe (SatelliteScene's earthGroup), so in world
+// space a point at 0 km sits on the drawn ellipsoid and on the launch-site
+// imagery; without it a pad at 26° N floats ~4 km above the globe. Positions are stored unlifted; each frame
 // the lift is min(MAX, PER_DISTANCE × camera distance to the track tip): ~0.6
 // km from afar (enough against the globe, whose 128-segment facets sag ~2 km
 // below the true surface anyway) but only metres when following a vehicle,
@@ -365,6 +369,12 @@ interface TrackEntry {
   trailPatched: boolean;
   /** Segment whose end currently holds the live tip, or -1. */
   tipSegment: number;
+  /**
+   * The bright buffers were rewritten wholesale (rebaseEntry) and must be
+   * uploaded in full on the next frame; otherwise update() uploads only the
+   * one or two segments it touched (the path can hold ~50 000 segments).
+   */
+  brightFullUpload: boolean;
   marker: THREE.Points;
   events: THREE.Points | null;
   eventGeometry: THREE.BufferGeometry | null;
@@ -407,6 +417,13 @@ interface LandmarkEntry {
 
 const scratchEcefPos = new Float64Array(3);
 const scratchEcefVel = new Float64Array(3);
+const scratchTipEcef = new Float64Array(3);
+
+/** Queue segment k (stride floats each) of an interleaved buffer for upload, or the whole buffer when `full`. */
+function markSegment(buffer: THREE.InterleavedBuffer, k: number, stride: number, full: boolean) {
+  if (!full) buffer.addUpdateRange(k * stride, stride);
+  buffer.needsUpdate = true;
+}
 
 export class TrajectoryRenderer {
   private readonly scene: THREE.Scene;
@@ -451,6 +468,8 @@ export class TrajectoryRenderer {
     this.scene = scene;
     this.root = new THREE.Group();
     this.root.name = "TrajectoryTracks";
+    // Same flattening as the globe group: overlay-local (unit sphere) → world (ECEF / Re).
+    this.root.scale.set(1, EARTH_FLATTENING, 1);
     this.scene.add(this.root);
     this.landmarkGroup.name = "TrajectoryLandmarks";
     this.root.add(this.landmarkGroup);
@@ -570,8 +589,10 @@ export class TrajectoryRenderer {
   }
 
   /**
-   * True position (no drawing lift) in overlay-local scene units (Earth
-   * radii, same mapping as the trail) and velocity in those units per second.
+   * True position (no drawing lift) and velocity (per second) in the
+   * Earth-fixed, world-aligned frame before the GMST rotation: ECEF / Re as
+   * (x, z, −y), i.e. the frame of the drawn (flattened) globe, not the
+   * unit-sphere overlay-local frame of the trail.
    * False for an unknown id or outside the span. Allocation-free.
    */
   localStateAt(id: string, timeMs: number, outPos: THREE.Vector3, outVel: THREE.Vector3): boolean {
@@ -580,8 +601,8 @@ export class TrajectoryRenderer {
     if (!trajectoryEcefAt(entry.track, timeMs, scratchEcefPos, scratchEcefVel)) return false;
     const p = scratchEcefPos;
     const v = scratchEcefVel;
-    outPos.set(p[0] / EARTH_RADIUS_EQUATOR_KM, p[2] / EARTH_RADIUS_POLAR_KM, -p[1] / EARTH_RADIUS_EQUATOR_KM);
-    outVel.set(v[0] / EARTH_RADIUS_EQUATOR_KM, v[2] / EARTH_RADIUS_POLAR_KM, -v[1] / EARTH_RADIUS_EQUATOR_KM);
+    outPos.set(p[0] / EARTH_RADIUS_EQUATOR_KM, p[2] / EARTH_RADIUS_EQUATOR_KM, -p[1] / EARTH_RADIUS_EQUATOR_KM);
+    outVel.set(v[0] / EARTH_RADIUS_EQUATOR_KM, v[2] / EARTH_RADIUS_EQUATOR_KM, -v[1] / EARTH_RADIUS_EQUATOR_KM);
     return true;
   }
 
@@ -668,8 +689,9 @@ export class TrajectoryRenderer {
     const camX = me[12];
     const camY = me[13];
     const camZ = me[14];
-    // Camera in the Earth-fixed local frame (inverse GMST rotation).
-    const camLocal = this.tmpCamLocal.set(camX * cosR - camZ * sinR, camY, camX * sinR + camZ * cosR);
+    // Camera in the overlay-local frame (inverse GMST rotation, then undo the
+    // root's flattening so the Earth is the unit sphere there).
+    const camLocal = this.tmpCamLocal.set(camX * cosR - camZ * sinR, camY / EARTH_FLATTENING, camX * sinR + camZ * cosR);
     this.updateLabelOcclusion(camLocal);
     this.updateTrailLift(camLocal, simDate.getTime());
     this.updateLabelStacking(camera, viewportH);
@@ -712,7 +734,7 @@ export class TrajectoryRenderer {
       if (this.occludedByEarth(camLocal, lx, ly, lz)) continue;
       // float64 subtraction first, then metres.
       const dx = (lx * cosR + lz * sinR - camX) * SCENE_UNIT_M;
-      const dy = (ly - camY) * SCENE_UNIT_M;
+      const dy = (ly * EARTH_FLATTENING - camY) * SCENE_UNIT_M;
       const dz = (-lx * sinR + lz * cosR - camZ) * SCENE_UNIT_M;
       const dist = Math.hypot(dx, dy, dz);
       const lengthM = slot.template.lengthM;
@@ -763,7 +785,7 @@ export class TrajectoryRenderer {
         const disc = slot.disc;
         disc.position.set(
           (gx * cosR + gz * sinR - camX) * SCENE_UNIT_M,
-          (gy - camY) * SCENE_UNIT_M,
+          (gy * EARTH_FLATTENING - camY) * SCENE_UNIT_M,
           (-gx * sinR + gz * cosR - camZ) * SCENE_UNIT_M,
         );
         disc.quaternion.setFromUnitVectors(this.yAxis, up);
@@ -793,7 +815,7 @@ export class TrajectoryRenderer {
       const { x: lx, y: ly, z: lz } = lm.position;
       if (this.occludedByEarth(camLocal, lx, ly, lz)) continue;
       const dx = (lx * cosR + lz * sinR - camX) * SCENE_UNIT_M;
-      const dy = (ly - camY) * SCENE_UNIT_M;
+      const dy = (ly * EARTH_FLATTENING - camY) * SCENE_UNIT_M;
       const dz = (-lx * sinR + lz * cosR - camZ) * SCENE_UNIT_M;
       const dist = Math.hypot(dx, dy, dz);
       const lengthM = slot.template.lengthM;
@@ -971,6 +993,15 @@ export class TrajectoryRenderer {
     entry.brightWindow.value = windowMs / 1000;
     this.updateEvents(entry, simMs, inertial, future, windowMs);
 
+    // Upload only the touched segments, unless a rebase rewrote everything.
+    const full = entry.brightFullUpload;
+    if (full) {
+      entry.brightFullUpload = false;
+      entry.brightBuffer.clearUpdateRanges();
+      entry.brightTimeBuffer.clearUpdateRanges();
+      entry.brightBuffer.needsUpdate = true;
+      entry.brightTimeBuffer.needsUpdate = true;
+    }
     // Restore the segment end overwritten by the previous live tip.
     if (entry.tipSegment >= 0) {
       const k = entry.tipSegment;
@@ -979,8 +1010,8 @@ export class TrajectoryRenderer {
       segments[k * 6 + 5] = p[(k + 1) * 3 + 2] - o.z;
       entry.brightTimes[k * 2 + 1] = (times[k + 1] - entry.t0Ms) / 1000;
       entry.tipSegment = -1;
-      entry.brightBuffer.needsUpdate = true;
-      entry.brightTimeBuffer.needsUpdate = true;
+      markSegment(entry.brightBuffer, k, 6, full);
+      markSegment(entry.brightTimeBuffer, k, 2, full);
     }
 
     if (simMs < times[0] || simMs >= times[n - 1]) {
@@ -1012,8 +1043,8 @@ export class TrajectoryRenderer {
     segments[k * 6 + 5] = tip.z - o.z;
     entry.brightTimes[k * 2 + 1] = (simMs - entry.t0Ms) / 1000;
     entry.tipSegment = k;
-    entry.brightBuffer.needsUpdate = true;
-    entry.brightTimeBuffer.needsUpdate = true;
+    markSegment(entry.brightBuffer, k, 6, full);
+    markSegment(entry.brightTimeBuffer, k, 2, full);
     geom.instanceCount = k + 1;
     entry.brightLine.visible = true;
     entry.marker.position.copy(tip);
@@ -1078,7 +1109,16 @@ export class TrajectoryRenderer {
     return Math.min(lo, times.length - 2);
   }
 
+  /**
+   * Position on the path at `t` (overlay-local, unlifted): the track's cubic
+   * Hermite state, the same curve the path points were sampled from and the
+   * model is drawn on, so the live tip never cuts a corner between points.
+   * Falls back to the chord of segment k.
+   */
   private interpolate(entry: TrackEntry, k: number, t: number, out: THREE.Vector3): THREE.Vector3 {
+    if (trajectoryEcefAt(entry.track, t, scratchTipEcef)) {
+      return ecefToTrajectoryScene(scratchTipEcef[0], scratchTipEcef[1], scratchTipEcef[2], out);
+    }
     const times = entry.timesMs;
     const p = entry.scenePositions;
     const t0 = times[k];
@@ -1214,15 +1254,19 @@ export class TrajectoryRenderer {
     entry.uniforms.trailOrigin.value.copy(origin);
     this.writeSegments(entry.scenePositions, origin, entry.faintSegments);
     this.writeSegments(entry.scenePositions, origin, entry.brightSegments);
+    entry.faintBuffer.clearUpdateRanges();
     entry.faintBuffer.needsUpdate = true;
+    entry.brightBuffer.clearUpdateRanges();
     entry.brightBuffer.needsUpdate = true;
     // The tip segment now holds its true end again; restore its time too.
     if (entry.tipSegment >= 0) {
       const k = entry.tipSegment;
       entry.brightTimes[k * 2 + 1] = (entry.timesMs[k + 1] - entry.t0Ms) / 1000;
-      entry.brightTimeBuffer.needsUpdate = true;
       entry.tipSegment = -1;
     }
+    entry.brightTimeBuffer.clearUpdateRanges();
+    entry.brightTimeBuffer.needsUpdate = true;
+    entry.brightFullUpload = true;
   }
 
   /** Interleaved [start xyz, end xyz] segments of a polyline, relative to `origin`. */
@@ -1655,6 +1699,7 @@ export class TrajectoryRenderer {
       brightWindow,
       trailPatched,
       tipSegment: -1,
+      brightFullUpload: false,
       marker,
       events,
       eventGeometry,

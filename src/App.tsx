@@ -608,6 +608,8 @@ function App() {
         onBegin={guidedTour.begin}
         onGoTo={guidedTour.goTo}
         onStop={endTour}
+        onSeek={guidedTour.seekInChapter}
+        onScrub={guidedTour.setScrubbing}
       />
     </div>
   );

@@ -149,9 +149,6 @@ export default function OptionTab({
 
   return (
     <div>
-      {/* 解説付きデモ（あれば先頭に）。public/demos/index.json が空なら何も出さない */}
-      {onStartDemo && <DemoSection onStart={onStartDemo} />}
-
       {/* ビュー(画角・表示設定)の保存と呼び出し。このタブのプリセットとして先頭に置く */}
       <PanelSection
         title="保存したビュー"
@@ -377,6 +374,10 @@ export default function OptionTab({
         currentSimMs={currentSimMs}
         sceneRef={sceneRef}
       />
+
+      {/* おまけ: 解説付きデモ。中心機能ではないので末尾に畳んで置く。
+          public/demos/index.json が空なら何も出さない */}
+      {onStartDemo && <DemoSection onStart={onStartDemo} />}
     </div>
   );
 }

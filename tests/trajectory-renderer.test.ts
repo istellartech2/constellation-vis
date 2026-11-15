@@ -293,6 +293,49 @@ describe("TrajectoryRenderer trail options", () => {
   });
 });
 
+describe("TrajectoryRenderer ellipsoid", () => {
+  it("draws a 0 km point at 26° N on the flattened globe, not above it", async () => {
+    // WGS84 point at 26° N, 0 km (lon 0).
+    const lat = (26 * Math.PI) / 180;
+    const e2 = 1 - (6356.7523142 / RE_KM) ** 2;
+    const n = RE_KM / Math.sqrt(1 - e2 * Math.sin(lat) ** 2);
+    const x = n * Math.cos(lat);
+    const z = n * (1 - e2) * Math.sin(lat);
+    const scene = new THREE.Scene();
+    const r = new TrajectoryRenderer(scene);
+    const track = padTrack();
+    track.samples = [
+      { timeMs: T0, position: { x, y: 0, z } },
+      { timeMs: T0 + 10_000, position: { x: x + 0.01, y: 0, z } },
+    ];
+    r.setTracks([track]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    r.update(new Date(T0), 0);
+    scene.updateMatrixWorld(true);
+    // The globe is the unit sphere y-scaled by Rp/Re: its surface point is ECEF / Re.
+    const surface = new THREE.Vector3(x / RE_KM, z / RE_KM, 0);
+    const marker = markers(scene)[0];
+    const world = marker.getWorldPosition(new THREE.Vector3());
+    expect(world.distanceTo(surface) * RE_M).toBeLessThan(1);
+    // localStateAt is in the same (flattened, world-aligned) frame.
+    const pos = new THREE.Vector3();
+    expect(r.localStateAt("pad", T0, pos, new THREE.Vector3())).toBe(true);
+    expect(pos.distanceTo(surface) * RE_M).toBeLessThan(1e-3);
+    // The vehicle base is placed on the same point (camera 300 m east, looking at it).
+    const camera = cameraAt([surface.x, surface.y, -300 / RE_M], [surface.x, surface.y, 0]);
+    const { renderer, calls } = stubRenderer();
+    r.renderVehicles(renderer, camera, new Date(T0), 0);
+    let model: THREE.Object3D | undefined;
+    calls[calls.length - 1].scene.traverse((o) => {
+      if (o.name === "TrajectoryModel:generic-rocket") model = o;
+    });
+    expect(model?.visible).toBe(true);
+    const expectedBase = surface.clone().sub(camera.position).multiplyScalar(RE_M);
+    expect(model!.position.distanceTo(expectedBase)).toBeLessThan(0.05);
+    r.dispose();
+  });
+});
+
 describe("TrajectoryRenderer landmarks", () => {
   it("draws a landmark model upright on its point and shows its dot only when near", async () => {
     const scene = new THREE.Scene();

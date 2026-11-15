@@ -98,7 +98,12 @@ export type TourCamera =
       track?: string;
       distance?: number;
       chase?: boolean;
-      /** Tilt the view from the track's position toward its orbit normal (deg, 0–85), so a ring is not seen edge-on. */
+      /**
+       * Tilt the view from the track's position toward its orbit normal (deg,
+       * −85–85; negative tilts away from it), so a ring is not seen edge-on.
+       * 10–20° gives a side-on view of a flat ellipse; larger values look down
+       * on the orbit plane.
+       */
       tiltDeg?: number;
     };
 
@@ -167,7 +172,7 @@ export interface TourDefinition {
   disclaimer?: string;
   /** Caption above the T± clock in the HUD (default 「基準時刻から」, e.g. 「打上げから」). */
   clockLabel?: string;
-  /** Small note under the telemetry values (e.g. 「速度・高度は推定」). */
+  /** Short telemetry note (e.g. 「速度・高度は推定」), shown after the disclaimer on its line while a chapter has telemetry. */
   telemetryNote?: string;
   /** T0 (ISO). Default: the first track's `# epoch:`. */
   epoch?: string;
@@ -221,6 +226,12 @@ export interface DemoEntry {
   description?: string;
   /** Tour JSON URL relative to the app's base URL. */
   tour: string;
+  /** Grouping in the demo list, e.g. 「打上げ」「衛星運用」. */
+  category?: string;
+  /** Date of the event shown (YYYY-MM-DD); newest first in the list. */
+  date?: string;
+  /** Approximate running time in minutes. */
+  durationMin?: number;
 }
 
 export type TourResult<T> = { ok: true; value: T } | { ok: false; error: string };

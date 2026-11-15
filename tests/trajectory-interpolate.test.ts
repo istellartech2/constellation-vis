@@ -122,6 +122,37 @@ describe("sampleTrajectoryPath", () => {
     expect(positions[lastIndex * 3 + 2]).toBe(last.z);
   });
 
+  it("refines curves by shape and leaves straight segments alone", () => {
+    // Quarter circle of radius 7000 km sampled every 15° (one sample per 60 s), no velocities.
+    const curve: TrajectorySample[] = [];
+    for (let i = 0; i <= 6; i += 1) {
+      const a = (i * Math.PI) / 12;
+      curve.push({ timeMs: T0 + i * 60_000, position: { x: 7000 * Math.cos(a), y: 7000 * Math.sin(a), z: 0 } });
+    }
+    const curved = sampleTrajectoryPath(makeTrack(curve));
+    expect(curved.timesMs.length).toBeGreaterThan(200);
+    // Every drawn point lies on the circle within ~a metre (the Hermite curve's own error aside).
+    const mid = curved.timesMs.length >> 1;
+    const r = Math.hypot(curved.positions[mid * 3], curved.positions[mid * 3 + 1]);
+    expect(Math.abs(r - 7000)).toBeLessThan(5);
+    const line: TrajectorySample[] = [];
+    for (let i = 0; i <= 6; i += 1) line.push({ timeMs: T0 + i * 60_000, position: { x: 7000, y: i * 400, z: 0 } });
+    expect(sampleTrajectoryPath(makeTrack(line)).timesMs.length).toBe(7);
+  });
+
+  it("keeps every source sample and relaxes the tolerance to fit maxPoints", () => {
+    const curve: TrajectorySample[] = [];
+    for (let i = 0; i <= 360; i += 1) {
+      const a = (i * Math.PI) / 180;
+      curve.push({ timeMs: T0 + i * 20_000, position: { x: 6650 * Math.cos(a), y: 6650 * Math.sin(a), z: 0 } });
+    }
+    const { timesMs } = sampleTrajectoryPath(makeTrack(curve), { maxPoints: 2000 });
+    expect(timesMs.length).toBeLessThanOrEqual(2000);
+    expect(timesMs.length).toBeGreaterThan(1000);
+    const all = new Set(Array.from(timesMs));
+    for (const s of curve) expect(all.has(s.timeMs)).toBe(true);
+  });
+
   it("respects maxPoints when densifying", () => {
     const track = curvedTrack();
     const { timesMs } = sampleTrajectoryPath(track, { maxPoints: 20, maxStepMs: 10 });

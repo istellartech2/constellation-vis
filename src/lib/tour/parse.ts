@@ -105,8 +105,8 @@ function validateCamera(raw: unknown, where: string, trackKeys: Set<string>): To
     const chase = raw.chase;
     if (chase !== undefined && typeof chase !== "boolean") return { ok: false, error: `${where}: camera.chase は true / false です` };
     const tiltDeg = raw.tiltDeg;
-    if (tiltDeg !== undefined && (typeof tiltDeg !== "number" || !(tiltDeg >= 0 && tiltDeg <= 85))) {
-      return { ok: false, error: `${where}: camera.tiltDeg は 0〜85（度）です` };
+    if (tiltDeg !== undefined && (typeof tiltDeg !== "number" || !(tiltDeg >= -85 && tiltDeg <= 85))) {
+      return { ok: false, error: `${where}: camera.tiltDeg は −85〜85（度）です` };
     }
     return {
       ok: true,
@@ -548,6 +548,11 @@ export function parseDemoIndex(raw: unknown): DemoEntry[] {
       title: d.title,
       tour: d.tour,
       ...(isNonEmptyString(d.description) ? { description: d.description } : {}),
+      ...(isNonEmptyString(d.category) ? { category: d.category } : {}),
+      ...(isNonEmptyString(d.date) && /^\d{4}-\d{2}-\d{2}$/.test(d.date) ? { date: d.date } : {}),
+      ...(typeof d.durationMin === "number" && Number.isFinite(d.durationMin) && d.durationMin > 0
+        ? { durationMin: d.durationMin }
+        : {}),
     });
   }
   return out;
