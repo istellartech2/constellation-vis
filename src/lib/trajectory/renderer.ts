@@ -47,6 +47,7 @@ import {
   acquireTrajectoryModel,
   bodyToWorldQuaternion,
   instantiateTrajectoryModel,
+  onTrajectoryModelInvalidated,
   releaseTrajectoryModel,
   setSolarArrayDrive,
   trajectoryModelLengthM,
@@ -284,7 +285,7 @@ interface VehicleSlot {
  * (world) units; the camera difference is taken before scaling to metres.
  */
 export interface SatelliteVehicleState {
-  /** Built-in key or GLB URL (today always "satellite-bus" = 標準バス). */
+  /** Built-in key, `library:<id>` or GLB URL (default "satellite-bus" = 標準バス). */
   model: string;
   /** Model centre in world scene units (Earth radii). */
   x: number;
@@ -457,6 +458,7 @@ export class TrajectoryRenderer {
   private satelliteSlot: SatelliteSlot | null = null;
   private satelliteOverlay: SatelliteOverlay | null = null;
   private satelliteCoversMarker = false;
+  private readonly unsubscribeModels: () => void;
   private readonly tmpQuat = new THREE.Quaternion();
 
   // Landmarks (see setLandmarks).
@@ -478,6 +480,26 @@ export class TrajectoryRenderer {
     this.vehicleScene.name = "TrajectoryVehicles";
     this.vehicleScene.add(this.sunLight, this.sunLight.target, this.fillLight, this.ambientLight);
     this.vehicleScene.environmentIntensity = 0.35;
+    this.unsubscribeModels = onTrajectoryModelInvalidated((model, phase) => this.handleModelInvalidated(model, phase));
+  }
+
+  /** A library model was edited (reload) or deleted: drop its instances, then re-acquire. */
+  private handleModelInvalidated(model: string, phase: "release" | "reload") {
+    if (phase === "release") {
+      for (const entry of this.entries.values()) {
+        if (entry.vehicle?.model !== model) continue;
+        this.disposeVehicle(entry.vehicle);
+        entry.vehicle = null;
+        entry.hideMarker = false;
+      }
+      if (this.satelliteSlot?.model === model) {
+        this.releaseSatelliteSlot(this.satelliteSlot);
+        this.satelliteSlot = null;
+      }
+      return;
+    }
+    // The satellite slot is re-created by the next setSatelliteVehicle call.
+    for (const entry of this.entries.values()) if (entry.track.model === model) this.syncVehicle(entry);
   }
 
   /** Refresh fat-line resolution (call from the resize handler). */
@@ -934,6 +956,7 @@ export class TrajectoryRenderer {
   }
 
   dispose(): void {
+    this.unsubscribeModels();
     if (this.satelliteSlot) this.releaseSatelliteSlot(this.satelliteSlot);
     this.satelliteSlot = null;
     this.satelliteState = null;

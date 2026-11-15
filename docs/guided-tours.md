@@ -55,6 +55,11 @@ Tests: `tests/tour.test.ts`. The tests also validate every tour listed in
   grouped by `category` when there is more than one, with a filter box once
   there are more than 6 demos. 「再生」 plays at once (the clock still waits
   for the globe). The section is hidden when the index is missing or empty.
+- **Sharing:** starting a demo (from the list or a link) puts `?demo=<id>` in
+  the address bar, and the player's 「リンクをコピー」 button (left of 終了)
+  copies that URL (falls back to a prompt where the clipboard API is not
+  available). Opening the link shows the start screen; 終了 removes the
+  parameter.
 - Index entry fields: `id`, `title`, `tour` (required); `description`,
   `category` (e.g. 「打上げ」「衛星運用」), `date` (`YYYY-MM-DD`, the event
   date) and `durationMin` (approximate running time) are optional.

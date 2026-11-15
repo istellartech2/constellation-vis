@@ -9,6 +9,9 @@ import type { TrajectoryTrack } from "../../lib/trajectory/types";
 import { parseTrajectoryFile, toTrajectoryTrack } from "../../lib/trajectory/parse";
 import { trajectoryStateAt } from "../../lib/trajectory/interpolate";
 import { TRAJECTORY_MODELS } from "../../lib/trajectory/models";
+import type { ModelDialogTarget } from "./ModelImportDialog";
+import { libraryModelId, libraryModelKey, type LibraryModelMeta } from "../../lib/modelLibrary/types";
+import { useModelLibrary } from "../../lib/modelLibrary/useModelLibrary";
 
 /** Playback controls owned by App (scene seek, follow state, speed). */
 export interface TrajectoryPlayback {
@@ -28,6 +31,8 @@ interface Props {
   playback: TrajectoryPlayback;
   currentSimMs: number;
   sceneRef?: RefObject<SatelliteScene | null>;
+  /** Open the shared model import dialog (「モデルを読み込む…」). */
+  openModelDialog?: (target: ModelDialogTarget, onSaved?: (meta: LibraryModelMeta) => void) => void;
 }
 
 interface FileMessage {
@@ -72,12 +77,6 @@ function readAsText(file: File): Promise<string> {
   });
 }
 
-const isObjectUrl = (model: string | undefined): model is string => !!model && model.startsWith("blob:");
-
-function revokeModel(model: string | undefined) {
-  if (isObjectUrl(model)) URL.revokeObjectURL(model);
-}
-
 const spanOf = (track: TrajectoryTrack) => ({
   first: track.samples[0].timeMs,
   last: track.samples[track.samples.length - 1].timeMs,
@@ -90,13 +89,13 @@ export default function TrajectorySection({
   playback,
   currentSimMs,
   sceneRef,
+  openModelDialog,
 }: Props) {
+  const library = useModelLibrary();
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<FileMessage[]>([]);
   // Monotonic index for colours/ids so a remove-then-add never reuses one.
   const nextIndexRef = useRef(trajectories.length);
-  // Display names of loaded .glb files, by track id (object URLs carry none).
-  const [glbNames, setGlbNames] = useState<Record<string, string>>({});
 
   // Scrubbing: the thumb follows the pointer locally, and the scene is
   // seeked at most once per animation frame.
@@ -162,51 +161,37 @@ export default function TrajectorySection({
   const updateTrack = (id: string, patch: Partial<Pick<TrajectoryTrack, "visible" | "model">>) =>
     onTrajectoriesChange(trajectories.map((t) => (t.id === id ? { ...t, ...patch } : t)));
 
-  // Object URLs are revoked only when their track drops them (remove, model
-  // change, clear all) — never on unmount: tracks outlive this tab.
   const removeTrack = (id: string) => {
-    const track = trajectories.find((t) => t.id === id);
-    revokeModel(track?.model);
     if (playback.followId === id) playback.onFollowChange(null);
     onTrajectoriesChange(trajectories.filter((t) => t.id !== id));
   };
 
   const clearAll = () => {
-    trajectories.forEach((t) => revokeModel(t.model));
     if (playback.followId !== null) playback.onFollowChange(null);
     onTrajectoriesChange([]);
     setMessages([]);
-    setGlbNames({});
   };
 
-  const setModel = (track: TrajectoryTrack, model: string | undefined, glbName?: string) => {
+  const setModel = (track: TrajectoryTrack, model: string | undefined) => {
     if (model === track.model) return;
-    revokeModel(track.model);
-    setGlbNames((prev) => {
-      const next = { ...prev };
-      if (glbName) next[track.id] = glbName;
-      else delete next[track.id];
-      return next;
-    });
     updateTrack(track.id, { model });
   };
 
-  const pickGlb = (track: TrajectoryTrack) => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = ".glb,model/gltf-binary";
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-      setModel(track, URL.createObjectURL(file), file.name);
-    };
-    input.click();
-  };
+  // Import into the library with rocket defaults (origin 底面, nose = longest axis), then assign.
+  const importModel = (track: TrajectoryTrack) =>
+    openModelDialog?.({ kind: "new", modelKind: "rocket" }, (meta) => setModel(track, libraryModelKey(meta.id)));
 
   const handleModelChange = (track: TrajectoryTrack, value: string) => {
-    if (value === MODEL_PICK) pickGlb(track);
+    if (value === MODEL_PICK) importModel(track);
     else if (value === MODEL_CUSTOM) return;
     else setModel(track, value === MODEL_NONE ? undefined : value);
+  };
+
+  /** Label of a model the select has no regular option for (URL from a CSV header, missing library model). */
+  const customModelLabel = (model: string) => {
+    if (libraryModelId(model) !== null) return library.ready ? "見つからないモデル" : "読み込み中…";
+    const file = model.split(/[?#]/)[0].split("/").pop();
+    return file ? `外部: ${file}` : "外部モデル";
   };
 
   const playFromStart = (track: TrajectoryTrack) => {
@@ -359,7 +344,8 @@ export default function TrajectorySection({
             const following = playback.followId === track.id;
             const modelValue = !track.model
               ? MODEL_NONE
-              : TRAJECTORY_MODELS.some((m) => m.key === track.model)
+              : TRAJECTORY_MODELS.some((m) => m.key === track.model) ||
+                  library.models.some((m) => libraryModelKey(m.id) === track.model)
                 ? track.model
                 : MODEL_CUSTOM;
             return (
@@ -434,10 +420,19 @@ export default function TrajectorySection({
                         {m.label}
                       </option>
                     ))}
-                    {modelValue === MODEL_CUSTOM && (
-                      <option value={MODEL_CUSTOM}>{glbNames[track.id] ?? "GLBファイル"}</option>
+                    {library.models.length > 0 && (
+                      <optgroup label="モデルライブラリ">
+                        {library.models.map((m) => (
+                          <option key={m.id} value={libraryModelKey(m.id)}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </optgroup>
                     )}
-                    <option value={MODEL_PICK}>GLBファイル…</option>
+                    {modelValue === MODEL_CUSTOM && track.model && (
+                      <option value={MODEL_CUSTOM}>{customModelLabel(track.model)}</option>
+                    )}
+                    {openModelDialog && <option value={MODEL_PICK}>モデルを読み込む…</option>}
                   </select>
                 </div>
                 <div className="mt-0.5 text-[11px] text-fg-subtle tabular-nums">

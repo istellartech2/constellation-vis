@@ -28,6 +28,13 @@ import {
   EARTH_FLATTENING,
 } from "./astronomy";
 import { KMLRenderer } from "./kmlRenderer";
+import {
+  freeCameraNear,
+  freeCameraZoomSpeed,
+  groundClearanceScale,
+  heightAboveGlobe,
+  rideMinHeight,
+} from "./cameraClearance";
 import { EARTH_ROTATION_RAD_S, TrajectoryRenderer, type SatelliteVehicleState } from "./trajectory/renderer";
 import type { TrajectoryLandmark, TrajectoryTrack } from "./trajectory/types";
 import {
@@ -155,6 +162,10 @@ const FOLLOW_LERP_ALPHA = 0.14;
 
 /** Scene units (Earth equatorial radii) per metre. */
 const SCENE_UNITS_PER_M = 1 / 6_378_137;
+/** Free camera: closest approach to the Earth's centre (≈60 km above the equator, ≈80 km above the poles). */
+const FREE_CAMERA_MIN_DISTANCE = 1 + 60 / EARTH_RADIUS_EQUATOR_KM;
+/** Free and satellite-follow cameras: minimum height above the drawn globe (1 km). */
+const FREE_CAMERA_MIN_HEIGHT = 1 / EARTH_RADIUS_EQUATOR_KM;
 /** Trajectory follow: closest zoom as a fraction of the vehicle length. */
 const TRAJECTORY_FOLLOW_MIN_LENGTHS = 0.6;
 /** Trajectory follow: initial distance in vehicle lengths. */
@@ -170,8 +181,12 @@ const SATELLITE_FOLLOW_START_ELEVATION = THREE.MathUtils.degToRad(25);
 const SATELLITE_FOLLOW_START_AZIMUTH = THREE.MathUtils.degToRad(35);
 /** Frames the selected dot stays hidden on entering 近接 while the model loads / is first measured (~0.5 s). */
 const CLOSE_UP_DOT_GRACE_FRAMES = 30;
-/** Model drawn for editor satellites in the 近接 camera (標準バス). */
-const SATELLITE_MODEL = "satellite-bus";
+/** Default model drawn for editor satellites in the 近接 camera (標準バス). */
+const DEFAULT_SATELLITE_MODEL = "satellite-bus";
+/** 近接: half-width of the dense orbit segment around the ridden satellite. */
+const CLOSE_UP_ORBIT_WINDOW_MS = 15 * 60_000;
+/** Vertex capacity of the dense segment (~90 are used). */
+const CLOSE_UP_ORBIT_MAX_POINTS = 256;
 /** FOV cones whose boresight misses the Earth: grey, fainter. */
 const FOV_CONE_MISS_COLOR = 0x9aa0a6;
 const FOV_CONE_OPACITY = 0.16;
@@ -403,6 +418,12 @@ export interface SatelliteSceneParams {
   satelliteAttitude?: SatelliteAttitudeSettings;
   /** Solar array type of the 近接 model (1軸追尾 turns the wings). Applied live. Default fixed. */
   solarArrayType?: SolarArrayType;
+  /**
+   * Model of the editor satellites in the 近接 camera: "satellite-bus" (標準バス,
+   * default) or `library:<id>` (already resolved by the caller to an existing
+   * library model). Applied live.
+   */
+  satelliteModel?: string;
   /** 近接 camera overlays: body X/Y/Z triad and the Sun direction seen from the satellite. Applied live. */
   showBodyAxes?: boolean;
   showBodySunDirection?: boolean;
@@ -541,6 +562,24 @@ export default class SatelliteScene {
   private selectedIndex: number | null = null;
   private selectedStationIndex: number | null = null;
   private orbitLine: THREE.Line | null = null;
+  /** Sim time (ms) of each vertex of the global orbit line (one minute apart). */
+  private orbitLineTimes: number[] = [];
+  /**
+   * 近接: dense orbit segment around the ridden satellite (see
+   * updateCloseUpOrbit), re-based at {@link renderOrigin}; it replaces the
+   * global line's chords within ±CLOSE_UP_ORBIT_WINDOW_MS.
+   */
+  private closeUpOrbit: THREE.Line | null = null;
+  /**
+   * World origin of the overlays that are drawn around the ridden satellite
+   * in 近接 (FOV cones, station links, ISL path, close-up orbit): the
+   * selected satellite's position, else (0, 0, 0). Their vertices / instance
+   * translations are written relative to it (float64 subtraction), and the
+   * objects sit at it, so three.js forms model-view matrices in float64 and
+   * nothing near the satellite is quantised to float32 at |r| ≈ 1 (~0.5 m).
+   */
+  private readonly renderOrigin = new THREE.Vector3();
+  private readonly originScratch = new THREE.Vector3();
   /**
    * Trail of the selected satellite's sub-satellite point. Vertices are stored
    * Earth-fixed and the line is rotated with the Earth each frame, so past
@@ -775,10 +814,11 @@ export default class SatelliteScene {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enablePan = false;
     this.controls.enableDamping = true;
-    // Limit zoom range: ~1.05 = just above Earth surface (avoid clipping into the
-    // globe), 30 = far enough to see GEO satellites (~6.6 R) without the Earth
-    // shrinking to a dot.
-    this.controls.minDistance = 1.05;
+    // Zoom range: down to ~60 km above the surface (the near plane follows
+    // the height, see updateFreeCameraRange, and the ground clearance step
+    // keeps the camera outside the globe), 30 = far enough to see GEO
+    // satellites (~6.6 R) without the Earth shrinking to a dot.
+    this.controls.minDistance = FREE_CAMERA_MIN_DISTANCE;
     this.controls.maxDistance = 30;
     this.resetFreeCamera();
 
@@ -993,6 +1033,8 @@ export default class SatelliteScene {
     this.islPathMaterial = new THREE.LineBasicMaterial({ vertexColors: true, linewidth: 2 });
     this.islPathLines = new THREE.LineSegments(this.islPathGeometry, this.islPathMaterial);
     this.islPathLines.visible = false;
+    // Re-based at renderOrigin in 近接; the static bounding sphere would cull it wrongly.
+    this.islPathLines.frustumCulled = false;
     this.scene.add(this.islPathLines);
 
     // Endpoint markers reuse the same two colors as the path segments
@@ -2076,10 +2118,13 @@ export default class SatelliteScene {
     const periodMinutes = this.orbitPeriodMinutes(satIndex);
     // Cap at ~2 days so a GEO/HEO pick never builds a huge line.
     const trackMinutes = Math.min(Math.round(periodMinutes * 2), 2880);
+    const startMs = this.currentSimDate.getTime();
+    this.orbitLineTimes = [];
     for (let m = 0; m <= trackMinutes; m += 1) {
-      const d = new Date(this.currentSimDate.getTime() + m * 60000);
+      const d = new Date(startMs + m * 60000);
       const pv = this.propagateIndex(satIndex, d);
       if (pv) {
+        this.orbitLineTimes.push(d.getTime());
         const { x, y, z } = pv.position;
         points.push(
           new THREE.Vector3(
@@ -2099,6 +2144,137 @@ export default class SatelliteScene {
     this.orbitLine = new THREE.Line(geom, mat);
     this.scene.add(this.orbitLine);
   }
+
+  /**
+   * Set {@link renderOrigin} for this frame (before any re-based overlay is
+   * written): the selected editor satellite's position while riding it in
+   * 近接 — from the same propagator and time as the 近接 model, so the cone
+   * apex, links and close-up orbit meet the model exactly — else the origin.
+   */
+  private updateRenderOrigin(simDate: Date, following: boolean) {
+    this.renderOrigin.set(0, 0, 0);
+    const sel = this.selectedIndex;
+    if (following && this.ride?.kind === "satellite" && sel !== null && sel < this.satCount) {
+      const st = this.propagateIndex(sel, simDate);
+      const p = st?.position;
+      if (p && Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z)) {
+        this.renderOrigin.set(p.x / EARTH_RADIUS_EQUATOR_KM, p.z / EARTH_RADIUS_POLAR_KM, -p.y / EARTH_RADIUS_EQUATOR_KM);
+      }
+    }
+    for (const object of [this.fovCones, this.fovMissCones, this.fovMissBoresights, this.linkSegments, this.islPathLines]) {
+      object.position.copy(this.renderOrigin);
+    }
+  }
+
+  /**
+   * 近接: the global orbit line is 1-minute chords (~460 km in LEO, sagging
+   * up to ~4 km inside the orbit) in absolute float32, which looks angular
+   * and misses the model at close range. While riding, its vertices within
+   * ±CLOSE_UP_ORBIT_WINDOW_MS of now are hidden (geometry groups) and this
+   * dense segment — propagated every frame with the model's propagator, a
+   * vertex exactly at now, steps growing from 1 s to 60 s outward — is drawn
+   * instead, re-based at {@link renderOrigin}. Its ends are the global line's
+   * own vertices, so the two join seamlessly. Outside 近接 nothing changes.
+   */
+  private updateCloseUpOrbit(simDate: Date, riding: boolean) {
+    const line = this.orbitLine;
+    const sel = this.selectedIndex;
+    const active =
+      riding && this.ride?.kind === "satellite" && this.rideSatValid && line !== null && sel !== null && this.renderOrigin.lengthSq() > 0;
+    if (!active) {
+      if (line && Array.isArray(line.material)) {
+        line.material = line.material[0];
+        line.geometry.clearGroups();
+      }
+      if (this.closeUpOrbit) this.closeUpOrbit.visible = false;
+      return;
+    }
+    const material = (Array.isArray(line.material) ? line.material[0] : line.material) as THREE.LineBasicMaterial;
+    const nowMs = simDate.getTime();
+    const times = this.orbitLineTimes;
+    const lo = nowMs - CLOSE_UP_ORBIT_WINDOW_MS;
+    const hi = nowMs + CLOSE_UP_ORBIT_WINDOW_MS;
+    let a = -1;
+    let b = times.length;
+    for (let k = 0; k < times.length; k++) {
+      if (times[k] <= lo) a = k;
+      if (times[k] >= hi) {
+        b = k;
+        break;
+      }
+    }
+    const startMs = a >= 0 ? times[a] : lo;
+    const endMs = b < times.length ? times[b] : hi;
+
+    // Sample times: now, then outward with steps growing ×1.15 from 1 s to 60 s.
+    const sampleTimes = this.closeUpOrbitTimes;
+    sampleTimes.length = 0;
+    const back: number[] = [];
+    for (let t = nowMs, step = 1000; t > startMs; step = Math.min(step * 1.15, 60_000)) {
+      t = Math.max(t - step, startMs);
+      back.push(t);
+    }
+    for (let k = back.length - 1; k >= 0; k--) sampleTimes.push(back[k]);
+    sampleTimes.push(nowMs);
+    for (let t = nowMs, step = 1000; t < endMs; step = Math.min(step * 1.15, 60_000)) {
+      t = Math.min(t + step, endMs);
+      sampleTimes.push(t);
+    }
+
+    let orbit = this.closeUpOrbit;
+    if (!orbit) {
+      const geometry = new THREE.BufferGeometry();
+      const attr = new THREE.BufferAttribute(new Float32Array(CLOSE_UP_ORBIT_MAX_POINTS * 3), 3);
+      attr.setUsage(THREE.DynamicDrawUsage);
+      geometry.setAttribute("position", attr);
+      orbit = new THREE.Line(geometry, material);
+      orbit.name = "CloseUpOrbit";
+      orbit.frustumCulled = false;
+      this.scene.add(orbit);
+      this.closeUpOrbit = orbit;
+    }
+    orbit.material = material;
+    orbit.position.copy(this.renderOrigin);
+    const attr = orbit.geometry.getAttribute("position") as THREE.BufferAttribute;
+    const arr = attr.array as Float32Array;
+    const c = this.renderOrigin;
+    let n = 0;
+    for (const t of sampleTimes) {
+      if (n >= CLOSE_UP_ORBIT_MAX_POINTS) break;
+      let x: number;
+      let y: number;
+      let z: number;
+      if (t === nowMs) {
+        x = c.x;
+        y = c.y;
+        z = c.z;
+      } else {
+        const st = this.propagateIndex(sel, new Date(t));
+        const p = st?.position;
+        if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z)) continue;
+        x = p.x / EARTH_RADIUS_EQUATOR_KM;
+        y = p.z / EARTH_RADIUS_POLAR_KM;
+        z = -p.y / EARTH_RADIUS_EQUATOR_KM;
+      }
+      arr[n * 3] = x - c.x;
+      arr[n * 3 + 1] = y - c.y;
+      arr[n * 3 + 2] = z - c.z;
+      n++;
+    }
+    attr.needsUpdate = true;
+    orbit.geometry.setDrawRange(0, n);
+    orbit.visible = line.visible;
+
+    // Global line: everything but the replaced window (vertices a..b are covered).
+    const geometry = line.geometry;
+    const total = times.length;
+    geometry.clearGroups();
+    if (a >= 1) geometry.addGroup(0, a + 1, 0);
+    if (b <= total - 2) geometry.addGroup(b, total - b, 0);
+    if (!Array.isArray(line.material)) line.material = [material];
+  }
+
+  private readonly closeUpOrbitTimes: number[] = [];
 
   // Reused across calls: avoids allocating a fresh observer literal
   // every frame for each of the two endpoints.
@@ -2313,8 +2489,9 @@ export default class SatelliteScene {
       const toPos = this.islNodeScenePosition(edge.toNodeId, this.islScratchTo);
       const v0 = s * 2;
       const v1 = v0 + 1;
-      this.islPathPosAttr.setXYZ(v0, fromPos.x, fromPos.y, fromPos.z);
-      this.islPathPosAttr.setXYZ(v1, toPos.x, toPos.y, toPos.z);
+      const c = this.renderOrigin;
+      this.islPathPosAttr.setXYZ(v0, fromPos.x - c.x, fromPos.y - c.y, fromPos.z - c.z);
+      this.islPathPosAttr.setXYZ(v1, toPos.x - c.x, toPos.y - c.y, toPos.z - c.z);
       if (rewriteColors) {
         const color = edge.kind === "isl" ? this.islIslColor : this.islGslColor;
         this.islPathColorAttr.setXYZ(v0, color.r, color.g, color.b);
@@ -2414,6 +2591,7 @@ export default class SatelliteScene {
     this.trajectoryRenderer.update(simDate, rotAngle);
     const { x: sx, y: sy, z: sz } = sunVectorECI(simDate);
     const following = this.syncCameraHolder(simDate, rotAngle);
+    this.updateRenderOrigin(simDate, following);
     // OrbitControls orbits in the holder's local frame, but Object3D.lookAt
     // reads `camera.up` in world space. Keep it on the holder's +Y so a tilted
     // (GSE) holder keeps ecliptic north up instead of re-rolling to ECI north.
@@ -2621,9 +2799,12 @@ export default class SatelliteScene {
     if (this.cameraMode === "free" || this.cameraMode === "closeUp") {
       this.controls.update();
     }
+    this.applyGroundClearance(riding);
     if (riding) this.finishRideFrame();
+    else this.updateFreeCameraRange();
     this.updateRideStationMarkers(riding);
     this.updateSatelliteVehicle(simDate, riding);
+    this.updateCloseUpOrbit(simDate, riding);
     if (this.focusedTrajectoryTrack !== this.trajectoryFollowId) {
       this.focusedTrajectoryTrack = this.trajectoryFollowId;
       this.trajectoryRenderer.setFocusedTrack(this.trajectoryFollowId);
@@ -2714,7 +2895,7 @@ export default class SatelliteScene {
       this.tempQuaternionA.copy(this.cameraHolder.quaternion).invert();
       pos.copy(this.rideSatWorld).applyQuaternion(this.tempQuaternionA);
       vel.copy(this.rideSatWorldVel).applyQuaternion(this.tempQuaternionA);
-      lengthM = Math.max(this.trajectoryRenderer.satelliteVehicleLengthM(SATELLITE_MODEL), 1);
+      lengthM = Math.max(this.trajectoryRenderer.satelliteVehicleLengthM(this.satelliteModel()), 1);
       maxDistance = SATELLITE_FOLLOW_MAX_DISTANCE;
     }
     if (pos.lengthSq() < 1e-12) return true;
@@ -2893,23 +3074,80 @@ export default class SatelliteScene {
     // not depend on far, so shrinking it would buy nothing.
     const distance = this.camera.position.distanceTo(target);
     const horizonSq = Math.max(this.camera.position.lengthSq() - 1, 0);
+    // Also never beyond half the camera's height above the ground (after the
+    // clearance step), so the surface right below is not clipped either.
     const near = THREE.MathUtils.clamp(
-      Math.min(Math.max(0.2 * distance, horizonSq / 2000), 0.5 * distance),
+      Math.min(Math.max(0.2 * distance, horizonSq / 2000), 0.5 * distance, 0.5 * this.cameraHeight),
       1e-7,
       DEFAULT_CAMERA_NEAR,
     );
     this.setCameraNear(near);
-    // Below the cloud shell its double-sided sphere would roof the sky.
-    this.setCloudsVisible(this.params.showClouds && this.camera.position.length() > CLOUD_SHELL_SCALE + 0.0005);
     this.setSurfaceShellDepthBias(true);
-    // Low over the ground the 128-segment facets (~2 km sag) show: use the
-    // detailed globe there (hysteresis, so it is not rebuilt on every wobble).
-    const cameraAltitude = this.camera.position.length() - 1;
+    this.updateCloseRangeGlobe();
+  }
+
+  /**
+   * Clouds and globe detail for a camera close to the ground (rides and the
+   * free camera): below the cloud shell its double-sided sphere would roof
+   * the sky; low over the ground the 128-segment facets (~2 km sag) show, so
+   * the detailed globe is used there (hysteresis, so it is not rebuilt on
+   * every wobble).
+   */
+  private updateCloseRangeGlobe() {
+    const radius = this.camera.position.length();
+    this.setCloudsVisible(this.params.showClouds && radius > CLOUD_SHELL_SCALE + 0.0005);
+    const cameraAltitude = radius - 1;
     const detailed = this.earthDetailed
       ? cameraAltitude < EARTH_DETAIL_EXIT_ALTITUDE
       : cameraAltitude < EARTH_DETAIL_ENTER_ALTITUDE;
     if (detailed || this.earthDetailed) this.setEarthDetailed(detailed);
     this.earthDetailed = detailed;
+  }
+
+  /** Camera height above the drawn globe after this frame's clearance step (scene units). */
+  private cameraHeight = Number.POSITIVE_INFINITY;
+
+  /**
+   * Ground clearance for every camera mode, after the controls / ride /
+   * follow have moved the camera and before anything is aimed or drawn:
+   * if the camera is closer to the drawn globe (ellipsoid, scene +Y polar)
+   * than the minimum — max(50 m, 2 % of the target distance) while riding,
+   * 1 km otherwise — it is pushed radially outward. The holder only rotates
+   * about the Earth's centre, so scaling the holder-local position is the
+   * same radial push in world space. OrbitControls re-reads the camera
+   * position on its next update, so nothing fights it; the free camera is
+   * re-aimed here, rides are re-aimed by finishRideFrame.
+   */
+  private applyGroundClearance(riding: boolean) {
+    const world = this.tempVectorA.copy(this.camera.position).applyQuaternion(this.cameraHolder.quaternion);
+    const minHeight = riding
+      ? rideMinHeight(this.camera.position.distanceTo(this.controls.target), 1 / SCENE_UNITS_PER_M)
+      : FREE_CAMERA_MIN_HEIGHT;
+    const k = groundClearanceScale(world, minHeight);
+    if (k !== 1) {
+      this.camera.position.multiplyScalar(k);
+      world.multiplyScalar(k);
+      if (!riding && this.cameraMode === "free") {
+        this.camera.lookAt(this.cameraHolder.localToWorld(this.tempVectorB.copy(this.controls.target)));
+      }
+    }
+    this.cameraHeight = heightAboveGlobe(world);
+  }
+
+  /**
+   * Outside rides: near plane from the camera's height (a close zoom never
+   * clips the surface; 0.1 at the default whole-globe view), zoom speed
+   * scaled with the height for the free camera, thin globe shells biased
+   * toward the camera once the near plane is small, and the close-range
+   * globe (clouds / detail).
+   */
+  private updateFreeCameraRange() {
+    const radius = this.camera.position.length();
+    const near = freeCameraNear(this.cameraHeight, radius);
+    this.setCameraNear(near);
+    this.setSurfaceShellDepthBias(near < DEFAULT_CAMERA_NEAR * 0.5);
+    if (this.cameraMode === "free") this.controls.zoomSpeed = freeCameraZoomSpeed(this.cameraHeight, radius);
+    this.updateCloseRangeGlobe();
   }
 
   /**
@@ -3066,7 +3304,7 @@ export default class SatelliteScene {
     const back = this.rideReturn;
     this.rideReturn = null;
     this.setOrbitControlsUp(UP_AXIS);
-    this.controls.minDistance = 1.05;
+    this.controls.minDistance = FREE_CAMERA_MIN_DISTANCE;
     this.controls.maxDistance = 30;
     this.controls.zoomSpeed = 1;
     this.controls.maxPolarAngle = Math.PI;
@@ -3173,6 +3411,10 @@ export default class SatelliteScene {
    * the vehicle pass while in 近接 (attitude, 1軸追尾 drive, overlays), else
    * clear it. Hides the selected dot once the model covers it.
    */
+  private satelliteModel(): string {
+    return this.params.satelliteModel || DEFAULT_SATELLITE_MODEL;
+  }
+
   private updateSatelliteVehicle(simDate: Date, riding: boolean) {
     if (!riding || this.ride?.kind !== "satellite" || !this.rideSatValid) {
       this.trajectoryRenderer.setSatelliteVehicle(null);
@@ -3201,7 +3443,7 @@ export default class SatelliteScene {
     const w = this.rideSatWorld;
     const r = w.length() || 1;
     const state: SatelliteVehicleState = {
-      model: SATELLITE_MODEL,
+      model: this.satelliteModel(),
       x: w.x,
       y: w.y,
       z: w.z,
@@ -3249,8 +3491,9 @@ export default class SatelliteScene {
     this.ensureLinkCapacity(this.linkCount + 1);
     const o = this.linkCount * 6;
     const a = this.linkPositions;
-    a[o] = from.x; a[o + 1] = from.y; a[o + 2] = from.z;
-    a[o + 3] = to.x; a[o + 4] = to.y; a[o + 5] = to.z;
+    const c = this.renderOrigin;
+    a[o] = from.x - c.x; a[o + 1] = from.y - c.y; a[o + 2] = from.z - c.z;
+    a[o + 3] = to.x - c.x; a[o + 4] = to.y - c.y; a[o + 5] = to.z - c.z;
     this.linkCount++;
   }
 
@@ -3339,7 +3582,7 @@ export default class SatelliteScene {
     }
     const normalizedHeight = coneHeightKm / EARTH_RADIUS_EQUATOR_KM;
     this.coneScale.setScalar(Math.max(normalizedHeight, this.fovConeMinHeight));
-    this.coneMatrix.compose(satPosition, this.coneQuaternion, this.coneScale);
+    this.coneMatrix.compose(this.originScratch.copy(satPosition).sub(this.renderOrigin), this.coneQuaternion, this.coneScale);
     this.fovCones.setMatrixAt(this.fovConeCount++, this.coneMatrix);
   }
 
@@ -3370,7 +3613,8 @@ export default class SatelliteScene {
     this.coneQuaternion.setFromUnitVectors(DOWN_AXIS, this.coneDirection.normalize());
     const height = Math.max(heightKm / EARTH_RADIUS_EQUATOR_KM, this.fovConeMinHeight);
     this.coneScale.setScalar(height);
-    this.coneMatrix.compose(satPosition, this.coneQuaternion, this.coneScale);
+    const local = this.originScratch.copy(satPosition).sub(this.renderOrigin);
+    this.coneMatrix.compose(local, this.coneQuaternion, this.coneScale);
     mesh.setMatrixAt(count, this.coneMatrix);
     if (hits) {
       this.fovConeCount++;
@@ -3380,12 +3624,12 @@ export default class SatelliteScene {
     const pos = this.fovMissBoresightPositions;
     const d = this.coneDirection;
     const o = count * 6;
-    pos[o] = satPosition.x;
-    pos[o + 1] = satPosition.y;
-    pos[o + 2] = satPosition.z;
-    pos[o + 3] = satPosition.x + d.x * height;
-    pos[o + 4] = satPosition.y + d.y * height;
-    pos[o + 5] = satPosition.z + d.z * height;
+    pos[o] = local.x;
+    pos[o + 1] = local.y;
+    pos[o + 2] = local.z;
+    pos[o + 3] = local.x + d.x * height;
+    pos[o + 4] = local.y + d.y * height;
+    pos[o + 5] = local.z + d.z * height;
     this.fovMissBoresightDistances[count * 2] = 0;
     this.fovMissBoresightDistances[count * 2 + 1] = height;
     this.fovMissCount++;
@@ -3669,6 +3913,11 @@ export default class SatelliteScene {
     
     if (this.orbitLine) {
       this.orbitLine.geometry.dispose();
+    }
+    if (this.closeUpOrbit) {
+      this.closeUpOrbit.geometry.dispose();
+      this.scene.remove(this.closeUpOrbit);
+      this.closeUpOrbit = null;
     }
     this.clearGroundTrack();
     

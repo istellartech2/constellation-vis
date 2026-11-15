@@ -72,4 +72,11 @@ describe("validateRemoteDisplay: attitude fields", () => {
     expect(validateRemoteDisplay({ stationAccessUseSatelliteFov: true })).toEqual({ stationAccessUseSatelliteFov: true });
     expect(() => validateRemoteDisplay({ stationAccessUseSatelliteFov: "on" })).toThrow("stationAccessUseSatelliteFov must be boolean");
   });
+
+  it("accepts the 近接 satellite model strings", () => {
+    expect(validateRemoteDisplay({ satelliteModel: "satellite-bus" })).toEqual({ satelliteModel: "satellite-bus" });
+    expect(validateRemoteDisplay({ satelliteModel: "library:abc123" })).toEqual({ satelliteModel: "library:abc123" });
+    expect(() => validateRemoteDisplay({ satelliteModel: "starship-v3-ship" })).toThrow("satelliteModel must be one of");
+    expect(() => validateRemoteDisplay({ satelliteModel: "library:../x" })).toThrow("satelliteModel");
+  });
 });

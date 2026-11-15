@@ -147,6 +147,10 @@ interface Props {
   onOpenAttitudeSettings: () => void;
   /** Open 解析 › 日照・電力成立性評価 (where the panel type is set). */
   onOpenPowerAnalysis?: () => void;
+  /** Name of the 近接 model (標準バス or a library model), shown while 近接 is active. */
+  satelliteModelName?: string;
+  /** Open 表示 › 3Dモデル (or the import dialog when the library is empty). */
+  onChangeSatelliteModel?: () => void;
 }
 
 interface InfoRow {
@@ -218,6 +222,8 @@ export default function SatelliteInfo({
   fovAlongTrackDeg,
   fovCrossTrackDeg,
   onOpenAttitudeSettings,
+  satelliteModelName,
+  onChangeSatelliteModel,
   onOpenPowerAnalysis,
 }: Props) {
   // Phones start with the orbit details folded so the card doesn't hide the globe.
@@ -348,6 +354,21 @@ export default function SatelliteInfo({
           );
         })}
       </div>
+      {cameraMode === "closeUp" && isEditorSatellite && satelliteModelName && onChangeSatelliteModel && (
+        <button
+          type="button"
+          data-slot="button"
+          onClick={onChangeSatelliteModel}
+          title="表示タブの「3Dモデル」を開く"
+          className="-my-1 flex min-h-8 w-full min-w-0 items-center gap-1.5 rounded-md bg-transparent px-0 text-left text-xs text-fg-muted hover:text-fg"
+        >
+          <span className="shrink-0 text-fg-subtle">機体モデル</span>
+          <span className="min-w-0 flex-1 truncate">
+            <span className="text-fg">{satelliteModelName}</span> · 変更…
+          </span>
+          <span className="shrink-0 text-sm leading-none text-fg-subtle" aria-hidden="true">›</span>
+        </button>
+      )}
       {!expanded && attitude && (
         <button
           type="button"

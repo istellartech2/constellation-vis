@@ -22,6 +22,25 @@
 
 姿勢はクォータニオン `q`（機体 → ECI。ECI は satellite.js と同じ TEME）で表します。
 
+### 読み込んだ3Dモデルを機体座標に合わせる
+
+近接カメラの機体モデルは 表示タブ › **3Dモデル** の「近接カメラで使う衛星モデル」で選べます（既定は標準バス。
+`DisplayOptions.satelliteModel` = `"satellite-bus"` または `"library:<id>"`）。「モデルを読み込む…」で glTF（.glb、
+データ埋め込みの .gltf）を読み込み、プレビューの軸（+X 進行方向・+Y・+Z 地球方向（センサ））を見ながら合わせます。
+
+1. **元データの上方向**（Y-up（glTF標準）/ Z-up（CAD））を選ぶと向きを自動推定する（地球側 = 下、
+   水平の長い辺 = 翼（±Y））。プレビュー左下の「モデル X/Y/Z」を見ながら、**進行方向（+X）になる軸** と
+   **地球側・センサ方向（+Z）になる軸** をモデル自身の ±X/±Y/±Z から選んで直す（直交する 2 軸。+Y = Z × X は自動）。
+   CAD（Z-up）由来なら地球側は多くの場合「モデル −Z」。ロケット（原点が底面）のときは「機首（+X）」「腹側（+Z）」と表示。
+2. **大きさ**: 単位（m / cm / mm / インチ）か実寸（最大長 m）。検出サイズと、換算後の機体 X/Y/Z の大きさが表示されます。
+3. **原点**: 衛星は「中心」。近接カメラはモデルの原点を衛星位置に置き、視野コーンの頂点・軌道線もそこを通ります。
+4. **太陽電池パドル**（任意）: 1軸追尾で回す部品をノード一覧から選ぶ（プレビューで黄色の枠、「回転を確認」で 0–180° 回して確かめられる）。選んだ部品は自分の中心線を通る機体 Y 軸に平行な軸で回り、
+   モデルのままの向き（セル面が −Z を向いている状態）が 0° です。
+
+近接カメラ中は衛星カードに「機体モデル: 標準バス · 変更…」が出て、表示タブの 3Dモデル（ライブラリが空なら読み込みダイアログ）を開けます。
+モデルはこのブラウザにだけ保存されます（保存ビューや AI 連携にはモデル ID だけが入り、モデルがないブラウザでは標準バスで表示）。
+詳細は [trajectory-layer.md](trajectory-layer.md#model-library-srclibmodellibrary)。
+
 ## モード
 
 | キー | 表示名 | +Z | +X の決め方 |
@@ -148,6 +167,7 @@ s_body = q⁻¹ ⊗ s_eci
 | --- | --- |
 | `satelliteAttitude` | `{ mode: "lvlh", inertialRaDeg: 0, inertialDecDeg: 0 }`（`stationName` は局を使うとき。`eclipseMode` / `trackStationDuringPass: true` / `maxSlewRateDegS > 0` は設定したときだけ保存） |
 | `solarArrayType` | `"fixed"` |
+| `satelliteModel` | `"satellite-bus"`（近接の機体モデル。`"library:<id>"` はこのブラウザのモデルライブラリ） |
 | `showBodyAxes` | `false` |
 | `showBodySunDirection` | `false` |
 | `stationAccessUseSatelliteFov` | `false`（地上局アクセス設計の「衛星の視野も可視条件に加える」。画面を閉じても保持） |

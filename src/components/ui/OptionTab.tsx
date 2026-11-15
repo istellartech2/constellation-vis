@@ -5,6 +5,9 @@ import { Button } from "./button";
 import { FileInput, Trash2, Globe, Satellite, Compass, Layers, FolderOpen, Bookmark, Save, Plus, X } from "lucide-react";
 import PanelSection from "./PanelSection";
 import TrajectorySection, { type TrajectoryPlayback } from "./TrajectorySection";
+import ModelLibrarySection from "./ModelLibrarySection";
+import ModelImportDialog, { type ModelDialogTarget } from "./ModelImportDialog";
+import { libraryModelKey, type LibraryModelMeta } from "../../lib/modelLibrary/types";
 import DemoSection from "../tour/DemoSection";
 import type { DemoEntry } from "../../lib/tour/types";
 import type { TrajectoryTrack } from "../../lib/trajectory/types";
@@ -43,6 +46,8 @@ interface Props {
   currentSimMs: number;
   /** Start a guided tour (「デモ」 section; hidden when absent or no demos exist). */
   onStartDemo?: (demo: DemoEntry) => void;
+  /** From the satellite card: expand 3Dモデル, or open the import dialog. */
+  modelRequest?: { kind: "reveal" | "import"; nonce: number } | null;
 }
 
 /**
@@ -60,11 +65,40 @@ export default function OptionTab({
   trajectoryPlayback,
   currentSimMs,
   onStartDemo,
+  modelRequest,
 }: Props) {
   const set = onDisplayChange;
   const [loadedKMLs, setLoadedKMLs] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // One import / edit dialog shared by the 3Dモデル and 軌道データ sections.
+  const [modelDialog, setModelDialog] = useState<{
+    target: ModelDialogTarget;
+    onSaved?: (meta: LibraryModelMeta) => void;
+  } | null>(null);
+  const openModelDialog = (target: ModelDialogTarget, onSaved?: (meta: LibraryModelMeta) => void) =>
+    setModelDialog({ target, onSaved });
+  // Satellite-card request (「機体モデル … 変更…」): handled once per nonce, also on mount.
+  const [handledModelRequest, setHandledModelRequest] = useState<typeof modelRequest>(undefined);
+  const [revealModels, setRevealModels] = useState(0);
+  if (modelRequest !== handledModelRequest) {
+    setHandledModelRequest(modelRequest);
+    if (modelRequest) {
+      setRevealModels(modelRequest.nonce);
+      if (modelRequest.kind === "import") {
+        setModelDialog({
+          target: { kind: "new", modelKind: "satellite" },
+          onSaved: (meta) => set({ satelliteModel: libraryModelKey(meta.id) }),
+        });
+      }
+    }
+  }
+  const handleModelDeleted = (model: string) => {
+    if (trajectories.some((t) => t.model === model)) {
+      onTrajectoriesChange(trajectories.map((t) => (t.model === model ? { ...t, model: undefined } : t)));
+    }
+  };
 
   const [savedViews, setSavedViews] = useState<NamedView[]>(() => listSavedViews());
   const [viewName, setViewName] = useState("");
@@ -309,6 +343,14 @@ export default function OptionTab({
         <p className="text-[11px] text-fg-subtle leading-snug">近接カメラのときに表示されます</p>
       </PanelSection>
 
+      <ModelLibrarySection
+        satelliteModel={display.satelliteModel}
+        onSatelliteModelChange={(m) => set({ satelliteModel: m })}
+        openDialog={openModelDialog}
+        onModelDeleted={handleModelDeleted}
+        revealNonce={revealModels}
+      />
+
       <PanelSection title="座標系" icon={<Compass />}>
         <SegmentedControl
           ariaLabel="座標系の選択"
@@ -373,6 +415,13 @@ export default function OptionTab({
         playback={trajectoryPlayback}
         currentSimMs={currentSimMs}
         sceneRef={sceneRef}
+        openModelDialog={openModelDialog}
+      />
+
+      <ModelImportDialog
+        target={modelDialog?.target ?? null}
+        onClose={() => setModelDialog(null)}
+        onSaved={(meta) => modelDialog?.onSaved?.(meta)}
       />
 
       {/* おまけ: 解説付きデモ。中心機能ではないので末尾に畳んで置く。

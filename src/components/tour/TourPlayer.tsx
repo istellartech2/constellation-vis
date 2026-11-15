@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { ChevronDown, ChevronUp, Pause, Play, RotateCcw, SkipBack, SkipForward, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Link2, Pause, Play, RotateCcw, SkipBack, SkipForward, X } from "lucide-react";
 import { cn } from "../../lib/utils";
 import type SatelliteScene from "../../lib/visualization";
 import { formatTourClock } from "../../lib/tour/parse";
@@ -141,6 +141,43 @@ const iconButton =
   "inline-flex size-8 shrink-0 items-center justify-center rounded-full text-fg-muted transition-colors motion-reduce:transition-none hover:bg-raised-hover hover:text-fg disabled:pointer-events-none disabled:opacity-35";
 
 /**
+ * 「リンクをコピー」: copies the page URL, which carries `?demo=<id>` while a
+ * tour runs (App sets it on start), so the demo can be shared. Sits left of
+ * 終了 (ml-auto pushes both to the right).
+ */
+function CopyLinkButton() {
+  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
+  useEffect(() => {
+    if (state === "idle") return;
+    const t = window.setTimeout(() => setState("idle"), 2000);
+    return () => window.clearTimeout(t);
+  }, [state]);
+  const copy = async () => {
+    const url = window.location.href;
+    try {
+      await navigator.clipboard.writeText(url);
+      setState("copied");
+    } catch {
+      // Clipboard API unavailable (insecure context / denied): fall back to a prompt the user can copy from.
+      window.prompt("このデモのリンク", url);
+      setState("failed");
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      className="glass pointer-events-auto ml-auto inline-flex h-8 shrink-0 items-center gap-1 rounded-full px-3 text-[13px] text-fg hover:bg-raised-hover"
+      title="このデモを直接開くリンクをコピーします"
+      aria-live="polite"
+    >
+      {state === "copied" ? <Check className="size-4" /> : <Link2 className="size-4" />}
+      <span className="max-sm:sr-only">{state === "copied" ? "コピーしました" : "リンクをコピー"}</span>
+    </button>
+  );
+}
+
+/**
  * Presentation-mode overlay of a guided tour: a start screen, then a layout
  * that keeps the middle of the screen clear — title and disclaimer
  * top-left, 終了 and a compact telemetry HUD top-right, and at the bottom a
@@ -176,7 +213,8 @@ export default function TourPlayer({
     if (status === "idle") return;
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.repeat) return;
-      const t = e.target as HTMLElement | null;
+      // The target may be the document or window (no closest()).
+      const t = e.target instanceof HTMLElement ? e.target : null;
       if (t?.closest('[role="dialog"]')) return;
       const onRange = t instanceof HTMLInputElement && t.type === "range";
       if (t && !onRange && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
@@ -307,10 +345,11 @@ export default function TourPlayer({
             </p>
           )}
         </div>
+        <CopyLinkButton />
         <button
           type="button"
           onClick={onStop}
-          className="glass pointer-events-auto ml-auto inline-flex h-8 shrink-0 items-center gap-1 rounded-full px-3 text-[13px] text-fg hover:bg-raised-hover"
+          className="glass pointer-events-auto inline-flex h-8 shrink-0 items-center gap-1 rounded-full px-3 text-[13px] text-fg hover:bg-raised-hover"
           title="ツアーを終了して元の表示に戻ります (Esc)"
         >
           <X className="size-4" />

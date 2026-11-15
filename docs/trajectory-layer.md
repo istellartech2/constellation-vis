@@ -43,8 +43,9 @@ time_s,lat_deg,lon_deg,alt_km
   - `# event: <time>, <label>` – split on the first comma; time uses the same
     convention as the time column (T+ seconds or ISO).
   - `# model: <key or url>` – 3D model: a built-in key (`starship-v3-booster`,
-    `starship-v3-ship`, `generic-rocket`, `satellite-bus`) or a `.glb` URL.
-    Without it only the marker dot is drawn.
+    `starship-v3-ship`, `generic-rocket`, `satellite-bus`), `library:<id>` (a
+    model in this browser's model library) or a `.glb` URL. Without it only
+    the marker dot is drawn.
   - `# mount: <until>, <offset_m>` – upper stage stacked on a lower stage:
     until `<until>` (time as for events, typically staging) the model is drawn
     `<offset_m>` metres further along its own nose axis, so a ship whose file
@@ -199,17 +200,18 @@ It is a pure function of time (scrubbing backwards is exact):
 `./models/<key>.glb` like the Earth textures — plus procedural
 `generic-rocket` (~40 m, cylinder + cone + fins) and `satellite-bus` (shown
 as 「標準バス」 in the model selector; box with two wings along body ±Y, 10.4 m
-span — also the model of the 「近接」 satellite camera). Any other `model` string is fetched as
-a `.glb` URL / object URL.
+span — the default model of the 「近接」 satellite camera). `library:<id>` is a
+model from the browser's model library (below). Any other `model` string is
+fetched as a `.glb` URL.
 
 - Built-in GLBs: metres, glTF +Y = nose, origin at the base on the axis, no
   textures (KHR_mesh_quantization). The ship's tiles are on glTF +Z (bare
   steel on −Z), so glTF +Z = body +Z (belly): body (X, Y, Z) = glTF
   (+Y, −X, +Z).
-- Unknown GLBs are normalised by bounding box: longest axis → body X, nose
+- Unknown GLB URLs are normalised by bounding box: longest axis → body X, nose
   toward + of that axis (glTF +Y when Y is longest, the usual "up" of rocket
   models); base = minimum along it at the lateral bbox centre. Roll is
-  arbitrary.
+  arbitrary. Use the model library to set the axes explicitly.
 - **Position / pivot convention.** For rockets the track position is the
   vehicle's **base** (engine end) at every attitude: the model's geometric
   centre is placed at `track point + nose · L/2`, so the pad/catch contact is
@@ -226,6 +228,57 @@ a `.glb` URL / object URL.
   refetch). Instances are clones sharing the cached geometry/materials;
   renderers only remove their clones. Built-ins stay cached; user GLBs are
   disposed 10 s after the last track using them is removed.
+
+### Model library (`src/lib/modelLibrary/`)
+
+User-imported glTF 2.0 models (`.glb`, or `.gltf` whose buffers and images
+are all embedded `data:` URIs; ≤ 50 MB, warning above 15 MB), kept **per
+browser** in IndexedDB: metadata and bytes in two idb-keyval stores
+(`constellation-vis-model-library` / `…-data`), so listing never loads the
+bytes. When IndexedDB is unavailable or a write fails (private mode, quota)
+the library switches to an in-memory store for the session and the UI says
+so. Models are referenced as `library:<id>` by `DisplayOptions.satelliteModel`
+(近接) and by `TrajectoryTrack.model`. Saved views and the AI session carry
+only that id, never the file, so a browser without the model shows 標準バス /
+the marker instead (the 3Dモデル section says so for the 近接 model).
+
+Metadata (`LibraryModelMeta`): name, file name, size, dates, measured bbox
+(model units) and the normalisation the import dialog edits:
+
+- **orientation** — which signed model axis becomes body +X (nose / ram) and
+  which becomes body +Z (belly / nadir / sensor); body +Y = Z × X. They must
+  be perpendicular. `modelToBodyMatrix` builds the rotation (rows: forward,
+  nadir × forward, nadir); `{forward: "+Y", nadir: "+Z"}` is exactly
+  `GLTF_TO_BODY`. 「自動推定」 (`autoOrientation`) uses 「元データの上方向」
+  (Y-up = glTF standard, Z-up = CAD; saved as `sourceUp`): satellites get
+  nadir = −up, the longer horizontal side as the wing span (body ±Y) and the
+  other horizontal axis as forward (Z-up, wings along X → forward +Y, nadir
+  −Z); rockets get the nose on + of the longest axis, belly +Z (Y-up) / +Y
+  (Z-up) when standing on the up axis, else −up.
+- **scale** — a unit (m / cm / mm / inch; default guessed from the longest
+  side: ≥ 1000 → mm, ≥ 200 → cm, else m) or the real overall length in
+  metres (longest side).
+- **origin** — `center` (bbox centre, anchor "center") or `base` (minimum
+  along body X at the lateral centre, anchor "base", pivot (L/2, 0, 0)).
+- **file replacement** — 「ファイルを差し替え…」 in edit mode keeps the
+  settings, re-measures the bbox, re-guesses the unit (unless 実寸) and drops
+  paddle selections whose node path / name no longer exist.
+- **solarWings** — node paths (child indices from the glTF scene root; names
+  may be empty or repeated) turned by the 1軸追尾 drive. Each selected node
+  (nodes inside another selected node are skipped) is re-parented, keeping its
+  world transform, under a body-aligned pivot group named `solar-wing` placed
+  on the node's own bbox centre line, so `setSolarArrayDrive` rotates it about
+  body +Y exactly like the 標準バス wings. Drive angle 0 = as modelled, which
+  should have the cells facing body −Z.
+
+`buildLibraryTemplate` (pure three.js; shared by the dialog preview and the
+renderer, so the preview is what 近接 draws) applies p_body = s·R·p_model + t.
+`models.ts` loads `library:<id>` from the library (`modelLibrary.load`).
+Editing or deleting a model calls `invalidateTrajectoryModel`: renderers
+release their instances ("release" phase, disposing the old template once
+unused), the cache entry is dropped and, after an edit, they re-acquire the
+new template ("reload" phase). Deleting a model also clears it from tracks and
+resets the 近接 model to 標準バス.
 
 ## Rendering (`renderer.ts`)
 
@@ -357,7 +410,35 @@ share one depth range.
   rebuilds) with `onTrajectoryFollowEnd` when the scene drops it (track
   removed or hidden, a satellite camera mode chosen, a satellite-mode view
   applied); 近接 ends with `onCloseUpEnd` when no editor satellite is
-  selected. While riding:
+  selected. The 近接 model is `DisplayOptions.satelliteModel` (標準バス or a
+  model-library model). **Precision in 近接:** scene-space overlays are float32
+  at |r| ≈ 1 Earth radius (~0.5 m steps), which made the cone apex, link
+  lines and orbit line shimmer and miss the camera-relative model. While a
+  satellite is ridden, `renderOrigin` is its position (same `propagateIndex`
+  call and time as the model); the FOV cones (hit and grey miss cones and
+  their dashed boresights), ground-station link lines and the ISL path sit
+  at that origin with vertices / instance translations written relative to
+  it in float64, so three.js forms their model-view matrices in float64 and
+  the selected cone's apex is exactly the model centre. The global orbit line
+  (1-minute chords, sagging up to ~4 km in LEO) is hidden within ±15 min of
+  now (geometry groups) and replaced by a dense segment propagated every
+  frame (a vertex exactly at now, steps 1 s growing ×1.15 to 60 s, ends on
+  the global line's own vertices), re-based the same way. Outside 近接 the
+  origin is (0, 0, 0) and nothing changes.
+  **Ground clearance (every camera mode, `src/lib/cameraClearance.ts`).**
+  After the controls / ride / follow update and before aiming and drawing,
+  the camera's radial height above the drawn ellipsoid (unit sphere scaled
+  by `EARTH_FLATTENING` along scene +Y) is checked; below the minimum —
+  max(50 m, 2 % of the target distance) while riding, 1 km otherwise — the
+  holder-local position is scaled out radially (the holder only rotates
+  about the centre, so this is the same push in world space; OrbitControls
+  re-reads the position, so nothing fights it). Ride near planes are also
+  capped at half that height. The free camera can zoom to ~60 km above the
+  surface (`FREE_CAMERA_MIN_DISTANCE`); its near plane follows the height
+  (`freeCameraNear`: 0.3 h, ≥ the horizon-shell term, ≤ 0.1 — the default
+  whole-globe view keeps 0.1), its zoom speed scales with height / distance,
+  and below half the default near the globe shells get the ride depth bias
+  and the detailed globe / cloud rules apply as in rides. While riding:
   - the camera holder turns with the Earth (same rotation as the overlay
     group), so overlay coordinates are camera-holder coordinates and the
     ground does not spin;
@@ -393,7 +474,9 @@ share one depth range.
     `transitionS` (easing time constant, 0 = cut).
 - **Panel** (表示 → 軌道データ): per track "▶ 開始から" (seek to first sample −
   5 s, follow, 1×, play), "追従" toggle, "全体" (overview, ends follow), model
-  selector (built-ins or a local .glb), and a scrub slider (T+ mm:ss) for the
+  selector (built-ins, model-library models, 「モデルを読み込む…」 which opens
+the import dialog with rocket defaults — origin 底面, nose = longest axis — and
+assigns the saved model), and a scrub slider (T+ mm:ss) for the
   followed track or the first visible track in span; the live readout shows
   T+, altitude (km) and speed (km/h).
 - **Known gaps.** The graticule (lines, no polygon offset) may shimmer near

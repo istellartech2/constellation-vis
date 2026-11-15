@@ -1,6 +1,7 @@
 import { normalizeEarthTextureMode } from "./earthTextures";
 import type { DisplaySettings } from "./viewState";
 import { isSolarArrayType, SOLAR_ARRAY_TYPES, validateSatelliteAttitude } from "./attitude/settings";
+import { isSatelliteModelValue } from "./modelLibrary/types";
 
 /** Scalar rendering settings; camera framing and ISL configuration stay local. */
 export type RemoteDisplaySettings = Partial<Omit<DisplaySettings, "isl">>;
@@ -13,6 +14,7 @@ const booleans = new Set([
 /** Enum-valued fields and their allowed values. */
 const enums: Record<string, { allowed: readonly string[]; check: (v: unknown) => boolean }> = {
   solarArrayType: { allowed: SOLAR_ARRAY_TYPES, check: isSolarArrayType },
+  satelliteModel: { allowed: ["satellite-bus", "library:<id>"], check: isSatelliteModelValue },
 };
 /** Object-valued fields, validated (and normalised) as a whole. */
 const objects: Record<string, (v: unknown, key: string) => unknown> = {

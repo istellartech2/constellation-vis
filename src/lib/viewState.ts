@@ -9,6 +9,7 @@ import {
   type SolarArrayType,
 } from "./attitude/types";
 import { isSolarArrayType, sanitizeSatelliteAttitude } from "./attitude/settings";
+import { DEFAULT_SATELLITE_MODEL, isSatelliteModelValue } from "./modelLibrary/types";
 
 /**
  * Persistence of the current "view" — camera framing plus display settings —
@@ -107,6 +108,11 @@ export interface DisplaySettings {
   satelliteAttitude?: SatelliteAttitudeSettings;
   /** Solar array of the editor satellites (電力解析 / 3D model). Absent in older views. */
   solarArrayType?: SolarArrayType;
+  /**
+   * 近接 satellite model: "satellite-bus" (標準バス) or `library:<id>` (a model
+   * in this browser's model library). Absent in older views.
+   */
+  satelliteModel?: string;
   /** Body axes triad in the close-up camera. Absent in older views. */
   showBodyAxes?: boolean;
   /** Sun direction seen from the body in the close-up camera. Absent in older views. */
@@ -150,6 +156,7 @@ export interface DisplayOptions {
   satelliteSelectedColor: string;
   satelliteAttitude: SatelliteAttitudeSettings;
   solarArrayType: SolarArrayType;
+  satelliteModel: string;
   showBodyAxes: boolean;
   showBodySunDirection: boolean;
   stationAccessUseSatelliteFov: boolean;
@@ -196,6 +203,7 @@ export function mergeDisplayOptions(
     satelliteSelectedColor: pick("satelliteSelectedColor"),
     satelliteAttitude: d.satelliteAttitude ? sanitizeSatelliteAttitude(d.satelliteAttitude) ?? prev.satelliteAttitude : prev.satelliteAttitude,
     solarArrayType: isSolarArrayType(d.solarArrayType) ? d.solarArrayType : prev.solarArrayType,
+    satelliteModel: isSatelliteModelValue(d.satelliteModel) ? d.satelliteModel : prev.satelliteModel,
     showBodyAxes: pick("showBodyAxes"),
     showBodySunDirection: pick("showBodySunDirection"),
     stationAccessUseSatelliteFov: pick("stationAccessUseSatelliteFov"),
@@ -232,6 +240,7 @@ export function defaultDisplayOptions(satRadius: number): DisplayOptions {
     satelliteSelectedColor: "#00ffff",
     satelliteAttitude: DEFAULT_SATELLITE_ATTITUDE,
     solarArrayType: DEFAULT_SOLAR_ARRAY_TYPE,
+    satelliteModel: DEFAULT_SATELLITE_MODEL,
     showBodyAxes: false,
     showBodySunDirection: false,
     stationAccessUseSatelliteFov: false,
