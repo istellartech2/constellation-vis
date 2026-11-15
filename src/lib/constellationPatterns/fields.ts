@@ -11,7 +11,7 @@
 import type { PatternId, PatternShellInput } from "./types";
 import { patternIdOf } from "./types";
 
-export type FieldKind = "number" | "int" | "string" | "intArray";
+export type FieldKind = "number" | "int" | "string" | "intArray" | "boolean";
 
 export interface FieldSpec {
   key: string;
@@ -138,6 +138,17 @@ export const FIELD_REGISTRY: readonly FieldSpec[] = [
   { key: "mission_lat_max", kind: "number", patterns: "all", decimals: 2 },
   { key: "mission_alt_min", kind: "number", patterns: "all", decimals: 2 },
   { key: "mission_alt_max", kind: "number", patterns: "all", decimals: 2 },
+
+  // --- per-shell attitude override (every pattern; see attitude/resolve.ts) ---
+  // No defaults: an omitted key inherits the global attitude (通信タブ).
+  // Numbers are written raw so typed values round-trip unchanged.
+  { key: "attitude_mode", kind: "string", patterns: "all" },
+  { key: "attitude_station", kind: "string", patterns: "all" },
+  { key: "attitude_ra_deg", kind: "number", patterns: "all" },
+  { key: "attitude_dec_deg", kind: "number", patterns: "all" },
+  { key: "attitude_eclipse_mode", kind: "string", patterns: "all" },
+  { key: "attitude_track_station", kind: "boolean", patterns: "all" },
+  { key: "attitude_slew_deg_s", kind: "number", patterns: "all" },
 ];
 
 const BY_KEY = new Map<string, FieldSpec>(FIELD_REGISTRY.map((f) => [f.key, f]));

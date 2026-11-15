@@ -1,5 +1,5 @@
 import { useEffect, useRef, type RefObject } from "react";
-import SatelliteScene, { type SatelliteSceneParams } from "../lib/visualization";
+import SatelliteScene, { type RideOffsetSnapshot, type SatelliteSceneParams } from "../lib/visualization";
 import type { CameraSnapshot } from "../lib/viewState";
 
 // Re-export the parameter type for convenience
@@ -30,6 +30,8 @@ export function useSatelliteScene(
   const { cameraSnapshotRef } = options;
   const previousDomain = useRef<Pick<SatelliteSceneParams, "startTime" | "satellites" | "groundStations"> | null>(null);
   const preservedTime = useRef<Date | null>(null);
+  // Orbit offset of a ride (trajectory follow / 近接) across a rebuild.
+  const preservedRide = useRef<RideOffsetSnapshot | null>(null);
   // Latest params, for the deferred construction below: live-only params
   // (catalog, styles, colours…) may change during the 10 ms delay, while any
   // structural change cancels the pending construction and schedules another.
@@ -52,7 +54,12 @@ export function useSatelliteScene(
       const previous = previousDomain.current;
       const sameDomain = previous?.startTime === current.startTime
         && previous.satellites === current.satellites && previous.groundStations === current.groundStations;
-      scene = new SatelliteScene(sameDomain && preservedTime.current ? { ...current, startTime: preservedTime.current } : current);
+      scene = new SatelliteScene({
+        ...current,
+        ...(sameDomain && preservedTime.current ? { startTime: preservedTime.current } : {}),
+        initialRideOffset: preservedRide.current,
+      });
+      preservedRide.current = null;
       previousDomain.current = { startTime: current.startTime, satellites: current.satellites, groundStations: current.groundStations };
       sceneRef.current = scene;
       // Restore the saved camera framing on (re)build so reloads and
@@ -68,6 +75,7 @@ export function useSatelliteScene(
       clearTimeout(timeout);
       if (scene) {
         preservedTime.current = scene.getSimulationTime();
+        preservedRide.current = scene.getRideOffset();
         scene.dispose();
         sceneRef.current = null;
       }
@@ -123,6 +131,12 @@ export function useSatelliteScene(
     params.islShellRanges,
     params.catalogStyles,
     params.layerColorMode,
+    // Read every frame from the scene's params (cones, 近接 model/overlays).
+    params.satelliteAttitude,
+    params.solarArrayType,
+    params.showBodyAxes,
+    params.showBodySunDirection,
+    params.presentation,
   ]);
 
   // Swap the catalog-layer overlay live (after updateParams above, so the new
@@ -132,6 +146,26 @@ export function useSatelliteScene(
   useEffect(() => {
     sceneRef.current?.setCatalog(params.catalog ?? null);
   }, [params.catalog]);
+
+  // Swap trajectory tracks live, like the catalog: construction reads the
+  // latest array itself and setTrajectories is a no-op for the same array.
+  useEffect(() => {
+    sceneRef.current?.setTrajectories(params.trajectories ?? []);
+  }, [params.trajectories]);
+
+  // Trajectory landmarks, swapped live (no-op for the same array).
+  useEffect(() => {
+    sceneRef.current?.setTrajectoryLandmarks(params.trajectoryLandmarks ?? []);
+  }, [params.trajectoryLandmarks]);
+
+  // Trajectory follow camera, applied live (after the tracks above, so a
+  // newly added track can be followed in the same commit). Construction
+  // reads the latest id itself, so the follow survives rebuilds.
+  // onTrajectoryFollowEnd should be stable; it is read from the params the
+  // scene was built with.
+  useEffect(() => {
+    sceneRef.current?.setTrajectoryFollow(params.trajectoryFollowId ?? null);
+  }, [params.trajectoryFollowId]);
 
   return sceneRef;
 }

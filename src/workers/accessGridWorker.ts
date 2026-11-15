@@ -27,6 +27,7 @@ ctx.addEventListener("message", (event: MessageEvent<AccessGridRequest>) => {
       durationHours: payload.durationHours,
       stepSeconds: payload.stepSeconds,
       fov: payload.satelliteFov,
+      attitude: payload.attitude,
       onProgress: (fraction) => {
         const now = performance.now();
         if (now - lastPost < PROGRESS_INTERVAL_MS) return;

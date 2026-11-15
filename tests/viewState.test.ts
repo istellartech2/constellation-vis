@@ -291,3 +291,58 @@ describe("display options", () => {
     expect(mergeDisplayOptions(prev, {}).pointStyle).toBe(prev.pointStyle);
   });
 });
+
+describe("satellite attitude settings", () => {
+  const store = (view: unknown) => localStorage.setItem("constellation-vis:lastView", JSON.stringify(view));
+  it("old views load with 地球指向 / fixed panels / overlays off", () => {
+    const d = displayOptionsFromSaved(DISPLAY, 0.015);
+    expect(d.satelliteAttitude).toEqual({ mode: "lvlh", inertialRaDeg: 0, inertialDecDeg: 0 });
+    expect(d.solarArrayType).toBe("fixed");
+    expect(d.showBodyAxes).toBe(false);
+    expect(d.showBodySunDirection).toBe(false);
+  });
+
+  it("round-trips the attitude fields", () => {
+    const attitude = { mode: "station" as const, stationName: "Tokyo", inertialRaDeg: 12, inertialDecDeg: -3 };
+    const saved = { ...DISPLAY, satelliteAttitude: attitude, solarArrayType: "singleAxis" as const, showBodyAxes: true, showBodySunDirection: true };
+    store({ version: 2, camera: { ...CAMERA, mode: "closeUp" }, display: saved });
+    const view = loadLastView()!;
+    expect(view.camera.mode).toBe("closeUp");
+    const d = displayOptionsFromSaved(view.display, 0.015);
+    expect(d.satelliteAttitude).toEqual(attitude);
+    expect(d.solarArrayType).toBe("singleAxis");
+    expect(d.showBodyAxes).toBe(true);
+    expect(toDisplaySettings(d, 0, DISPLAY.isl)).toMatchObject({ satelliteAttitude: attitude, solarArrayType: "singleAxis", showBodySunDirection: true });
+  });
+
+  it("round-trips the 運用スケジュール fields", () => {
+    const attitude = { mode: "sun" as const, stationName: "Tokyo", inertialRaDeg: 0, inertialDecDeg: 0, eclipseMode: "lvlh" as const, trackStationDuringPass: true, maxSlewRateDegS: 1 };
+    store({ version: 2, camera: CAMERA, display: { ...DISPLAY, satelliteAttitude: attitude } });
+    expect(loadLastView()!.display.satelliteAttitude).toEqual(attitude);
+  });
+
+  it("drops damaged attitude fields", () => {
+    for (const bad of [null, [], { mode: "spin" }, { mode: "inertial", inertialDecDeg: 400 }]) {
+      store({ version: 2, camera: CAMERA, display: { ...DISPLAY, satelliteAttitude: bad, solarArrayType: "dual" } });
+      const display = loadLastView()!.display;
+      expect("satelliteAttitude" in display).toBe(false);
+      expect("solarArrayType" in display).toBe(false);
+    }
+  });
+
+  it("merging ignores an invalid attitude or array type", () => {
+    const prev = defaultDisplayOptions(0.015);
+    const merged = mergeDisplayOptions(prev, { satelliteAttitude: { mode: "nope" } as never, solarArrayType: "dual" as never });
+    expect(merged.satelliteAttitude).toBe(prev.satelliteAttitude);
+    expect(merged.solarArrayType).toBe("fixed");
+  });
+
+  it("remembers 「衛星の視野も可視条件に加える」 (off for old views)", () => {
+    expect(displayOptionsFromSaved(DISPLAY, 0.015).stationAccessUseSatelliteFov).toBe(false);
+    const d = displayOptionsFromSaved({ ...DISPLAY, stationAccessUseSatelliteFov: true }, 0.015);
+    expect(d.stationAccessUseSatelliteFov).toBe(true);
+    expect(toDisplaySettings(d, 0, DISPLAY.isl).stationAccessUseSatelliteFov).toBe(true);
+    store({ version: 2, camera: CAMERA, display: { ...DISPLAY, stationAccessUseSatelliteFov: "yes" } });
+    expect("stationAccessUseSatelliteFov" in loadLastView()!.display).toBe(false);
+  });
+});

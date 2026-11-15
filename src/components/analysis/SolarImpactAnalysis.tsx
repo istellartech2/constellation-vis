@@ -1,4 +1,14 @@
 import { useMemo, useRef, useState } from "react";
+import { FieldGroup, HelpTip, SegmentedControl } from "../ui/compactControls";
+import type { GroundStation } from "../../lib/groundStations";
+import {
+  DEFAULT_SATELLITE_ATTITUDE,
+  DEFAULT_SOLAR_ARRAY_TYPE,
+  type SatelliteAttitudeMode,
+  type SatelliteAttitudeSettings,
+  type SolarArrayType,
+} from "../../lib/attitude/types";
+import { attitudeOverrideLabel, resolveSatelliteAttitude } from "../../lib/attitude/resolve";
 import ReactECharts from "echarts-for-react";
 import {
   analyzeSolarPower,
@@ -10,6 +20,7 @@ import {
   type SolarPowerSample,
   type SolarSweepParameter,
 } from "../../lib/solarPowerAnalysis";
+import { satellitePickerLabel } from "../../lib/analysisSatellites";
 import {
   downloadCSV,
   downloadJSON,
@@ -46,7 +57,29 @@ interface Props {
   satText: string;
   constText: string;
   startTime: Date;
+  /** Satellite attitude (通信タブ › 姿勢), used when 発電係数 is 姿勢から計算. */
+  attitude?: SatelliteAttitudeSettings;
+  /** Ground stations for the 地上局指向 attitude. */
+  groundStations?: GroundStation[];
+  /** Global panel type (shared with the 3D model). */
+  solarArrayType?: SolarArrayType;
+  onSolarArrayTypeChange?: (type: SolarArrayType) => void;
+  /** Index (satellites then constellation order) of the satellite selected in 3D; default pick. */
+  selectedSatelliteIndex?: number | null;
 }
+
+const ATTITUDE_LABELS: Record<SatelliteAttitudeMode, string> = {
+  lvlh: "地球指向",
+  yawSteering: "地球指向＋ヨー制御",
+  station: "地上局指向",
+  sun: "太陽指向",
+  inertial: "慣性指向",
+};
+
+const ARRAY_TYPE_LABELS: Record<SolarArrayType, string> = {
+  fixed: "固定（−Z面）",
+  singleAxis: "1軸追尾（Y軸まわり）",
+};
 
 type InputSection = "発電系" | "負荷系" | "バッテリ系" | "解析設定" | "感度解析";
 
@@ -617,12 +650,14 @@ function NumberInputRow({
   value,
   onChange,
   step,
+  disabled,
 }: {
   label: string;
   help: string;
   value: number;
   onChange: (next: number) => void;
   step?: number;
+  disabled?: boolean;
 }) {
   return (
     <div className="solar-input-row">
@@ -631,6 +666,7 @@ function NumberInputRow({
         className="analysis-input solar-number-input"
         type="number"
         step={step}
+        disabled={disabled}
         value={String(value)}
         onChange={(event) => onChange(Number(event.target.value))}
       />
@@ -642,10 +678,37 @@ const SOC_CHART_HEIGHT = 280;
 const POWER_CHART_HEIGHT = 260;
 const SMALL_CHART_HEIGHT = 220;
 
-export default function SolarImpactAnalysis({ satText, constText, startTime }: Props) {
-  const satellites = useMemo(() => buildSelectableSatellites(satText, constText), [satText, constText]);
-  const [selectedSatelliteId, setSelectedSatelliteId] = useState<string>(satellites[0]?.id ?? "");
+const SOURCE_GROUP_LABELS = { satellites: "個別衛星", constellation: "コンステレーション" } as const;
+const RUN_BUTTON_LABEL = "解析開始";
+
+export default function SolarImpactAnalysis({
+  satText,
+  constText,
+  startTime,
+  attitude = DEFAULT_SATELLITE_ATTITUDE,
+  groundStations,
+  solarArrayType: solarArrayTypeProp,
+  onSolarArrayTypeChange,
+  selectedSatelliteIndex,
+}: Props) {
+  const satellites = useMemo(() => {
+    // Same name as the satellite card (index = position in the editor list).
+    return buildSelectableSatellites(satText, constText).map((item, index) => ({
+      ...item,
+      label: satellitePickerLabel(item.spec, index),
+    }));
+  }, [satText, constText]);
+  const [selectedSatelliteId, setSelectedSatelliteId] = useState<string>(
+    () => satellites[selectedSatelliteIndex ?? 0]?.id ?? satellites[0]?.id ?? "",
+  );
+  const [localArrayType, setLocalArrayType] = useState<SolarArrayType>(DEFAULT_SOLAR_ARRAY_TYPE);
+  const solarArrayType = solarArrayTypeProp ?? localArrayType;
+  const setSolarArrayType = (next: SolarArrayType) => {
+    setLocalArrayType(next);
+    onSolarArrayTypeChange?.(next);
+  };
   const [input, setInput] = useState<SolarPowerAnalysisInput>(createDefaultSolarPowerInput);
+  const attitudeDriven = input.generationFactorMode === "attitude";
   const [result, setResult] = useState<SolarPowerAnalysisResult | null>(null);
   const [error, setError] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -657,9 +720,28 @@ export default function SolarImpactAnalysis({ satText, constText, startTime }: P
   const compareNetChartRef = useRef<ChartRef | null>(null);
 
   const selectedSatellite = satellites.find((item) => item.id === selectedSatelliteId) ?? satellites[0];
+  // The selected satellite's own attitude: the global one unless its shell /
+  // satellite entry overrides it.
+  const satelliteAttitude = resolveSatelliteAttitude(selectedSatellite?.spec, attitude);
+  const attitudeSourceLabel = attitudeOverrideLabel(selectedSatellite?.spec);
+  const [resultAttitudeSource, setResultAttitudeSource] = useState<string | null>(null);
 
   const resolvedSatelliteId = selectedSatellite?.id ?? "";
   if (selectedSatelliteId !== resolvedSatelliteId) setSelectedSatelliteId(resolvedSatelliteId);
+
+  // Everything the result depends on; a result computed with another key is stale.
+  // startTime is a fresh Date on every render, so it enters as its ISO string.
+  const conditionsKey = JSON.stringify({
+    input,
+    attitude: satelliteAttitude,
+    solarArrayType,
+    satelliteId: selectedSatellite?.id ?? null,
+    spec: selectedSatellite?.spec ?? null,
+    start: startTime.toISOString(),
+    stations: groundStations ?? [],
+  });
+  const [resultKey, setResultKey] = useState<string | null>(null);
+  const stale = result !== null && resultKey !== conditionsKey;
 
   const groupedFields = useMemo(() => ({
     発電系: INPUT_FIELDS.filter((field) => field.section === "発電系"),
@@ -682,13 +764,22 @@ export default function SolarImpactAnalysis({ satText, constText, startTime }: P
       return;
     }
 
+    const runKey = conditionsKey;
     setIsAnalyzing(true);
     setError("");
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     try {
-      const analysis = analyzeSolarPower(selectedSatellite.spec, selectedSatellite.label, startTime, input);
+      const analysis = analyzeSolarPower(
+        selectedSatellite.spec,
+        selectedSatellite.label,
+        startTime,
+        { ...input, attitude: satelliteAttitude, solarArrayType },
+        { stations: groundStations },
+      );
       setResult(analysis);
+      setResultAttitudeSource(attitudeSourceLabel);
+      setResultKey(runKey);
     } catch (analysisError) {
       setError(analysisError instanceof Error ? analysisError.message : "太陽光影響解析でエラーが発生しました");
     } finally {
@@ -785,16 +876,24 @@ export default function SolarImpactAnalysis({ satText, constText, startTime }: P
             disabled={isAnalyzing || satellites.length === 0}
             style={{ minWidth: 220, maxWidth: "100%" }}
           >
-            {satellites.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.label}
-              </option>
-            ))}
+            {(["satellites", "constellation"] as const).map((source) => {
+              const items = satellites.filter((item) => item.source === source);
+              if (items.length === 0) return null;
+              return (
+                <optgroup key={source} label={SOURCE_GROUP_LABELS[source]}>
+                  {items.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label}
+                    </option>
+                  ))}
+                </optgroup>
+              );
+            })}
           </select>
         </label>
 
         <button onClick={runAnalysis} disabled={isAnalyzing || satellites.length === 0} className="analysis-primary-button">
-          {isAnalyzing ? "解析中..." : "解析開始"}
+          {isAnalyzing ? "解析中..." : RUN_BUTTON_LABEL}
         </button>
 
         {result && (
@@ -835,16 +934,61 @@ export default function SolarImpactAnalysis({ satText, constText, startTime }: P
               <div key={section} className="solar-section-block">
                 <div className="solar-section-title">{section}</div>
                 <div className="solar-form-grid">
-                  {groupedFields[section].map((field) => (
+                  {section === "発電系" && (
+                    <>
+                      <FieldGroup title="太陽電池パネル" analysis>
+                        <SegmentedControl<SolarArrayType>
+                          ariaLabel="太陽電池パネル"
+                          value={solarArrayType}
+                          options={[
+                            { value: "fixed", label: ARRAY_TYPE_LABELS.fixed },
+                            { value: "singleAxis", label: ARRAY_TYPE_LABELS.singleAxis },
+                          ]}
+                          onChange={setSolarArrayType}
+                        />
+                      </FieldGroup>
+                      <FieldGroup title="発電係数" analysis>
+                        <div className="flex items-center gap-1">
+                          <SegmentedControl<SolarPowerAnalysisInput["generationFactorMode"]>
+                            ariaLabel="発電係数"
+                            value={input.generationFactorMode}
+                            options={[
+                              { value: "manual", label: "手入力" },
+                              { value: "attitude", label: "姿勢から計算" },
+                            ]}
+                            onChange={(next) => updateInput("generationFactorMode", next)}
+                          />
+                          <HelpTip text="手入力は下の追尾/姿勢係数を一定値で使います。姿勢から計算は、通信タブの姿勢とパネル種別から各時刻の太陽入射角（cos）を求めて使います。" />
+                        </div>
+                        <div className="solar-section-note">固定パネル＋地球指向は 0.3〜0.5 程度</div>
+                      </FieldGroup>
+                    </>
+                  )}
+                  {groupedFields[section].map((field) => {
+                    const greyed = attitudeDriven && field.key === "sunTrackingFactor";
+                    return (
+                      <div key={field.key} style={greyed ? { opacity: 0.45 } : undefined}
+                        title={greyed ? "姿勢から計算 のときは使いません" : undefined}>
+                        <NumberInputRow
+                          label={field.label}
+                          help={field.help}
+                          value={Number(input[field.key])}
+                          step={field.step}
+                          disabled={greyed}
+                          onChange={(next) => updateInput(field.key, next)}
+                        />
+                      </div>
+                    );
+                  })}
+                  {section === "発電系" && attitudeDriven && (
                     <NumberInputRow
-                      key={field.key}
-                      label={field.label}
-                      help={field.help}
-                      value={Number(input[field.key])}
-                      step={field.step}
-                      onChange={(next) => updateInput(field.key, next)}
+                      label="その他の損失係数"
+                      help="入射角以外の損失（温度・ポインティング誤差・遮蔽など）をまとめた係数です。姿勢から計算した入射角 cos に掛けます。1.0で損失なし。"
+                      value={input.otherLossFactor}
+                      step={0.01}
+                      onChange={(next) => updateInput("otherLossFactor", next)}
                     />
-                  ))}
+                  )}
                 </div>
               </div>
             ))}
@@ -890,6 +1034,23 @@ export default function SolarImpactAnalysis({ satText, constText, startTime }: P
               </EmptyState>
             ) : (
               <>
+                {stale && (
+                  <div role="status" className="rounded-md bg-warning-soft px-2 py-1.5 text-xs text-warning">
+                    {`条件が変わりました。「${RUN_BUTTON_LABEL}」で再計算してください`}
+                  </div>
+                )}
+                <div
+                  className={`grid min-w-0 content-start gap-3 transition-opacity ${stale ? "opacity-50" : ""}`}
+                  aria-disabled={stale || undefined}
+                >
+                <div className="solar-section-note" data-testid="solar-conditions">
+                  <div>{`条件: 姿勢 ${ATTITUDE_LABELS[result.analysisInput.attitude.mode]}${resultAttitudeSource ? `（${resultAttitudeSource}）` : ""} · パネル ${ARRAY_TYPE_LABELS[result.analysisInput.solarArrayType]}`}</div>
+                  <div>
+                    {`発電係数 姿勢から計算 ${formatNumber(result.factorComparison.attitudeFactor, 2)} ／ 手入力 ${formatNumber(result.factorComparison.manualFactor, 2)}`}
+                    {`（採用: ${result.factorComparison.applied === "attitude" ? "姿勢から計算" : "手入力"}）`}
+                  </div>
+                </div>
+
                 <Verdict
                   tone={statusTone(result.currentDay.designStatus)}
                   label={statusLabel(result.currentDay.designStatus)}
@@ -975,6 +1136,7 @@ export default function SolarImpactAnalysis({ satText, constText, startTime }: P
                 <ChartCard title="その他の指標">
                   <MetricList items={metrics} />
                 </ChartCard>
+                </div>
               </>
             )}
           </div>

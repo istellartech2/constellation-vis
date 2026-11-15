@@ -28,9 +28,9 @@ export default function ComparisonConditionsEditor({ value, onChange, sceneFov, 
       onChange={(e) => patch({ fov: e.target.checked ? { ...sceneFov } : null })} />衛星FOVも適用する</label>
     {value.fov && <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       <NumberField id="comparison-half-angle" label="FOV半角" unit="°" value={value.fov.halfAngleDeg} min={0.1} max={90} onChange={(halfAngleDeg) => patch({ fov: { ...value.fov!, halfAngleDeg } })} />
-      <NumberField id="comparison-along" label="進行方向の傾き" unit="°" value={value.fov.alongTrackDeg} min={-90} max={90} onChange={(alongTrackDeg) => patch({ fov: { ...value.fov!, alongTrackDeg } })} />
-      <NumberField id="comparison-cross" label="左右方向の傾き" unit="°" value={value.fov.crossTrackDeg} min={-90} max={90} onChange={(crossTrackDeg) => patch({ fov: { ...value.fov!, crossTrackDeg } })} />
+      <NumberField id="comparison-along" label="進行方向への取付角" unit="°" value={value.fov.alongTrackDeg} min={-90} max={90} onChange={(alongTrackDeg) => patch({ fov: { ...value.fov!, alongTrackDeg } })} />
+      <NumberField id="comparison-cross" label="横方向への取付角" unit="°" value={value.fov.crossTrackDeg} min={-90} max={90} onChange={(crossTrackDeg) => patch({ fov: { ...value.fov!, crossTrackDeg } })} />
     </div>}
-    <p className="text-xs text-fg-muted">FOVは表示設定から初期値をコピーし、この比較の条件として保存します。地上局は各案の局設定で別に評価します。</p>
+    <p className="text-xs text-fg-muted">FOVは通信タブの値から初期値をコピーし、この比較の条件として保存します。姿勢は地球指向で評価します。地上局は各案の局設定で別に評価します。</p>
   </fieldset>;
 }

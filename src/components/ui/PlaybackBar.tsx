@@ -12,6 +12,11 @@ interface Props {
   onPausedChange: (paused: boolean) => void;
   /** The scene writes the formatted simulation clock into this element. */
   timeRef: RefObject<HTMLDivElement | null>;
+  /**
+   * Hidden while a guided tour drives playback: not displayed (the clock
+   * element stays mounted for the scene) and the Space shortcut is left to the tour.
+   */
+  hidden?: boolean;
 }
 
 function closestSpeedIndex(speedExp: number): number {
@@ -33,6 +38,7 @@ export default function PlaybackBar({
   paused,
   onPausedChange,
   timeRef,
+  hidden = false,
 }: Props) {
   const idx = closestSpeedIndex(speedExp);
   const setIdx = (i: number) =>
@@ -40,6 +46,7 @@ export default function PlaybackBar({
 
   // Space toggles pause unless the user is typing somewhere.
   useEffect(() => {
+    if (hidden) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.code !== "Space" || e.repeat) return;
       const t = e.target as HTMLElement | null;
@@ -50,13 +57,18 @@ export default function PlaybackBar({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [paused, onPausedChange]);
+  }, [paused, onPausedChange, hidden]);
 
   const iconBtn =
     "inline-flex size-8 items-center justify-center rounded-full text-fg-muted transition-colors hover:bg-raised-hover hover:text-fg disabled:opacity-35 disabled:pointer-events-none";
 
   return (
-    <div className="playback-bar glass" role="group" aria-label="再生コントロール">
+    <div
+      className="playback-bar glass"
+      role="group"
+      aria-label="再生コントロール"
+      style={hidden ? { display: "none" } : undefined}
+    >
       <button
         type="button"
         data-slot="icon-button"

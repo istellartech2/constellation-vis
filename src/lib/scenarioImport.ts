@@ -25,7 +25,10 @@ export function mergeImportedIntoScenarioText(text: string, imported: SatelliteS
     const next = merged[i];
     if (next === spec) return;
     if (imported.includes(next)) {
-      result[index] = parseSatelliteEditorConfig(satellitesToToml([next])).entries[0];
+      // A catalog refresh replaces the orbit, not the user's per-satellite attitude.
+      const previous = result[index];
+      const refreshed = parseSatelliteEditorConfig(satellitesToToml([next])).entries[0];
+      result[index] = previous.attitude && refreshed ? { ...refreshed, attitude: previous.attitude } : refreshed;
       return;
     }
     // A local object moved to a free number: patch it so GEO entries stay GEO.

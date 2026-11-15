@@ -10,6 +10,7 @@ import { socDesign } from "./constellationPatterns/streetsOfCoverage";
 import { resolvePattern } from "./constellationPatterns/registry";
 import { validateGroundStations } from "./groundStationSerializer";
 import type { CommittedScenario } from "./scenario";
+import { validateAttitudeRecord } from "./attitude/resolve";
 
 export const MAX_SCENARIO_BYTES = 256 * 1024;
 export const MAX_SATELLITES = 2000;
@@ -42,6 +43,14 @@ function document(text: string, section: ScenarioSection) {
   if (rows !== undefined && (!Array.isArray(rows) || rows.some((row) => !row || typeof row !== "object" || Array.isArray(row)))) throw new Error(`${section} requires array-table entries`);
   if (section === "constellation" && Array.isArray(rows)) {
     for (const row of rows) if (row.pattern !== undefined && !isPatternId(row.pattern)) throw new Error("Unknown constellation pattern");
+  }
+  // `attitude_*` keys of shells and satellites: the runtime parsers drop bad
+  // values silently, so reject them here with the editors' messages.
+  if (section !== "groundstations" && Array.isArray(rows)) {
+    rows.forEach((row, index) => {
+      const [error] = validateAttitudeRecord(row as Record<string, unknown>, `${section}.${index}.`);
+      if (error) throw new Error(error.message);
+    });
   }
   return doc;
 }

@@ -11,16 +11,112 @@ import {
 import {
   formatDurationMinutes,
   getSatelliteDerivedInfo,
+  isInEarthShadow,
 } from "../../lib/satelliteDerivedInfo";
 import { useState, type ReactNode } from "react";
 import { ChevronDown, X } from "lucide-react";
 import type { SatelliteCameraMode } from "../../lib/visualization";
+import { toSatrec } from "../../lib/satellites";
+import { sunVectorECI } from "../../lib/astronomy";
+import type { GroundStation } from "../../lib/groundStations";
+import {
+  attitudeStateProviderFromSatrec,
+  prepareAttitudeContext,
+  satelliteAttitudeStateFromContext,
+  sensorBoresightEci,
+  solarArrayIncidence,
+} from "../../lib/attitude/satelliteAttitude";
+import { activeAttitudeLabel } from "../../lib/attitude/settings";
+import { attitudeOverrideLabel, resolveSatelliteAttitude } from "../../lib/attitude/resolve";
+import type { SatelliteAttitudeSettings, SolarArrayType } from "../../lib/attitude/types";
+import { satelliteDisplayName, satelliteIdentifiers } from "../../lib/analysisSatellites";
 
 const CAMERA_VIEW_OPTIONS: { mode: SatelliteCameraMode; label: string }[] = [
   { mode: "free", label: "全体" },
   { mode: "earthCenter", label: "地球中心" },
   { mode: "thirdPerson", label: "後方追跡" },
+  { mode: "closeUp", label: "近接" },
 ];
+
+const SOLAR_ARRAY_SHORT_LABELS: Record<SolarArrayType, string> = {
+  fixed: "固定",
+  singleAxis: "1軸追尾",
+};
+
+interface AttitudeReadout {
+  modeLabel: string;
+  sunlit: boolean;
+  /** Angle between the panel normal and the Sun (deg), null when the Sun is behind the panel. */
+  incidenceDeg: number | null;
+  /** cos of the incidence, 0 in shadow / from behind. */
+  cosIncidence: number;
+  /** Sensor boresight off nadir (deg). */
+  sensorOffNadirDeg: number | null;
+}
+
+/**
+ * Attitude readout of an editor satellite at `at` (SGP4), from the same
+ * attitude law as the 3D cones and the 近接 model. Null when propagation fails.
+ */
+function attitudeReadout(
+  spec: SatelliteSpec,
+  at: Date,
+  settings: SatelliteAttitudeSettings,
+  arrayType: SolarArrayType,
+  stations: readonly GroundStation[],
+  alongTrackDeg: number,
+  crossTrackDeg: number,
+): AttitudeReadout | null {
+  let pv: ReturnType<typeof satellite.propagate>;
+  let rec: satellite.SatRec;
+  try {
+    rec = toSatrec(spec);
+    pv = satellite.propagate(rec, at);
+  } catch {
+    return null;
+  }
+  if (!pv?.position || !pv.velocity) return null;
+  const pos = pv.position;
+  // Same law (incl. 運用スケジュール and the slew limit) as the 3D cones / 近接 model.
+  const state = satelliteAttitudeStateFromContext(
+    pos,
+    pv.velocity,
+    prepareAttitudeContext(at, resolveSatelliteAttitude(spec, settings), stations),
+    attitudeStateProviderFromSatrec(rec),
+  );
+  const q = state.q;
+  const sun = sunVectorECI(at);
+  const n = Math.hypot(sun.x, sun.y, sun.z) || 1;
+  const { cosIncidence } = solarArrayIncidence(q, { x: sun.x / n, y: sun.y / n, z: sun.z / n }, arrayType);
+  const sunlit = !isInEarthShadow(pos, at);
+  const boresight = sensorBoresightEci(q, alongTrackDeg, crossTrackDeg);
+  const r = Math.hypot(pos.x, pos.y, pos.z);
+  const b = Math.hypot(boresight.x, boresight.y, boresight.z);
+  const cosNadir = r > 0 && b > 0 ? -(pos.x * boresight.x + pos.y * boresight.y + pos.z * boresight.z) / (r * b) : NaN;
+  return {
+    // Unscheduled: the configured mode's label, as before (地上局指向 keeps its
+    // name while the station is hidden). Scheduled: the active mode and why.
+    modeLabel: activeAttitudeLabel(state),
+    sunlit,
+    incidenceDeg: cosIncidence > 0 ? satellite.radiansToDegrees(Math.acos(Math.min(1, cosIncidence))) : null,
+    cosIncidence: sunlit ? cosIncidence : 0,
+    sensorOffNadirDeg: Number.isFinite(cosNadir)
+      ? satellite.radiansToDegrees(Math.acos(Math.max(-1, Math.min(1, cosNadir))))
+      : null,
+  };
+}
+
+/** Panel incidence as shown in both the folded line and the 姿勢 section: 「32°」 / 「90°以上（裏面）」 / 「日陰」. */
+function incidenceText(a: AttitudeReadout): string {
+  if (!a.sunlit) return "日陰";
+  return a.incidenceDeg === null ? "90°以上（裏面）" : `${a.incidenceDeg.toFixed(0)}°`;
+}
+
+/** 「日照 · パネル入射角 32°」 / 「日陰」. */
+function sunSummary(a: AttitudeReadout): string {
+  if (!a.sunlit) return "日陰";
+  return `日照 · パネル入射角 ${incidenceText(a)}`;
+}
 
 const EARTH_RADIUS_KM = 6378.137;
 
@@ -38,6 +134,19 @@ interface Props {
   cameraMode: SatelliteCameraMode;
   onCameraModeChange: (mode: SatelliteCameraMode) => void;
   onClose: () => void;
+  /** Attitude law of the editor satellites (通信 › 衛星の姿勢とセンサ). */
+  satelliteAttitude: SatelliteAttitudeSettings;
+  /** Solar array type (解析 › 日照・電力). */
+  solarArrayType: SolarArrayType;
+  /** Committed ground stations (地上局指向). */
+  groundStations: readonly GroundStation[];
+  /** Sensor mounting angles (通信 › センサ), for the sensor direction readout. */
+  fovAlongTrackDeg: number;
+  fovCrossTrackDeg: number;
+  /** Open 通信 › 衛星の姿勢とセンサ. */
+  onOpenAttitudeSettings: () => void;
+  /** Open 解析 › 日照・電力成立性評価 (where the panel type is set). */
+  onOpenPowerAnalysis?: () => void;
 }
 
 interface InfoRow {
@@ -103,6 +212,13 @@ export default function SatelliteInfo({
   cameraMode,
   onCameraModeChange,
   onClose,
+  satelliteAttitude,
+  solarArrayType,
+  groundStations,
+  fovAlongTrackDeg,
+  fovCrossTrackDeg,
+  onOpenAttitudeSettings,
+  onOpenPowerAnalysis,
 }: Props) {
   // Phones start with the orbit details folded so the card doesn't hide the globe.
   const [expanded, setExpanded] = useState(() => !window.matchMedia("(max-width: 768px)").matches);
@@ -133,13 +249,17 @@ export default function SatelliteInfo({
   })();
 
   const derived = getSatelliteDerivedInfo(spec, simTime);
+  // Attitude applies to editor satellites only (display layers have none).
+  const isEditorSatellite = catalogIdx < 0;
+  const attitude = isEditorSatellite
+    ? attitudeReadout(spec, simTime, satelliteAttitude, solarArrayType, groundStations, fovAlongTrackDeg, fovCrossTrackDeg)
+    : null;
+  // 「シェル設定」/「衛星設定」 when this satellite overrides the global attitude.
+  const attitudeSourceLabel = isEditorSatellite ? attitudeOverrideLabel(spec) : null;
 
-  const identifiers = [
-    meta?.noradCatId !== undefined ? `NORAD ${meta.noradCatId}` : null,
-    meta?.objectId ?? null,
-    meta?.noradCatId === undefined ? `satnum ${e.satnum}` : null,
-  ].filter(Boolean).join(" · ");
-  const title = meta?.objectName ?? `衛星 #${selectedIdx + 1}`;
+  // Same naming as the analysis pickers (日照・電力 etc.).
+  const identifiers = satelliteIdentifiers(spec);
+  const title = satelliteDisplayName(spec, selectedIdx);
 
   // Below ~5 km the perigee/apogee split is noise from near-zero eccentricity.
   const isCircular = derived.apogeeAltitudeKm - derived.perigeeAltitudeKm < 5;
@@ -177,8 +297,8 @@ export default function SatelliteInfo({
           data-slot="icon-button"
           onClick={() => setExpanded((v) => !v)}
           aria-expanded={expanded}
-          aria-label={expanded ? "軌道の詳細を閉じる" : "軌道の詳細を表示"}
-          title={expanded ? "軌道の詳細を閉じる" : "軌道の詳細を表示"}
+          aria-label={expanded ? "詳細を閉じる" : "詳細を表示"}
+          title={expanded ? "詳細を閉じる" : "詳細を表示"}
           className="inline-flex size-7 items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-raised-hover hover:text-fg"
         >
           <ChevronDown className={`size-4 transition-transform ${expanded ? "" : "rotate-180"}`} />
@@ -204,18 +324,22 @@ export default function SatelliteInfo({
         <Stat label="高度 (地表から)" value={formatNumber(derived.geodeticAltitudeKm, 1, " km")} />
         <Stat label="速度" value={formatNumber(derived.eciSpeedKmPerSec, 2, " km/s")} />
       </div>
-      <div role="radiogroup" aria-label="カメラ" className="grid grid-cols-3 gap-1 rounded-lg border border-line bg-sunken p-[3px]">
+      <div role="radiogroup" aria-label="カメラ" className="grid grid-cols-4 gap-1 rounded-lg border border-line bg-sunken p-[3px]">
         {CAMERA_VIEW_OPTIONS.map((option) => {
           const selected = cameraMode === option.mode;
+          // 近接 draws the attitude model, which display layers do not have.
+          const disabled = option.mode === "closeUp" && !isEditorSatellite;
           return (
             <button
               key={option.mode}
               type="button"
               role="radio"
               aria-checked={selected}
+              disabled={disabled}
+              title={disabled ? "表示レイヤーの衛星には使えません" : undefined}
               data-slot="icon-button"
               onClick={() => onCameraModeChange(option.mode)}
-              className={`h-7 rounded-md text-xs font-medium transition-colors ${
+              className={`h-7 min-w-0 whitespace-nowrap rounded-md px-0.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                 selected ? "bg-seg-active text-fg shadow-sm" : "text-fg-muted hover:text-fg"
               }`}
             >
@@ -224,8 +348,70 @@ export default function SatelliteInfo({
           );
         })}
       </div>
+      {!expanded && attitude && (
+        <button
+          type="button"
+          data-slot="button"
+          onClick={onOpenAttitudeSettings}
+          title="通信タブの「衛星の姿勢とセンサ」を開く"
+          className="-my-1 flex min-h-8 w-full min-w-0 items-center gap-1.5 rounded-md bg-transparent px-0 text-left text-xs text-fg-muted hover:text-fg"
+        >
+          <span className="shrink-0 text-fg-subtle">姿勢</span>
+          <span className="min-w-0 flex-1 truncate">
+            <span className="text-fg">{attitude.modeLabel}</span> · {sunSummary(attitude)}
+          </span>
+          <span className="shrink-0 text-sm leading-none text-fg-subtle" aria-hidden="true">›</span>
+        </button>
+      )}
       {expanded && (
       <div className="satellite-info-body">
+        {attitude && (
+          <section className="border-t border-line pt-2.5">
+            <SectionTitle>姿勢</SectionTitle>
+            <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1">
+              <dt className="whitespace-nowrap text-fg-muted">モード</dt>
+              <dd className="m-0 text-right whitespace-nowrap">
+                <button
+                  type="button"
+                  data-slot="button"
+                  onClick={onOpenAttitudeSettings}
+                  title="通信タブの「衛星の姿勢とセンサ」を開く"
+                  className="bg-transparent p-0 text-fg underline decoration-line-strong underline-offset-2 hover:decoration-fg"
+                >
+                  {attitude.modeLabel}
+                </button>
+              </dd>
+              {attitudeSourceLabel && (
+                <>
+                  <dt className="whitespace-nowrap text-fg-muted">設定元</dt>
+                  <dd className="m-0 text-right whitespace-nowrap text-fg" title="シナリオタブの編集画面で変更できます">
+                    {attitudeSourceLabel}
+                  </dd>
+                </>
+              )}
+              <dt className="whitespace-nowrap text-fg-muted">パネル入射角</dt>
+              <dd className="m-0 text-right font-mono tabular-nums text-fg whitespace-nowrap">{incidenceText(attitude)}</dd>
+              <dt className="whitespace-nowrap text-fg-muted">発電効率（cos）</dt>
+              <dd className="m-0 text-right font-mono tabular-nums text-fg whitespace-nowrap">{attitude.cosIncidence.toFixed(2)}</dd>
+              <dt className="whitespace-nowrap text-fg-muted">センサの向き（直下点からの離角）</dt>
+              <dd className="m-0 text-right font-mono tabular-nums text-fg whitespace-nowrap">
+                {attitude.sensorOffNadirDeg === null ? "—" : `${attitude.sensorOffNadirDeg.toFixed(1)}°`}
+              </dd>
+            </dl>
+            {onOpenPowerAnalysis ? (
+              <button
+                type="button"
+                data-slot="button"
+                onClick={onOpenPowerAnalysis}
+                className="mt-1 bg-transparent p-0 text-left text-[11px] text-fg-muted underline decoration-line-strong underline-offset-2 hover:text-fg"
+              >
+                パネル: {SOLAR_ARRAY_SHORT_LABELS[solarArrayType]}（電力解析で設定）
+              </button>
+            ) : (
+              <p className="mt-1 text-[11px] text-fg-muted">パネル: {SOLAR_ARRAY_SHORT_LABELS[solarArrayType]}（電力解析で設定）</p>
+            )}
+          </section>
+        )}
         <Section title="軌道 (元期)" rows={orbitRows} />
         <Section title="日陰" rows={eclipseRows} />
         <section className="border-t border-line pt-2.5">

@@ -22,6 +22,13 @@ import {
 } from "./satelliteEditorTypes";
 import { LOCAL_SATNUM_MIN, nextLocalSatnum } from "./localSatnum";
 import { unquoteTomlString } from "./constellationPatterns/tomlTable";
+import {
+  attitudeOverrideFromRecord,
+  attitudeOverrideTomlLines,
+  hasAttitudeOverride,
+  validateAttitudeOverride,
+} from "./attitude/resolve";
+import type { SatelliteAttitudeOverride } from "./attitude/types";
 
 const NEAR_CIRCULAR_ECC_MAX = 0.02;
 const SQRT3 = Math.sqrt(3);
@@ -271,6 +278,17 @@ function cloneMeta(meta?: SatelliteEditorMetadata): SatelliteMetadata | undefine
   };
 }
 
+/** Spec fields for an entry's attitude override; empty (no keys) without one. */
+function attitudeFields(attitude: SatelliteAttitudeOverride | undefined): Pick<SatelliteSpec, "attitude" | "attitudeSource"> {
+  return hasAttitudeOverride(attitude) ? { attitude, attitudeSource: "satellite" } : {};
+}
+
+/** `{ attitude }` for a parsed entry, or nothing (the key stays absent). */
+function entryAttitude(entry: TomlRecord): { attitude?: SatelliteAttitudeOverride } {
+  const attitude = attitudeOverrideFromRecord(entry);
+  return attitude ? { attitude } : {};
+}
+
 function getChiefDisplayName(entry: ManualSatelliteEntry): string {
   return entry.meta?.objectName || entry.name || `Chief ${entry.elements?.satnum ?? "?"}`;
 }
@@ -389,7 +407,7 @@ function modeLabel(mode: FormationMode): string {
   }
 }
 
-function addDeputy(output: SatelliteSpec[], chief: OrbitalElements, name: string, satnum: number, roe: SatelliteEditorRoe, epoch?: Date) {
+function addDeputy(output: SatelliteSpec[], chief: OrbitalElements, name: string, satnum: number, roe: SatelliteEditorRoe, epoch?: Date, attitude?: SatelliteAttitudeOverride) {
   output.push({
     type: "elements",
     elements: buildDeputyElements(chief, roe, satnum, epoch),
@@ -397,6 +415,7 @@ function addDeputy(output: SatelliteSpec[], chief: OrbitalElements, name: string
       objectName: name,
       noradCatId: satnum,
     },
+    ...attitudeFields(attitude),
   });
 }
 
@@ -406,6 +425,7 @@ function serializeCommonFormation(lines: string[], entry: FormationSatelliteEntr
   lines.push(`chiefSatnum = ${entry.chiefSatnum}`);
   if (entry.epoch) lines.push(`epoch = ${formatTomlDate(entry.epoch)}`);
   lines.push(`formationMode = ${JSON.stringify(entry.formationMode)}`);
+  lines.push(...attitudeOverrideTomlLines(entry.attitude));
 }
 
 function parseCustomFormation(entry: TomlRecord): CustomFormationEntry {
@@ -436,6 +456,10 @@ function parseCustomFormation(entry: TomlRecord): CustomFormationEntry {
 }
 
 function parseFormation(entry: TomlRecord): FormationSatelliteEntry {
+  return { ...parseFormationGeometry(entry), ...entryAttitude(entry) };
+}
+
+function parseFormationGeometry(entry: TomlRecord): FormationSatelliteEntry {
   const mode = String(entry.formationMode ?? "");
   if (!mode) {
     throw new Error("旧形式の formation は未対応です。新しい編隊モードで作り直してください。");
@@ -560,6 +584,7 @@ export function parseSatelliteEditorConfig(text: string): SatelliteEditorConfig 
         name: entry.name !== undefined ? String(entry.name) : undefined,
         meta: orbitalMetaFromEntry(entry),
         tle: { line1: String(entry.line1 ?? ""), line2: String(entry.line2 ?? "") },
+        ...entryAttitude(entry),
       } satisfies ManualSatelliteEntry;
     }
     if (type === "geo") {
@@ -575,6 +600,7 @@ export function parseSatelliteEditorConfig(text: string): SatelliteEditorConfig 
           longitudeDeg: Number(entry.longitudeDeg ?? 0),
           inclinationDeg: Number(entry.inclinationDeg ?? 0),
         },
+        ...entryAttitude(entry),
       } satisfies ManualSatelliteEntry;
     }
     if (type === "elements") {
@@ -594,6 +620,7 @@ export function parseSatelliteEditorConfig(text: string): SatelliteEditorConfig 
           argPerigeeDeg: Number(entry.argPerigeeDeg ?? 0),
           meanAnomalyDeg: Number(entry.meanAnomalyDeg ?? 0),
         },
+        ...entryAttitude(entry),
       } satisfies ManualSatelliteEntry;
     }
     if (type === "formation") {
@@ -616,6 +643,7 @@ export function serializeSatelliteEditorConfig(config: SatelliteEditorConfig): s
       if (entry.meta?.noradCatId !== undefined) lines.push(`noradCatId = ${entry.meta.noradCatId}`);
       lines.push(`line1 = ${JSON.stringify(entry.tle?.line1 ?? "")}`);
       lines.push(`line2 = ${JSON.stringify(entry.tle?.line2 ?? "")}`);
+      lines.push(...attitudeOverrideTomlLines(entry.attitude));
     } else if (entry.kind === "manual" && entry.type === "geo") {
       const geo = entry.geo ?? createDefaultGeoEntry().geo!;
       lines.push('type = "geo"');
@@ -626,6 +654,7 @@ export function serializeSatelliteEditorConfig(config: SatelliteEditorConfig): s
       lines.push(`epoch = ${formatTomlDate(geo.epoch)}`);
       lines.push(`longitudeDeg = ${formatNumber(geo.longitudeDeg, 4)}`);
       lines.push(`inclinationDeg = ${formatNumber(geo.inclinationDeg, 4)}`);
+      lines.push(...attitudeOverrideTomlLines(entry.attitude));
     } else if (entry.kind === "manual" && entry.type === "elements") {
       const elements = entry.elements ?? createDefaultManualEntry().elements!;
       lines.push('type = "elements"');
@@ -640,6 +669,7 @@ export function serializeSatelliteEditorConfig(config: SatelliteEditorConfig): s
       lines.push(`raanDeg = ${formatNumber(elements.raanDeg, 4)}`);
       lines.push(`argPerigeeDeg = ${formatNumber(elements.argPerigeeDeg, 4)}`);
       lines.push(`meanAnomalyDeg = ${formatNumber(elements.meanAnomalyDeg, 4)}`);
+      lines.push(...attitudeOverrideTomlLines(entry.attitude));
     } else if (entry.kind === "formation") {
       serializeCommonFormation(lines, entry);
       switch (entry.formationMode) {
@@ -707,6 +737,7 @@ export function validateSatelliteEditorConfig(config: SatelliteEditorConfig): Sa
   });
 
   config.entries.forEach((entry, index) => {
+    errors.push(...validateAttitudeOverride(entry.attitude, `entry.${index}.`));
     if (entry.kind === "manual") {
       if (entry.type === "tle") {
         if (!entry.tle?.line1 || !entry.tle?.line2) errors.push({ field: `entry.${index}.tle`, message: "TLE 2行が必要です" });
@@ -883,9 +914,10 @@ export function expandSatelliteEditorConfig(config: SatelliteEditorConfig): Sate
 
   for (const entry of config.entries) {
     if (entry.kind === "manual") {
-      if (entry.type === "tle" && entry.tle) output.push({ type: "tle", lines: [entry.tle.line1, entry.tle.line2], meta: cloneMeta(entry.meta) });
-      else if (entry.type === "geo" && entry.geo) output.push({ type: "elements", elements: geoElementsFromLongitude(entry.geo), meta: cloneMeta(entry.meta) });
-      else if (entry.type === "elements" && entry.elements) output.push({ type: "elements", elements: entry.elements, meta: cloneMeta(entry.meta) });
+      const attitude = attitudeFields(entry.attitude);
+      if (entry.type === "tle" && entry.tle) output.push({ type: "tle", lines: [entry.tle.line1, entry.tle.line2], meta: cloneMeta(entry.meta), ...attitude });
+      else if (entry.type === "geo" && entry.geo) output.push({ type: "elements", elements: geoElementsFromLongitude(entry.geo), meta: cloneMeta(entry.meta), ...attitude });
+      else if (entry.type === "elements" && entry.elements) output.push({ type: "elements", elements: entry.elements, meta: cloneMeta(entry.meta), ...attitude });
       continue;
     }
     const chiefEntry = manualChiefs.get(entry.chiefSatnum);
@@ -907,11 +939,12 @@ export function expandSatelliteEditorConfig(config: SatelliteEditorConfig): Sate
             objectName: deputyName,
             noradCatId: satnum,
           },
+          ...attitudeFields(entry.attitude),
         });
         continue;
       }
       const roe = canonicalRoeForFormation(chief, entry, deputyIndex);
-      addDeputy(output, chief, deputyName, satnum, roe, entry.epoch);
+      addDeputy(output, chief, deputyName, satnum, roe, entry.epoch, entry.attitude);
     }
   }
   return output;

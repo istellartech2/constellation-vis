@@ -1,6 +1,6 @@
 import type { AccessGrid } from "../lib/accessGrid";
 import type { GroundStation } from "../lib/groundStations";
-import type { SatelliteFovCriteria } from "../lib/visibility";
+import type { FovAttitude, SatelliteFovCriteria } from "../lib/visibility";
 
 export interface AccessGridJob {
   satText: string;
@@ -16,6 +16,11 @@ export interface AccessGridJob {
    * display settings (`fovCone*`), never from an analysis-only copy.
    */
   satelliteFov?: SatelliteFovCriteria;
+  /**
+   * Attitude law for the FOV boresight (通信タブ › 衛星の姿勢とセンサ), with the
+   * scenario's ground stations for 地上局指向. Omitted = 地球指向.
+   */
+  attitude?: FovAttitude;
 }
 
 export interface AccessGridRequest {

@@ -4,6 +4,10 @@ import EarthTextureSelector from "./EarthTextureSelector";
 import { Button } from "./button";
 import { FileInput, Trash2, Globe, Satellite, Compass, Layers, FolderOpen, Bookmark, Save, Plus, X } from "lucide-react";
 import PanelSection from "./PanelSection";
+import TrajectorySection, { type TrajectoryPlayback } from "./TrajectorySection";
+import DemoSection from "../tour/DemoSection";
+import type { DemoEntry } from "../../lib/tour/types";
+import type { TrajectoryTrack } from "../../lib/trajectory/types";
 import { CheckRow, ColorChip, HelpTip, SegmentedControl } from "./compactControls";
 import type SatelliteScene from "../../lib/visualization";
 import { isLayeredEarthMode } from "../../lib/earthTextures";
@@ -31,13 +35,32 @@ interface Props {
   getCurrentView: () => ViewSettings;
   /** Apply a previously saved view */
   onApplyView: (settings: ViewSettings) => void;
+  trajectories: TrajectoryTrack[];
+  onTrajectoriesChange: (tracks: TrajectoryTrack[]) => void;
+  /** Trajectory seek / follow / playback controls (owned by App). */
+  trajectoryPlayback: TrajectoryPlayback;
+  /** Current simulation time (ms), for trajectory readouts and default epochs. */
+  currentSimMs: number;
+  /** Start a guided tour (「デモ」 section; hidden when absent or no demos exist). */
+  onStartDemo?: (demo: DemoEntry) => void;
 }
 
 /**
  * 表示タブ: 触っても計算結果が変わらない見た目の設定だけを置く。
  * 判定・解析に効く値(最低仰角・センサ視野など)は通信タブ。
  */
-export default function OptionTab({ display, onDisplayChange, sceneRef, getCurrentView, onApplyView }: Props) {
+export default function OptionTab({
+  display,
+  onDisplayChange,
+  sceneRef,
+  getCurrentView,
+  onApplyView,
+  trajectories,
+  onTrajectoriesChange,
+  trajectoryPlayback,
+  currentSimMs,
+  onStartDemo,
+}: Props) {
   const set = onDisplayChange;
   const [loadedKMLs, setLoadedKMLs] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -271,6 +294,19 @@ export default function OptionTab({ display, onDisplayChange, sceneRef, getCurre
           value={display.satelliteSelectedColor}
           onChange={(c) => set({ satelliteSelectedColor: c })}
         />
+        <CheckRow
+          id="sat-body-axes"
+          checked={display.showBodyAxes}
+          onChange={(v) => set({ showBodyAxes: v })}
+          label="機体の軸（X/Y/Z）を表示"
+        />
+        <CheckRow
+          id="sat-body-sun"
+          checked={display.showBodySunDirection}
+          onChange={(v) => set({ showBodySunDirection: v })}
+          label="機体から見た太陽方向を表示"
+        />
+        <p className="text-[11px] text-fg-subtle leading-snug">近接カメラのときに表示されます</p>
       </PanelSection>
 
       <PanelSection title="座標系" icon={<Compass />}>
@@ -330,6 +366,18 @@ export default function OptionTab({ display, onDisplayChange, sceneRef, getCurre
           </ul>
         )}
       </PanelSection>
+
+      <TrajectorySection
+        trajectories={trajectories}
+        onTrajectoriesChange={onTrajectoriesChange}
+        playback={trajectoryPlayback}
+        currentSimMs={currentSimMs}
+        sceneRef={sceneRef}
+      />
+
+      {/* おまけ: 解説付きデモ。中心機能ではないので末尾に畳んで置く。
+          public/demos/index.json が空なら何も出さない */}
+      {onStartDemo && <DemoSection onStart={onStartDemo} />}
     </div>
   );
 }

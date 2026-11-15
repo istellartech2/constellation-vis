@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useEffectEvent, useState, useRef, type Dispatch, type SetStateAction } from "react";
+import { lazy, Suspense, useEffect, useEffectEvent, useMemo, useState, useRef, type Dispatch, type SetStateAction } from "react";
 import { Dialog, DialogContent, DialogTitle } from "./dialog";
 import { Radio, Globe2, Rocket, Sun, Columns3 } from "lucide-react";
 import StationAccessAnalysis from "../analysis/StationAccessAnalysis";
@@ -10,6 +10,8 @@ import PanelSection from "./PanelSection";
 import EntryButton from "./EntryButton";
 import type { SatelliteFovCriteria } from "../../lib/visibility";
 import type { SatelliteSpec } from "../../lib/satellites";
+import type { SatelliteAttitudeSettings, SolarArrayType } from "../../lib/attitude/types";
+import { parseGroundStationsToml } from "../../lib/config";
 import type { IslSettings, IslShellRange } from "../../lib/isl/types";
 
 import { type ComparisonDocument, type ComparisonScenario } from "../../lib/constellationComparison";
@@ -24,7 +26,7 @@ interface Props {
   constText: string;
   gsText: string;
   startTime: Date;
-  /** Shared satellite sensor FOV (表示オプション › 衛星の視野), used by 地上局アクセス設計. */
+  /** Shared satellite sensor FOV (通信タブ › 衛星の姿勢とセンサ), used by 地上局アクセス設計. */
   fovConeHalfAngleDeg: number;
   fovConeAlongTrackDeg: number;
   fovConeCrossTrackDeg: number;
@@ -32,6 +34,16 @@ interface Props {
   satellites: SatelliteSpec[];
   islSettings: IslSettings;
   islShellRanges: IslShellRange[];
+  /** Global satellite attitude law (通信タブ › 姿勢); used by 地上局アクセス設計 and 日照・電力成立性評価, which apply each satellite's shell / satellite override on top. */
+  attitude?: SatelliteAttitudeSettings;
+  /** 地上局アクセス設計 「衛星の視野も可視条件に加える」 (remembered with the view) and its change handler. */
+  stationAccessUseSatelliteFov?: boolean;
+  onStationAccessUseSatelliteFovChange?: (on: boolean) => void;
+  /** Global solar panel type (shared with the 3D model) and its change handler. */
+  solarArrayType?: SolarArrayType;
+  onSolarArrayTypeChange?: (type: SolarArrayType) => void;
+  /** Satellite selected in 3D (index into satellites-then-constellation order), default for the power analysis. */
+  selectedSatelliteIndex?: number | null;
   onAnalysisStart?: () => void;
   onAnalysisEnd?: () => void;
   /** External request to open a specific analysis modal (e.g. from the 通信 tab's result card). */
@@ -64,6 +76,12 @@ export default function AnalysisTab({
   satellites,
   islSettings,
   islShellRanges,
+  attitude,
+  stationAccessUseSatelliteFov,
+  onStationAccessUseSatelliteFovChange,
+  solarArrayType,
+  onSolarArrayTypeChange,
+  selectedSatelliteIndex,
   onAnalysisStart,
   onAnalysisEnd,
   requestedAnalysis,
@@ -105,6 +123,8 @@ export default function AnalysisTab({
     onAnalysisEnd?.();
   }
 
+  const groundStations = useMemo(() => (gsText ? parseGroundStationsToml(gsText) : []), [gsText]);
+
   const renderAnalysisComponent = () => {
     switch (analysisType) {
       case "コンステレーション設計比較":
@@ -122,6 +142,9 @@ export default function AnalysisTab({
           fovHalfAngleDeg={fovConeHalfAngleDeg}
           fovAlongTrackDeg={fovConeAlongTrackDeg}
           fovCrossTrackDeg={fovConeCrossTrackDeg}
+          attitude={attitude}
+          useSatelliteFov={stationAccessUseSatelliteFov}
+          onUseSatelliteFovChange={onStationAccessUseSatelliteFovChange}
         />;
       case "全球アクセス設計":
         return <GlobalAccessAnalysis
@@ -140,6 +163,11 @@ export default function AnalysisTab({
           satText={satText}
           constText={constText}
           startTime={startTime}
+          attitude={attitude}
+          groundStations={groundStations}
+          solarArrayType={solarArrayType}
+          onSolarArrayTypeChange={onSolarArrayTypeChange}
+          selectedSatelliteIndex={selectedSatelliteIndex}
         />;
       case "ISL経路タイムライン解析":
         return <IslRoutingAnalysis

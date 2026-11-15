@@ -116,6 +116,15 @@ export interface PatternShellInput {
   mission_lat_max?: number;
   mission_alt_min?: number;
   mission_alt_max?: number;
+
+  // --- per-shell attitude override (see attitude/resolve.ts) ---
+  attitude_mode?: string;
+  attitude_station?: string;
+  attitude_ra_deg?: number;
+  attitude_dec_deg?: number;
+  attitude_eclipse_mode?: string;
+  attitude_track_station?: boolean;
+  attitude_slew_deg_s?: number;
 }
 
 /** One satellite's Keplerian geometry (no epoch, no catalog number). */

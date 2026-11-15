@@ -20,8 +20,12 @@ import {
 import { BusyOverlay, ChartCard, EmptyState, KpiStrip, type Kpi } from "./AnalysisLayout";
 import type { StationVisibilitySample } from "../../lib/visibility";
 import { gridToSamples } from "../../lib/accessGrid";
-import { parseGroundStationsToml } from "../../lib/config";
+import { parseConstellationToml, parseGroundStationsToml, parseSatellitesToml } from "../../lib/config";
+import { countAttitudeOverrides } from "../../lib/attitude/resolve";
 import { AnalysisCancelledError, useAccessGridJob } from "./utils/useAccessGridJob";
+import { DEFAULT_SATELLITE_ATTITUDE, type SatelliteAttitudeSettings } from "../../lib/attitude/types";
+import { effectiveAttitudeMode, hasAttitudeSchedule, isPlainLvlhAttitude } from "../../lib/attitude/satelliteAttitude";
+import { ATTITUDE_MODE_SHORT_LABELS, STATION_MISSING_WARNING, SUN_POINTING_ACCESS_WARNING } from "../../lib/attitude/settings";
 
 /** Propagation settings sent to the worker; also quoted in the empty state. */
 const DURATION_HOURS = 24;
@@ -34,13 +38,26 @@ interface Props {
   startTime: Date;
   /**
    * The satellite sensor FOV, read straight from the shared display settings
-   * (表示オプション › 衛星の視野). Shown here read-only on purpose: the
+   * (通信タブ › 衛星の姿勢とセンサ). Shown here read-only on purpose: the
    * definition has exactly one editable home, and this panel only decides
    * whether to *apply* it as a visibility condition.
    */
   fovHalfAngleDeg: number;
   fovAlongTrackDeg: number;
   fovCrossTrackDeg: number;
+  /**
+   * Satellite attitude law (same home as the FOV). Only matters when the FOV
+   * is applied; 地上局指向 resolves its station among this analysis' own
+   * stations (gsText). Default 地球指向.
+   */
+  attitude?: SatelliteAttitudeSettings;
+  /**
+   * 「衛星の視野も可視条件に加える」. Remembered with the view
+   * (DisplayOptions.stationAccessUseSatelliteFov) when the parent passes it
+   * with its change handler; otherwise kept locally.
+   */
+  useSatelliteFov?: boolean;
+  onUseSatelliteFovChange?: (on: boolean) => void;
 }
 
 export default function StationAccessAnalysis({
@@ -51,8 +68,43 @@ export default function StationAccessAnalysis({
   fovHalfAngleDeg,
   fovAlongTrackDeg,
   fovCrossTrackDeg,
+  attitude = DEFAULT_SATELLITE_ATTITUDE,
+  useSatelliteFov: useSatelliteFovProp,
+  onUseSatelliteFovChange,
 }: Props) {
-  const [useSatelliteFov, setUseSatelliteFov] = useState(false);
+  const [localUseSatelliteFov, setLocalUseSatelliteFov] = useState(false);
+  const useSatelliteFov = useSatelliteFovProp ?? localUseSatelliteFov;
+  const setUseSatelliteFov = (on: boolean) => {
+    setLocalUseSatelliteFov(on);
+    onUseSatelliteFovChange?.(on);
+  };
+  const scenarioStations = useMemo(() => {
+    try {
+      return gsText ? parseGroundStationsToml(gsText) : [];
+    } catch {
+      return [];
+    }
+  }, [gsText]);
+  const effectiveMode = effectiveAttitudeMode(attitude, scenarioStations);
+  // 地球指向 with no 運用スケジュール (an eclipse / pass schedule switches even an LVLH base).
+  const plainLvlh = isPlainLvlhAttitude(attitude, scenarioStations);
+  const scheduleNote = hasAttitudeSchedule(attitude, scenarioStations) ? "＋運用スケジュール" : "";
+  // Satellites with a shell / satellite attitude of their own (applied with the FOV).
+  const overrideCount = useMemo(() => {
+    try {
+      return countAttitudeOverrides([
+        ...(satText ? parseSatellitesToml(satText) : []),
+        ...(constText ? parseConstellationToml(constText) : []),
+      ]);
+    } catch {
+      return 0;
+    }
+  }, [satText, constText]);
+  const overrideNote = overrideCount > 0 ? `（${overrideCount} 機はシェル／衛星ごとの姿勢）` : "";
+  const conditions = useSatelliteFov
+    ? `条件: 姿勢 ${ATTITUDE_MODE_SHORT_LABELS[effectiveMode]}${scheduleNote}${overrideNote} · 視野半角 ${fovHalfAngleDeg}°`
+    : "条件: 地上局側の可視条件のみ（衛星の姿勢・視野は使いません）";
+  const [resultConditions, setResultConditions] = useState<string | null>(null);
   const compactChart = useCompactChart();
   const theme = useChartTheme();
   const [data, setData] = useState<StationVisibilitySample[]>([]);
@@ -84,9 +136,11 @@ export default function StationAccessAnalysis({
               crossTrackDeg: fovCrossTrackDeg,
             }
           : undefined,
+        attitude: useSatelliteFov ? { settings: attitude, stations: groundStations } : undefined,
       });
       setData(gridToSamples(grid, groundStations.map((gs) => gs.name)));
       setStations(groundStations);
+      setResultConditions(conditions);
     } catch (err) {
       if (!(err instanceof AnalysisCancelledError)) {
         setError(err instanceof Error ? err.message : "解析エラーが発生しました");
@@ -197,11 +251,29 @@ export default function StationAccessAnalysis({
           <span>衛星の視野も可視条件に加える</span>
         </label>
         <span className="text-fg-subtle">
-          視野: 半角 {fovHalfAngleDeg}° ・ Along-track {fovAlongTrackDeg}° ・ Cross-track {fovCrossTrackDeg}°
-          （変更は 表示オプション › 衛星の視野）
-          {useSatelliteFov &&
-            ` — 地上局側の最低仰角・可視判定モードとの AND 条件。傾き 0° のときは最大オフナディア ${fovHalfAngleDeg}° と同じ意味です。`}
+          視野: 進行方向への取付角 {fovAlongTrackDeg}° ・ 横方向への取付角 {fovCrossTrackDeg}°
+          （変更は 通信タブ › 衛星の姿勢とセンサ）
+          {useSatelliteFov && " — 地上局側の最低仰角・可視判定モードとの AND 条件。"}
+          {useSatelliteFov && plainLvlh && overrideCount === 0 &&
+            `地球指向で取付角 0° のときは最大オフナディア ${fovHalfAngleDeg}° と同じ意味です。`}
         </span>
+        <span className="font-medium text-fg">
+          {conditions}
+          {resultConditions !== null && resultConditions !== conditions && (
+            <span className="font-normal text-fg-subtle">（表示中の結果は「{resultConditions.replace(/^条件: /, "")}」で計算。解析開始で更新）</span>
+          )}
+        </span>
+        {!useSatelliteFov && (!plainLvlh || overrideCount > 0) && (
+          <span className="text-fg-subtle">
+            現在の姿勢（{ATTITUDE_MODE_SHORT_LABELS[effectiveMode]}{scheduleNote}{overrideNote}）は使われていません。使うには上のチェックをオンにしてください
+          </span>
+        )}
+        {useSatelliteFov && attitude.mode === "station" && effectiveMode === "lvlh" && (
+          <span className="rounded-md bg-warning-soft px-2 py-1 text-warning">{STATION_MISSING_WARNING}</span>
+        )}
+        {useSatelliteFov && effectiveMode === "sun" && (
+          <span className="rounded-md bg-warning-soft px-2 py-1 text-warning">{SUN_POINTING_ACCESS_WARNING}</span>
+        )}
       </div>
 
       <div className="relative min-h-0 flex-1">

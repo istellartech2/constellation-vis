@@ -26,6 +26,7 @@ import EntryButton from "./EntryButton";
 import NoticeDialog from "./NoticeDialog";
 import LayerList from "./LayerList";
 import type { CatalogLayer } from "../../lib/catalogLayers";
+import { parseGroundStationsToml } from "../../lib/tomlParsers";
 
 interface Props {
   satText: string;
@@ -169,6 +170,14 @@ export default function EditorTab({
     [gsText],
   );
   const gsSummary = useMemo(() => joinNames(tomlNames(gsText)), [gsText]);
+  // For the 姿勢 (地上局指向) selects of the satellite / constellation editors.
+  const stationNames = useMemo(() => {
+    try {
+      return parseGroundStationsToml(gsText).map((gs) => gs.name).filter((name) => name !== "");
+    } catch {
+      return [];
+    }
+  }, [gsText]);
 
   const clearAllAction = (
     <button
@@ -286,12 +295,14 @@ export default function EditorTab({
       <ConstellationEditorDialog
         open={constEditorOpen}
         constText={constText}
+        stationNames={stationNames}
         onApply={onApplyConstText}
         onClose={() => setConstEditorOpen(false)}
       />
       <SatelliteTomlEditorDialog
         open={satEditorOpen}
         satText={satText}
+        stationNames={stationNames}
         onApply={onApplySatText}
         onClose={() => setSatEditorOpen(false)}
       />

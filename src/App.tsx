@@ -1,7 +1,7 @@
 import type { RemoteDisplaySettings } from "./lib/remoteDisplay";
 import { useRef, useEffect, useLayoutEffect, useState, useCallback, useMemo } from "react";
 import PlaybackBar from "./components/ui/PlaybackBar";
-import SatelliteEditor from "./components/ui/SatelliteEditor";
+import SatelliteEditor, { type OpenTabRequest } from "./components/ui/SatelliteEditor";
 import IslHud from "./components/ui/IslHud";
 import { useSatelliteScene } from "./components/useSatelliteScene";
 import { SATELLITES as INITIAL_SATS, INITIAL_SHELL_RANGES } from "./lib/satellites";
@@ -12,6 +12,16 @@ import { useCatalogLayers } from "./lib/useCatalogLayers";
 import { isMassMode } from "./lib/massSatelliteLayer";
 import { formatGroundStationInfo } from "./lib/formatGroundStationInfo";
 import { type SatelliteCameraMode } from "./lib/visualization";
+import { reconcileAttitudeStation } from "./lib/attitude/satelliteAttitude";
+import type { TrajectoryLandmark, TrajectoryTrack } from "./lib/trajectory/types";
+import type { TrajectoryPlayback } from "./components/ui/TrajectorySection";
+import TourPlayer from "./components/tour/TourPlayer";
+import LaunchSiteImageryCredit from "./components/ui/LaunchSiteImageryCredit";
+import type { LaunchSiteImageryCredit as LaunchSiteCredit } from "./lib/launchSiteImagery";
+import { useGuidedTour } from "./components/tour/useGuidedTour";
+import { loadDemoIndex } from "./lib/tour/load";
+import { demoIdFromSearch } from "./lib/tour/parse";
+import type { DemoEntry } from "./lib/tour/types";
 import {
   loadLastView,
   saveLastView,
@@ -77,15 +87,19 @@ function App() {
   const [islSwitchCount, setIslSwitchCount] = useState(0);
   const [islLastSwitchSimMs, setIslLastSwitchSimMs] = useState<number | null>(null);
   const [islError, setIslError] = useState<string | null>(null);
+  // Credit for the launch-site imagery patches while one is drawn (set by the scene).
+  const [launchSiteCredit, setLaunchSiteCredit] = useState<LaunchSiteCredit | null>(null);
   // Derived from the same [...base, ...shells] array as `satellites`, computed
   // at the same moment (Update click) — never a stale localStorage snapshot.
   // Not part of DisplaySettings: it's not persisted.
   const [islShellRanges, setIslShellRanges] = useState<IslShellRange[]>(INITIAL_SHELL_RANGES);
-  // External "open the panel on this tab" request (e.g. clicking the ISL HUD card)
-  const [openTabRequest, setOpenTabRequest] = useState<{
-    tab: "editor" | "analysis" | "isl" | "option";
-    nonce: number;
-  } | null>(null);
+  // External "open the panel on this tab" request (e.g. clicking the ISL HUD
+  // card), optionally scrolled to a section anchor or opening an analysis.
+  const [openTabRequest, setOpenTabRequest] = useState<OpenTabRequest | null>(null);
+  const requestTab = useCallback(
+    (request: Omit<OpenTabRequest, "nonce">) => setOpenTabRequest((p) => ({ ...request, nonce: (p?.nonce ?? 0) + 1 })),
+    [],
+  );
 
   // Track cumulative path switches and time-since-last-switch for the ISL result
   // card. switchedFromPrevious is only meaningful once a path
@@ -122,14 +136,46 @@ function App() {
   const [isPaused, setIsPaused] = useState(false);
   const [userPaused, setUserPaused] = useState(false);
   const savedSpeedRef = useRef(INITIAL_SPEED);
+  // Guided tour speed override (× real time, may exceed the playback bar's
+  // range); never persisted. Null outside a tour.
+  const [tourSpeed, setTourSpeed] = useState<number | null>(null);
+  // True while a guided tour is loading or running: the view is not persisted.
+  const tourActiveRef = useRef(false);
 
   useEffect(() => {
-    speedRef.current = isPaused || userPaused ? 0 : Math.pow(10, speedExp);
-  }, [speedExp, isPaused, userPaused]);
+    speedRef.current = isPaused || userPaused ? 0 : (tourSpeed ?? Math.pow(10, speedExp));
+  }, [speedExp, isPaused, userPaused, tourSpeed]);
+  // A tour chapter seeks and changes speed in the same step: write the new
+  // speed straight into speedRef so the first frames after the seek do not
+  // run at the previous chapter's speed (e.g. 3000×) and overshoot.
+  const applyTourSpeed = useCallback(
+    (speed: number | null) => {
+      setTourSpeed(speed);
+      if (!(isPaused || userPaused)) speedRef.current = speed ?? Math.pow(10, speedExp);
+    },
+    [isPaused, userPaused, speedExp],
+  );
 
-  useEffect(() => {
-    loadGroundStations().then((stations) => { if (!scenarioCommittedRef.current) setGroundStations(stations); });
+  // Keep the 地上局指向 station reference in step with a new station list
+  // (like reconcileIslEndpoints): called wherever the stations are replaced.
+  const reconcileAttitude = useCallback((stations: readonly GroundStation[]) => {
+    setDisplay((prev) => {
+      const next = reconcileAttitudeStation(prev.satelliteAttitude, stations);
+      return next === prev.satelliteAttitude ? prev : { ...prev, satelliteAttitude: next };
+    });
   }, []);
+
+  // The initial station list has arrived (its scene rebuild resets the clock,
+  // so a ?demo= tour waits for it).
+  const [stationsReady, setStationsReady] = useState(false);
+  useEffect(() => {
+    loadGroundStations().then((stations) => {
+      setStationsReady(true);
+      if (scenarioCommittedRef.current) return;
+      setGroundStations(stations);
+      reconcileAttitude(stations);
+    });
+  }, [reconcileAttitude]);
 
   // Latest camera framing, seeded from the saved view. Kept in a ref so it can
   // be applied on every scene (re)build without triggering rebuilds itself.
@@ -155,6 +201,7 @@ function App() {
 
   // Persist the latest view whenever a display setting changes.
   useEffect(() => {
+    if (tourActiveRef.current) return;
     saveLastView(
       buildViewSettings(displayRef.current, cameraSnapshotRef.current ?? fallbackCamera),
     );
@@ -163,6 +210,8 @@ function App() {
 
   // Stable handler: scene reports its framing on drag/zoom-end and mode changes.
   const handleCameraChange = useCallback((snap: CameraSnapshot) => {
+    // A tour's framings are not the user's view; 終了 restores the one from before.
+    if (tourActiveRef.current) return;
     cameraSnapshotRef.current = snap;
     saveLastView(buildViewSettings(displayRef.current, snap));
   }, []);
@@ -187,6 +236,20 @@ function App() {
     remove: handleCatalogLayerRemove,
   } = useCatalogLayers(dropLayerSelection);
   const [layerColorMode, setLayerColorMode] = useState<LayerColorMode>("layer");
+  // Tabulated trajectory tracks (e.g. a launch's booster and ship). Display
+  // only; swapped live into the scene without a rebuild.
+  const [trajectories, setTrajectories] = useState<TrajectoryTrack[]>([]);
+  // Fixed points drawn with the trajectory layer (a guided tour's launch tower…).
+  const [trajectoryLandmarks, setTrajectoryLandmarks] = useState<TrajectoryLandmark[]>([]);
+  // Mirror of the tour's presentation mode for the scene (the tour hook needs
+  // the scene first): hides the scenario and pins the free camera to ECI.
+  const [scenePresentation, setScenePresentation] = useState(false);
+  // Track the camera rides with (trajectory follow), or null. The scene
+  // clears it via onTrajectoryFollowEnd when it drops the follow itself.
+  const [trajectoryFollowId, setTrajectoryFollowId] = useState<string | null>(null);
+  const handleTrajectoryFollowEnd = useCallback(() => setTrajectoryFollowId(null), []);
+  // The scene left 近接 on its own (no selected editor satellite after a rebuild…).
+  const handleCloseUpEnd = useCallback(() => setCameraMode((m) => (m === "closeUp" ? "free" : m)), []);
   const visibleLayerCount = catalogLayers.reduce((sum, l) => sum + (l.visible ? l.catalog.count : 0), 0);
   const filingCount = useMemo(
     () => satellites.filter(s => s.meta?.dataStatus === "filing").length
@@ -214,6 +277,16 @@ function App() {
     catalog,
     catalogStyles,
     layerColorMode,
+    trajectories,
+    trajectoryLandmarks,
+    presentation: scenePresentation,
+    trajectoryFollowId,
+    onTrajectoryFollowEnd: handleTrajectoryFollowEnd,
+    onCloseUpEnd: handleCloseUpEnd,
+    satelliteAttitude: display.satelliteAttitude,
+    solarArrayType: display.solarArrayType,
+    showBodyAxes: display.showBodyAxes,
+    showBodySunDirection: display.showBodySunDirection,
     groundStations,
     satRadius: display.satRadius,
     pointStyle: display.pointStyle,
@@ -249,6 +322,7 @@ function App() {
     islShellRanges,
     onIslResult: handleIslResult,
     onIslError: setIslError,
+    onLaunchSiteImageryCredit: setLaunchSiteCredit,
   }, { cameraSnapshotRef });
 
   const applyDisplay = useCallback((d: RemoteDisplaySettings) => {
@@ -266,11 +340,110 @@ function App() {
       setIslSettings(d.isl ?? createDefaultIslSettings());
       setCameraMode(settings.camera.mode);
       cameraSnapshotRef.current = settings.camera;
+      // While following a trajectory the scene keeps a free view as the
+      // framing to return to; ending the follow then restores it.
       sceneRef.current?.applyCameraSnapshot(settings.camera);
+      setTrajectoryFollowId(null);
       saveLastView(settings);
     },
     [sceneRef, applyDisplay],
   );
+
+  // Trajectory playback: seeks move the live scene's clock (no rebuild, so
+  // the scenario start time in the editor is untouched); following forces the
+  // free camera, since the satellite camera modes take precedence.
+  const trajectoryPlayback = useMemo<TrajectoryPlayback>(
+    () => ({
+      followId: trajectoryFollowId,
+      onFollowChange: (id) => {
+        if (id !== null) setCameraMode("free");
+        setTrajectoryFollowId(id);
+      },
+      onPlayFrom: (id, date) => {
+        sceneRef.current?.seekTo(date);
+        setCameraMode("free");
+        setTrajectoryFollowId(id);
+        setSpeedExp(0);
+        setUserPaused(false);
+      },
+      onSeek: (date) => sceneRef.current?.seekTo(date),
+    }),
+    [trajectoryFollowId, sceneRef],
+  );
+
+  // Guided tour (presentation mode): drives tracks, seek, speed and camera,
+  // and puts them back on 終了.
+  const guidedTour = useGuidedTour({
+    sceneRef,
+    cameraSnapshotRef,
+    trajectories,
+    setTrajectories,
+    setTrajectoryLandmarks,
+    trajectoryFollowId,
+    setTrajectoryFollowId,
+    cameraMode,
+    setCameraMode,
+    userPaused,
+    setUserPaused,
+    setTourSpeed: applyTourSpeed,
+  });
+  const tourStatus = guidedTour.state.status;
+  const presentation = tourStatus !== "idle";
+  useLayoutEffect(() => {
+    tourActiveRef.current = presentation;
+  }, [presentation]);
+  // Derived state, adjusted during render (the scene hook above reads it on the next pass).
+  if (scenePresentation !== presentation) setScenePresentation(presentation);
+  const { start: startTour, stop: stopTour } = guidedTour;
+  const startDemo = useCallback((demo: DemoEntry) => void startTour(demo.tour), [startTour]);
+  // ?demo= opens on the start screen (「タップして開始」) instead of playing at once.
+  const startDemoFromUrl = useCallback((demo: DemoEntry) => void startTour(demo.tour, { awaitStart: true }), [startTour]);
+  const endTour = useCallback(() => {
+    stopTour();
+    // A tour opened from ?demo= should not restart on reload.
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("demo")) {
+      url.searchParams.delete("demo");
+      window.history.replaceState(window.history.state, "", url);
+    }
+  }, [stopTour]);
+
+  // ?demo=<id>: start that tour once the globe and the station list are up.
+  const autoDemoRef = useRef(false);
+  const autoDemoDoneRef = useRef(false);
+  useEffect(() => {
+    if (!stationsReady || autoDemoRef.current || autoDemoDoneRef.current) return;
+    const id = demoIdFromSearch(window.location.search);
+    if (id === null) return;
+    autoDemoRef.current = true;
+    let cancelled = false;
+    let timer = 0;
+    loadDemoIndex(import.meta.env.BASE_URL).then((demos) => {
+      const demo = demos.find((d) => d.id === id);
+      if (cancelled) return;
+      if (!demo) {
+        console.warn(`[tour] demo "${id}" is not listed in demos/index.json`);
+        return;
+      }
+      // Give the station-list rebuild (10 ms deferred) time to land first.
+      const tryStart = () => {
+        if (cancelled) return;
+        if (!sceneRef.current) {
+          timer = window.setTimeout(tryStart, 100);
+          return;
+        }
+        autoDemoDoneRef.current = true;
+        startDemoFromUrl(demo);
+      };
+      timer = window.setTimeout(tryStart, 50);
+    });
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      // StrictMode re-runs the effect: allow the second run to start it.
+      autoDemoRef.current = false;
+    };
+  }, [stationsReady, sceneRef, startDemoFromUrl]);
 
   // Snapshot the live view (current display + latest camera framing) on demand,
   // e.g. when the user clicks "save view".
@@ -296,7 +469,7 @@ function App() {
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
       <div ref={mountRef} style={{ width: "100%", height: "100%" }} />
-      {(filingCount > 0 || visibleLayerCount > 0 || isMassMode(satellites.length)) && (
+      {!presentation && (filingCount > 0 || visibleLayerCount > 0 || isMassMode(satellites.length)) && (
         <div className="pointer-events-none absolute top-3 left-1/2 z-10 flex max-w-[75vw] -translate-x-1/2 flex-col items-center gap-1">
           {filingCount > 0 && (
             <div className="glass flex items-center gap-2 rounded-full px-3 py-1 text-xs text-fg" role="status" title="実際の衛星位置・配備状況を示しません">
@@ -322,6 +495,7 @@ function App() {
           )}
         </div>
       )}
+      <div className={presentation ? "hidden" : "contents"}>
       <SatelliteInfo
         satellites={satellites}
         catalog={catalog}
@@ -333,8 +507,16 @@ function App() {
         cameraMode={cameraMode}
         onCameraModeChange={setCameraMode}
         onClose={() => handleSelectSatellite(null)}
+        satelliteAttitude={display.satelliteAttitude}
+        solarArrayType={display.solarArrayType}
+        groundStations={groundStations}
+        fovAlongTrackDeg={display.fovConeAlongTrackDeg}
+        fovCrossTrackDeg={display.fovConeCrossTrackDeg}
+        onOpenAttitudeSettings={() => requestTab({ tab: "isl", anchor: "comm-attitude" })}
+        onOpenPowerAnalysis={() => requestTab({ tab: "analysis", analysis: "日照・電力成立性評価" })}
       />
-      {gsInfoText && (
+      </div>
+      {gsInfoText && !presentation && (
         <pre
           ref={gsInfoRef}
           className={`hud-text${display.whiteBackground ? " hud-text-on-white" : ""}`}
@@ -358,24 +540,26 @@ function App() {
         paused={userPaused}
         onPausedChange={setUserPaused}
         timeRef={timeRef}
+        hidden={presentation}
       />
-      <IslHud
+      {!presentation && <IslHud
         islSettings={islSettings}
         islResult={islResult}
         islSwitchCount={islSwitchCount}
-        onClick={() =>
-          setOpenTabRequest((p) => ({ tab: "isl", nonce: (p?.nonce ?? 0) + 1 }))
-        }
-      />
+        onClick={() => requestTab({ tab: "isl" })}
+      />}
       <SatelliteEditor
         display={display}
         onDisplayChange={updateDisplay}
         fovConeMinHeight={fovConeMinHeight}
         groundStations={groundStations}
         sceneRef={sceneRef}
+        selectedSatelliteIndex={selectedIdx !== null && selectedIdx < satellites.length ? selectedIdx : null}
         onUpdate={(scenario) => {
           scenarioCommittedRef.current = true;
           setSelectedIdx(null);
+          // The selection is gone, so 近接 ends (the rebuilt scene would drop it too).
+          setCameraMode((m) => (m === "closeUp" ? "free" : m));
           setSelectedGsIdx(null);
           setSatellites(scenario.satellites);
           setGroundStations(scenario.groundStations);
@@ -384,6 +568,7 @@ function App() {
           // 地点 A/B の地上局参照を新しい局リストへ整合(同名局は座標を最新化、
           // 消えた局は未設定へ初期化)。過去の局が endpoint に残る不整合を防ぐ
           setIslSettings((prev) => reconcileIslEndpoints(prev, scenario.groundStations));
+          reconcileAttitude(scenario.groundStations);
         }}
         onAnalysisStart={handleAnalysisStart}
         onAnalysisEnd={handleAnalysisEnd}
@@ -407,6 +592,24 @@ function App() {
         onCatalogLayerRemove={handleCatalogLayerRemove}
         layerColorMode={layerColorMode}
         onLayerColorModeChange={setLayerColorMode}
+        trajectories={trajectories}
+        onTrajectoriesChange={setTrajectories}
+        trajectoryPlayback={trajectoryPlayback}
+        onStartDemo={startDemo}
+        presentation={presentation}
+      />
+      <LaunchSiteImageryCredit credit={launchSiteCredit} />
+      <TourPlayer
+        state={guidedTour.state}
+        sceneRef={sceneRef}
+        paused={userPaused}
+        speed={tourSpeed}
+        onTogglePause={guidedTour.togglePause}
+        onBegin={guidedTour.begin}
+        onGoTo={guidedTour.goTo}
+        onStop={endTour}
+        onSeek={guidedTour.seekInChapter}
+        onScrub={guidedTour.setScrubbing}
       />
     </div>
   );

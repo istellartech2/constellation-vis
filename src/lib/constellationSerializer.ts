@@ -12,6 +12,7 @@
 import type { ConstellationConfig, ConstellationShell } from "./constellationTypes";
 import { createDefaultConfig } from "./constellationTypes";
 import { safeDerived } from "./constellationPatterns/migrate";
+import { validateAttitudeRecord } from "./attitude/resolve";
 import {
   DEFAULT_PATTERN_ID,
   FIELD_REGISTRY,
@@ -66,6 +67,10 @@ function coerceField(spec: FieldSpec, raw: TomlScalar | undefined): unknown {
     case "int":
     case "number":
       return Number(raw);
+    case "boolean":
+      // The line scanner leaves a bare `true` / `false` as a string; anything
+      // else is kept verbatim so validation can report it.
+      return raw === "true" ? true : raw === "false" ? false : raw;
   }
 }
 
@@ -108,8 +113,12 @@ function formatFieldValue(spec: FieldSpec, value: unknown): string | null {
   switch (spec.kind) {
     case "string": {
       const s = String(value);
-      return s ? `"${s}"` : null;
+      // quoteTomlString is byte-identical to `"${s}"` for plain names, and
+      // escapes `"` / `\\` (e.g. in a ground station name).
+      return s ? quoteTomlString(s) : null;
     }
+    case "boolean":
+      return typeof value === "boolean" ? String(value) : null;
     case "intArray": {
       if (!Array.isArray(value) || value.length === 0) return null;
       return `[${value.map((v) => String(Math.trunc(Number(v)))).join(", ")}]`;
@@ -255,6 +264,9 @@ export function validateConfig(config: ConstellationConfig): ValidationResult {
         message: "故障率は0〜100%の範囲で入力してください",
       });
     }
+
+    // 姿勢 (per-shell attitude override): unknown modes, angle ranges, slew rate.
+    errors.push(...validateAttitudeRecord(shell as unknown as Record<string, unknown>, `shell.${index}.`));
 
     // Non-finite numbers, unknown pattern ids, and the pattern's own rules.
     errors.push(...validateShell(shell, index));
