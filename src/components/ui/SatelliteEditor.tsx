@@ -16,6 +16,7 @@ import AiSessionPanel from "./AiSessionPanel";
 import NoticeDialog from "./NoticeDialog";
 import AnalysisTab, { type AnalysisType } from "./AnalysisTab";
 import OptionTab from "./OptionTab";
+import type { TrajectoryTrack } from "../../lib/trajectory/types";
 import CommTab from "./CommTab";
 import ExternalDataDialog, { type ImportSource } from "./ExternalDataDialog";
 import type { PlacedFiling } from "./import/FilingPanel";
@@ -97,6 +98,11 @@ interface Props {
   onCatalogLayerRemove: (id: string) => void;
   layerColorMode: LayerColorMode;
   onLayerColorModeChange: (mode: LayerColorMode) => void;
+  /** Tabulated trajectory tracks shown on the globe (表示 tab). */
+  trajectories: TrajectoryTrack[];
+  onTrajectoriesChange: (tracks: TrajectoryTrack[]) => void;
+  /** Restart the simulation at `date` (rebuilds the scene). */
+  onJumpToTime: (date: Date) => void;
 }
 
 /** Analyses and ISL routing only see editor satellites; say so when that matters. */
@@ -139,6 +145,9 @@ export default function SatelliteEditor({
   onCatalogLayerRemove,
   layerColorMode,
   onLayerColorModeChange,
+  trajectories,
+  onTrajectoriesChange,
+  onJumpToTime,
 }: Props) {
   const [importSource, setImportSource] = useState<ImportSource>("celestrak");
   const [uiTheme, setUiTheme] = useUiTheme();
@@ -557,6 +566,10 @@ export default function SatelliteEditor({
                 sceneRef={sceneRef}
                 getCurrentView={getCurrentView}
                 onApplyView={onApplyView}
+                trajectories={trajectories}
+                onTrajectoriesChange={onTrajectoriesChange}
+                onJumpToTime={onJumpToTime}
+                currentSimMs={currentSimMs}
               />
             </TabsContent>
           </Tabs>

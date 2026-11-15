@@ -12,6 +12,7 @@ import { useCatalogLayers } from "./lib/useCatalogLayers";
 import { isMassMode } from "./lib/massSatelliteLayer";
 import { formatGroundStationInfo } from "./lib/formatGroundStationInfo";
 import { type SatelliteCameraMode } from "./lib/visualization";
+import type { TrajectoryTrack } from "./lib/trajectory/types";
 import {
   loadLastView,
   saveLastView,
@@ -187,6 +188,9 @@ function App() {
     remove: handleCatalogLayerRemove,
   } = useCatalogLayers(dropLayerSelection);
   const [layerColorMode, setLayerColorMode] = useState<LayerColorMode>("layer");
+  // Tabulated trajectory tracks (e.g. a launch's booster and ship). Display
+  // only; swapped live into the scene without a rebuild.
+  const [trajectories, setTrajectories] = useState<TrajectoryTrack[]>([]);
   const visibleLayerCount = catalogLayers.reduce((sum, l) => sum + (l.visible ? l.catalog.count : 0), 0);
   const filingCount = useMemo(
     () => satellites.filter(s => s.meta?.dataStatus === "filing").length
@@ -214,6 +218,7 @@ function App() {
     catalog,
     catalogStyles,
     layerColorMode,
+    trajectories,
     groundStations,
     satRadius: display.satRadius,
     pointStyle: display.pointStyle,
@@ -407,6 +412,9 @@ function App() {
         onCatalogLayerRemove={handleCatalogLayerRemove}
         layerColorMode={layerColorMode}
         onLayerColorModeChange={setLayerColorMode}
+        trajectories={trajectories}
+        onTrajectoriesChange={setTrajectories}
+        onJumpToTime={setStartTime}
       />
     </div>
   );

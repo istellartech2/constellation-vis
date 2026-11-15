@@ -4,6 +4,8 @@ import EarthTextureSelector from "./EarthTextureSelector";
 import { Button } from "./button";
 import { FileInput, Trash2, Globe, Satellite, Compass, Layers, FolderOpen, Bookmark, Save, Plus, X } from "lucide-react";
 import PanelSection from "./PanelSection";
+import TrajectorySection from "./TrajectorySection";
+import type { TrajectoryTrack } from "../../lib/trajectory/types";
 import { CheckRow, ColorChip, HelpTip, SegmentedControl } from "./compactControls";
 import type SatelliteScene from "../../lib/visualization";
 import { isLayeredEarthMode } from "../../lib/earthTextures";
@@ -31,13 +33,28 @@ interface Props {
   getCurrentView: () => ViewSettings;
   /** Apply a previously saved view */
   onApplyView: (settings: ViewSettings) => void;
+  trajectories: TrajectoryTrack[];
+  onTrajectoriesChange: (tracks: TrajectoryTrack[]) => void;
+  onJumpToTime: (date: Date) => void;
+  /** Current simulation time (ms), for trajectory readouts and default epochs. */
+  currentSimMs: number;
 }
 
 /**
  * 表示タブ: 触っても計算結果が変わらない見た目の設定だけを置く。
  * 判定・解析に効く値(最低仰角・センサ視野など)は通信タブ。
  */
-export default function OptionTab({ display, onDisplayChange, sceneRef, getCurrentView, onApplyView }: Props) {
+export default function OptionTab({
+  display,
+  onDisplayChange,
+  sceneRef,
+  getCurrentView,
+  onApplyView,
+  trajectories,
+  onTrajectoriesChange,
+  onJumpToTime,
+  currentSimMs,
+}: Props) {
   const set = onDisplayChange;
   const [loadedKMLs, setLoadedKMLs] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -330,6 +347,19 @@ export default function OptionTab({ display, onDisplayChange, sceneRef, getCurre
           </ul>
         )}
       </PanelSection>
+
+      <TrajectorySection
+        trajectories={trajectories}
+        onTrajectoriesChange={onTrajectoriesChange}
+        onJumpToTime={(date) => {
+          // A launch track is Earth-fixed and lasts minutes: in ECI the globe
+          // turns it out of the focused view, so jump in the ECEF frame.
+          if (display.viewFrame !== "ecef") set({ viewFrame: "ecef" });
+          onJumpToTime(date);
+        }}
+        currentSimMs={currentSimMs}
+        sceneRef={sceneRef}
+      />
     </div>
   );
 }

@@ -133,5 +133,11 @@ export function useSatelliteScene(
     sceneRef.current?.setCatalog(params.catalog ?? null);
   }, [params.catalog]);
 
+  // Swap trajectory tracks live, like the catalog: construction reads the
+  // latest array itself and setTrajectories is a no-op for the same array.
+  useEffect(() => {
+    sceneRef.current?.setTrajectories(params.trajectories ?? []);
+  }, [params.trajectories]);
+
   return sceneRef;
 }

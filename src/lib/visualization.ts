@@ -28,6 +28,8 @@ import {
   EARTH_FLATTENING,
 } from "./astronomy";
 import { KMLRenderer } from "./kmlRenderer";
+import { TrajectoryRenderer } from "./trajectory/renderer";
+import type { TrajectoryTrack } from "./trajectory/types";
 import {
   POINT_STYLE_FRAGMENT_PARS,
   POINT_STYLE_VERTEX_PARS,
@@ -238,6 +240,11 @@ export interface SatelliteSceneParams {
   catalogStyles?: CatalogLayerStyle[];
   /** Overlay dot colouring: per layer, or by ground-station visibility. Applied live. Default "layer". */
   layerColorMode?: LayerColorMode;
+  /**
+   * Tabulated trajectory tracks (launch vehicles etc.), replayed against the
+   * sim clock. Swapped live via {@link SatelliteScene.setTrajectories}.
+   */
+  trajectories?: TrajectoryTrack[];
   groundStations: GroundStation[];
   satRadius: number;
   /** Fixed-pixel dots, shadow dimming and glint for every satellite renderer. Applied live. */
@@ -355,6 +362,7 @@ export default class SatelliteScene {
   private readonly sunlight: THREE.DirectionalLight;
   private readonly ambientLight: THREE.AmbientLight;
   private readonly kmlRenderer: KMLRenderer;
+  private readonly trajectoryRenderer: TrajectoryRenderer;
 
   private selectedIndex: number | null = null;
   private selectedStationIndex: number | null = null;
@@ -768,6 +776,10 @@ export default class SatelliteScene {
 
     // Initialize KML renderer
     this.kmlRenderer = new KMLRenderer(this.scene);
+    // Trajectory tracks survive rebuilds: the constructor applies the latest
+    // array, and useSatelliteScene swaps it live afterwards.
+    this.trajectoryRenderer = new TrajectoryRenderer(this.scene);
+    this.setTrajectories(this.params.trajectories ?? []);
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
@@ -927,6 +939,7 @@ export default class SatelliteScene {
       this.camera.updateProjectionMatrix();
       this.applyViewOffset();
       this.kmlRenderer.setResolution(window.innerWidth, window.innerHeight);
+      this.trajectoryRenderer.setResolution(window.innerWidth, window.innerHeight);
     };
     window.addEventListener("resize", handleResize);
     this.disposeFns.push(() => window.removeEventListener("resize", handleResize));
@@ -991,6 +1004,50 @@ export default class SatelliteScene {
     this.catalogLayer = layer;
     this.scene.add(layer.points);
     this.scene.add(layer.groundPoints);
+  }
+
+  /**
+   * Replace the trajectory tracks without rebuilding the scene. No-op for the
+   * array already shown; only tracks whose samples/events/colour changed are
+   * rebuilt, and visibility toggles just show/hide the existing geometry.
+   */
+  setTrajectories(tracks: TrajectoryTrack[]) {
+    this.trajectoryRenderer.setTracks(tracks);
+  }
+
+  /**
+   * Point the free camera straight down at a trajectory track's current
+   * position (or its first sample when the sim time is outside its span),
+   * from close range. Honours the free-camera frame (ECI/ECEF/GSE holder
+   * rotation). Does nothing in the follow camera modes or for unknown ids.
+   */
+  focusTrajectory(id: string) {
+    if (this.cameraMode !== "free") return;
+    const local = this.trajectoryRenderer.localPositionAt(id, this.currentSimDate.getTime(), this.tempVectorA);
+    if (!local) return;
+    // Earth-fixed → world (the overlay group is rotated by GMST), then into
+    // the camera holder's local frame where OrbitControls operate.
+    local.applyAxisAngle(UP_AXIS, satellite.gstime(this.currentSimDate));
+    this.tempQuaternionA.copy(this.cameraHolder.quaternion).invert();
+    local.applyQuaternion(this.tempQuaternionA);
+    const radius = local.length();
+    if (radius < 1e-6) return;
+    // Close enough that a ~100 km booster flight is legible, but keep the
+    // track well beyond the 0.1 near plane for higher tracks.
+    const distance = THREE.MathUtils.clamp(
+      Math.max(1.15, radius + 0.15),
+      this.controls.minDistance,
+      this.controls.maxDistance,
+    );
+    this.controls.enabled = true;
+    this.controls.target.copy(DEFAULT_CAMERA_TARGET);
+    this.camera.position.copy(local).setLength(distance);
+    this.camera.up.copy(UP_AXIS).applyQuaternion(this.cameraHolder.quaternion);
+    this.camera.lookAt(this.cameraHolder.localToWorld(this.tempVectorB.copy(DEFAULT_CAMERA_TARGET)));
+    this.controls.update();
+    // Report the framing so the next scene rebuild restores it instead of the
+    // previously saved view.
+    this.params.onCameraChange?.(this.getCameraSnapshot());
   }
 
   /** Capture the current camera framing for persistence. */
@@ -1672,6 +1729,7 @@ export default class SatelliteScene {
     this.earthGroup.rotation.y = rotAngle;
     this.graticule.rotation.y = rotAngle;
     this.kmlRenderer.updateRotation(rotAngle);
+    this.trajectoryRenderer.update(simDate, rotAngle);
     const { x: sx, y: sy, z: sz } = sunVectorECI(simDate);
     const frame = this.cameraMode === "free" ? this.params.viewFrame : "eci";
     if (frame === "gse") {
@@ -2251,6 +2309,7 @@ export default class SatelliteScene {
     
     // Dispose KML renderer
     this.kmlRenderer.dispose();
+    this.trajectoryRenderer.dispose();
     
     this.controls.dispose();
     this.renderer.dispose();
