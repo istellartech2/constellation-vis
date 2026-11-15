@@ -1081,6 +1081,10 @@ export default class SatelliteScene {
    */
   focusTrajectory(id: string) {
     if (this.cameraMode !== "free" || this.trajectoryFollowId !== null) return;
+    // Right after a follow ends the holder still has the Earth-fixed follow
+    // rotation; bring it to the free-camera frame first so the framing below
+    // is computed in the frame the next frame will render with.
+    this.syncCameraHolder(this.currentSimDate, satellite.gstime(this.currentSimDate));
     const track = this.trajectoryTracks.find((t) => t.id === id);
     if (!track || track.samples.length === 0) return;
     const simMs = this.currentSimDate.getTime();
@@ -1875,16 +1879,7 @@ export default class SatelliteScene {
     this.kmlRenderer.updateRotation(rotAngle);
     this.trajectoryRenderer.update(simDate, rotAngle);
     const { x: sx, y: sy, z: sz } = sunVectorECI(simDate);
-    // The trajectory follow rides in the Earth-fixed frame: the holder then
-    // matches the trajectory overlay group exactly (same rotation.y about the
-    // origin), so overlay-local positions are holder-local positions.
-    const following = this.trajectoryFollowId !== null && this.cameraMode === "free";
-    const frame = following ? "ecef" : this.cameraMode === "free" ? this.params.viewFrame : "eci";
-    if (frame === "gse") {
-      this.setSunFixedHolder(sx, sz, -sy);
-    } else {
-      this.cameraHolder.rotation.set(0, frame === "ecef" ? rotAngle : 0, 0);
-    }
+    const following = this.syncCameraHolder(simDate, rotAngle);
     // OrbitControls orbits in the holder's local frame, but Object3D.lookAt
     // reads `camera.up` in world space. Keep it on the holder's +Y so a tilted
     // (GSE) holder keeps ecliptic north up instead of re-rolling to ECI north.
@@ -2271,6 +2266,27 @@ export default class SatelliteScene {
    * axis, clouds and shell depth bias. `notify` fires onTrajectoryFollowEnd
    * (the scene dropped it on its own).
    */
+  /**
+   * Orient the camera holder for this frame: Earth-fixed while following a
+   * trajectory (the holder then matches the trajectory overlay group exactly,
+   * same rotation.y about the origin, so overlay-local positions are
+   * holder-local positions), else the free-camera view frame (ECI / ECEF /
+   * GSE), else ECI for the satellite camera modes. Returns whether a
+   * trajectory is being followed.
+   */
+  private syncCameraHolder(simDate: Date, rotAngle: number): boolean {
+    const following = this.trajectoryFollowId !== null && this.cameraMode === "free";
+    const frame = following ? "ecef" : this.cameraMode === "free" ? this.params.viewFrame : "eci";
+    if (frame === "gse") {
+      const { x: sx, y: sy, z: sz } = sunVectorECI(simDate);
+      this.setSunFixedHolder(sx, sz, -sy);
+    } else {
+      this.cameraHolder.rotation.set(0, frame === "ecef" ? rotAngle : 0, 0);
+    }
+    this.cameraHolder.updateMatrixWorld();
+    return following;
+  }
+
   private endTrajectoryFollow(notify: boolean) {
     if (this.trajectoryFollowId === null) return;
     this.trajectoryFollowId = null;

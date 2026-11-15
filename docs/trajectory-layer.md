@@ -213,8 +213,11 @@ a `.glb` URL / object URL.
 
 ## Rendering (`renderer.ts`)
 
-- Trails, markers and event dots live in the GMST-rotated Earth-fixed group
-  with a 0.0001-radius (~0.6 km) radial lift.
+- Trails, markers and event dots live in the GMST-rotated Earth-fixed group.
+  Positions are stored unlifted; each frame the track group is scaled about
+  the Earth's centre to lift it radially by `min(0.0001, 0.01 × camera
+  distance to the track tip)` radii — ~0.6 km from afar (against z-fighting
+  with the globe), only metres when following, so the trail meets the model.
 - Name labels follow each visible track's marker; event labels are shown for
   the focused track only (`setFocusedTrack`), whose event dots are enlarged.
   Labels are fixed-pixel canvas sprites hidden when the Earth is between the
@@ -235,9 +238,7 @@ a `.glb` URL / object URL.
   hemisphere fill along the nearest vehicle's local up and a dim neutral
   PMREM room environment (the GLB steel is fully metallic and would be black
   without one), so a night-side vehicle stays readable.
-- While a model is drawn, its name label sits at the true position; the
-  trail and marker keep the 0.0001 lift (~640 m), which is visible at pad
-  zoom.
+- Name labels sit at the current-frame trail tip, i.e. on the vehicle's base.
 - Because models are drawn after a depth clear, they are always on top of the
   main scene (the globe partially hiding a vehicle at the limb is not
   modelled).
@@ -250,6 +251,42 @@ a `.glb` URL / object URL.
 - `localStateAt(id, t, pos, vel)` gives the true (unlifted) Hermite position
   and velocity in overlay-local units; `vehicleLengthM(id)` the model length
   (registry length before loading, 50 m without a model).
+
+## Playback, seek and follow camera (`visualization.ts`)
+
+- **Seek.** `SatelliteScene.seekTo(date)` resets the `SimulationClock`
+  (`reset(simMs, realMs)`, speed kept) without rebuilding the scene, notifies
+  `onSimTimeChange` at once, restarts the selected satellite's ground-track
+  trail and orbit line from the new time (no back-filling on forward jumps)
+  and forces an ISL recompute. The editor's start time is not touched.
+- **Follow.** Scene param `trajectoryFollowId` (applied in the constructor and
+  live, so it survives rebuilds) with `onTrajectoryFollowEnd` when the scene
+  drops it (track removed or hidden, a satellite camera mode chosen, a
+  satellite-mode view applied). While following:
+  - the camera holder turns with the Earth (same rotation as the overlay
+    group), so overlay coordinates are camera-holder coordinates and the
+    ground does not spin;
+  - the vehicle state comes from `localStateAt` at the frame's sim time
+    (clamped into the span; held on the pad before lift-off) and the camera
+    moves rigidly with it, no smoothing; OrbitControls still orbit/zoom about
+    the vehicle, with the local vertical as up;
+  - zoom limits 0.6 × vehicle length to 2500 km (3× zoom speed); initial
+    framing 3 × length away, side-on (perpendicular to the flight direction)
+    and 12° above the horizon, so ascent and return are seen in profile;
+  - the main camera's near plane shrinks with the follow distance (restored to
+    0.1 on exit); country borders / night lights get a polygon offset and the
+    cloud shell is hidden while the camera is below it;
+  - the saved/persisted view is never overwritten; ending the follow restores
+    the previous free-camera framing.
+- **Panel** (表示 → 軌道データ): per track "▶ 開始から" (seek to first sample −
+  5 s, follow, 1×, play), "追従" toggle, "全体" (overview, ends follow), model
+  selector (built-ins or a local .glb), and a scrub slider (T+ mm:ss) for the
+  followed track or the first visible track in span; the live readout shows
+  T+, altitude (km) and speed (km/h).
+- **Known gaps.** After a scene rebuild the follow re-frames side-on rather
+  than keeping the user's orbit offset; the graticule (lines, no polygon
+  offset) may shimmer near the horizon at very close zoom; a ground station
+  sphere (radius ~64 km) at a launch site would swallow the follow camera.
 
 ## Sample data
 

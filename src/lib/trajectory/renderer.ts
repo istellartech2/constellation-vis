@@ -48,10 +48,14 @@ const EARTH_RADIUS_POLAR_KM = 6356.7523142;
 const SCENE_UNIT_M = 6378137;
 
 // The scene's ECEF mapping (x/Re, z/Rp, -y/Re) turns the WGS84 ellipsoid into
-// the unit sphere, so a radial lift in scene units is an altitude offset.
-// Only a ~0.6 km lift: the vehicle model is drawn at the true position, and
-// the 128-segment globe's mid-facet sag (~2 km) is below the true surface.
-const TRAJECTORY_SURFACE_OFFSET = 0.0001;
+// the unit sphere, so scaling a track group about the origin lifts it
+// radially by an altitude offset. Positions are stored unlifted; each frame
+// the lift is min(MAX, PER_DISTANCE × camera distance to the track tip): ~0.6
+// km from afar (enough against the globe, whose 128-segment facets sag ~2 km
+// below the true surface anyway) but only metres when following a vehicle,
+// so the trail stays on the model drawn at the true position.
+const TRAJECTORY_SURFACE_OFFSET_MAX = 0.0001;
+const TRAJECTORY_SURFACE_OFFSET_PER_DISTANCE = 0.01;
 
 const FAINT_LINE_OPACITY = 0.28;
 const LINE_WIDTH_PX = 2;
@@ -72,12 +76,9 @@ const GROUND_DISC_FADE_START_KM = 5;
 /** Occlusion sphere radius (scene units); a bit inside the unit sphere so surface points stay visible. */
 const OCCLUDER_RADIUS = 0.9995;
 
-/** ECEF km → scene local (Earth-fixed group) coordinates, with the radial lift. */
+/** ECEF km → scene local (Earth-fixed group) coordinates (unlifted; see the group scale). */
 export function ecefToTrajectoryScene(x: number, y: number, z: number, out: THREE.Vector3): THREE.Vector3 {
-  out.set(x / EARTH_RADIUS_EQUATOR_KM, z / EARTH_RADIUS_POLAR_KM, -y / EARTH_RADIUS_EQUATOR_KM);
-  const len = out.length();
-  if (len > 0) out.multiplyScalar((len + TRAJECTORY_SURFACE_OFFSET) / len);
-  return out;
+  return out.set(x / EARTH_RADIUS_EQUATOR_KM, z / EARTH_RADIUS_POLAR_KM, -y / EARTH_RADIUS_EQUATOR_KM);
 }
 
 let roundSpriteTexture: THREE.Texture | null = null;
@@ -181,7 +182,7 @@ interface VehicleSlot {
 interface TrackEntry {
   track: TrajectoryTrack;
   group: THREE.Group;
-  /** Sampled path times (ms) and scene-space positions (xyz interleaved, lifted). */
+  /** Sampled path times (ms) and scene-space positions (xyz interleaved, unlifted). */
   timesMs: Float64Array;
   scenePositions: Float32Array;
   faintLine: Line2;
@@ -200,8 +201,6 @@ interface TrackEntry {
   hideMarker: boolean;
   /** Whether the marker / name label is inside the span this frame. */
   inSpan: boolean;
-  /** True (unlifted) local position of the drawn model, for the name label. */
-  labelLocal: THREE.Vector3;
   vehicle: VehicleSlot | null;
   materials: THREE.Material[];
   geometries: THREE.BufferGeometry[];
@@ -213,6 +212,7 @@ const scratchEcefVel = new Float64Array(3);
 
 export class TrajectoryRenderer {
   private readonly scene: THREE.Scene;
+  private readonly tmpLift = new THREE.Vector3();
   private readonly root: THREE.Group;
   private readonly entries = new Map<string, TrackEntry>();
   private tracks: TrajectoryTrack[] = [];
@@ -396,6 +396,7 @@ export class TrajectoryRenderer {
     // Camera in the Earth-fixed local frame (inverse GMST rotation).
     const camLocal = this.tmpCamLocal.set(camX * cosR - camZ * sinR, camY, camX * sinR + camZ * cosR);
     this.updateLabelOcclusion(camLocal);
+    this.updateTrailLift(camLocal, simDate.getTime());
 
     const simMs = simDate.getTime();
     const pxPerRad = (p5 * viewportH) / 2;
@@ -458,8 +459,6 @@ export class TrajectoryRenderer {
       }
       object.visible = true;
       drawn += 1;
-      // The name label sits next to the model (true position), not the lifted trail tip.
-      entry.labelLocal.set(lx, ly, lz);
       if (dist - lengthM < nearest) {
         nearest = dist - lengthM;
         this.fillLight.position.copy(up);
@@ -629,7 +628,9 @@ export class TrajectoryRenderer {
     entry.marker.visible = !entry.hideMarker;
     entry.inSpan = true;
     if (entry.nameLabel) {
-      entry.nameLabel.sprite.position.copy(entry.hideMarker ? entry.labelLocal : tip);
+      // The tip is this frame's true position (the trail is unlifted in
+      // storage), so the label stays on the model even at 1.6 km/s.
+      entry.nameLabel.sprite.position.copy(tip);
       entry.nameLabel.sprite.visible = !entry.nameLabel.occluded;
     }
   }
@@ -690,6 +691,23 @@ export class TrajectoryRenderer {
         label.occluded = this.occludedByEarth(camLocal, pos.x, pos.y, pos.z);
         label.sprite.visible = !label.occluded;
       }
+    }
+  }
+
+  /**
+   * Radial drawing lift per track, applied as a group scale about the Earth's
+   * centre (takes effect next frame): proportional to the camera's distance to
+   * the track's current tip, capped at TRAJECTORY_SURFACE_OFFSET_MAX.
+   */
+  private updateTrailLift(camLocal: THREE.Vector3, simMs: number) {
+    for (const entry of this.entries.values()) {
+      if (!entry.group.visible) continue;
+      const times = entry.timesMs;
+      const n = times.length;
+      const t = Math.min(Math.max(simMs, times[0]), times[n - 1]);
+      const tip = this.interpolate(entry, this.segmentIndex(times, t), t, this.tmpLift);
+      const lift = Math.min(TRAJECTORY_SURFACE_OFFSET_MAX, TRAJECTORY_SURFACE_OFFSET_PER_DISTANCE * tip.distanceTo(camLocal));
+      entry.group.scale.setScalar(1 + lift);
     }
   }
 
@@ -952,7 +970,6 @@ export class TrajectoryRenderer {
       nameLabel,
       hideMarker: false,
       inSpan: false,
-      labelLocal: new THREE.Vector3(),
       vehicle: null,
       materials,
       geometries,
