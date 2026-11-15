@@ -143,6 +143,11 @@ Entry interface (100 km) is just west of Hawaii (≈22.6° N, 156.9° W).
   `vertical` from the landing burn / flip. Tabulated attitude is used because
   rule-based velocity modes blend to vertical below 150 m/s, which would stand
   the ship half upright during the ~75–100 m/s belly flop.
+  What this looks like: the 67° is measured from the velocity, which is
+  nearly horizontal from entry interface to ~30 km, so the nose stays ~23°
+  from vertical (pitched ~67° above the horizon, belly forward) until the
+  path steepens below ~30 km; the nose then comes down to level by the
+  subsonic time (≈15 km, T+22:30:13). The tour caption describes it that way.
 
 ## Tests
 

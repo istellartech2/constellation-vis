@@ -28,8 +28,8 @@ import {
   EARTH_FLATTENING,
 } from "./astronomy";
 import { KMLRenderer } from "./kmlRenderer";
-import { TrajectoryRenderer, type SatelliteVehicleState } from "./trajectory/renderer";
-import type { TrajectoryTrack } from "./trajectory/types";
+import { EARTH_ROTATION_RAD_S, TrajectoryRenderer, type SatelliteVehicleState } from "./trajectory/renderer";
+import type { TrajectoryLandmark, TrajectoryTrack } from "./trajectory/types";
 import {
   POINT_STYLE_FRAGMENT_PARS,
   POINT_STYLE_VERTEX_PARS,
@@ -88,6 +88,7 @@ import {
   whenIdle,
 } from "./earthTextureLoader";
 import { isFiniteCameraSnapshot, type CameraSnapshot, type ViewFrame } from "./viewState";
+import { LaunchSiteImageryLayer, type LaunchSiteImageryCredit } from "./launchSiteImagery";
 import type { IslEndpoint, IslPathResult, IslSettings, IslShellRange } from "./isl/types";
 import { pathEdgeKeys } from "./isl/edgeKey";
 import { endpointEci, endpointObserver, type Vec3 } from "./isl/geometry";
@@ -372,6 +373,21 @@ export interface SatelliteSceneParams {
    */
   onTrajectoryFollowEnd?: () => void;
   /**
+   * Fixed points drawn with the trajectory layer (launch tower, impact
+   * point…). Swapped live via {@link SatelliteScene.setTrajectoryLandmarks}.
+   */
+  trajectoryLandmarks?: TrajectoryLandmark[];
+  /**
+   * Presentation mode (guided tours), applied live: everything that belongs
+   * to the scenario — editor satellites and their orbit / ground-track lines
+   * and cones, display layers, ground stations and their cones, link and ISL
+   * lines, KML overlays — is left out of the render and of picking, and the
+   * free camera uses the inertial (ECI) frame whatever `viewFrame` says.
+   * Only the globe, its overlays (graticule, ecliptic, GEO ring, Sun) and
+   * the trajectory layer are drawn.
+   */
+  presentation?: boolean;
+  /**
    * Fired when the scene leaves the 近接 (closeUp) camera on its own (no
    * selected editor satellite, propagation failed); the scene is then in
    * "free". Not fired for setCameraMode.
@@ -442,6 +458,12 @@ export interface SatelliteSceneParams {
   onIslResult?: (result: IslPathResult | null) => void;
   /** Fired with a user-facing message when the routing worker reports an error, and null once cleared. */
   onIslError?: (message: string | null) => void;
+  /**
+   * Fired with the imagery credit when a launch-site imagery patch is first
+   * drawn, and with null when none is drawn any more (also on dispose).
+   * Read from the params the scene was built with; should be stable.
+   */
+  onLaunchSiteImageryCredit?: (credit: LaunchSiteImageryCredit | null) => void;
 }
 
 /**
@@ -503,6 +525,8 @@ export default class SatelliteScene {
   /** Swap the globe to the high-segment sphere (close rides) or back. */
   private readonly setEarthDetailed: (on: boolean) => void;
   private earthDetailed = false;
+  /** High-resolution patches around launch sites (image-based globes only), loaded when the camera comes down close. */
+  private readonly launchSiteImagery: LaunchSiteImageryLayer | null;
   /** Whether some station marker is hidden because it is near the ride camera. */
   private rideStationsHidden = false;
   private readonly graticule: THREE.LineSegments;
@@ -688,10 +712,27 @@ export default class SatelliteScene {
   /** Guided tours: track the free globe camera keeps centred (see setGlobeChase). */
   private globeChaseId: string | null = null;
   private globeChaseLastRealMs: number | null = null;
+  /** Tilt of the tour globe view out of the track's orbit plane (see frameGlobe). */
+  private globeTiltRad = 0;
+  private readonly globeNormal = new THREE.Vector3();
   private readonly globeChaseDir = new THREE.Vector3();
   private readonly globeChaseVel = new THREE.Vector3();
   private readonly globeChaseQuat = new THREE.Quaternion();
   private readonly globeChaseIdentity = new THREE.Quaternion();
+  /** Trajectory follow framing (guided tours), see setTrajectoryFollowFraming. */
+  private rideTargetUpM = 0;
+  private rideTargetUpGoalM = 0;
+  private rideDistanceGoalM: number | null = null;
+  private rideIncludeId: string | null = null;
+  private rideTransitionS = 0.8;
+  private rideLastRealMs: number | null = null;
+  private readonly rideIncludePos = new THREE.Vector3();
+  private readonly rideIncludeVel = new THREE.Vector3();
+  /** The globe's first textures are on the GPU (boot splash gone). */
+  private earthReady = false;
+  /** Scenario objects taken out of this frame's render (presentation), restored right after. */
+  private readonly presentationHidden: THREE.Object3D[] = [];
+  private presentationKeep: Set<THREE.Object3D> | null = null;
 
   private params: SatelliteSceneParams;
 
@@ -790,6 +831,7 @@ export default class SatelliteScene {
     this.setEarthDetailed = earth.setDetailed;
     this.earthGroup.scale.set(1, EARTH_FLATTENING, 1);
     this.scene.add(this.earthGroup);
+    this.launchSiteImagery = this.createLaunchSiteImagery();
 
     this.graticule = createGraticule(10, 0.001, !!params.whiteBackground);
     this.graticule.visible = this.params.showGraticule;
@@ -1052,6 +1094,7 @@ export default class SatelliteScene {
     // array, and useSatelliteScene swaps it live afterwards.
     this.trajectoryRenderer = new TrajectoryRenderer(this.scene);
     this.setTrajectories(this.params.trajectories ?? []);
+    this.setTrajectoryLandmarks(this.params.trajectoryLandmarks ?? []);
     if (this.params.trajectoryFollowId) this.setTrajectoryFollow(this.params.trajectoryFollowId);
     // 近接 survives a rebuild only while a satellite is selected; the first
     // frame drops it (onCloseUpEnd) otherwise.
@@ -1148,7 +1191,8 @@ export default class SatelliteScene {
       if (!this.pointerDownActive || this.pointerDownId !== event.pointerId) return;
       const wasDrag = this.didDragDuringPointer;
       this.resetPointerInteraction();
-      if (wasDrag) return;
+      // Presentation: the scenario is not drawn, so it cannot be picked.
+      if (wasDrag || this.params.presentation) return;
 
       getPointerNdc(event);
       raycaster.params.Points!.threshold = this.params.satRadius * 2;
@@ -1325,6 +1369,53 @@ export default class SatelliteScene {
     this.trajectoryRenderer.setTracks(tracks);
   }
 
+  /** Replace the trajectory landmarks (no-op for the array already shown). */
+  setTrajectoryLandmarks(landmarks: TrajectoryLandmark[]) {
+    this.trajectoryRenderer.setLandmarks(landmarks);
+  }
+
+  /** Whether the globe's first textures are on the GPU (the boot splash is gone). */
+  isEarthReady(): boolean {
+    return this.earthReady;
+  }
+
+  /**
+   * Framing of the current (or next) trajectory follow, for guided tours.
+   * `setTrajectoryFollow` resets it to the default (start at 3 vehicle
+   * lengths, orbit about the vehicle base); call this right after it.
+   *  - `distanceM`: camera distance from the orbit target. Applied directly
+   *    when the follow starts, else eased over `transitionS`; afterwards the
+   *    viewer's zoom is free again.
+   *  - `targetUpM`: raise the orbit target above the vehicle base along the
+   *    local vertical (e.g. to the middle of a stacked rocket).
+   *  - `includeId`: a second track kept in frame: the target becomes the
+   *    midpoint of the two and the distance never drops below what fits
+   *    both (with a margin), e.g. stage separation.
+   *  - `transitionS`: easing time constant for the above (default 0.8 s; 0 snaps).
+   */
+  setTrajectoryFollowFraming(framing: {
+    distanceM?: number | null;
+    targetUpM?: number;
+    includeId?: string | null;
+    transitionS?: number;
+  } | null) {
+    const f = framing ?? {};
+    this.rideDistanceGoalM = f.distanceM !== undefined && f.distanceM !== null && f.distanceM > 0 ? f.distanceM : null;
+    this.rideTargetUpGoalM = Number.isFinite(f.targetUpM) ? (f.targetUpM as number) : 0;
+    this.rideIncludeId = f.includeId ?? null;
+    this.rideTransitionS = f.transitionS !== undefined && f.transitionS >= 0 ? f.transitionS : 0.8;
+    if (this.rideNeedsFraming) this.rideTargetUpM = this.rideTargetUpGoalM;
+  }
+
+  private resetRideFraming() {
+    this.rideTargetUpM = 0;
+    this.rideTargetUpGoalM = 0;
+    this.rideDistanceGoalM = null;
+    this.rideIncludeId = null;
+    this.rideTransitionS = 0.8;
+    this.rideLastRealMs = null;
+  }
+
   /**
    * Overview of a trajectory track: point the free camera straight down at
    * its current position (or its first sample when the sim time is outside
@@ -1376,21 +1467,25 @@ export default class SatelliteScene {
    * Earth's centre from `distance` Earth radii (default: fit the globe to the
    * screen, as the default view), from the direction of track `id`'s current
    * position (clamped into its span) or, without a track, from the current
-   * direction. Not reported through onCameraChange. Does nothing while
-   * following a trajectory or in the satellite camera modes.
+   * direction. `tiltDeg` tilts that direction toward the track's orbit normal
+   * (kept by the globe chase), so an orbit ring is seen from above instead of
+   * edge-on; the track then sits off-centre. Not reported through
+   * onCameraChange. Does nothing while following a trajectory or in the
+   * satellite camera modes.
    */
-  frameGlobe(id: string | null = null, distance?: number) {
+  frameGlobe(id: string | null = null, distance?: number, tiltDeg = 0) {
     if (this.cameraMode !== "free" || this.ride !== null) return;
     this.syncCameraHolder(this.currentSimDate, satellite.gstime(this.currentSimDate));
+    this.globeTiltRad = THREE.MathUtils.degToRad(THREE.MathUtils.clamp(tiltDeg, 0, 85));
     const dir = this.globeChaseDir;
-    if (!(id !== null && this.trackDirectionInHolder(id, this.currentSimDate, dir))) {
+    if (!(id !== null && this.trackDirectionInHolder(id, this.currentSimDate, dir, this.globeTiltRad))) {
       dir.subVectors(this.camera.position, this.controls.target);
       if (dir.lengthSq() < 1e-12) dir.copy(DEFAULT_CAMERA_POSITION);
       dir.normalize();
     }
-    const vHalf = THREE.MathUtils.degToRad(this.camera.fov / 2);
-    const hHalf = Math.atan(Math.tan(vHalf) * this.camera.aspect);
-    const fitDistance = Math.max(DEFAULT_CAMERA_POSITION.length(), 1.15 / Math.sin(Math.min(vHalf, hHalf)));
+    // Fit the globe to the area not covered by the tour's title and captions.
+    const { vHalf, hHalf } = this.visibleHalfAngles();
+    const fitDistance = Math.max(DEFAULT_CAMERA_POSITION.length(), 1.12 / Math.sin(Math.min(vHalf, hHalf)));
     const d = THREE.MathUtils.clamp(distance ?? fitDistance, this.controls.minDistance, this.controls.maxDistance);
     this.controls.enabled = true;
     this.controls.target.copy(DEFAULT_CAMERA_TARGET);
@@ -1411,15 +1506,32 @@ export default class SatelliteScene {
     this.globeChaseLastRealMs = null;
   }
 
-  /** Unit direction of track `id` at `simDate` (clamped into its span) in camera-holder coordinates. */
-  private trackDirectionInHolder(id: string, simDate: Date, out: THREE.Vector3): boolean {
+  /**
+   * Unit direction of track `id` at `simDate` (clamped into its span) in
+   * camera-holder coordinates, tilted by `tiltRad` from the track's position
+   * toward its orbit normal (r × v with the inertial velocity), so a whole-
+   * globe view sees the orbit plane from above rather than edge-on.
+   */
+  private trackDirectionInHolder(id: string, simDate: Date, out: THREE.Vector3, tiltRad = 0): boolean {
     const track = this.trajectoryTracks.find((t) => t.id === id);
     if (!track || track.samples.length === 0) return false;
     const first = track.samples[0].timeMs;
     const last = track.samples[track.samples.length - 1].timeMs;
     const t = Math.min(Math.max(simDate.getTime(), first), last);
     if (!this.trajectoryRenderer.localStateAt(id, t, out, this.globeChaseVel)) return false;
-    out.applyAxisAngle(UP_AXIS, satellite.gstime(simDate));
+    const gst = satellite.gstime(simDate);
+    out.applyAxisAngle(UP_AXIS, gst);
+    if (tiltRad > 0 && out.lengthSq() > 1e-12) {
+      // Inertial velocity = Earth-relative + ω × r, with ω along the scene's +Y.
+      const vel = this.globeChaseVel.applyAxisAngle(UP_AXIS, gst);
+      vel.x += EARTH_ROTATION_RAD_S * out.z;
+      vel.z -= EARTH_ROTATION_RAD_S * out.x;
+      const normal = this.globeNormal.crossVectors(out, vel);
+      if (normal.lengthSq() > 1e-24) {
+        normal.normalize();
+        out.normalize().multiplyScalar(Math.cos(tiltRad)).addScaledVector(normal, Math.sin(tiltRad));
+      }
+    }
     this.tempQuaternionA.copy(this.cameraHolder.quaternion).invert();
     out.applyQuaternion(this.tempQuaternionA);
     if (out.lengthSq() < 1e-12) return false;
@@ -1435,7 +1547,7 @@ export default class SatelliteScene {
     const first = this.globeChaseLastRealMs === null;
     this.globeChaseLastRealMs = nowReal;
     const dir = this.globeChaseDir;
-    if (!this.trackDirectionInHolder(id, simDate, dir)) return;
+    if (!this.trackDirectionInHolder(id, simDate, dir, this.globeTiltRad)) return;
     this.controls.target.copy(DEFAULT_CAMERA_TARGET);
     const offset = this.tempVectorB.copy(this.camera.position);
     const distance = offset.length();
@@ -1444,7 +1556,10 @@ export default class SatelliteScene {
     // Exponential smoothing (time constant 0.5 s); snap on the first frame.
     const alpha = first ? 1 : 1 - Math.exp(-dtS / 0.5);
     this.globeChaseQuat.setFromUnitVectors(offset, dir);
-    this.globeChaseQuat.slerpQuaternions(this.globeChaseIdentity, this.globeChaseQuat, alpha);
+    // Partial turn = slerp(identity → full turn, alpha), written as a slerp
+    // of the full turn back toward identity: slerpQuaternions(I, q, alpha)
+    // with q === this copies I over q first and always yields identity.
+    this.globeChaseQuat.slerp(this.globeChaseIdentity, 1 - alpha);
     offset.applyQuaternion(this.globeChaseQuat);
     this.camera.position.copy(offset).multiplyScalar(distance);
   }
@@ -1474,6 +1589,7 @@ export default class SatelliteScene {
     this.ride = { kind: "trajectory", id };
     this.rideNeedsFraming = true;
     this.pendingRideOffset = null;
+    this.resetRideFraming();
   }
 
   /**
@@ -2215,7 +2331,7 @@ export default class SatelliteScene {
   }
 
   /** Insets (px) currently applied via the camera view offset. */
-  private viewInset = { left: 0, bottom: 0 };
+  private viewInset = { left: 0, bottom: 0, top: 0 };
 
   /**
    * Shift the rendered image so the globe stays centred in the area not
@@ -2223,29 +2339,57 @@ export default class SatelliteScene {
    * The panel publishes the covered size on <html data-view-inset-left /
    * data-sheet-inset>; eased here for a smooth slide.
    */
+  /**
+   * Screen areas covered by UI, from <html> data attributes: the side panel
+   * on the left (`data-view-inset-left`), the phone sheet or a guided tour's
+   * caption stack at the bottom (`data-sheet-inset`, `data-tour-inset-bottom`)
+   * and a tour's title at the top (`data-tour-inset-top`). The projection is
+   * shifted so the camera's centre of view is the middle of the uncovered area.
+   */
   private updateViewInset() {
     const ds = document.documentElement.dataset;
     const target = {
       left: Number(ds.viewInsetLeft ?? 0) || 0,
-      bottom: Number(ds.sheetInset ?? 0) || 0,
+      bottom: Math.max(Number(ds.sheetInset ?? 0) || 0, Number(ds.tourInsetBottom ?? 0) || 0),
+      top: Number(ds.tourInsetTop ?? 0) || 0,
     };
     const cur = this.viewInset;
-    if (Math.abs(target.left - cur.left) < 0.5 && Math.abs(target.bottom - cur.bottom) < 0.5) return;
+    if (
+      Math.abs(target.left - cur.left) < 0.5 &&
+      Math.abs(target.bottom - cur.bottom) < 0.5 &&
+      Math.abs(target.top - cur.top) < 0.5
+    ) return;
     const ease = (from: number, to: number) => {
       const next = from + (to - from) * 0.2;
       return Math.abs(to - next) < 0.5 ? to : next;
     };
     cur.left = ease(cur.left, target.left);
     cur.bottom = ease(cur.bottom, target.bottom);
+    cur.top = ease(cur.top, target.top);
     this.applyViewOffset();
   }
 
   private applyViewOffset() {
-    const { left, bottom } = this.viewInset;
+    const { left, bottom, top } = this.viewInset;
     const w = window.innerWidth;
     const h = window.innerHeight;
-    if (left === 0 && bottom === 0) this.camera.clearViewOffset();
-    else this.camera.setViewOffset(w, h, -left / 2, bottom / 2, w, h);
+    if (left === 0 && bottom === 0 && top === 0) this.camera.clearViewOffset();
+    else this.camera.setViewOffset(w, h, -left / 2, (bottom - top) / 2, w, h);
+  }
+
+  /**
+   * Half view angles (rad) of the area not covered by UI (see
+   * updateViewInset): what a framing has to fit into.
+   */
+  private visibleHalfAngles(): { vHalf: number; hHalf: number } {
+    const w = Math.max(1, window.innerWidth);
+    const h = Math.max(1, window.innerHeight);
+    const { left, bottom, top } = this.viewInset;
+    const tanV = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
+    const tanH = tanV * this.camera.aspect;
+    const fracV = THREE.MathUtils.clamp((h - bottom - top) / h, 0.3, 1);
+    const fracH = THREE.MathUtils.clamp((w - left) / w, 0.3, 1);
+    return { vHalf: Math.atan(tanV * fracV), hHalf: Math.atan(tanH * fracH) };
   }
 
   private animate = () => {
@@ -2471,7 +2615,7 @@ export default class SatelliteScene {
     if (this.params.timeRef.current) this.params.timeRef.current.textContent = this.formatTime(simDate);
 
     this.updateCameraFollow(hasSelectedSat, hasSelectedVelocity);
-    const riding = following && this.updateRide(simDate.getTime());
+    const riding = following && this.updateRide(simDate.getTime(), nowReal);
     if (this.cameraMode === "free" && !following && this.globeChaseId !== null) this.updateGlobeChase(simDate, nowReal);
     if (this.cameraMode === "free" || this.cameraMode === "closeUp") {
       this.controls.update();
@@ -2483,11 +2627,48 @@ export default class SatelliteScene {
       this.focusedTrajectoryTrack = this.trajectoryFollowId;
       this.trajectoryRenderer.setFocusedTrack(this.trajectoryFollowId);
     }
+    this.updateLaunchSiteImagery(rotAngle, nowReal);
+    const hidden = this.hidePresentationScenario();
     this.renderer.render(this.scene, this.camera);
+    if (hidden) this.restorePresentationScenario();
     // Vehicle models: a second, camera-relative metre-scale pass with its own
     // depth (early-outs when there is nothing to draw).
     this.trajectoryRenderer.renderVehicles(this.renderer, this.camera, simDate, rotAngle);
   };
+
+  /**
+   * Presentation mode: take every scenario object out of this frame's render
+   * (only the globe group, its overlays, lights, the camera and the
+   * trajectory layer stay). Visibility is restored right after the render,
+   * so the per-frame code that owns each object's visibility is untouched.
+   */
+  private hidePresentationScenario(): boolean {
+    if (!this.params.presentation) return false;
+    const keep = (this.presentationKeep ??= new Set<THREE.Object3D>([
+      this.cameraHolder,
+      this.ambientLight,
+      this.sunlight,
+      this.earthGroup,
+      this.graticule,
+      this.ecliptic,
+      this.geoOrbit,
+      this.sunDot,
+      this.trajectoryRenderer.getRootObject(),
+    ]));
+    const hidden = this.presentationHidden;
+    hidden.length = 0;
+    for (const child of this.scene.children) {
+      if (keep.has(child) || !child.visible) continue;
+      child.visible = false;
+      hidden.push(child);
+    }
+    return hidden.length > 0;
+  }
+
+  private restorePresentationScenario() {
+    for (const child of this.presentationHidden) child.visible = true;
+    this.presentationHidden.length = 0;
+  }
 
   /**
    * Per-frame ride-along camera, before OrbitControls.update(): fetch the
@@ -2502,7 +2683,7 @@ export default class SatelliteScene {
    * of the horizon stays put. Returns false (and ends the ride) when the
    * subject is gone.
    */
-  private updateRide(simMs: number): boolean {
+  private updateRide(simMs: number, nowReal: number): boolean {
     const ride = this.ride;
     if (ride === null) return false;
     const pos = this.ridePos;
@@ -2536,6 +2717,31 @@ export default class SatelliteScene {
       maxDistance = SATELLITE_FOLLOW_MAX_DISTANCE;
     }
     if (pos.lengthSq() < 1e-12) return true;
+    // Tour framing (setTrajectoryFollowFraming): eased target lift, companion
+    // track kept in frame, distance goal.
+    let fitDistance = 0;
+    let alpha = 1;
+    if (ride.kind === "trajectory") {
+      const dtS = this.rideLastRealMs === null ? 0 : Math.min(0.5, (nowReal - this.rideLastRealMs) / 1000);
+      alpha = this.rideNeedsFraming || this.rideTransitionS <= 0 ? 1 : 1 - Math.exp(-dtS / this.rideTransitionS);
+      this.rideLastRealMs = nowReal;
+      const includeId = this.rideIncludeId;
+      const other = includeId !== null ? this.trajectoryTracks.find((tr) => tr.id === includeId) : undefined;
+      if (other && other.visible && other.samples.length > 0) {
+        const t2 = Math.min(Math.max(simMs, other.samples[0].timeMs), other.samples[other.samples.length - 1].timeMs);
+        if (this.trajectoryRenderer.localStateAt(other.id, t2, this.rideIncludePos, this.rideIncludeVel)) {
+          const separation = pos.distanceTo(this.rideIncludePos);
+          pos.add(this.rideIncludePos).multiplyScalar(0.5);
+          const { vHalf, hHalf } = this.visibleHalfAngles();
+          const halfFov = Math.min(vHalf, hHalf);
+          fitDistance = (0.5 * separation * 1.4) / Math.tan(Math.max(halfFov, 0.05));
+        }
+      }
+      this.rideTargetUpM += (this.rideTargetUpGoalM - this.rideTargetUpM) * alpha;
+      if (this.rideTargetUpM !== 0) {
+        pos.addScaledVector(this.tempVectorC.copy(pos).normalize(), this.rideTargetUpM * SCENE_UNITS_PER_M);
+      }
+    }
     const up = this.rideUp.copy(pos).normalize();
     const length = lengthM * SCENE_UNITS_PER_M;
     this.controls.minDistance = TRAJECTORY_FOLLOW_MIN_LENGTHS * length;
@@ -2558,13 +2764,25 @@ export default class SatelliteScene {
       } else {
         if (track) this.trajectoryFollowDirection(track, t, up, vel, offset);
         else this.satelliteFollowDirection(up, vel, offset);
-        offset.multiplyScalar(TRAJECTORY_FOLLOW_START_LENGTHS * length);
+        const goal = this.rideDistanceGoalM !== null ? this.rideDistanceGoalM * SCENE_UNITS_PER_M : TRAJECTORY_FOLLOW_START_LENGTHS * length;
+        offset.multiplyScalar(Math.max(goal, fitDistance));
+        this.rideDistanceGoalM = null;
       }
       this.controls.enabled = true;
     } else {
       offset.subVectors(this.camera.position, this.controls.target);
       this.tempQuaternionB.setFromUnitVectors(this.ridePrevUp, up);
       offset.applyQuaternion(this.tempQuaternionB);
+      // Ease toward the framing's distance goal (then release the zoom), and
+      // never closer than what keeps the companion track in frame.
+      const current = offset.length();
+      let goal = this.rideDistanceGoalM !== null ? this.rideDistanceGoalM * SCENE_UNITS_PER_M : current;
+      if (fitDistance > goal) goal = fitDistance;
+      if (current > 0 && goal !== current) {
+        const next = current + (goal - current) * alpha;
+        offset.setLength(next);
+        if (this.rideDistanceGoalM !== null && Math.abs(next - goal) <= 0.005 * goal) this.rideDistanceGoalM = null;
+      }
     }
     this.ridePrevUp.copy(up);
     this.controls.target.copy(pos);
@@ -2779,7 +2997,11 @@ export default class SatelliteScene {
       this.dropCloseUp();
     }
     const following = this.trajectoryFollowId !== null && this.cameraMode === "free";
-    const frame = following ? "ecef" : this.cameraMode === "free" ? this.params.viewFrame : "eci";
+    const frame = following
+      ? "ecef"
+      : this.cameraMode === "free"
+        ? (this.params.presentation ? "eci" : this.params.viewFrame)
+        : "eci";
     if (frame === "gse") {
       const { x: sx, y: sy, z: sz } = sunVectorECI(simDate);
       this.setSunFixedHolder(sx, sz, -sy);
@@ -2839,6 +3061,7 @@ export default class SatelliteScene {
     this.rideNeedsFraming = false;
     this.pendingRideOffset = null;
     this.rideSatValid = false;
+    this.resetRideFraming();
     const back = this.rideReturn;
     this.rideReturn = null;
     this.setOrbitControlsUp(UP_AXIS);
@@ -3432,6 +3655,7 @@ export default class SatelliteScene {
     
     // Dispose earth mesh
     this.earthResourceDisposers.forEach((dispose) => dispose());
+    this.launchSiteImagery?.dispose();
     
     // Dispose graticule, ecliptic, geo orbit, and sun dot
     this.graticule.geometry.dispose();
@@ -3457,6 +3681,47 @@ export default class SatelliteScene {
     if (this.params.mountRef.current && this.params.mountRef.current.contains(this.renderer.domElement)) {
       this.params.mountRef.current.removeChild(this.renderer.domElement);
     }
+  }
+
+  /**
+   * Launch-site imagery: photo patches only make sense on the image-based
+   * globes (not the monochrome maps), and are skipped entirely when the
+   * browser asks to save data. Memory-constrained devices load them at half
+   * resolution.
+   */
+  private createLaunchSiteImagery(): LaunchSiteImageryLayer | null {
+    const mode = this.params.earthTexture;
+    if (!isLayeredEarthMode(mode) || prefersReducedData()) return null;
+    const lighting = resolveLayeredEarthAssets(mode, 4096).lighting;
+    const layer = new LaunchSiteImageryLayer({
+      brightEarth: !!this.params.brightEarth,
+      nightLift: NIGHT_LIFT * lighting.night,
+      anisotropy: Math.min(this.renderer.capabilities.getMaxAnisotropy(), 8),
+      halfResolution: isMemoryConstrainedDevice() || hasLostEarthContext(),
+      initTexture: (texture) => this.renderer.initTexture(texture),
+      onCreditChange: (credit) => this.params.onLaunchSiteImageryCredit?.(credit),
+    });
+    // A sub-group: setDetailed / setSurfaceShellDepthBias only walk the
+    // globe group's direct meshes, and must leave the patches alone.
+    this.earthGroup.add(layer.group);
+    this.earthAnimationBindings.push({ sunDirectionUniform: layer.sunDirection });
+    // Decoded pixels are released after upload, so after a context loss the
+    // patches are dropped and load again while the camera is still close.
+    const canvas = this.renderer.domElement;
+    const handleContextLost = () => layer.releaseAll();
+    canvas.addEventListener("webglcontextlost", handleContextLost);
+    this.disposeFns.push(() => canvas.removeEventListener("webglcontextlost", handleContextLost));
+    return layer;
+  }
+
+  /** Feed the camera position, in the Earth group's (Earth-fixed, unflattened) frame, to the launch-site imagery. */
+  private updateLaunchSiteImagery(rotAngle: number, nowReal: number) {
+    const layer = this.launchSiteImagery;
+    if (!layer) return;
+    const local = this.camera.getWorldPosition(this.tempVectorA);
+    local.applyAxisAngle(UP_AXIS, -rotAngle);
+    local.y /= EARTH_FLATTENING;
+    layer.update(local, nowReal);
   }
 
   /** Largest earth texture side to load on this GPU and device. */
@@ -3700,6 +3965,7 @@ export default class SatelliteScene {
     void Promise.all(firstImages).then(async () => {
       if (disposed) return;
       await nextFrame();
+      this.earthReady = true;
       hideBootSplash();
       if (upgrades.length === 0 || prefersReducedData()) return;
       await whenIdle();

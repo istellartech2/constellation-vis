@@ -93,7 +93,7 @@ function parseNumber(text: string | undefined): number {
 // Frame conversion helpers
 // ---------------------------------------------------------------------------
 
-function llaToEcef(latDeg: number, lonDeg: number, altKm: number): EcefVector {
+export function llaToEcef(latDeg: number, lonDeg: number, altKm: number): EcefVector {
   const p = satellite.geodeticToEcf({
     latitude: latDeg * DEG2RAD,
     longitude: lonDeg * DEG2RAD,

@@ -1,9 +1,15 @@
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { ChevronDown, ChevronUp, Pause, Play, RotateCcw, SkipBack, SkipForward, X } from "lucide-react";
 import { cn } from "../../lib/utils";
 import type SatelliteScene from "../../lib/visualization";
 import { chapterProgress, formatTourClock } from "../../lib/tour/parse";
-import { formatAltitudeKm, formatSpeedKmh, tourTelemetryAt } from "../../lib/tour/telemetry";
+import {
+  ascendingNodeTimes,
+  formatAltitudeKm,
+  formatSpeedKmh,
+  orbitNumberAt,
+  tourTelemetryAt,
+} from "../../lib/tour/telemetry";
 import type { GuidedTourState } from "./useGuidedTour";
 
 interface Props {
@@ -13,6 +19,8 @@ interface Props {
   /** Current tour playback speed (× real time). */
   speed: number | null;
   onTogglePause: () => void;
+  /** Leave the start screen and start the clock. */
+  onBegin: () => void;
   onGoTo: (index: number) => void;
   onStop: () => void;
 }
@@ -37,22 +45,72 @@ function useSceneSimMs(sceneRef: RefObject<SatelliteScene | null>, active: boole
   return ms;
 }
 
-const iconButton =
-  "inline-flex size-9 shrink-0 items-center justify-center rounded-full text-fg-muted transition-colors hover:bg-raised-hover hover:text-fg disabled:pointer-events-none disabled:opacity-35";
+/** Whether the globe has finished its first textures (polled while `active`). */
+function useEarthReady(sceneRef: RefObject<SatelliteScene | null>, active: boolean): boolean {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    if (!active) return;
+    const timer = window.setInterval(() => {
+      if (sceneRef.current?.isEarthReady()) {
+        setReady(true);
+        window.clearInterval(timer);
+      }
+    }, 150);
+    return () => window.clearInterval(timer);
+  }, [sceneRef, active]);
+  return ready;
+}
 
 /**
- * Presentation-mode overlay of a guided tour: title and disclaimer, a
- * webcast-style telemetry HUD, the chapter caption, and chapter navigation.
- * Works from phone width up; the side panel and the normal HUD are hidden
- * by App while it is shown.
+ * Report the screen areas the overlay covers (title on top, HUD + caption +
+ * controls at the bottom) on <html>, so the scene centres its view in the
+ * area between them (see SatelliteScene.updateViewInset).
  */
-export default function TourPlayer({ state, sceneRef, paused, speed, onTogglePause, onGoTo, onStop }: Props) {
-  const { tour, status, chapterIndex, finished, tracks } = state;
-  const running = status === "running" && tour !== null;
-  const simMs = useSceneSimMs(sceneRef, running);
-  const [captionOpen, setCaptionOpen] = useState(true);
+function useViewInsets(top: RefObject<HTMLElement | null>, bottom: RefObject<HTMLElement | null>, active: boolean) {
+  useEffect(() => {
+    if (!active) return;
+    const root = document.documentElement;
+    const update = () => {
+      const h = window.innerHeight;
+      const t = top.current?.getBoundingClientRect();
+      const b = bottom.current?.getBoundingClientRect();
+      root.dataset.tourInsetTop = String(Math.round(t ? Math.max(0, t.bottom) : 0));
+      root.dataset.tourInsetBottom = String(Math.round(b ? Math.max(0, h - b.top) : 0));
+    };
+    update();
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
+    if (top.current) observer?.observe(top.current);
+    if (bottom.current) observer?.observe(bottom.current);
+    window.addEventListener("resize", update);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", update);
+      delete root.dataset.tourInsetTop;
+      delete root.dataset.tourInsetBottom;
+    };
+  }, [top, bottom, active]);
+}
 
-  // Keyboard: Space play/pause, ←/→ chapters, Esc ends the tour.
+const iconButton =
+  "inline-flex size-9 shrink-0 items-center justify-center rounded-full text-fg-muted transition-colors motion-reduce:transition-none hover:bg-raised-hover hover:text-fg disabled:pointer-events-none disabled:opacity-35";
+
+/**
+ * Presentation-mode overlay of a guided tour: a start screen, then the title
+ * and disclaimer, a webcast-style telemetry HUD, the chapter caption, and
+ * chapter navigation. Works from phone width up; the side panel and the
+ * normal HUD are hidden by App while it is shown.
+ */
+export default function TourPlayer({ state, sceneRef, paused, speed, onTogglePause, onBegin, onGoTo, onStop }: Props) {
+  const { tour, status, chapterIndex, finished, tracks, awaitingStart } = state;
+  const running = status === "running" && tour !== null;
+  const simMs = useSceneSimMs(sceneRef, running && !awaitingStart);
+  const earthReady = useEarthReady(sceneRef, running && awaitingStart);
+  const [captionOpen, setCaptionOpen] = useState(true);
+  const topRef = useRef<HTMLDivElement | null>(null);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+  useViewInsets(topRef, bottomRef, running && !awaitingStart);
+
+  // Keyboard: Space play/pause (or start), ←/→ chapters, Esc ends the tour.
   useEffect(() => {
     if (status === "idle") return;
     const onKey = (e: KeyboardEvent) => {
@@ -66,6 +124,13 @@ export default function TourPlayer({ state, sceneRef, paused, speed, onTogglePau
         return;
       }
       if (!running) return;
+      if (awaitingStart) {
+        if ((e.code === "Space" || e.key === "Enter") && t?.tagName !== "BUTTON" && earthReady) {
+          e.preventDefault();
+          onBegin();
+        }
+        return;
+      }
       if (e.code === "Space") {
         if (t?.tagName === "BUTTON") return;
         e.preventDefault();
@@ -80,7 +145,16 @@ export default function TourPlayer({ state, sceneRef, paused, speed, onTogglePau
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [status, running, chapterIndex, onStop, onTogglePause, onGoTo]);
+  }, [status, running, awaitingStart, earthReady, chapterIndex, onStop, onTogglePause, onBegin, onGoTo]);
+
+  // Ascending nodes of the orbit-counter track (computed once per chapter).
+  const chapter = tour?.chapters[chapterIndex];
+  const counter = chapter?.orbitCounter ?? null;
+  const counterTrack = counter ? tracks[counter.track] : undefined;
+  const nodeTimes = useMemo(
+    () => (counter && counterTrack ? ascendingNodeTimes(counterTrack, counter.fromMs) : []),
+    [counter, counterTrack],
+  );
 
   if (status === "idle") return null;
 
@@ -106,8 +180,42 @@ export default function TourPlayer({ state, sceneRef, paused, speed, onTogglePau
     );
   }
 
-  if (!tour) return null;
-  const chapter = tour.chapters[chapterIndex];
+  if (!tour || !chapter) return null;
+
+  if (awaitingStart) {
+    return (
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/45 p-4 text-fg">
+        <section className="glass w-full max-w-md rounded-2xl p-5 text-center sm:p-6" aria-labelledby="tour-start-title">
+          <h1 id="tour-start-title" className="text-lg font-semibold leading-snug sm:text-xl">
+            {tour.title}
+          </h1>
+          {tour.subtitle && <p className="mt-1 text-[13px] leading-snug text-fg-muted">{tour.subtitle}</p>}
+          {tour.disclaimer && (
+            <p className="mt-3 inline-flex items-center rounded bg-warning-soft px-2 py-1 text-xs font-medium text-fg" role="note">
+              {tour.disclaimer}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={onBegin}
+            disabled={!earthReady}
+            className="mx-auto mt-5 flex h-12 items-center gap-2 rounded-full bg-brand px-6 text-base font-semibold text-brand-fg transition-colors motion-reduce:transition-none hover:bg-brand-hover disabled:opacity-50"
+            autoFocus
+          >
+            <Play className="size-5 translate-x-px fill-current" />
+            再生
+          </button>
+          <p className="mt-2 text-xs text-fg-muted" aria-live="polite">
+            {earthReady ? "タップして開始" : "地球を読み込んでいます…"}
+          </p>
+          <button type="button" onClick={onStop} className="mt-3 text-xs text-fg-muted underline hover:text-fg">
+            デモを閉じる
+          </button>
+        </section>
+      </div>
+    );
+  }
+
   const nowMs = simMs ?? chapter.startMs;
   const progress = chapterProgress(chapter, nowMs);
   const telemetry = chapter.telemetry
@@ -118,14 +226,15 @@ export default function TourPlayer({ state, sceneRef, paused, speed, onTogglePau
       return { key, label: ref?.label ?? key.toUpperCase(), color: track?.color, value };
     })
     .filter((t) => t.value !== null);
+  const orbit = counter ? orbitNumberAt(nodeTimes, counter.fromMs, nowMs, counter.total) : null;
 
   return (
     <div className="pointer-events-none fixed inset-0 z-30 flex flex-col justify-between gap-2 p-3 pb-[calc(12px+env(safe-area-inset-bottom,0px))] pt-[calc(12px+env(safe-area-inset-top,0px))] text-fg">
       {/* Title, disclaimer, 終了 */}
-      <div className="flex items-start gap-2">
+      <div ref={topRef} className="flex items-start gap-2">
         <div className="glass pointer-events-auto min-w-0 flex-1 rounded-xl px-3 py-2 sm:flex-none sm:max-w-md">
-          <p className="truncate text-sm font-semibold leading-tight">{tour.title}</p>
-          {tour.subtitle && <p className="truncate text-[11px] text-fg-muted">{tour.subtitle}</p>}
+          <p className="text-sm font-semibold leading-tight sm:truncate">{tour.title}</p>
+          {tour.subtitle && <p className="text-[11px] leading-snug text-fg-muted sm:truncate">{tour.subtitle}</p>}
           {tour.disclaimer && (
             <p className="mt-1 inline-flex items-center rounded bg-warning-soft px-1.5 py-0.5 text-[11px] font-medium text-fg" role="note">
               {tour.disclaimer}
@@ -143,21 +252,35 @@ export default function TourPlayer({ state, sceneRef, paused, speed, onTogglePau
         </button>
       </div>
 
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-2">
+      <div ref={bottomRef} className="mx-auto flex w-full max-w-2xl flex-col gap-2">
         {/* Webcast-style telemetry */}
-        <div className="flex items-stretch justify-center gap-1.5 font-mono tabular-nums text-white sm:gap-2" aria-label="テレメトリー（推定値）">
-          {telemetry.map((t, i) => (
-            <TelemetryBlock key={t.key} label={t.label} color={t.color} value={t.value!} order={i === 0 ? "first" : "rest"} />
-          ))}
+        <div className="flex flex-col items-center gap-1">
           <div
-            className={cn(
-              "flex flex-col items-center justify-center rounded-md bg-black/60 px-2.5 py-1 sm:px-3",
-              telemetry.length > 0 ? "order-1" : "",
-            )}
+            className="flex items-stretch justify-center gap-1.5 font-mono tabular-nums text-white sm:gap-2"
+            aria-label={tour.telemetryNote ? `テレメトリー（${tour.telemetryNote}）` : "テレメトリー"}
           >
-            <span className="text-[10px] tracking-widest text-white/70">推定値</span>
-            <span className="text-sm font-semibold sm:text-base">{formatTourClock(nowMs - tour.epochMs)}</span>
+            {telemetry.map((t, i) => (
+              <TelemetryBlock key={t.key} label={t.label} color={t.color} value={t.value!} order={i === 0 ? "first" : "rest"} />
+            ))}
+            <div
+              className={cn(
+                "flex flex-col items-center justify-center rounded-md bg-black/60 px-2.5 py-1 sm:px-3",
+                telemetry.length > 0 ? "order-1" : "",
+              )}
+            >
+              <span className="text-[11px] text-white/75">{tour.clockLabel ?? "基準時刻から"}</span>
+              <span className="text-sm font-semibold sm:text-base">{formatTourClock(nowMs - tour.epochMs)}</span>
+              {orbit !== null && (
+                <span className="text-[11px] text-white/75">
+                  周回 {orbit}
+                  {counter?.total !== undefined ? `/${counter.total}` : ""}
+                </span>
+              )}
+            </div>
           </div>
+          {tour.telemetryNote && telemetry.length > 0 && (
+            <p className="rounded bg-black/50 px-1.5 text-[11px] leading-4 text-white/75">{tour.telemetryNote}</p>
+          )}
         </div>
 
         {/* Caption card */}
@@ -204,7 +327,7 @@ export default function TourPlayer({ state, sceneRef, paused, speed, onTogglePau
           <button
             type="button"
             onClick={onTogglePause}
-            className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-brand text-brand-fg transition-colors hover:bg-brand-hover"
+            className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-brand text-brand-fg transition-colors motion-reduce:transition-none hover:bg-brand-hover"
             aria-label={finished ? "最初から" : paused ? "再生" : "一時停止"}
             title={finished ? "最初から" : paused ? "再生 (Space)" : "一時停止 (Space)"}
           >
@@ -226,20 +349,21 @@ export default function TourPlayer({ state, sceneRef, paused, speed, onTogglePau
           >
             <SkipForward className="size-4" />
           </button>
-          <ol className="mx-1 flex min-w-0 flex-1 items-center justify-center gap-0.5 overflow-x-auto" aria-label="章">
+          {/* Auto margins centre the dots when they fit and keep the first one reachable when they scroll. */}
+          <ol className="mx-1 flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto overscroll-x-contain [scrollbar-width:none]" aria-label="章">
             {tour.chapters.map((c, i) => (
-              <li key={c.id} className="shrink-0">
+              <li key={c.id} className={cn("shrink-0", i === 0 && "ml-auto", i === tour.chapters.length - 1 && "mr-auto")}>
                 <button
                   type="button"
                   onClick={() => onGoTo(i)}
-                  className="flex size-6 items-center justify-center rounded-full hover:bg-raised-hover"
+                  className="flex size-7 items-center justify-center rounded-full hover:bg-raised-hover sm:size-6"
                   aria-label={`${i + 1}. ${c.title}`}
                   aria-current={i === chapterIndex && !finished ? "step" : undefined}
                   title={`${i + 1}. ${c.title}`}
                 >
                   <span
                     className={cn(
-                      "block rounded-full transition-all",
+                      "block rounded-full transition-all motion-reduce:transition-none",
                       i === chapterIndex && !finished
                         ? "size-2.5 bg-brand"
                         : i < chapterIndex || finished
@@ -273,23 +397,23 @@ function TelemetryBlock({
 }) {
   return (
     <div className={cn("min-w-0 rounded-md bg-black/60 px-2 py-1 sm:px-3", order === "first" ? "order-0" : "order-2")}>
-      <div className="flex items-center gap-1.5 text-[10px] font-semibold tracking-widest text-white/80">
+      <div className="flex items-center gap-1.5 font-sans text-[11px] font-semibold text-white/90">
         {color && <span className="size-2 shrink-0 rounded-full" style={{ background: color }} aria-hidden="true" />}
         {label}
       </div>
       {value.phase === "after" ? (
-        <div className="text-xs text-white/70 sm:text-sm">飛行終了</div>
+        <div className="text-xs text-white/75 sm:text-sm">飛行終了</div>
       ) : (
         <div className="flex flex-wrap items-baseline gap-x-2 text-xs sm:text-sm">
           <span>
-            <span className="text-[10px] text-white/60">速度 </span>
+            <span className="font-sans text-[11px] text-white/75">速度 </span>
             {formatSpeedKmh(value.speedKmh)}
-            <span className="text-[10px] text-white/60"> km/h</span>
+            <span className="text-[11px] text-white/75"> km/h</span>
           </span>
           <span>
-            <span className="text-[10px] text-white/60">高度 </span>
+            <span className="font-sans text-[11px] text-white/75">高度 </span>
             {formatAltitudeKm(value.altKm)}
-            <span className="text-[10px] text-white/60"> km</span>
+            <span className="text-[11px] text-white/75"> km</span>
           </span>
         </div>
       )}

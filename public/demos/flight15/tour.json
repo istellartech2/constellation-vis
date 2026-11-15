@@ -3,9 +3,41 @@
   "title": "スターシップ 第15回飛行",
   "subtitle": "2026年11月13日（日本時間14日）打上げ · ブースター22号機 / シップ42号機",
   "disclaimer": "公開情報からの推定再現（非公式）",
+  "clockLabel": "打上げから",
+  "telemetryNote": "速度・高度は推定",
   "tracks": [
-    { "key": "booster", "url": "demos/flight15/booster.csv", "label": "BOOSTER" },
-    { "key": "ship", "url": "demos/flight15/ship.csv", "label": "SHIP" }
+    {
+      "key": "booster",
+      "url": "demos/flight15/booster.csv",
+      "label": "ブースター",
+      "holdS": 0
+    },
+    {
+      "key": "ship",
+      "url": "demos/flight15/ship.csv",
+      "label": "シップ",
+      "holdS": 30
+    }
+  ],
+  "landmarks": [
+    {
+      "key": "tower",
+      "label": "発射塔（スターベース）",
+      "lat": 25.9963,
+      "lon": -97.1567,
+      "model": "launch-tower",
+      "headingDeg": 270,
+      "maxDistanceKm": 300
+    },
+    {
+      "key": "booster-disposal",
+      "label": "ブースター処分地点（推定）",
+      "lat": 25.9945,
+      "lon": -97.1217,
+      "color": "#ffb38a",
+      "from": "T+00:07:27.5",
+      "maxDistanceKm": 300
+    }
   ],
   "chapters": [
     {
@@ -13,21 +45,52 @@
       "title": "打上げ",
       "caption": "アメリカ・テキサス州の発射場「スターベース」から、巨大ロケット「スターシップ」の15回目の飛行が始まります（日本時間11月14日 午前7時47分）。下段のブースター「スーパーヘビー」が33基のエンジンで、上段の宇宙船「シップ」を押し上げます。",
       "start": "T-00:00:10",
-      "end": "T+00:01:10",
+      "end": "T+00:00:50",
       "speed": 1,
-      "camera": { "type": "follow", "track": "booster" },
-      "telemetry": ["booster", "ship"]
+      "camera": {
+        "type": "follow",
+        "track": "booster",
+        "distanceM": 420,
+        "targetUpM": 62
+      },
+      "telemetry": [
+        "booster",
+        "ship"
+      ],
+      "trail": {
+        "future": false
+      }
     },
     {
       "id": "max-q",
       "title": "最大動圧と上昇",
       "caption": "打上げから約1分後、機体が受ける空気の力がいちばん大きくなる「最大動圧（マックスQ）」を通過します。このあいだエンジンの出力を少し絞って機体への負担を減らし、その後は空気の薄い高空へ向けてどんどん加速します。",
-      "start": "T+00:01:10",
+      "start": "T+00:00:50",
       "end": "T+00:02:15",
-      "speed": 10,
-      "speedChanges": [{ "at": "T+00:02:05", "speed": 1 }],
-      "camera": { "type": "follow", "track": "booster" },
-      "telemetry": ["booster", "ship"]
+      "speed": 2,
+      "speedChanges": [
+        {
+          "at": "T+00:01:20",
+          "speed": 6
+        },
+        {
+          "at": "T+00:02:05",
+          "speed": 1
+        }
+      ],
+      "camera": {
+        "type": "follow",
+        "track": "booster",
+        "distanceM": 420,
+        "targetUpM": 62
+      },
+      "telemetry": [
+        "booster",
+        "ship"
+      ],
+      "trail": {
+        "future": false
+      }
     },
     {
       "id": "hot-staging",
@@ -36,8 +99,31 @@
       "start": "T+00:02:15",
       "end": "T+00:02:40",
       "speed": 1,
-      "camera": { "type": "follow", "track": "booster" },
-      "telemetry": ["booster", "ship"]
+      "camera": {
+        "type": "follow",
+        "track": "booster",
+        "include": "ship",
+        "distanceM": 600,
+        "transitionS": 1.5
+      },
+      "cameraChanges": [
+        {
+          "at": "T+00:02:31",
+          "camera": {
+            "type": "follow",
+            "track": "booster",
+            "distanceM": 600,
+            "transitionS": 2
+          }
+        }
+      ],
+      "telemetry": [
+        "booster",
+        "ship"
+      ],
+      "trail": {
+        "future": false
+      }
     },
     {
       "id": "boostback",
@@ -46,29 +132,72 @@
       "start": "T+00:02:40",
       "end": "T+00:06:10",
       "speed": 10,
-      "camera": { "type": "follow", "track": "booster" },
-      "telemetry": ["booster", "ship"]
+      "camera": {
+        "type": "follow",
+        "track": "booster",
+        "distanceM": 600,
+        "transitionS": 2
+      },
+      "telemetry": [
+        "booster",
+        "ship"
+      ],
+      "trail": {
+        "future": false
+      }
     },
     {
       "id": "catch-abort",
       "title": "キャッチ中止・洋上へ",
-      "caption": "着陸のためにエンジンを再点火しましたが、機体の自動判断で発射塔でのキャッチは中止されました（誘導・制御の不具合や、燃料がわずかに少なかったことが理由と報じられています）。ブースターはあらかじめ決められていた沖合の予備地点へ向かい、海の上でエンジンを止めたあと、着水の直前に安全のため計画どおり破壊されました。安全を優先する仕組みが働いた結果で、飛行全体の失敗ではありません（海上の位置は公表されておらず、推定です）。",
+      "caption": "着陸直前、機体の自動判断で発射塔でのキャッチは中止されました。ブースターは沖合の予備地点へ向かい、安全のため計画どおり海上で処分されました（位置は推定）。",
       "start": "T+00:06:10",
-      "end": "T+00:07:30",
+      "end": "T+00:08:00",
       "speed": 1,
-      "speedChanges": [{ "at": "T+00:06:45", "speed": 2 }],
-      "camera": { "type": "follow", "track": "booster" },
-      "telemetry": ["booster"]
+      "speedChanges": [
+        {
+          "at": "T+00:06:38",
+          "speed": 3
+        },
+        {
+          "at": "T+00:07:18",
+          "speed": 1
+        },
+        {
+          "at": "T+00:07:32",
+          "speed": 3
+        }
+      ],
+      "camera": {
+        "type": "follow",
+        "track": "booster",
+        "distanceM": 500,
+        "targetUpM": 36,
+        "transitionS": 1.5
+      },
+      "telemetry": [
+        "booster"
+      ],
+      "trail": {
+        "future": false
+      }
     },
     {
       "id": "ship-to-space",
       "title": "シップは宇宙へ",
       "caption": "一方、上段のシップは自分のエンジンで加速を続け、打上げから約8分後にエンジンを止めました。このときシップはすでに宇宙空間にいて、あと少し加速すれば地球を回り続けられる速さに達しています。",
-      "start": "T+00:07:30",
+      "start": "T+00:08:00",
       "end": "T+00:08:30",
-      "speed": 5,
-      "camera": { "type": "follow", "track": "ship" },
-      "telemetry": ["ship"]
+      "speed": 2,
+      "camera": {
+        "type": "follow",
+        "track": "ship"
+      },
+      "trail": {
+        "future": false
+      },
+      "telemetry": [
+        "ship"
+      ]
     },
     {
       "id": "orbit-starlink",
@@ -77,8 +206,23 @@
       "start": "T+00:08:30",
       "end": "T+01:20:00",
       "speed": 120,
-      "camera": { "type": "globe", "track": "ship" },
-      "telemetry": ["ship"]
+      "camera": {
+        "type": "globe",
+        "track": "ship"
+      },
+      "trail": {
+        "future": false,
+        "windowS": 5400,
+        "frame": "inertial"
+      },
+      "orbitCounter": {
+        "track": "ship",
+        "from": "T+00:26:30",
+        "total": 14
+      },
+      "telemetry": [
+        "ship"
+      ]
     },
     {
       "id": "orbiting",
@@ -87,8 +231,25 @@
       "start": "T+01:20:00",
       "end": "T+21:35:00",
       "speed": 3000,
-      "camera": { "type": "globe", "track": "ship", "chase": false },
-      "telemetry": ["ship"]
+      "camera": {
+        "type": "globe",
+        "track": "ship",
+        "chase": false,
+        "tiltDeg": 40
+      },
+      "trail": {
+        "future": false,
+        "windowS": 5400,
+        "frame": "inertial"
+      },
+      "orbitCounter": {
+        "track": "ship",
+        "from": "T+00:26:30",
+        "total": 14
+      },
+      "telemetry": [
+        "ship"
+      ]
     },
     {
       "id": "deorbit",
@@ -97,38 +258,114 @@
       "start": "T+21:35:00",
       "end": "T+22:10:46",
       "speed": 120,
-      "camera": { "type": "globe", "track": "ship", "distance": 2 },
-      "telemetry": ["ship"]
+      "camera": {
+        "type": "globe",
+        "track": "ship",
+        "distance": 2
+      },
+      "trail": {
+        "future": false,
+        "windowS": 5400,
+        "frame": "inertial"
+      },
+      "telemetry": [
+        "ship"
+      ]
     },
     {
       "id": "reentry",
       "title": "大気圏再突入",
-      "caption": "打上げ約22時間11分後、シップは大気圏に再突入します。機体の腹側に並んだ耐熱タイル（熱から機体を守るタイル）を前に向け、まわりの空気が高温になる中、空気の抵抗をブレーキにして大きく減速していきます。",
+      "caption": "打上げ約22時間11分後、シップは大気圏に再突入します。機首を大きく持ち上げ（進行方向に対して約67度）、耐熱タイル（熱から機体を守るタイル）が並ぶ腹側を前に向けた姿勢で、空気の抵抗をブレーキにして大きく減速していきます。",
       "start": "T+22:10:46",
       "end": "T+22:29:30",
       "speed": 30,
-      "camera": { "type": "follow", "track": "ship" },
-      "telemetry": ["ship"]
+      "camera": {
+        "type": "follow",
+        "track": "ship"
+      },
+      "trail": {
+        "windowS": 1800,
+        "future": false
+      },
+      "telemetry": [
+        "ship"
+      ]
     },
     {
       "id": "tower-catch",
       "title": "発射塔でキャッチ",
-      "caption": "音速より遅くなったシップは西からテキサスの海岸に近づき、町を避けるように飛んでサウスパドレ島の北を通過し、メキシコ湾の上で南へ向きを変えます。着陸の直前にエンジン3基に点火して機体を立て、発射塔の2本の腕（通称「チョップスティック」）に受け止められました。上段のシップが発射塔でキャッチされたのは、これが初めてです。",
+      "caption": "音速より遅くなったシップは機体を水平に倒した姿勢で西からテキサスの海岸に近づき、メキシコ湾の上で南へ向きを変えます。着陸の直前にエンジン3基に点火して機体を立て、発射塔の2本の腕（通称「チョップスティック」）に受け止められました。上段のシップが発射塔でキャッチされたのは、これが初めてです。",
       "start": "T+22:29:30",
-      "end": "T+22:32:40",
-      "speed": 1,
-      "camera": { "type": "follow", "track": "ship" },
-      "telemetry": ["ship"]
+      "end": "T+22:32:45",
+      "speed": 5,
+      "speedChanges": [
+        {
+          "at": "T+22:31:48",
+          "speed": 1
+        }
+      ],
+      "camera": {
+        "type": "follow",
+        "track": "ship"
+      },
+      "cameraChanges": [
+        {
+          "at": "T+22:31:48",
+          "camera": {
+            "type": "follow",
+            "track": "ship",
+            "distanceM": 420,
+            "targetUpM": 10,
+            "transitionS": 2.5
+          }
+        },
+        {
+          "at": "T+22:32:31",
+          "camera": {
+            "type": "follow",
+            "track": "ship",
+            "distanceM": 1500,
+            "targetUpM": 0,
+            "transitionS": 3
+          }
+        }
+      ],
+      "trail": {
+        "windowS": 1800,
+        "future": false
+      },
+      "telemetry": [
+        "ship"
+      ]
     }
   ],
   "ending": {
     "title": "飛行完了",
-    "caption": "約22時間32分の飛行で、ブースターは安全のため洋上で処分され、シップは初めて発射塔に受け止められました。\nこの再現は公開された情報から推定したもので、実際の経路・速度・高度とは異なります。"
+    "caption": "約22時間32分の飛行で、ブースターは安全のため洋上で処分され、シップは初めて発射塔に受け止められました。\nこの再現は公開された情報から推定したもので、実際の経路・速度・高度とは異なります。",
+    "camera": {
+      "type": "globe",
+      "track": "ship"
+    },
+    "trail": {
+      "future": true
+    }
   },
   "sources": [
-    { "label": "Wikipedia", "url": "https://en.wikipedia.org/wiki/Starship_flight_15" },
-    { "label": "Space.com", "url": "https://www.space.com/space-exploration/launches-spacecraft/spacex-starship-flight-15-chopsticks-double-catch-super-heavy-ship" },
-    { "label": "drohnen.de", "url": "https://www.drohnen.de/97929/starship-flight-15-live-ship-catch-en/" },
-    { "label": "KeepTrack", "url": "https://keeptrack.space/x-report/spacex-brief-2026-11-15" }
+    {
+      "label": "Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Starship_flight_15"
+    },
+    {
+      "label": "Space.com",
+      "url": "https://www.space.com/space-exploration/launches-spacecraft/spacex-starship-flight-15-chopsticks-double-catch-super-heavy-ship"
+    },
+    {
+      "label": "drohnen.de",
+      "url": "https://www.drohnen.de/97929/starship-flight-15-live-ship-catch-en/"
+    },
+    {
+      "label": "KeepTrack",
+      "url": "https://keeptrack.space/x-report/spacex-brief-2026-11-15"
+    }
   ]
 }

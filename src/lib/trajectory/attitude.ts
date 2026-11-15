@@ -312,3 +312,27 @@ export function enuAnglesToQuaternion(
   const belly = tmpB.copy(belly0).multiplyScalar(Math.cos(r)).addScaledVector(nxb, Math.sin(r)).normalize();
   return quaternionFromNoseBelly(nose, belly, out);
 }
+
+/**
+ * Body → ECEF attitude of an object standing upright at a geodetic point
+ * (landmarks such as a launch tower): body +X along the local vertical,
+ * body +Y horizontal toward bearing `headingDeg` (from north, clockwise),
+ * body +Z = X × Y.
+ */
+export function uprightBodyQuaternion(
+  latDeg: number,
+  lonDeg: number,
+  headingDeg: number,
+  out: BodyQuaternion = { w: 1, x: 0, y: 0, z: 0 },
+): BodyQuaternion {
+  const lat = latDeg * DEG2RAD;
+  const lon = lonDeg * DEG2RAD;
+  const h = (Number.isFinite(headingDeg) ? headingDeg : 0) * DEG2RAD;
+  const up = tmpA.set(Math.cos(lat) * Math.cos(lon), Math.cos(lat) * Math.sin(lon), Math.sin(lat));
+  const east = tmpB.set(-Math.sin(lon), Math.cos(lon), 0);
+  const north = tmpC.set(-Math.sin(lat) * Math.cos(lon), -Math.sin(lat) * Math.sin(lon), Math.cos(lat));
+  const y = tmpVel.copy(north).multiplyScalar(Math.cos(h)).addScaledVector(east, Math.sin(h));
+  const z = tmpDownrange.crossVectors(up, y);
+  scratchMatrix.makeBasis(up, y, z);
+  return writeOut(qAccum.setFromRotationMatrix(scratchMatrix), out);
+}

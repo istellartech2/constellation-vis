@@ -104,6 +104,63 @@ export interface TrajectoryTrack {
    * points during the joint ascent.
    */
   mount?: { untilMs: number; offsetM: number };
+  /**
+   * Display-only trail options (no geometry rebuild when changed). Undefined:
+   * faint full path + bright traversed path, Earth-fixed.
+   */
+  trail?: TrajectoryTrailStyle;
+  /**
+   * Keep the vehicle (model, marker and name label) at its last sample for
+   * this long after the track ends, in ms (e.g. a ship standing on the pad
+   * after a catch). Default 0: it disappears at the last sample.
+   */
+  holdEndMs?: number;
+}
+
+/**
+ * How a track's trail is drawn (see docs/trajectory-layer.md, "Trail options").
+ */
+export interface TrajectoryTrailStyle {
+  /** Draw the faint full path, including the part not flown yet (default true). */
+  future?: boolean;
+  /**
+   * Bright trail limited to the last `windowMs` before the vehicle, fading to
+   * transparent toward its old end. Undefined or ≤ 0: the whole traversed path.
+   */
+  windowMs?: number;
+  /**
+   * "earth" (default): the trail is Earth-fixed (a ground-relative path that
+   * turns with the globe). "inertial": every point is drawn where it was in
+   * inertial space, i.e. rotated back by the Earth's rotation since it was
+   * flown, so an orbit is a closed ring that does not spin with the globe.
+   * The vehicle itself and the newest point coincide in both frames.
+   */
+  frame?: "earth" | "inertial";
+}
+
+/**
+ * A fixed point of interest drawn with the trajectory layer (a launch tower,
+ * an estimated impact point…): a marker dot, an optional label and an
+ * optional static model standing upright on the point.
+ */
+export interface TrajectoryLandmark {
+  id: string;
+  label?: string;
+  latDeg: number;
+  lonDeg: number;
+  /** Altitude of the model base / marker above WGS84, km (default 0). */
+  altKm?: number;
+  /** Built-in model key (e.g. "launch-tower") or GLB URL; drawn upright. */
+  model?: string;
+  /** Bearing (deg from north, clockwise) the model's +Y side faces; for the tower, where the column stands. */
+  headingDeg?: number;
+  /** CSS colour of the dot and label (default light grey). */
+  color?: string;
+  /** Shown only from / until these instants (ms UTC). */
+  fromMs?: number;
+  untilMs?: number;
+  /** Dot and label only while the camera is within this distance (km). The model follows its own pixel-size rule. */
+  maxDistanceKm?: number;
 }
 
 /** Interpolated state at an arbitrary time inside the track span. */

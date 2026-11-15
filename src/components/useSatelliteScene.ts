@@ -136,6 +136,7 @@ export function useSatelliteScene(
     params.solarArrayType,
     params.showBodyAxes,
     params.showBodySunDirection,
+    params.presentation,
   ]);
 
   // Swap the catalog-layer overlay live (after updateParams above, so the new
@@ -151,6 +152,11 @@ export function useSatelliteScene(
   useEffect(() => {
     sceneRef.current?.setTrajectories(params.trajectories ?? []);
   }, [params.trajectories]);
+
+  // Trajectory landmarks, swapped live (no-op for the same array).
+  useEffect(() => {
+    sceneRef.current?.setTrajectoryLandmarks(params.trajectoryLandmarks ?? []);
+  }, [params.trajectoryLandmarks]);
 
   // Trajectory follow camera, applied live (after the tracks above, so a
   // newly added track can be followed in the same commit). Construction

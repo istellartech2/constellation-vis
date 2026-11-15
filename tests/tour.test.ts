@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  chapterCameraAt,
   chapterIndexAt,
   chapterProgress,
   chapterSpeedAt,
@@ -13,10 +14,15 @@ import {
   parseTourDefinition,
   resolveTour,
   resolveTourTime,
+  REDUCED_MOTION_MAX_SPEED,
+  tourLandmarks,
+  tourPlaybackSpeed,
+  tourTrailStyle,
 } from "../src/lib/tour/parse";
 import { loadTour, resolveAssetUrl } from "../src/lib/tour/load";
-import { tourTelemetryAt } from "../src/lib/tour/telemetry";
+import { ascendingNodeTimes, orbitNumberAt, tourTelemetryAt } from "../src/lib/tour/telemetry";
 import { parseTrajectoryFile, toTrajectoryTrack } from "../src/lib/trajectory/parse";
+import type { TrajectoryTrack } from "../src/lib/trajectory/types";
 import type { ResolvedTour, TourDefinition } from "../src/lib/tour/types";
 
 const ROOT = join(import.meta.dir, "..");
@@ -112,6 +118,116 @@ describe("parseTourDefinition", () => {
     const g = baseTour();
     g.chapters[2].camera = { type: "globe", distance: 0.5 };
     expect(err(parseTourDefinition(g))).toContain("distance");
+  });
+});
+
+describe("presentation options", () => {
+  function rich(): TourDefinition {
+    const t = baseTour();
+    t.tracks[0].holdS = 0;
+    t.landmarks = [
+      { key: "tower", label: "Tower", lat: 25.9963, lon: -97.1567, model: "launch-tower", headingDeg: 270, maxDistanceKm: 300 },
+      { key: "impact", lat: 25.99, lon: -97.12, from: "T+00:07:27.5" },
+    ];
+    t.chapters[0].camera = { type: "follow", track: "a", distanceM: 420, targetUpM: 62, include: "b", transitionS: 1.5 };
+    t.chapters[1].cameraChanges = [
+      { at: "T+00:02:50", camera: { type: "follow", track: "b", distanceM: 1500 } },
+      { at: "T+00:01:30", camera: { type: "globe", track: "b" } },
+    ];
+    t.chapters[2].camera = { type: "globe", track: "b", chase: false, tiltDeg: 40 };
+    t.chapters[2].trail = { future: false, windowS: 5400, frame: "inertial" };
+    t.chapters[2].orbitCounter = { track: "b", from: "T+00:26:30", total: 14 };
+    t.ending = { title: "End", caption: "", camera: { type: "globe", track: "b" }, trail: { future: true } };
+    return t;
+  }
+
+  it("parses follow framing, camera changes, trails, counters, landmarks and the ending camera", () => {
+    const def = ok(parseTourDefinition(rich()));
+    expect(def.tracks[0].holdS).toBe(0);
+    expect(def.chapters[0].camera).toEqual({ type: "follow", track: "a", distanceM: 420, targetUpM: 62, include: "b", transitionS: 1.5 });
+    expect(def.chapters[2].trail).toEqual({ future: false, windowS: 5400, frame: "inertial" });
+    expect(def.chapters[2].camera).toEqual({ type: "globe", track: "b", chase: false, tiltDeg: 40 });
+    expect(def.landmarks?.map((l) => l.key)).toEqual(["tower", "impact"]);
+    expect(def.ending?.camera).toEqual({ type: "globe", track: "b" });
+    const tour = ok(resolveTour(def, EPOCH_MS));
+    // Camera changes are sorted.
+    expect(tour.chapters[1].cameraChanges.map((c) => c.atMs)).toEqual([EPOCH_MS + 90_000, EPOCH_MS + 170_000]);
+    expect(tour.chapters[2].orbitCounter).toEqual({ track: "b", fromMs: EPOCH_MS + 1_590_000, total: 14 });
+    expect(tour.chapters[0].orbitCounter).toBeNull();
+    expect(tour.landmarks[1].fromMs).toBe(EPOCH_MS + 447_500);
+    const scene = tourLandmarks(tour);
+    expect(scene[0]).toMatchObject({ id: "tour-demo-landmark-tower", latDeg: 25.9963, lonDeg: -97.1567, model: "launch-tower", headingDeg: 270, maxDistanceKm: 300 });
+    expect(scene[1].fromMs).toBe(EPOCH_MS + 447_500);
+  });
+
+  it("rejects bad framing, trails, counters and landmarks", () => {
+    const cases: [(t: TourDefinition) => void, string][] = [
+      [(t) => (t.chapters[0].camera = { type: "follow", track: "a", include: "a" }), "include"],
+      [(t) => (t.chapters[0].camera = { type: "follow", track: "a", distanceM: -1 }), "distanceM"],
+      [(t) => (t.chapters[0].camera = { type: "follow", track: "a", transitionS: 100 }), "transitionS"],
+      [(t) => (t.chapters[0].trail = { windowS: 0 }), "windowS"],
+      [(t) => ((t.chapters[0] as unknown as Record<string, unknown>).trail = { frame: "eci" }), "frame"],
+      [(t) => (t.chapters[0].orbitCounter = { track: "zzz" }), "orbitCounter"],
+      [(t) => (t.chapters[0].orbitCounter = { track: "a", total: 1.5 }), "total"],
+      [(t) => (t.landmarks = [{ key: "x", lat: 95, lon: 0 }]), "lat"],
+      [(t) => (t.landmarks = [{ key: "x", lat: 0, lon: 0 }, { key: "x", lat: 1, lon: 1 }]), "重複"],
+      [(t) => (t.tracks[0].holdS = -1), "holdS"],
+      [(t) => (t.chapters[2].camera = { type: "globe", track: "b", tiltDeg: 90 }), "tiltDeg"],
+      [(t) => (t.chapters[0].cameraChanges = [{ at: "T+00:00:10", camera: { type: "follow", track: "nope" } }]), "nope"],
+    ];
+    for (const [mutate, message] of cases) {
+      const t = baseTour();
+      mutate(t);
+      expect(err(parseTourDefinition(t))).toContain(message);
+    }
+    const out = baseTour();
+    out.chapters[0].cameraChanges = [{ at: "T+00:05:00", camera: { type: "globe" } }];
+    expect(err(loadTourDefinition(out, EPOCH_MS))).toContain("cameraChanges");
+  });
+
+  it("picks the camera in effect and each change once", () => {
+    const tour = ok(loadTourDefinition(rich(), EPOCH_MS));
+    const c2 = tour.chapters[1];
+    expect(chapterCameraAt(c2, c2.startMs)).toEqual({ index: -1, camera: c2.camera });
+    expect(chapterCameraAt(c2, EPOCH_MS + 90_000).index).toBe(0);
+    expect(chapterCameraAt(c2, EPOCH_MS + 170_000)).toEqual({ index: 1, camera: { type: "follow", track: "b", distanceM: 1500 } });
+  });
+
+  it("styles trails: only the camera's track shows its future path", () => {
+    const trail = { windowS: 5400, frame: "inertial" as const };
+    expect(tourTrailStyle(trail, true)).toEqual({ future: true, windowMs: 5_400_000, frame: "inertial" });
+    expect(tourTrailStyle(trail, false)).toEqual({ future: false, windowMs: 5_400_000, frame: "inertial" });
+    expect(tourTrailStyle({ future: false }, true)).toEqual({ future: false });
+    expect(tourTrailStyle(undefined, true)).toEqual({ future: true });
+  });
+
+  it("caps chapter speeds for reduced motion", () => {
+    expect(tourPlaybackSpeed(3000, false)).toBe(3000);
+    expect(tourPlaybackSpeed(3000, true)).toBe(REDUCED_MOTION_MAX_SPEED);
+    expect(tourPlaybackSpeed(5, true)).toBe(5);
+  });
+});
+
+describe("orbit counter", () => {
+  // Circular equatorial-crossing orbit: z = sin(2π t / P), sampled every 60 s.
+  const P = 5400_000;
+  const samples = Array.from({ length: 400 }, (_, i) => {
+    const t = i * 60_000;
+    return { timeMs: EPOCH_MS + t, position: { x: 6700 * Math.cos((2 * Math.PI * t) / P), y: 0, z: 6700 * Math.sin((2 * Math.PI * t) / P) } };
+  });
+  const track = { id: "o", name: "o", color: "#fff", visible: true, sourceFrame: "ECEF", samples, events: [], attitudeRules: [] } as TrajectoryTrack;
+
+  it("finds ascending nodes and counts orbits from a start time", () => {
+    const from = EPOCH_MS + 1000;
+    const nodes = ascendingNodeTimes(track, from);
+    expect(nodes.length).toBe(4); // t = P, 2P, 3P, 4P within 400 min
+    expect(nodes[0]).toBeCloseTo(EPOCH_MS + P, -3);
+    expect(orbitNumberAt(nodes, from, from - 1)).toBeNull();
+    expect(orbitNumberAt(nodes, from, from)).toBe(1);
+    expect(orbitNumberAt(nodes, from, EPOCH_MS + P + 1000)).toBe(1);
+    expect(orbitNumberAt(nodes, from, EPOCH_MS + 2 * P + 1000)).toBe(2);
+    expect(orbitNumberAt(nodes, from, EPOCH_MS + 10 * P)).toBe(4);
+    expect(orbitNumberAt(nodes, from, EPOCH_MS + 10 * P, 3)).toBe(3);
   });
 });
 
@@ -259,6 +375,9 @@ describe("loadTour", () => {
     expect(loaded.tracks.a.id).not.toBe(loaded.tracks.b.id);
     expect(loaded.tracks.b.color).toBe("#ff0000");
     expect(loaded.tracks.a.model).toBe("starship-v3-booster");
+    // The tour label names the vehicle on the globe; tours hold the end state 30 s by default.
+    expect(loaded.tracks.a.name).toBe("BOOSTER");
+    expect(loaded.tracks.a.holdEndMs).toBe(30_000);
   });
 
   it("reports missing files", async () => {
@@ -299,5 +418,10 @@ describe("public/demos", () => {
     expect(last.startMs).toBeLessThan(catchMs);
     expect(last.endMs).toBeGreaterThan(catchMs);
     expect(tour.disclaimer).toContain("推定");
+    // The ship keeps standing in the tower after the catch; the booster does not linger.
+    expect(tour.tracks.find((t) => t.key === "ship")?.holdS ?? 30).toBeGreaterThan(0);
+    expect(tour.tracks.find((t) => t.key === "booster")?.holdS).toBe(0);
+    expect(tour.landmarks.some((l) => l.model === "launch-tower")).toBe(true);
+    expect(tour.ending?.camera?.type).toBe("globe");
   });
 });

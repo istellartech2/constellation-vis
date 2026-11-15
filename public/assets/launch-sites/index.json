@@ -1,0 +1,191 @@
+{
+  "attribution": "EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016)",
+  "license": "CC BY 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+  "year": 2016,
+  "layer": "s2cloudless",
+  "sizeKm": 80,
+  "sizePx": 2048,
+  "sites": [
+    {
+      "id": "starbase",
+      "name": "スターベース",
+      "lat": 25.99,
+      "lon": -97.16,
+      "bounds": {
+        "west": -97.5602,
+        "south": 25.630272,
+        "east": -96.7598,
+        "north": 26.349728
+      },
+      "file": "starbase.jpg",
+      "source": "EOxCloudless 2016",
+      "year": 2016
+    },
+    {
+      "id": "cape-canaveral",
+      "name": "ケープカナベラル（KSC/CCSFS）",
+      "lat": 28.56,
+      "lon": -80.6,
+      "bounds": {
+        "west": -81.009565,
+        "south": 28.200272,
+        "east": -80.190435,
+        "north": 28.919728
+      },
+      "file": "cape-canaveral.jpg",
+      "source": "EOxCloudless 2016",
+      "year": 2016
+    },
+    {
+      "id": "vandenberg",
+      "name": "ヴァンデンバーグ",
+      "lat": 34.65,
+      "lon": -120.6,
+      "bounds": {
+        "west": -121.037285,
+        "south": 34.290272,
+        "east": -120.162715,
+        "north": 35.009728
+      },
+      "file": "vandenberg.jpg",
+      "source": "EOxCloudless 2016",
+      "year": 2016
+    },
+    {
+      "id": "tanegashima",
+      "name": "種子島宇宙センター",
+      "lat": 30.4,
+      "lon": 130.97,
+      "bounds": {
+        "west": 130.55293,
+        "south": 30.040272,
+        "east": 131.38707,
+        "north": 30.759728
+      },
+      "file": "tanegashima.jpg",
+      "source": "EOxCloudless 2016",
+      "year": 2016
+    },
+    {
+      "id": "uchinoura",
+      "name": "内之浦宇宙空間観測所",
+      "lat": 31.25,
+      "lon": 131.08,
+      "bounds": {
+        "west": 130.659222,
+        "south": 30.890272,
+        "east": 131.500778,
+        "north": 31.609728
+      },
+      "file": "uchinoura.jpg",
+      "source": "EOxCloudless 2016",
+      "year": 2016
+    },
+    {
+      "id": "hokkaido-spaceport",
+      "name": "北海道スペースポート（大樹町）",
+      "lat": 42.5,
+      "lon": 143.44,
+      "bounds": {
+        "west": 142.952086,
+        "south": 42.140272,
+        "east": 143.927914,
+        "north": 42.859728
+      },
+      "file": "hokkaido-spaceport.jpg",
+      "source": "EOxCloudless 2016",
+      "year": 2016
+    },
+    {
+      "id": "kourou",
+      "name": "ギアナ宇宙センター（クールー）",
+      "lat": 5.24,
+      "lon": -52.77,
+      "bounds": {
+        "west": -53.131238,
+        "south": 4.880272,
+        "east": -52.408762,
+        "north": 5.599728
+      },
+      "file": "kourou.jpg",
+      "source": "EOxCloudless 2016",
+      "year": 2016
+    },
+    {
+      "id": "baikonur",
+      "name": "バイコヌール宇宙基地",
+      "lat": 45.96,
+      "lon": 63.31,
+      "bounds": {
+        "west": 62.792525,
+        "south": 45.600272,
+        "east": 63.827475,
+        "north": 46.319728
+      },
+      "file": "baikonur.jpg",
+      "source": "EOxCloudless 2016",
+      "year": 2016
+    },
+    {
+      "id": "wenchang",
+      "name": "文昌航天発射場",
+      "lat": 19.61,
+      "lon": 110.95,
+      "bounds": {
+        "west": 110.568123,
+        "south": 19.250272,
+        "east": 111.331877,
+        "north": 19.969728
+      },
+      "file": "wenchang.jpg",
+      "source": "EOxCloudless 2016",
+      "year": 2016
+    },
+    {
+      "id": "jiuquan",
+      "name": "酒泉衛星発射センター",
+      "lat": 40.96,
+      "lon": 100.29,
+      "bounds": {
+        "west": 99.813645,
+        "south": 40.600272,
+        "east": 100.766355,
+        "north": 41.319728
+      },
+      "file": "jiuquan.jpg",
+      "source": "EOxCloudless 2016",
+      "year": 2016
+    },
+    {
+      "id": "mahia",
+      "name": "ロケットラボ第1発射施設（マヒア）",
+      "lat": -39.26,
+      "lon": 177.86,
+      "bounds": {
+        "west": 177.395404,
+        "south": -39.619728,
+        "east": 178.324596,
+        "north": -38.900272
+      },
+      "file": "mahia.jpg",
+      "source": "EOxCloudless 2016",
+      "year": 2016
+    },
+    {
+      "id": "sriharikota",
+      "name": "サティシュ・ダワン宇宙センター",
+      "lat": 13.72,
+      "lon": 80.23,
+      "bounds": {
+        "west": 79.859706,
+        "south": 13.360272,
+        "east": 80.600294,
+        "north": 14.079728
+      },
+      "file": "sriharikota.jpg",
+      "source": "EOxCloudless 2016",
+      "year": 2016
+    }
+  ]
+}

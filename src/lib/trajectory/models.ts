@@ -29,6 +29,7 @@
  */
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 export interface TrajectoryModelInfo {
   key: string;
@@ -43,6 +44,16 @@ export const TRAJECTORY_MODELS: readonly TrajectoryModelInfo[] = [
   { key: "generic-rocket", label: "汎用ロケット", lengthM: 40 },
   { key: "satellite-bus", label: "標準バス", lengthM: 10.4 },
 ];
+
+/**
+ * Static landmark models (not offered for tracks in the 軌跡 panel): drawn
+ * upright at a fixed point by the same metre-scale pass as the vehicles.
+ */
+export const LANDMARK_MODELS: readonly TrajectoryModelInfo[] = [
+  { key: "launch-tower", label: "発射塔", lengthM: 145 },
+];
+
+const PROCEDURAL_KEYS = new Set(["generic-rocket", "satellite-bus", "launch-tower"]);
 
 const GLB_KEYS = new Set(["starship-v3-booster", "starship-v3-ship"]);
 
@@ -60,7 +71,7 @@ export interface TrajectoryModelTemplate {
 
 /** Registry length for a built-in key, else undefined. */
 export function trajectoryModelLengthM(model: string | undefined): number | undefined {
-  return TRAJECTORY_MODELS.find((m) => m.key === model)?.lengthM;
+  return (TRAJECTORY_MODELS.find((m) => m.key === model) ?? LANDMARK_MODELS.find((m) => m.key === model))?.lengthM;
 }
 
 /**
@@ -70,7 +81,7 @@ export function trajectoryModelLengthM(model: string | undefined): number | unde
  */
 export function trajectoryModelUrl(model: string): string | null {
   if (GLB_KEYS.has(model)) return `./models/${model}.glb`;
-  if (model === "generic-rocket" || model === "satellite-bus") return null;
+  if (PROCEDURAL_KEYS.has(model)) return null;
   return model;
 }
 
@@ -197,6 +208,69 @@ function buildGenericRocket(): TrajectoryModelTemplate {
   return { model: "generic-rocket", root, lengthM, pivotBody: new THREE.Vector3(lengthM / 2, 0, 0), anchor: "base" };
 }
 
+/**
+ * Launch tower with catch arms ("chopsticks"), ≈145 m: a 10 m square
+ * lattice column (corner posts, girders and X bracing, merged into one
+ * mesh), a carriage and two arms at ~100 m reaching across the vehicle axis.
+ * The ORIGIN is the launch mount axis at ground level (where the vehicle
+ * stands and is caught), not the column: the column stands 22 m toward body
+ * +Y, and the arms straddle the axis ±6.5 m apart along body Z, so a 9 m
+ * vehicle on the axis never intersects it. Body +X is up.
+ */
+function buildLaunchTower(): TrajectoryModelTemplate {
+  const height = 145;
+  const half = 5;
+  const column = 22;
+  const parts: THREE.BufferGeometry[] = [];
+  const box = (w: number, h: number, d: number, x: number, y: number, z: number, rx = 0, rz = 0) => {
+    const g = new THREE.BoxGeometry(w, h, d);
+    if (rx || rz) g.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(rx, 0, rz)));
+    g.translate(x, y, z);
+    parts.push(g);
+  };
+  // glTF-like frame: +Y up, column centred at x = −column (→ body +Y after GLTF_TO_BODY).
+  const cx = -column;
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) box(1.2, height, 1.2, cx + sx * half, height / 2, sz * half);
+  const level = 9;
+  const diag = Math.atan2(level, 2 * half);
+  const diagLength = Math.hypot(level, 2 * half);
+  for (let y = 0; y + level <= height; y += level) {
+    for (const s of [-1, 1]) {
+      box(2 * half, 0.6, 0.6, cx, y + level, s * half);
+      box(0.6, 0.6, 2 * half, cx + s * half, y + level, 0);
+      // X bracing on the four faces (alternating direction per level).
+      const flip = (y / level) % 2 === 0 ? 1 : -1;
+      box(diagLength, 0.35, 0.35, cx, y + level / 2, s * half, 0, flip * diag);
+      box(0.35, 0.35, diagLength, cx + s * half, y + level / 2, 0, flip * diag, 0);
+    }
+  }
+  box(1, 14, 1, cx, height + 7, 0); // mast
+  const steel = new THREE.MeshStandardMaterial({ color: 0x5d636b, metalness: 0.55, roughness: 0.6 });
+  const armSteel = new THREE.MeshStandardMaterial({ color: 0x9aa1aa, metalness: 0.5, roughness: 0.5 });
+  const lattice = mergeGeometries(parts, false);
+  parts.forEach((g) => g.dispose());
+  const gltfLike = new THREE.Group();
+  if (lattice) gltfLike.add(new THREE.Mesh(lattice, steel));
+  const armY = 100;
+  const carriage = new THREE.Mesh(new THREE.BoxGeometry(2 * half + 3, 7, 2 * half + 3), armSteel);
+  carriage.position.set(cx, armY, 0);
+  gltfLike.add(carriage);
+  const armLength = column + 10 - half;
+  const armGeometry = new THREE.BoxGeometry(armLength, 3, 1.8);
+  for (const s of [-1, 1]) {
+    const arm = new THREE.Mesh(armGeometry, armSteel);
+    arm.position.set(cx + half + armLength / 2, armY, s * 6.5);
+    gltfLike.add(arm);
+  }
+  const inner = new THREE.Group();
+  inner.quaternion.copy(GLTF_TO_BODY);
+  inner.add(gltfLike);
+  const root = new THREE.Group();
+  root.name = "TrajectoryModel:launch-tower";
+  root.add(inner);
+  return { model: "launch-tower", root, lengthM: height, pivotBody: new THREE.Vector3(height / 2, 0, 0), anchor: "base" };
+}
+
 /** Name of the solar-wing pivot nodes of the satellite bus (rotated about body Y by a 1-axis drive). */
 export const SOLAR_WING_NODE_NAME = "solar-wing";
 
@@ -270,12 +344,13 @@ interface CacheEntry {
 const cache = new Map<string, CacheEntry>();
 
 function isBuiltIn(model: string): boolean {
-  return TRAJECTORY_MODELS.some((m) => m.key === model);
+  return TRAJECTORY_MODELS.some((m) => m.key === model) || LANDMARK_MODELS.some((m) => m.key === model);
 }
 
 async function loadTemplate(model: string): Promise<TrajectoryModelTemplate> {
   if (model === "generic-rocket") return buildGenericRocket();
   if (model === "satellite-bus") return buildSatelliteBus();
+  if (model === "launch-tower") return buildLaunchTower();
   const url = trajectoryModelUrl(model)!;
   const response = await fetch(url);
   if (!response.ok) throw new Error(`model ${url}: HTTP ${response.status}`);

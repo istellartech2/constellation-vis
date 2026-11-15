@@ -6,7 +6,7 @@
 import { parseTrajectoryFile, toTrajectoryTrack } from "../trajectory/parse";
 import type { TrajectoryTrack } from "../trajectory/types";
 import { loadTourDefinition, parseDemoIndex, parseTourDefinition } from "./parse";
-import type { DemoEntry, ResolvedTour } from "./types";
+import { DEFAULT_TOUR_HOLD_S, type DemoEntry, type ResolvedTour } from "./types";
 
 export interface LoadedTour {
   tour: ResolvedTour;
@@ -70,8 +70,11 @@ export async function loadTour(tourUrl: string, baseUrl: string, fetchFn: Fetch 
     tracks[ref.key] = {
       ...base,
       id: `tour-${def.value.id}-${ref.key}-${loadId}`,
+      // The tour's short label names the vehicle on the globe too.
+      ...(ref.label ? { name: ref.label } : {}),
       ...(ref.model ? { model: ref.model } : {}),
       ...(ref.color ? { color: ref.color } : {}),
+      holdEndMs: (ref.holdS ?? DEFAULT_TOUR_HOLD_S) * 1000,
     };
     if (i === 0) firstEpochMs = parsed.track.epochMs;
   }

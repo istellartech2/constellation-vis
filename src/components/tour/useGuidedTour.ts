@@ -2,9 +2,16 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 import type SatelliteScene from "../../lib/visualization";
 import type { SatelliteCameraMode } from "../../lib/visualization";
 import type { CameraSnapshot } from "../../lib/viewState";
-import type { TrajectoryTrack } from "../../lib/trajectory/types";
-import type { ResolvedChapter, ResolvedTour, TourCamera } from "../../lib/tour/types";
-import { chapterSpeedAt, nextTourStep } from "../../lib/tour/parse";
+import type { TrajectoryLandmark, TrajectoryTrack } from "../../lib/trajectory/types";
+import type { ResolvedChapter, ResolvedTour, TourCamera, TourTrail } from "../../lib/tour/types";
+import {
+  chapterCameraAt,
+  chapterSpeedAt,
+  nextTourStep,
+  tourLandmarks,
+  tourPlaybackSpeed,
+  tourTrailStyle,
+} from "../../lib/tour/parse";
 import { loadTour } from "../../lib/tour/load";
 
 /** App state the tour drives (and restores on 終了). */
@@ -13,6 +20,8 @@ export interface GuidedTourHost {
   cameraSnapshotRef: RefObject<CameraSnapshot | null>;
   trajectories: TrajectoryTrack[];
   setTrajectories: (tracks: TrajectoryTrack[]) => void;
+  /** Landmarks drawn with the trajectory layer (the tour's; [] outside a tour). */
+  setTrajectoryLandmarks: (landmarks: TrajectoryLandmark[]) => void;
   trajectoryFollowId: string | null;
   setTrajectoryFollowId: (id: string | null) => void;
   cameraMode: SatelliteCameraMode;
@@ -29,11 +38,21 @@ export interface GuidedTourState {
   status: GuidedTourStatus;
   error: string | null;
   tour: ResolvedTour | null;
-  /** Scene tracks by tour track key. */
+  /** Scene tracks by tour track key (as loaded; the trail style is set per chapter). */
   tracks: Record<string, TrajectoryTrack>;
   chapterIndex: number;
   /** The last chapter has played to its end (end card shown, paused). */
   finished: boolean;
+  /**
+   * Loaded and parked on chapter 1, paused, behind the start screen
+   * (「タップして開始」); the clock starts on {@link begin}.
+   */
+  awaitingStart: boolean;
+}
+
+export interface StartTourOptions {
+  /** Show the start screen first (used for `?demo=`); otherwise play at once. */
+  awaitStart?: boolean;
 }
 
 /** What the app looked like before the tour, restored by 終了. */
@@ -46,14 +65,37 @@ interface Restore {
   camera: CameraSnapshot | null;
 }
 
-const INITIAL: GuidedTourState = { status: "idle", error: null, tour: null, tracks: {}, chapterIndex: 0, finished: false };
+const INITIAL: GuidedTourState = {
+  status: "idle",
+  error: null,
+  tour: null,
+  tracks: {},
+  chapterIndex: 0,
+  finished: false,
+  awaitingStart: false,
+};
+
+function prefersReducedMotion(): boolean {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function"
+    ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    : false;
+}
+
+/** Track key the camera looks at (null: none, e.g. a plain globe view). */
+function cameraTrackKey(camera: TourCamera): string | null {
+  return camera.track ?? null;
+}
 
 /**
  * Guided tour controller (presentation mode). Loads a tour, swaps its tracks
- * into the scene, and drives seek / speed / camera per chapter from a rAF
- * loop that reads the scene's sim time each frame (App's simTime state is
- * only updated once per sim second). 終了 puts back the tracks, follow,
- * camera, speed, pause state and sim time from before the tour.
+ * and landmarks into the scene, and drives seek / speed / camera / trail
+ * style per chapter from a rAF loop that reads the scene's sim time each
+ * frame (App's simTime state is only updated once per sim second). 終了 puts
+ * back the tracks, follow, camera, speed, pause state and sim time from
+ * before the tour.
+ *
+ * With `prefers-reduced-motion`, chapter speeds are capped at
+ * REDUCED_MOTION_MAX_SPEED and framing changes cut instead of easing.
  */
 export function useGuidedTour(host: GuidedTourHost) {
   const [state, setState] = useState<GuidedTourState>(INITIAL);
@@ -69,6 +111,24 @@ export function useGuidedTour(host: GuidedTourHost) {
   // Chapter to apply after the commit that put the tour tracks in the scene.
   const [pendingApply, setPendingApply] = useState<{ index: number; seek: boolean; nonce: number } | null>(null);
   const loadTokenRef = useRef(0);
+  const reducedMotionRef = useRef(false);
+  // Camera change index applied in the current chapter (−1: the chapter camera).
+  const appliedCameraRef = useRef(-1);
+
+  /** Swap in the tour tracks with this chapter's trail style (no geometry rebuild). */
+  const applyTrails = useCallback(
+    (tour: ResolvedTour, tracks: Record<string, TrajectoryTrack>, trail: TourTrail | undefined, focusKey: string | null) => {
+      const h = hostRef.current;
+      const next = tour.tracks.map((ref) => ({
+        ...tracks[ref.key],
+        trail: tourTrailStyle(trail, focusKey === null || focusKey === ref.key),
+      }));
+      // Straight into the scene (this frame), and into App state (rebuilds, restore).
+      h.sceneRef.current?.setTrajectories(next);
+      h.setTrajectories(next);
+    },
+    [],
+  );
 
   const applyCamera = useCallback((camera: TourCamera, tracks: Record<string, TrajectoryTrack>) => {
     const h = hostRef.current;
@@ -78,6 +138,12 @@ export function useGuidedTour(host: GuidedTourHost) {
       const id = tracks[camera.track]?.id ?? null;
       scene.setGlobeChase(null);
       scene.setTrajectoryFollow(id);
+      scene.setTrajectoryFollowFraming({
+        distanceM: camera.distanceM ?? null,
+        targetUpM: camera.targetUpM ?? 0,
+        includeId: camera.include !== undefined ? (tracks[camera.include]?.id ?? null) : null,
+        transitionS: reducedMotionRef.current ? 0 : camera.transitionS,
+      });
       h.setTrajectoryFollowId(id);
       return;
     }
@@ -91,26 +157,46 @@ export function useGuidedTour(host: GuidedTourHost) {
       if (trackId) scene.focusTrajectory(trackId);
       return;
     }
-    scene.frameGlobe(trackId, camera.distance);
+    scene.frameGlobe(trackId, camera.distance, camera.tiltDeg ?? 0);
     scene.setGlobeChase(camera.chase === false ? null : trackId);
   }, []);
 
   const applyChapter = useCallback(
-    (chapter: ResolvedChapter, tracks: Record<string, TrajectoryTrack>, seek: boolean, seekMs = chapter.startMs) => {
+    (
+      tour: ResolvedTour,
+      chapter: ResolvedChapter,
+      tracks: Record<string, TrajectoryTrack>,
+      seek: boolean,
+      seekMs = chapter.startMs,
+    ) => {
       const h = hostRef.current;
       const scene = h.sceneRef.current;
       if (!scene) return;
       if (seek) scene.seekTo(new Date(seekMs));
-      h.setTourSpeed(chapterSpeedAt(chapter, seek ? seekMs : scene.getSimulationTime().getTime()));
-      applyCamera(chapter.camera, tracks);
+      const t = seek ? seekMs : scene.getSimulationTime().getTime();
+      h.setTourSpeed(tourPlaybackSpeed(chapterSpeedAt(chapter, t), reducedMotionRef.current));
+      applyTrails(tour, tracks, chapter.trail, cameraTrackKey(chapter.camera));
+      const cam = chapterCameraAt(chapter, t);
+      appliedCameraRef.current = cam.index;
+      applyCamera(cam.camera, tracks);
     },
-    [applyCamera],
+    [applyCamera, applyTrails],
   );
 
-  const start = useCallback(async (tourUrl: string) => {
+  /** End card: full trails on every track and the ending camera (default: whole globe). */
+  const applyEnding = useCallback(
+    (tour: ResolvedTour, tracks: Record<string, TrajectoryTrack>) => {
+      applyTrails(tour, tracks, tour.ending?.trail, null);
+      applyCamera(tour.ending?.camera ?? { type: "globe" }, tracks);
+    },
+    [applyCamera, applyTrails],
+  );
+
+  const start = useCallback(async (tourUrl: string, options: StartTourOptions = {}) => {
     const token = ++loadTokenRef.current;
     const h = hostRef.current;
     const scene = h.sceneRef.current;
+    reducedMotionRef.current = prefersReducedMotion();
     if (!restoreRef.current) {
       restoreRef.current = {
         trajectories: h.trajectories,
@@ -132,9 +218,19 @@ export function useGuidedTour(host: GuidedTourHost) {
       cur.sceneRef.current?.setCameraMode("free");
       cur.setCameraMode("free");
       cur.setTrajectories(loaded.tour.tracks.map((t) => loaded.tracks[t.key]));
-      cur.setUserPaused(false);
+      cur.setTrajectoryLandmarks(tourLandmarks(loaded.tour));
+      // Parked until the start screen is dismissed (or the globe is ready).
+      cur.setUserPaused(true);
       if (loaded.warnings.length > 0) console.warn("[tour]", ...loaded.warnings);
-      setState({ status: "running", error: null, tour: loaded.tour, tracks: loaded.tracks, chapterIndex: 0, finished: false });
+      setState({
+        status: "running",
+        error: null,
+        tour: loaded.tour,
+        tracks: loaded.tracks,
+        chapterIndex: 0,
+        finished: false,
+        awaitingStart: options.awaitStart === true,
+      });
       setPendingApply((p) => ({ index: 0, seek: true, nonce: (p?.nonce ?? 0) + 1 }));
     } catch (err) {
       if (token !== loadTokenRef.current) return;
@@ -153,6 +249,7 @@ export function useGuidedTour(host: GuidedTourHost) {
     stateRef.current = INITIAL;
     setState(INITIAL);
     h.setTourSpeed(null);
+    h.setTrajectoryLandmarks([]);
     if (!back) return;
     scene?.setGlobeChase(null);
     scene?.setTrajectoryFollow(null);
@@ -170,17 +267,27 @@ export function useGuidedTour(host: GuidedTourHost) {
   const goTo = useCallback(
     (index: number) => {
       const s = stateRef.current;
-      if (s.status !== "running" || !s.tour) return;
+      if (s.status !== "running" || !s.tour || s.awaitingStart) return;
       const i = Math.max(0, Math.min(s.tour.chapters.length - 1, index));
       // Update the ref now: the frame loop may run before the re-render and
       // must not judge the new time against the old chapter.
       stateRef.current = { ...s, chapterIndex: i, finished: false };
       setState((prev) => ({ ...prev, chapterIndex: i, finished: false }));
       if (s.finished) hostRef.current.setUserPaused(false);
-      applyChapter(s.tour.chapters[i], s.tracks, true);
+      applyChapter(s.tour, s.tour.chapters[i], s.tracks, true);
     },
     [applyChapter],
   );
+
+  /** Leave the start screen: start the clock from the first chapter. */
+  const begin = useCallback(() => {
+    const s = stateRef.current;
+    if (s.status !== "running" || !s.tour || !s.awaitingStart) return;
+    stateRef.current = { ...s, awaitingStart: false, chapterIndex: 0, finished: false };
+    setState((prev) => ({ ...prev, awaitingStart: false, chapterIndex: 0, finished: false }));
+    applyChapter(s.tour, s.tour.chapters[0], s.tracks, true);
+    hostRef.current.setUserPaused(false);
+  }, [applyChapter]);
 
   // Apply the first chapter once the tour tracks are committed (this effect
   // runs after useSatelliteScene's, which hands them to the scene).
@@ -189,19 +296,23 @@ export function useGuidedTour(host: GuidedTourHost) {
     const s = stateRef.current;
     if (s.status !== "running" || !s.tour) return;
     if (!hostRef.current.sceneRef.current) return; // the frame loop retries
-    applyChapter(s.tour.chapters[pendingApply.index], s.tracks, pendingApply.seek);
+    applyChapter(s.tour, s.tour.chapters[pendingApply.index], s.tracks, pendingApply.seek);
     setPendingApply(null);
   }, [pendingApply, applyChapter]);
 
   const running = state.status === "running";
-  // Frame loop: auto-advance, in-chapter speed changes, and recovery from a
-  // scene rebuild (which restarts the clock at the scenario start time).
+  // Frame loop: start once the globe is ready, auto-advance, in-chapter speed
+  // and camera changes, and recovery from a scene rebuild (which restarts
+  // the clock at the scenario start time).
   useEffect(() => {
     if (!running) return;
     let raf = 0;
     let lastScene: SatelliteScene | null = hostRef.current.sceneRef.current;
     let lastSimMs: number | null = null;
     let appliedSpeed: number | null = null;
+    // Without a start screen, the clock waits for the globe's textures (the
+    // boot splash) and then starts from the first chapter's start.
+    let waitingForEarth = !stateRef.current.awaitingStart;
     const loop = () => {
       raf = requestAnimationFrame(loop);
       const s = stateRef.current;
@@ -212,44 +323,62 @@ export function useGuidedTour(host: GuidedTourHost) {
         // Rebuilt (or first available): resume where the tour was.
         const resumeMs = lastSimMs ?? chapter.startMs;
         lastScene = scene;
-        applyChapter(chapter, s.tracks, true, resumeMs);
+        applyChapter(s.tour, chapter, s.tracks, true, resumeMs);
+        if (s.finished) applyEnding(s.tour, s.tracks);
+        return;
+      }
+      if (waitingForEarth) {
+        if (s.awaitingStart || !scene.isEarthReady()) return;
+        waitingForEarth = false;
+        applyChapter(s.tour, chapter, s.tracks, true);
+        hostRef.current.setUserPaused(false);
         return;
       }
       const ms = scene.getSimulationTime().getTime();
       lastSimMs = ms;
-      if (s.finished) return;
+      if (s.finished || s.awaitingStart) return;
       const step = nextTourStep(s.tour, s.chapterIndex, ms);
       if (step.kind === "finish") {
         stateRef.current = { ...s, finished: true };
         setState((prev) => ({ ...prev, finished: true }));
         hostRef.current.setUserPaused(true);
+        applyEnding(s.tour, s.tracks);
         return;
       }
       if (step.kind === "advance") {
         const next = s.tour.chapters[step.index];
         stateRef.current = { ...s, chapterIndex: step.index };
         setState((prev) => ({ ...prev, chapterIndex: step.index }));
-        applyChapter(next, s.tracks, step.seekMs !== null, step.seekMs ?? next.startMs);
+        applyChapter(s.tour, next, s.tracks, step.seekMs !== null, step.seekMs ?? next.startMs);
         appliedSpeed = null;
         return;
       }
-      const speed = chapterSpeedAt(chapter, ms);
+      const speed = tourPlaybackSpeed(chapterSpeedAt(chapter, ms), reducedMotionRef.current);
       if (appliedSpeed !== null && speed !== appliedSpeed) hostRef.current.setTourSpeed(speed);
       appliedSpeed = speed;
+      const cam = chapterCameraAt(chapter, ms);
+      if (cam.index !== appliedCameraRef.current) {
+        appliedCameraRef.current = cam.index;
+        applyCamera(cam.camera, s.tracks);
+      }
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [running, applyChapter]);
+  }, [running, applyChapter, applyCamera, applyEnding]);
 
   const togglePause = useCallback(() => {
     const h = hostRef.current;
     const s = stateRef.current;
+    if (s.awaitingStart) {
+      begin();
+      return;
+    }
     if (s.finished) {
       goTo(0);
       return;
     }
     h.setUserPaused(!h.userPaused);
-  }, [goTo]);
+  }, [goTo, begin]);
 
-  return { state, start, stop, goTo, togglePause };
+  return { state, start, stop, goTo, togglePause, begin };
 }

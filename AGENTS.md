@@ -62,6 +62,7 @@ These notes collect the essentials an autonomous coding assistant needs before t
 - If you introduce new TOML schema fields, update both the Bun generator and any corresponding TypeScript types or formatters.
 - The generator normalizes metadata (NORAD IDs, object names). Keep new fields consistent with the serialization logic (`serialize()` helper) and the resulting `SatelliteSpec` type.
 - Re-run the generator (or rely on `predev`/`prebuild`) after TOML edits so `satellites.generated.ts` stays in sync; review the diff before committing.
+- Launch-site imagery (`public/assets/launch-sites/`, CC BY 4.0, not Apache-2.0) is fetched by `bun scripts/fetch-launch-site-imagery.ts` (one polite WMS request per site, cached outside the repo); keep its README, `index.json` credit and `docs/THIRD-PARTY.md` in sync when changing the source.
 
 ## Gotchas
 - Never commit edits inside `dist/` or `node_modules/`.

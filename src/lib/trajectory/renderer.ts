@@ -22,6 +22,17 @@
  *
  * `update()` is allocation-free: a binary search on the sampled times, then
  * the bright line's instance count and one segment end are rewritten.
+ *
+ * Trail options (`track.trail`, see docs/trajectory-layer.md): both lines
+ * carry a per-segment time attribute, and a small patch of the fat-line
+ * shader uses it to fade the bright line over a time window behind the tip
+ * and, in the "inertial" frame, to rotate each point back by the Earth's
+ * rotation since it was flown — no per-frame geometry work for either.
+ *
+ * Precision: the lines live in a child group whose origin is re-based near
+ * the vehicle when the camera is close (float32 vertices relative to an
+ * origin within ~60 km keep millimetre precision), so trails do not shimmer
+ * against the model while following a vehicle.
  */
 
 import * as THREE from "three";
@@ -30,7 +41,7 @@ import { LineGeometry } from "three/examples/jsm/lines/LineGeometry.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { sunVectorECI } from "../astronomy";
-import { geodeticUpEcef, trajectoryAttitudeAt } from "./attitude";
+import { geodeticUpEcef, trajectoryAttitudeAt, uprightBodyQuaternion } from "./attitude";
 import { sampleTrajectoryPath, trajectoryEcefAt, trajectoryStateAt } from "./interpolate";
 import {
   acquireTrajectoryModel,
@@ -41,7 +52,8 @@ import {
   trajectoryModelLengthM,
   type TrajectoryModelTemplate,
 } from "./models";
-import type { BodyQuaternion, TrajectoryTrack } from "./types";
+import { llaToEcef } from "./parse";
+import type { BodyQuaternion, TrajectoryLandmark, TrajectoryTrack } from "./types";
 
 const EARTH_RADIUS_EQUATOR_KM = 6378.137;
 const EARTH_RADIUS_POLAR_KM = 6356.7523142;
@@ -78,6 +90,85 @@ const GROUND_DISC_MAX_ALT_KM = 10;
 const GROUND_DISC_FADE_START_KM = 5;
 /** Occlusion sphere radius (scene units); a bit inside the unit sphere so surface points stay visible. */
 const OCCLUDER_RADIUS = 0.9995;
+/** Earth rotation rate (rad/s), for the inertial trail frame (GMST rate; precession is negligible over a flight). */
+export const EARTH_ROTATION_RAD_S = 7.2921159e-5;
+/** Re-base a track's line origin onto its tip when the camera is within this distance of it (Earth radii, ~320 km)… */
+const REBASE_CAMERA_DISTANCE = 0.05;
+/** …and the tip is farther than this from the current origin (Earth radii, ~64 km). */
+const REBASE_TIP_DISTANCE = 0.01;
+/** Name labels closer than this on screen (px, both axes scaled by the label size) are stacked. */
+const LABEL_STACK_STEP = 1.15;
+const LANDMARK_DEFAULT_COLOR = "#d7dde4";
+const LANDMARK_MARKER_SIZE_PX = 7;
+
+/**
+ * Patch a fat-line material for the trail options: per-vertex age (for the
+ * window fade) and the optional inertial rotation. Returns false (material
+ * untouched) when the three.js shader no longer has the expected anchors.
+ */
+export function patchTrailLineMaterial(
+  material: LineMaterial,
+  uniforms: { trailNowS: { value: number }; trailInertial: { value: number }; trailOrigin: { value: THREE.Vector3 }; trailWindowS: { value: number } },
+): boolean {
+  const vStart = "vec4 start = modelViewMatrix * vec4( instanceStart, 1.0 );";
+  const vEnd = "vec4 end = modelViewMatrix * vec4( instanceEnd, 1.0 );";
+  const vAspect = "float aspect = resolution.x / resolution.y;";
+  const fOut = "gl_FragColor = vec4( diffuseColor.rgb, alpha );";
+  const vs = material.vertexShader;
+  const fs = material.fragmentShader;
+  if (!vs.includes(vStart) || !vs.includes(vEnd) || !vs.includes(vAspect) || !fs.includes(fOut)) return false;
+  const omega = EARTH_ROTATION_RAD_S.toExponential(8);
+  material.vertexShader =
+    `attribute float instanceTimeStart;
+attribute float instanceTimeEnd;
+uniform float trailNowS;
+uniform float trailInertial;
+uniform vec3 trailOrigin;
+varying float vTrailAge;
+vec3 trailFrame( vec3 p, float t ) {
+  if ( trailInertial < 0.5 ) return p;
+  float a = ${omega} * ( t - trailNowS );
+  float c = cos( a );
+  float s = sin( a );
+  vec3 q = p + trailOrigin;
+  return vec3( c * q.x + s * q.z, q.y, - s * q.x + c * q.z ) - trailOrigin;
+}
+` +
+    vs
+      .replace(vStart, "vec4 start = modelViewMatrix * vec4( trailFrame( instanceStart, instanceTimeStart ), 1.0 );")
+      .replace(vEnd, "vec4 end = modelViewMatrix * vec4( trailFrame( instanceEnd, instanceTimeEnd ), 1.0 );")
+      .replace(vAspect, `vTrailAge = trailNowS - ( ( position.y < 0.5 ) ? instanceTimeStart : instanceTimeEnd );
+			${vAspect}`);
+  material.fragmentShader =
+    `uniform float trailWindowS;
+varying float vTrailAge;
+` +
+    fs.replace(
+      fOut,
+      `if ( trailWindowS > 0.0 ) {
+				float trailFade = 1.0 - vTrailAge / trailWindowS;
+				if ( trailFade <= 0.0 ) discard;
+				alpha *= min( trailFade, 1.0 );
+			}
+			${fOut}`,
+    );
+  Object.assign(material.uniforms, uniforms);
+  material.needsUpdate = true;
+  return true;
+}
+
+/**
+ * Inertial-frame trail point (overlay-local, Earth radii): an Earth-fixed
+ * point flown at `pointS` drawn at `nowS` is rotated about the polar (+Y)
+ * axis by ω⊕·(pointS − nowS), so that after the overlay group's GMST(now)
+ * rotation it sits where it was in inertial space. Mirrors the shader.
+ */
+export function inertialTrailPoint(p: THREE.Vector3, pointS: number, nowS: number, out: THREE.Vector3): THREE.Vector3 {
+  const a = EARTH_ROTATION_RAD_S * (pointS - nowS);
+  const c = Math.cos(a);
+  const sn = Math.sin(a);
+  return out.set(c * p.x + sn * p.z, p.y, -sn * p.x + c * p.z);
+}
 
 /** ECEF km → scene local (Earth-fixed group) coordinates (unlifted; see the group scale). */
 export function ecefToTrajectoryScene(x: number, y: number, z: number, out: THREE.Vector3): THREE.Vector3 {
@@ -239,32 +330,79 @@ const OVERLAY_FRAME_FILL = 0.9;
 /** Never shorter than this (model lengths), so the arrows stay readable when zoomed right in. */
 const OVERLAY_MIN_LENGTHS = 0.3;
 
+interface TrailUniforms {
+  trailNowS: { value: number };
+  trailInertial: { value: number };
+  trailOrigin: { value: THREE.Vector3 };
+}
+
 interface TrackEntry {
   track: TrajectoryTrack;
   group: THREE.Group;
-  /** Sampled path times (ms) and scene-space positions (xyz interleaved, unlifted). */
+  /** Child of `group` holding both lines, positioned at `origin` (see rebaseEntry). */
+  lineGroup: THREE.Group;
+  /** Line origin, overlay-local scene units (unlifted). Line vertices are stored relative to it. */
+  origin: THREE.Vector3;
+  /** Sampled path times (ms) and scene-space positions (xyz interleaved, unlifted, absolute). */
   timesMs: Float64Array;
-  scenePositions: Float32Array;
+  scenePositions: Float64Array;
+  /** Time base of the float32 per-segment times (the first sampled time), ms. */
+  t0Ms: number;
   faintLine: Line2;
+  faintSegments: Float32Array;
+  faintBuffer: THREE.InterleavedBuffer;
   brightLine: Line2;
   /** Interleaved segment buffer of the bright line (6 floats per segment). */
   brightSegments: Float32Array;
   brightBuffer: THREE.InterleavedBuffer;
+  /** Per-segment [start, end] times of the bright line, seconds after t0Ms. */
+  brightTimes: Float32Array;
+  brightTimeBuffer: THREE.InterleavedBuffer;
+  /** Shared by both line materials. */
+  uniforms: TrailUniforms;
+  brightWindow: { value: number };
+  /** Whether the trail shader patch is in place (window / inertial supported). */
+  trailPatched: boolean;
   /** Segment whose end currently holds the live tip, or -1. */
   tipSegment: number;
   marker: THREE.Points;
   events: THREE.Points | null;
+  eventGeometry: THREE.BufferGeometry | null;
   eventMaterial: THREE.PointsMaterial | null;
+  /** Times of the drawn events (same order as eventLabels and the event vertices). */
+  eventTimesMs: number[];
+  /** Events shown this frame: [eventLo, eventHi) (all unless the trail hides future / old ones). */
+  eventLo: number;
+  eventHi: number;
   eventLabels: Label[];
   nameLabel: Label | null;
   /** Set by renderVehicles when the model is drawn large enough to replace the dot. */
   hideMarker: boolean;
-  /** Whether the marker / name label is inside the span this frame. */
+  /** Whether the marker / name label is shown this frame (inside the span, or held at its end). */
   inSpan: boolean;
   vehicle: VehicleSlot | null;
   materials: THREE.Material[];
   geometries: THREE.BufferGeometry[];
   usesSprite: boolean;
+}
+
+interface LandmarkEntry {
+  landmark: TrajectoryLandmark;
+  /** Overlay-local position (unlifted). */
+  position: THREE.Vector3;
+  /** Label anchor: the top of the model, if any. */
+  labelPosition: THREE.Vector3;
+  marker: THREE.Points;
+  markerMaterial: THREE.PointsMaterial;
+  label: Label | null;
+  /** Body → ECEF attitude (upright). */
+  attitude: BodyQuaternion;
+  vehicle: VehicleSlot | null;
+  /** Inside its time window (update). */
+  active: boolean;
+  /** Camera within maxDistanceKm (renderVehicles, applied next frame). */
+  near: boolean;
+  hideMarker: boolean;
 }
 
 const scratchEcefPos = new Float64Array(3);
@@ -304,11 +442,18 @@ export class TrajectoryRenderer {
   private satelliteCoversMarker = false;
   private readonly tmpQuat = new THREE.Quaternion();
 
+  // Landmarks (see setLandmarks).
+  private readonly landmarkGroup = new THREE.Group();
+  private landmarks: LandmarkEntry[] = [];
+  private landmarkList: readonly TrajectoryLandmark[] = [];
+
   constructor(scene: THREE.Scene) {
     this.scene = scene;
     this.root = new THREE.Group();
     this.root.name = "TrajectoryTracks";
     this.scene.add(this.root);
+    this.landmarkGroup.name = "TrajectoryLandmarks";
+    this.root.add(this.landmarkGroup);
     // Until the first renderVehicles() call: assume a 45° fov.
     this.labelScalePerPx = (2 * Math.tan(Math.PI / 8)) / Math.max(1, this.resolution.y);
     this.vehicleScene.name = "TrajectoryVehicles";
@@ -324,6 +469,27 @@ export class TrajectoryRenderer {
 
   getTracks(): readonly TrajectoryTrack[] {
     return this.tracks;
+  }
+
+  /** Overlay root (Earth-fixed, GMST-rotated): trails, markers, labels and landmark dots. */
+  getRootObject(): THREE.Object3D {
+    return this.root;
+  }
+
+  /**
+   * Replace the landmarks (fixed points with a dot, a label and an optional
+   * upright model). No-op for the same array.
+   */
+  setLandmarks(landmarks: readonly TrajectoryLandmark[]): void {
+    if (landmarks === this.landmarkList) return;
+    this.landmarkList = landmarks;
+    this.landmarks.forEach((l) => this.disposeLandmark(l));
+    this.landmarks = [];
+    for (const landmark of landmarks) {
+      const entry = this.buildLandmark(landmark);
+      if (entry) this.landmarks.push(entry);
+    }
+    if (Number.isFinite(this.lastSimMs)) this.updateLandmarks(this.lastSimMs);
   }
 
   /**
@@ -382,6 +548,7 @@ export class TrajectoryRenderer {
     const simMs = simDate.getTime();
     this.lastSimMs = simMs;
     this.updateTracks(simMs);
+    this.updateLandmarks(simMs);
   }
 
   /**
@@ -505,6 +672,7 @@ export class TrajectoryRenderer {
     const camLocal = this.tmpCamLocal.set(camX * cosR - camZ * sinR, camY, camX * sinR + camZ * cosR);
     this.updateLabelOcclusion(camLocal);
     this.updateTrailLift(camLocal, simDate.getTime());
+    this.updateLabelStacking(camera, viewportH);
 
     const simMs = simDate.getTime();
     const pxPerRad = (p5 * viewportH) / 2;
@@ -525,9 +693,17 @@ export class TrajectoryRenderer {
       slot.disc.visible = false;
       if (!entry.track.visible) continue;
       // Before lift-off the vehicle stands on the pad: hold the first sample
-      // for up to PREFLIGHT_HOLD_MS so a countdown shows the rocket.
+      // for up to PREFLIGHT_HOLD_MS so a countdown shows the rocket. After the
+      // end it is held at the last sample for track.holdEndMs (default 0).
       const firstMs = entry.track.samples[0].timeMs;
-      const drawMs = simMs < firstMs && firstMs - simMs <= PREFLIGHT_HOLD_MS ? firstMs : simMs;
+      const lastMs = entry.track.samples[entry.track.samples.length - 1].timeMs;
+      const holdEndMs = Math.max(0, entry.track.holdEndMs ?? 0);
+      const drawMs =
+        simMs < firstMs && firstMs - simMs <= PREFLIGHT_HOLD_MS
+          ? firstMs
+          : simMs > lastMs && simMs - lastMs <= holdEndMs
+            ? lastMs
+            : simMs;
       if (!trajectoryEcefAt(entry.track, drawMs, scratchEcefPos)) continue;
       const p = scratchEcefPos;
       const lx = p[0] / EARTH_RADIUS_EQUATOR_KM;
@@ -602,6 +778,39 @@ export class TrajectoryRenderer {
           discs += 1;
         }
       }
+    }
+    // Landmarks: static upright models, same camera-relative placement.
+    for (const lm of this.landmarks) {
+      lm.hideMarker = false;
+      const dist0 = lm.position.distanceTo(camLocal);
+      const maxKm = lm.landmark.maxDistanceKm;
+      lm.near = maxKm === undefined || dist0 * EARTH_RADIUS_EQUATOR_KM <= maxKm;
+      const slot = lm.vehicle;
+      if (!slot || !slot.object || !slot.template) continue;
+      const object = slot.object;
+      object.visible = false;
+      if (!lm.active) continue;
+      const { x: lx, y: ly, z: lz } = lm.position;
+      if (this.occludedByEarth(camLocal, lx, ly, lz)) continue;
+      const dx = (lx * cosR + lz * sinR - camX) * SCENE_UNIT_M;
+      const dy = (ly - camY) * SCENE_UNIT_M;
+      const dz = (-lx * sinR + lz * cosR - camZ) * SCENE_UNIT_M;
+      const dist = Math.hypot(dx, dy, dz);
+      const lengthM = slot.template.lengthM;
+      const px = (lengthM * pxPerRad) / Math.max(dist, 1e-3);
+      if (px < MODEL_MIN_PX) continue;
+      lm.hideMarker = px >= MODEL_HIDE_MARKER_PX;
+      bodyToWorldQuaternion(lm.attitude, rotAngle, object.quaternion);
+      const centre = this.tmpCentre.set(dx, dy, dz);
+      if (slot.template.anchor === "base") {
+        centre.addScaledVector(this.tmpPivot.set(1, 0, 0).applyQuaternion(object.quaternion), lengthM / 2);
+      }
+      object.position.copy(centre).sub(this.tmpPivot.copy(slot.template.pivotBody).applyQuaternion(object.quaternion));
+      object.visible = true;
+      drawn += 1;
+      // The model reaches ~lengthM sideways too (tower arms): bracket generously.
+      nearest = Math.min(nearest, dist - lengthM);
+      farthest = Math.max(farthest, dist + lengthM);
     }
     // Ad-hoc satellite (近接 camera): same camera-relative placement.
     this.satelliteCoversMarker = false;
@@ -710,6 +919,9 @@ export class TrajectoryRenderer {
     for (const entry of this.entries.values()) this.disposeEntry(entry);
     this.entries.clear();
     this.tracks = [];
+    this.landmarks.forEach((l) => this.disposeLandmark(l));
+    this.landmarks = [];
+    this.landmarkList = [];
     this.scene.remove(this.root);
     this.vehicleScene.clear();
     this.vehicleScene.environment = null;
@@ -745,35 +957,63 @@ export class TrajectoryRenderer {
     const n = times.length;
     const segments = entry.brightSegments;
     const geom = entry.brightLine.geometry as LineGeometry;
+    const p = entry.scenePositions;
+    const o = entry.origin;
+
+    // Trail options (display only, read live from the track).
+    const trail = entry.track.trail;
+    const inertial = entry.trailPatched && trail?.frame === "inertial";
+    const windowMs = entry.trailPatched && trail?.windowMs !== undefined && trail.windowMs > 0 ? trail.windowMs : 0;
+    const future = trail?.future !== false;
+    entry.faintLine.visible = future;
+    entry.uniforms.trailNowS.value = (simMs - entry.t0Ms) / 1000;
+    entry.uniforms.trailInertial.value = inertial ? 1 : 0;
+    entry.brightWindow.value = windowMs / 1000;
+    this.updateEvents(entry, simMs, inertial, future, windowMs);
 
     // Restore the segment end overwritten by the previous live tip.
     if (entry.tipSegment >= 0) {
       const k = entry.tipSegment;
-      const p = entry.scenePositions;
-      segments[k * 6 + 3] = p[(k + 1) * 3];
-      segments[k * 6 + 4] = p[(k + 1) * 3 + 1];
-      segments[k * 6 + 5] = p[(k + 1) * 3 + 2];
+      segments[k * 6 + 3] = p[(k + 1) * 3] - o.x;
+      segments[k * 6 + 4] = p[(k + 1) * 3 + 1] - o.y;
+      segments[k * 6 + 5] = p[(k + 1) * 3 + 2] - o.z;
+      entry.brightTimes[k * 2 + 1] = (times[k + 1] - entry.t0Ms) / 1000;
       entry.tipSegment = -1;
       entry.brightBuffer.needsUpdate = true;
+      entry.brightTimeBuffer.needsUpdate = true;
     }
 
     if (simMs < times[0] || simMs >= times[n - 1]) {
       const finished = simMs >= times[n - 1];
       geom.instanceCount = finished ? n - 1 : 0;
       entry.brightLine.visible = finished;
+      // Held at the end point (track.holdEndMs): marker and label stay.
+      const held = finished && simMs - times[n - 1] <= Math.max(0, entry.track.holdEndMs ?? 0);
+      entry.inSpan = held;
+      if (held) {
+        const last = this.tmp.set(p[(n - 1) * 3], p[(n - 1) * 3 + 1], p[(n - 1) * 3 + 2]);
+        entry.marker.position.copy(last);
+        entry.marker.visible = !entry.hideMarker;
+        if (entry.nameLabel) {
+          entry.nameLabel.sprite.position.copy(last);
+          entry.nameLabel.sprite.visible = !entry.nameLabel.occluded;
+        }
+        return;
+      }
       entry.marker.visible = false;
-      entry.inSpan = false;
       if (entry.nameLabel) entry.nameLabel.sprite.visible = false;
       return;
     }
 
     const k = this.segmentIndex(times, simMs);
     const tip = this.interpolate(entry, k, simMs, this.tmp);
-    segments[k * 6 + 3] = tip.x;
-    segments[k * 6 + 4] = tip.y;
-    segments[k * 6 + 5] = tip.z;
+    segments[k * 6 + 3] = tip.x - o.x;
+    segments[k * 6 + 4] = tip.y - o.y;
+    segments[k * 6 + 5] = tip.z - o.z;
+    entry.brightTimes[k * 2 + 1] = (simMs - entry.t0Ms) / 1000;
     entry.tipSegment = k;
     entry.brightBuffer.needsUpdate = true;
+    entry.brightTimeBuffer.needsUpdate = true;
     geom.instanceCount = k + 1;
     entry.brightLine.visible = true;
     entry.marker.position.copy(tip);
@@ -784,6 +1024,45 @@ export class TrajectoryRenderer {
       // storage), so the label stays on the model even at 1.6 km/s.
       entry.nameLabel.sprite.position.copy(tip);
       entry.nameLabel.sprite.visible = !entry.nameLabel.occluded;
+    }
+  }
+
+  /**
+   * Event dots and labels shown this frame: none in the inertial frame
+   * (they are Earth-fixed points), only past ones without the future path,
+   * and only those inside the trail window when one is set.
+   */
+  private updateEvents(entry: TrackEntry, simMs: number, inertial: boolean, future: boolean, windowMs: number) {
+    const times = entry.eventTimesMs;
+    let lo = 0;
+    let hi = times.length;
+    if (inertial) hi = 0;
+    else {
+      if (!future) while (hi > 0 && times[hi - 1] > simMs) hi -= 1;
+      if (windowMs > 0) while (lo < hi && times[lo] < simMs - windowMs) lo += 1;
+    }
+    if (lo === entry.eventLo && hi === entry.eventHi) return;
+    entry.eventLo = lo;
+    entry.eventHi = hi;
+    if (entry.events && entry.eventGeometry) {
+      entry.eventGeometry.setDrawRange(lo, Math.max(0, hi - lo));
+      entry.events.visible = hi > lo;
+    }
+    this.applyFocus(entry);
+  }
+
+  private eventLabelShown(entry: TrackEntry, index: number, label: Label): boolean {
+    return entry.track.id === this.focusedId && !label.occluded && index >= entry.eventLo && index < entry.eventHi;
+  }
+
+  /** Landmark dots and labels: inside their time window and near enough to the camera. */
+  private updateLandmarks(simMs: number) {
+    for (const lm of this.landmarks) {
+      const { fromMs, untilMs } = lm.landmark;
+      lm.active = (fromMs === undefined || simMs >= fromMs) && (untilMs === undefined || simMs <= untilMs);
+      const show = lm.active && lm.near;
+      lm.marker.visible = show && !lm.hideMarker;
+      if (lm.label) lm.label.sprite.visible = show && !lm.label.occluded;
     }
   }
 
@@ -838,28 +1117,126 @@ export class TrajectoryRenderer {
         name.occluded = this.occludedByEarth(camLocal, pos.x, pos.y, pos.z);
       }
       if (entry.track.id !== this.focusedId) continue;
-      for (const label of entry.eventLabels) {
+      entry.eventLabels.forEach((label, i) => {
         const pos = label.sprite.position;
         label.occluded = this.occludedByEarth(camLocal, pos.x, pos.y, pos.z);
-        label.sprite.visible = !label.occluded;
-      }
+        label.sprite.visible = this.eventLabelShown(entry, i, label);
+      });
+    }
+    for (const lm of this.landmarks) {
+      if (!lm.label) continue;
+      const pos = lm.labelPosition;
+      lm.label.occluded = this.occludedByEarth(camLocal, pos.x, pos.y, pos.z);
     }
   }
 
   /**
-   * Radial drawing lift per track, applied as a group scale about the Earth's
-   * centre (takes effect next frame): proportional to the camera's distance to
-   * the track's current tip, capped at TRAJECTORY_SURFACE_OFFSET_MAX.
+   * Keep name labels (tracks, then landmarks) from overprinting: a label
+   * whose screen box overlaps an earlier visible one is moved down by one
+   * label height per overlap (e.g. booster and ship during the stacked
+   * ascent). Uses this frame's matrices; takes effect next frame.
+   */
+  private updateLabelStacking(camera: THREE.PerspectiveCamera, viewportH: number) {
+    const placed = this.stackPlaced;
+    placed.length = 0;
+    const halfH = viewportH / 2;
+    const aspect = camera.aspect || 1;
+    const stack = (label: Label | null, shown: boolean) => {
+      if (!label) return;
+      let slot = 0;
+      if (shown) {
+        const v = this.tmp.setFromMatrixPosition(label.sprite.matrixWorld).project(camera);
+        if (v.z < 1) {
+          const x = v.x * halfH * aspect;
+          const y = v.y * halfH;
+          const step = label.heightPx * LABEL_STACK_STEP;
+          for (let guard = 0; guard <= placed.length; guard++) {
+            const yy = y - slot * step;
+            let hit = false;
+            for (const q of placed) {
+              if (Math.abs(q.x - x) < Math.max(q.w, label.widthPx) && Math.abs(q.y - yy) < step) {
+                hit = true;
+                break;
+              }
+            }
+            if (!hit) break;
+            slot += 1;
+          }
+          placed.push({ x, y: y - slot * step, w: label.widthPx });
+        }
+      }
+      const cy = 0.5 + slot * LABEL_STACK_STEP;
+      if (label.sprite.center.y !== cy) label.sprite.center.y = cy;
+    };
+    for (const entry of this.entries.values()) stack(entry.nameLabel, entry.track.visible && entry.inSpan && !!entry.nameLabel?.sprite.visible);
+    for (const lm of this.landmarks) stack(lm.label, !!lm.label?.sprite.visible);
+  }
+
+  private readonly stackPlaced: { x: number; y: number; w: number }[] = [];
+
+  /**
+   * Radial drawing lift, applied as a group scale about the Earth's centre
+   * (takes effect next frame): proportional to the camera's distance to the
+   * NEAREST visible track tip, capped at TRAJECTORY_SURFACE_OFFSET_MAX, and
+   * the same for every track and the landmarks — a per-track lift moved the
+   * other track's path by up to ~0.6 km as the camera followed one vehicle.
+   * Also re-bases a track's line origin onto its tip when the camera is close
+   * (float32 precision, see rebaseEntry).
    */
   private updateTrailLift(camLocal: THREE.Vector3, simMs: number) {
+    let nearest = Number.POSITIVE_INFINITY;
     for (const entry of this.entries.values()) {
       if (!entry.group.visible) continue;
       const times = entry.timesMs;
       const n = times.length;
       const t = Math.min(Math.max(simMs, times[0]), times[n - 1]);
       const tip = this.interpolate(entry, this.segmentIndex(times, t), t, this.tmpLift);
-      const lift = Math.min(TRAJECTORY_SURFACE_OFFSET_MAX, TRAJECTORY_SURFACE_OFFSET_PER_DISTANCE * tip.distanceTo(camLocal));
-      entry.group.scale.setScalar(1 + lift);
+      const d = tip.distanceTo(camLocal);
+      nearest = Math.min(nearest, d);
+      if (d < REBASE_CAMERA_DISTANCE && tip.distanceTo(entry.origin) > REBASE_TIP_DISTANCE) this.rebaseEntry(entry, tip);
+    }
+    const lift = Number.isFinite(nearest)
+      ? Math.min(TRAJECTORY_SURFACE_OFFSET_MAX, TRAJECTORY_SURFACE_OFFSET_PER_DISTANCE * nearest)
+      : TRAJECTORY_SURFACE_OFFSET_MAX;
+    for (const entry of this.entries.values()) entry.group.scale.setScalar(1 + lift);
+    this.landmarkGroup.scale.setScalar(1 + lift);
+  }
+
+  /**
+   * Move the line origin to `origin` and rewrite both line buffers relative
+   * to it (the live tip is rewritten by the next update()). Float32 vertices
+   * near 1 Earth radius only resolve ~0.4 m, which shimmers at follow-camera
+   * range; relative to a nearby origin they resolve millimetres.
+   */
+  private rebaseEntry(entry: TrackEntry, origin: THREE.Vector3) {
+    entry.origin.copy(origin);
+    entry.lineGroup.position.copy(origin);
+    entry.uniforms.trailOrigin.value.copy(origin);
+    this.writeSegments(entry.scenePositions, origin, entry.faintSegments);
+    this.writeSegments(entry.scenePositions, origin, entry.brightSegments);
+    entry.faintBuffer.needsUpdate = true;
+    entry.brightBuffer.needsUpdate = true;
+    // The tip segment now holds its true end again; restore its time too.
+    if (entry.tipSegment >= 0) {
+      const k = entry.tipSegment;
+      entry.brightTimes[k * 2 + 1] = (entry.timesMs[k + 1] - entry.t0Ms) / 1000;
+      entry.brightTimeBuffer.needsUpdate = true;
+      entry.tipSegment = -1;
+    }
+  }
+
+  /** Interleaved [start xyz, end xyz] segments of a polyline, relative to `origin`. */
+  private writeSegments(positions: Float64Array, origin: THREE.Vector3, out: Float32Array) {
+    const segments = positions.length / 3 - 1;
+    for (let i = 0; i < segments; i++) {
+      const a = i * 3;
+      const j = i * 6;
+      out[j] = positions[a] - origin.x;
+      out[j + 1] = positions[a + 1] - origin.y;
+      out[j + 2] = positions[a + 2] - origin.z;
+      out[j + 3] = positions[a + 3] - origin.x;
+      out[j + 4] = positions[a + 4] - origin.y;
+      out[j + 5] = positions[a + 5] - origin.z;
     }
   }
 
@@ -870,6 +1247,7 @@ export class TrajectoryRenderer {
       if (entry.nameLabel) this.scaleLabel(entry.nameLabel);
       entry.eventLabels.forEach((l) => this.scaleLabel(l));
     }
+    for (const lm of this.landmarks) if (lm.label) this.scaleLabel(lm.label);
   }
 
   private scaleLabel(label: Label) {
@@ -878,7 +1256,9 @@ export class TrajectoryRenderer {
 
   private applyFocus(entry: TrackEntry) {
     const focused = entry.track.id === this.focusedId;
-    for (const label of entry.eventLabels) label.sprite.visible = focused && !label.occluded;
+    entry.eventLabels.forEach((label, i) => {
+      label.sprite.visible = this.eventLabelShown(entry, i, label);
+    });
     if (entry.eventMaterial) {
       entry.eventMaterial.size = focused ? EVENT_SIZE_FOCUSED_PX : EVENT_SIZE_PX;
       entry.eventMaterial.opacity = focused ? 1 : 0.9;
@@ -1070,7 +1450,7 @@ export class TrajectoryRenderer {
     const n = timesMs.length;
     if (n < 2) return null;
 
-    const scenePositions = new Float32Array(n * 3);
+    const scenePositions = new Float64Array(n * 3);
     const v = this.tmp;
     for (let i = 0; i < n; i++) {
       ecefToTrajectoryScene(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2], v);
@@ -1085,10 +1465,45 @@ export class TrajectoryRenderer {
     const materials: THREE.Material[] = [];
     const geometries: THREE.BufferGeometry[] = [];
 
+    // Lines live in a child group positioned at `origin` (the first point;
+    // re-based near the camera later), with vertices stored relative to it.
+    const origin = new THREE.Vector3(scenePositions[0], scenePositions[1], scenePositions[2]);
+    const lineGroup = new THREE.Group();
+    lineGroup.position.copy(origin);
+    group.add(lineGroup);
+    const relative = new Float32Array(n * 3);
+    for (let i = 0; i < n * 3; i += 3) {
+      relative[i] = scenePositions[i] - origin.x;
+      relative[i + 1] = scenePositions[i + 1] - origin.y;
+      relative[i + 2] = scenePositions[i + 2] - origin.z;
+    }
+    // Per-segment [start, end] times in seconds after the first sample.
+    const t0Ms = timesMs[0];
+    const segmentTimes = new Float32Array((n - 1) * 2);
+    for (let i = 0; i < n - 1; i++) {
+      segmentTimes[i * 2] = (timesMs[i] - t0Ms) / 1000;
+      segmentTimes[i * 2 + 1] = (timesMs[i + 1] - t0Ms) / 1000;
+    }
+    const uniforms: TrailUniforms = {
+      trailNowS: { value: 0 },
+      trailInertial: { value: 0 },
+      trailOrigin: { value: origin.clone() },
+    };
+    const brightWindow = { value: 0 };
+    const addTimes = (geometry: LineGeometry, times: Float32Array) => {
+      const buffer = new THREE.InstancedInterleavedBuffer(times, 2, 1);
+      geometry.setAttribute("instanceTimeStart", new THREE.InterleavedBufferAttribute(buffer, 1, 0));
+      geometry.setAttribute("instanceTimeEnd", new THREE.InterleavedBufferAttribute(buffer, 1, 1));
+      return buffer;
+    };
+
     // Faint full path. depthWrite off on both lines so the coplanar bright
     // line (drawn later via renderOrder) does not z-fight with it.
     const faintGeometry = new LineGeometry();
-    faintGeometry.setPositions(scenePositions);
+    faintGeometry.setPositions(relative);
+    const faintBuffer = (faintGeometry.getAttribute("instanceStart") as THREE.InterleavedBufferAttribute).data;
+    faintBuffer.setUsage(THREE.DynamicDrawUsage);
+    addTimes(faintGeometry, segmentTimes);
     const faintMaterial = new LineMaterial({
       color,
       linewidth: LINE_WIDTH_PX,
@@ -1101,15 +1516,18 @@ export class TrajectoryRenderer {
     const faintLine = new Line2(faintGeometry, faintMaterial);
     faintLine.frustumCulled = false;
     faintLine.renderOrder = 1;
-    group.add(faintLine);
+    lineGroup.add(faintLine);
 
     // Bright traversed path: same segments, drawn up to the live tip.
     const brightGeometry = new LineGeometry();
-    brightGeometry.setPositions(scenePositions);
+    brightGeometry.setPositions(relative);
     const startAttr = brightGeometry.getAttribute("instanceStart") as THREE.InterleavedBufferAttribute;
     const brightBuffer = startAttr.data;
     brightBuffer.setUsage(THREE.DynamicDrawUsage);
     const brightSegments = brightBuffer.array as Float32Array;
+    const brightTimes = segmentTimes.slice();
+    const brightTimeBuffer = addTimes(brightGeometry, brightTimes);
+    brightTimeBuffer.setUsage(THREE.DynamicDrawUsage);
     brightGeometry.instanceCount = 0;
     const brightMaterial = new LineMaterial({
       color,
@@ -1120,11 +1538,17 @@ export class TrajectoryRenderer {
       depthWrite: false,
     });
     brightMaterial.resolution.copy(this.resolution);
+    const trailPatched =
+      // The faint path shares the window: its flown part older than the
+      // window is cut too (the future part has a negative age and stays).
+      patchTrailLineMaterial(faintMaterial, { ...uniforms, trailWindowS: brightWindow }) &&
+      patchTrailLineMaterial(brightMaterial, { ...uniforms, trailWindowS: brightWindow });
+    if (!trailPatched) console.warn("Trajectory trail options unavailable: unexpected fat-line shader.");
     const brightLine = new Line2(brightGeometry, brightMaterial);
     brightLine.frustumCulled = false;
     brightLine.renderOrder = 2;
     brightLine.visible = false;
-    group.add(brightLine);
+    lineGroup.add(brightLine);
 
     const sprite = acquireRoundSprite();
 
@@ -1149,8 +1573,10 @@ export class TrajectoryRenderer {
 
     // Event markers (lighter than the track colour) and their labels.
     let events: THREE.Points | null = null;
+    let eventGeometry: THREE.BufferGeometry | null = null;
     let eventMaterial: THREE.PointsMaterial | null = null;
     const eventLabels: Label[] = [];
+    const eventTimesMs: number[] = [];
     if (track.events.length > 0) {
       const eventPositions: number[] = [];
       for (const ev of track.events) {
@@ -1166,6 +1592,7 @@ export class TrajectoryRenderer {
           xyz.push(a + (b - a) * f);
         }
         eventPositions.push(...xyz);
+        eventTimesMs.push(ev.timeMs);
         const label = createLabel(ev.label, labelColor);
         if (label) {
           label.sprite.position.set(xyz[0], xyz[1], xyz[2]);
@@ -1176,7 +1603,7 @@ export class TrajectoryRenderer {
         }
       }
       if (eventPositions.length > 0) {
-        const eventGeometry = new THREE.BufferGeometry();
+        eventGeometry = new THREE.BufferGeometry();
         eventGeometry.setAttribute("position", new THREE.Float32BufferAttribute(eventPositions, 3));
         eventMaterial = new THREE.PointsMaterial({
           color: color.clone().lerp(new THREE.Color(0xffffff), 0.55),
@@ -1211,16 +1638,30 @@ export class TrajectoryRenderer {
     return {
       track,
       group,
+      lineGroup,
+      origin,
       timesMs,
       scenePositions,
+      t0Ms,
       faintLine,
+      faintSegments: faintBuffer.array as Float32Array,
+      faintBuffer,
       brightLine,
       brightSegments,
       brightBuffer,
+      brightTimes,
+      brightTimeBuffer,
+      uniforms,
+      brightWindow,
+      trailPatched,
       tipSegment: -1,
       marker,
       events,
+      eventGeometry,
       eventMaterial,
+      eventTimesMs,
+      eventLo: 0,
+      eventHi: eventTimesMs.length,
       eventLabels,
       nameLabel,
       hideMarker: false,
@@ -1247,5 +1688,88 @@ export class TrajectoryRenderer {
     }
     if (entry.usesSprite) releaseRoundSprite();
     if (this.entries.get(entry.track.id) === entry) this.entries.delete(entry.track.id);
+  }
+
+  // --- landmarks -------------------------------------------------------------
+
+  private buildLandmark(landmark: TrajectoryLandmark): LandmarkEntry | null {
+    const altKm = landmark.altKm ?? 0;
+    if (![landmark.latDeg, landmark.lonDeg, altKm].every(Number.isFinite)) return null;
+    const e = llaToEcef(landmark.latDeg, landmark.lonDeg, altKm);
+    const position = ecefToTrajectoryScene(e.x, e.y, e.z, new THREE.Vector3());
+    const topKm = altKm + (landmark.model ? (trajectoryModelLengthM(landmark.model) ?? 0) / 1000 : 0);
+    const t = llaToEcef(landmark.latDeg, landmark.lonDeg, topKm);
+    const labelPosition = ecefToTrajectoryScene(t.x, t.y, t.z, new THREE.Vector3());
+    const color = new THREE.Color(landmark.color ?? LANDMARK_DEFAULT_COLOR);
+    const sprite = acquireRoundSprite();
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute([0, 0, 0], 3));
+    const markerMaterial = new THREE.PointsMaterial({
+      color,
+      size: LANDMARK_MARKER_SIZE_PX,
+      sizeAttenuation: false,
+      map: sprite,
+      transparent: true,
+      alphaTest: 0.5,
+    });
+    const marker = new THREE.Points(geometry, markerMaterial);
+    marker.frustumCulled = false;
+    marker.renderOrder = 3;
+    marker.position.copy(position);
+    marker.visible = false;
+    marker.userData.usesSprite = sprite !== null;
+    this.landmarkGroup.add(marker);
+    const label = landmark.label ? createLabel(landmark.label, `#${color.getHexString()}`) : null;
+    if (label) {
+      label.sprite.position.copy(labelPosition);
+      label.sprite.visible = false;
+      this.scaleLabel(label);
+      this.landmarkGroup.add(label.sprite);
+    }
+    const entry: LandmarkEntry = {
+      landmark,
+      position,
+      labelPosition,
+      marker,
+      markerMaterial,
+      label,
+      attitude: uprightBodyQuaternion(landmark.latDeg, landmark.lonDeg, landmark.headingDeg ?? 0),
+      vehicle: null,
+      active: true,
+      near: false,
+      hideMarker: false,
+    };
+    if (landmark.model) {
+      const slot = this.createVehicleSlot(landmark.model);
+      entry.vehicle = slot;
+      const model = landmark.model;
+      acquireTrajectoryModel(model).then(
+        (template) => {
+          if (slot.released) return;
+          slot.template = template;
+          const object = instantiateTrajectoryModel(template);
+          object.visible = false;
+          slot.object = object;
+          this.vehicleScene.add(object);
+        },
+        (error: unknown) => {
+          if (slot.released) return;
+          console.warn(`Landmark model "${model}" could not be loaded; showing the marker only.`, error);
+        },
+      );
+    }
+    return entry;
+  }
+
+  private disposeLandmark(entry: LandmarkEntry) {
+    entry.marker.removeFromParent();
+    entry.marker.geometry.dispose();
+    entry.markerMaterial.dispose();
+    if (entry.marker.userData.usesSprite) releaseRoundSprite();
+    disposeLabel(entry.label);
+    if (entry.vehicle) {
+      this.disposeVehicle(entry.vehicle);
+      entry.vehicle = null;
+    }
   }
 }

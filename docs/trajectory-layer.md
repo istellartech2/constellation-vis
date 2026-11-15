@@ -207,6 +207,13 @@ a `.glb` URL / object URL.
   centre is placed at `track point + nose · L/2`, so the pad/catch contact is
   exact and stages stacked with `# mount:` stay joined. Flips therefore turn
   the vehicle about its base. `satellite-bus` uses its centre.
+- **Landmark models** (`LANDMARK_MODELS`, not offered in the 軌跡 panel's
+  model selector): `launch-tower` (procedural, ≈145 m lattice column with
+  girders and X bracing, a carriage and two catch arms at ~100 m). Its origin
+  is the launch-mount axis at ground level (where a vehicle stands and is
+  caught); the column stands 22 m toward body +Y and the arms straddle the
+  axis ±6.5 m apart along body Z, so a 9 m vehicle on the axis never touches
+  it. See [Landmarks](#landmarks).
 - Templates are cached at module level by model string (scene rebuilds don't
   refetch). Instances are clones sharing the cached geometry/materials;
   renderers only remove their clones. Built-ins stay cached; user GLBs are
@@ -215,10 +222,19 @@ a `.glb` URL / object URL.
 ## Rendering (`renderer.ts`)
 
 - Trails, markers and event dots live in the GMST-rotated Earth-fixed group.
-  Positions are stored unlifted; each frame the track group is scaled about
-  the Earth's centre to lift it radially by `min(0.0001, 0.01 × camera
-  distance to the track tip)` radii — ~0.6 km from afar (against z-fighting
-  with the globe), only metres when following, so the trail meets the model.
+  Positions are stored unlifted; each frame every track group is scaled
+  about the Earth's centre to lift it radially by `min(0.0001, 0.01 × camera
+  distance to the NEAREST visible track tip)` radii — ~0.6 km from afar
+  (against z-fighting with the globe), only metres when following, so the
+  trail meets the model. One lift for all tracks: a per-track lift moved the
+  other track's path by up to ~0.6 km as the camera followed one vehicle.
+- **Precision.** Both lines of a track sit in a child group whose origin is
+  re-based onto the vehicle when the camera is within ~320 km of it and the
+  vehicle is more than ~64 km from the current origin (a rewrite of the two
+  segment buffers). Float32 vertices near 1 Earth radius only resolve
+  ~0.4 m, which made trails shimmer against the model at follow-camera
+  range while the camera moved; relative to a nearby origin they resolve
+  millimetres.
 - Name labels follow each visible track's marker; event labels are shown for
   the focused track only (`setFocusedTrack`), whose event dots are enlarged.
   Labels are fixed-pixel canvas sprites hidden when the Earth is between the
@@ -254,6 +270,51 @@ a `.glb` URL / object URL.
 - `localStateAt(id, t, pos, vel)` gives the true (unlifted) Hermite position
   and velocity in overlay-local units; `vehicleLengthM(id)` the model length
   (registry length before loading, 50 m without a model).
+- **End hold.** `track.holdEndMs` (default 0) keeps the model, marker and
+  name label at the last sample for that long after the track ends (a
+  vehicle standing on the pad after landing), mirroring the 15-minute pad
+  hold before the first sample. Guided tours default it to 30 s per track.
+- **Label stacking.** A name label (track or landmark) whose screen box
+  overlaps an earlier visible one is drawn one label height lower per
+  overlap (e.g. booster and ship during the stacked ascent).
+
+### Trail options
+
+`track.trail` (`TrajectoryTrailStyle`) changes only how the trail is drawn;
+changing it never rebuilds geometry (`setTracks` keeps entries whose samples,
+events, colour and name are unchanged), so callers can swap it per frame or
+per tour chapter.
+
+| Field | Default | Effect |
+| --- | --- | --- |
+| `future` | `true` | `false` hides the faint full path, so only what has been flown is drawn. Event dots ahead of the vehicle are hidden too. |
+| `windowMs` | — | The bright trail covers only the last `windowMs` before the vehicle and fades linearly to transparent toward its old end. The faint path is cut the same way behind the vehicle (its part not flown yet is kept, if `future`). Older event dots are hidden. |
+| `frame` | `"earth"` | `"inertial"`: every trail point is drawn where it was in inertial space when flown — rotated about the polar axis by ω⊕·(t_point − t_now) inside the GMST-rotated group — so an orbit is a closed ring that stays put while the globe turns under it, instead of an Earth-fixed ground-relative spiral (14 loops of a day-long flight) that whirls around with the Earth at high playback speed. The newest point coincides with the vehicle in both frames. Event dots are hidden (they are Earth-fixed points). |
+
+Implementation: both fat lines carry per-segment `[start, end]` times
+(seconds after the first sample); a small patch of three's `LineMaterial`
+shader (`patchTrailLineMaterial`) computes each vertex's age for the window
+fade and applies the inertial rotation, so neither option costs per-frame
+geometry work. If the shader no longer has the expected anchors the patch is
+skipped with a warning and trails are drawn as before.
+
+Choosing a frame: `"inertial"` with a window of about one orbit suits whole-
+globe views of an orbiting vehicle (the ring is calm and shows the orbit
+plane); keep `"earth"` near the ground and when following a vehicle, where
+the trail must meet the launch site, the ground track and the landing point.
+
+### Landmarks
+
+`setLandmarks(landmarks)` (scene: `setTrajectoryLandmarks`, param
+`trajectoryLandmarks`) draws fixed points of interest with the trajectory
+layer (`TrajectoryLandmark`): a marker dot, an optional label (at the top of
+the model, if any) and an optional upright model (`model`, e.g.
+`launch-tower`; body +X along the local vertical, body +Y toward
+`headingDeg`). `fromMs` / `untilMs` limit when it is shown;
+`maxDistanceKm` shows the dot and label only while the camera is that close
+(the model follows the usual pixel-size rules). Models are drawn by the same
+camera-relative metre pass as the vehicles, so a 145 m tower and a 52 m ship
+share one depth range.
 
 ## Playback, seek and follow camera (`visualization.ts`)
 
@@ -300,7 +361,14 @@ a `.glb` URL / object URL.
     the zoom limits. A ride started by the user still frames from the
     default angle;
   - the saved/persisted view is never overwritten; ending the follow restores
-    the previous free-camera framing.
+    the previous free-camera framing;
+  - guided tours set a framing right after starting or keeping a follow
+    (`setTrajectoryFollowFraming`; `setTrajectoryFollow` resets it):
+    `distanceM` (applied at once on a new follow, else eased, then the zoom
+    is free again), `targetUpM` (orbit target raised along the local vertical,
+    e.g. to the middle of a stacked rocket), `includeId` (a second track kept
+    in frame: target = midpoint, distance never below what fits both) and
+    `transitionS` (easing time constant, 0 = cut).
 - **Panel** (表示 → 軌道データ): per track "▶ 開始から" (seek to first sample −
   5 s, follow, 1×, play), "追従" toggle, "全体" (overview, ends follow), model
   selector (built-ins or a local .glb), and a scrub slider (T+ mm:ss) for the
@@ -326,6 +394,37 @@ never build it.
 
 Width and height segments keep equal angular spacing (2π/w = π/h), since the
 sag of the 128 × 128 sphere comes from its width segments.
+
+### Launch-site imagery
+
+`src/lib/launchSiteImagery.ts` drapes ~80 km × 80 km Sentinel-2 images (EOxCloudless 2016, CC BY 4.0)
+(`public/assets/launch-sites/`, see its README for source, license and
+regeneration) over the base map around major launch sites. Each patch is a
+64 × 64 lat/lon grid on the WGS84 ellipsoid (geodetic latitude, so the pad
+sits on its own imagery), 2 m above it, in a sub-group of the Earth group
+(so the geometry swap above and the shell depth bias leave it alone). It is
+transparent with `depthWrite` off, `polygonOffset` (−2, −8) and
+`renderOrder` −1: it draws after the opaque globe and before the night-light,
+border, cloud and atmosphere shells, and never ties with the globe's
+vertices (128- or 512-segment). Its shader copies the layered globe's
+daylight, dusk tint, night lift and filmic curve (flat under 地球を明るく表示),
+and fades the outer 20 % of each side into the base map. It also fades out
+with camera distance (fully drawn within 400 km, gone beyond 1100 km), since
+from afar the photo would read as a square against the map's colours.
+
+The base map's latitude is sampled by sphere angle (parametric latitude),
+up to ~0.1° (~10 km) off geodetic latitude at mid-latitudes, so coastlines
+can step slightly at the faded edge; the patch itself is placed correctly.
+
+Loading is lazy and mode-independent (rides, 近接, the free camera zoomed
+in): `index.json` is first fetched when the camera drops below 1500 km
+altitude, and a site's image when the camera is within 1500 km of it and
+below 1500 km (kept up to 2000 km; released 20 s after leaving). The default
+whole-globe views request nothing. Only the image-based globes (衛星写真 /
+地図（彩色）) draw patches; save-data skips them; memory-constrained devices
+decode them at half resolution. While a patch is drawn the scene reports the
+credit (`onLaunchSiteImageryCredit`) and the app shows it in the bottom-right
+corner, below the playback bar / tour controls.
 
 ## Sample data
 

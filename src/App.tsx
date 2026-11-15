@@ -13,9 +13,11 @@ import { isMassMode } from "./lib/massSatelliteLayer";
 import { formatGroundStationInfo } from "./lib/formatGroundStationInfo";
 import { type SatelliteCameraMode } from "./lib/visualization";
 import { reconcileAttitudeStation } from "./lib/attitude/satelliteAttitude";
-import type { TrajectoryTrack } from "./lib/trajectory/types";
+import type { TrajectoryLandmark, TrajectoryTrack } from "./lib/trajectory/types";
 import type { TrajectoryPlayback } from "./components/ui/TrajectorySection";
 import TourPlayer from "./components/tour/TourPlayer";
+import LaunchSiteImageryCredit from "./components/ui/LaunchSiteImageryCredit";
+import type { LaunchSiteImageryCredit as LaunchSiteCredit } from "./lib/launchSiteImagery";
 import { useGuidedTour } from "./components/tour/useGuidedTour";
 import { loadDemoIndex } from "./lib/tour/load";
 import { demoIdFromSearch } from "./lib/tour/parse";
@@ -85,6 +87,8 @@ function App() {
   const [islSwitchCount, setIslSwitchCount] = useState(0);
   const [islLastSwitchSimMs, setIslLastSwitchSimMs] = useState<number | null>(null);
   const [islError, setIslError] = useState<string | null>(null);
+  // Credit for the launch-site imagery patches while one is drawn (set by the scene).
+  const [launchSiteCredit, setLaunchSiteCredit] = useState<LaunchSiteCredit | null>(null);
   // Derived from the same [...base, ...shells] array as `satellites`, computed
   // at the same moment (Update click) — never a stale localStorage snapshot.
   // Not part of DisplaySettings: it's not persisted.
@@ -235,6 +239,11 @@ function App() {
   // Tabulated trajectory tracks (e.g. a launch's booster and ship). Display
   // only; swapped live into the scene without a rebuild.
   const [trajectories, setTrajectories] = useState<TrajectoryTrack[]>([]);
+  // Fixed points drawn with the trajectory layer (a guided tour's launch tower…).
+  const [trajectoryLandmarks, setTrajectoryLandmarks] = useState<TrajectoryLandmark[]>([]);
+  // Mirror of the tour's presentation mode for the scene (the tour hook needs
+  // the scene first): hides the scenario and pins the free camera to ECI.
+  const [scenePresentation, setScenePresentation] = useState(false);
   // Track the camera rides with (trajectory follow), or null. The scene
   // clears it via onTrajectoryFollowEnd when it drops the follow itself.
   const [trajectoryFollowId, setTrajectoryFollowId] = useState<string | null>(null);
@@ -269,6 +278,8 @@ function App() {
     catalogStyles,
     layerColorMode,
     trajectories,
+    trajectoryLandmarks,
+    presentation: scenePresentation,
     trajectoryFollowId,
     onTrajectoryFollowEnd: handleTrajectoryFollowEnd,
     onCloseUpEnd: handleCloseUpEnd,
@@ -311,6 +322,7 @@ function App() {
     islShellRanges,
     onIslResult: handleIslResult,
     onIslError: setIslError,
+    onLaunchSiteImageryCredit: setLaunchSiteCredit,
   }, { cameraSnapshotRef });
 
   const applyDisplay = useCallback((d: RemoteDisplaySettings) => {
@@ -366,6 +378,7 @@ function App() {
     cameraSnapshotRef,
     trajectories,
     setTrajectories,
+    setTrajectoryLandmarks,
     trajectoryFollowId,
     setTrajectoryFollowId,
     cameraMode,
@@ -379,8 +392,12 @@ function App() {
   useLayoutEffect(() => {
     tourActiveRef.current = presentation;
   }, [presentation]);
+  // Derived state, adjusted during render (the scene hook above reads it on the next pass).
+  if (scenePresentation !== presentation) setScenePresentation(presentation);
   const { start: startTour, stop: stopTour } = guidedTour;
   const startDemo = useCallback((demo: DemoEntry) => void startTour(demo.tour), [startTour]);
+  // ?demo= opens on the start screen (「タップして開始」) instead of playing at once.
+  const startDemoFromUrl = useCallback((demo: DemoEntry) => void startTour(demo.tour, { awaitStart: true }), [startTour]);
   const endTour = useCallback(() => {
     stopTour();
     // A tour opened from ?demo= should not restart on reload.
@@ -416,7 +433,7 @@ function App() {
           return;
         }
         autoDemoDoneRef.current = true;
-        startDemo(demo);
+        startDemoFromUrl(demo);
       };
       timer = window.setTimeout(tryStart, 50);
     });
@@ -426,7 +443,7 @@ function App() {
       // StrictMode re-runs the effect: allow the second run to start it.
       autoDemoRef.current = false;
     };
-  }, [stationsReady, sceneRef, startDemo]);
+  }, [stationsReady, sceneRef, startDemoFromUrl]);
 
   // Snapshot the live view (current display + latest camera framing) on demand,
   // e.g. when the user clicks "save view".
@@ -581,12 +598,14 @@ function App() {
         onStartDemo={startDemo}
         presentation={presentation}
       />
+      <LaunchSiteImageryCredit credit={launchSiteCredit} />
       <TourPlayer
         state={guidedTour.state}
         sceneRef={sceneRef}
         paused={userPaused}
         speed={tourSpeed}
         onTogglePause={guidedTour.togglePause}
+        onBegin={guidedTour.begin}
         onGoTo={guidedTour.goTo}
         onStop={endTour}
       />

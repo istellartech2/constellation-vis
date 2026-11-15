@@ -49,3 +49,41 @@ export function formatSpeedKmh(kmh: number): string {
 export function formatAltitudeKm(km: number): string {
   return km < 100 ? km.toFixed(1) : Math.round(km).toLocaleString("ja-JP");
 }
+
+/**
+ * Times (ms) at which `track` crosses the equator northbound (ascending
+ * node) at or after `fromMs`, interpolated between samples. ECEF z is the
+ * inertial z as well (both share the polar axis), so no frame rotation is
+ * needed.
+ */
+export function ascendingNodeTimes(track: TrajectoryTrack, fromMs: number): number[] {
+  const out: number[] = [];
+  const s = track.samples;
+  for (let i = 1; i < s.length; i++) {
+    const a = s[i - 1];
+    const b = s[i];
+    if (b.timeMs < fromMs) continue;
+    const za = a.position.z;
+    const zb = b.position.z;
+    if (!(za < 0 && zb >= 0)) continue;
+    const t = a.timeMs + ((b.timeMs - a.timeMs) * -za) / (zb - za);
+    if (t >= fromMs) out.push(t);
+  }
+  return out;
+}
+
+/**
+ * Orbit number at `ms`: 1 from `fromMs` (the partial first orbit up to the
+ * first ascending node included), then one more at each further ascending
+ * node; capped at `total` when given. Null before `fromMs`.
+ */
+export function orbitNumberAt(nodeTimesMs: readonly number[], fromMs: number, ms: number, total?: number): number | null {
+  if (ms < fromMs) return null;
+  let passed = 0;
+  for (const t of nodeTimesMs) {
+    if (t <= ms) passed += 1;
+    else break;
+  }
+  const n = Math.max(1, passed);
+  return total !== undefined ? Math.min(n, total) : n;
+}
