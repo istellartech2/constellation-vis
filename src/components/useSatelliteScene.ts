@@ -123,6 +123,11 @@ export function useSatelliteScene(
     params.islShellRanges,
     params.catalogStyles,
     params.layerColorMode,
+    // Read every frame from the scene's params (cones, 近接 model/overlays).
+    params.satelliteAttitude,
+    params.solarArrayType,
+    params.showBodyAxes,
+    params.showBodySunDirection,
   ]);
 
   // Swap the catalog-layer overlay live (after updateParams above, so the new

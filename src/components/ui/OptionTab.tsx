@@ -289,6 +289,19 @@ export default function OptionTab({
           value={display.satelliteSelectedColor}
           onChange={(c) => set({ satelliteSelectedColor: c })}
         />
+        <CheckRow
+          id="sat-body-axes"
+          checked={display.showBodyAxes}
+          onChange={(v) => set({ showBodyAxes: v })}
+          label="機体の軸（X/Y/Z）を表示"
+        />
+        <CheckRow
+          id="sat-body-sun"
+          checked={display.showBodySunDirection}
+          onChange={(v) => set({ showBodySunDirection: v })}
+          label="機体から見た太陽方向を表示"
+        />
+        <p className="text-[11px] text-fg-subtle leading-snug">近接カメラのときに表示されます</p>
       </PanelSection>
 
       <PanelSection title="座標系" icon={<Compass />}>

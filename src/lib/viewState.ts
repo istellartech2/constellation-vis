@@ -2,6 +2,13 @@ import { DEFAULT_EARTH_MODE, isMonochromeEarthMode, normalizeEarthTextureMode, t
 import type { SatelliteCameraMode } from "./visualization";
 import { createDefaultIslSettings, DEFAULT_GSL_COLOR, DEFAULT_ISL_COLOR, type IslEndpoint, type IslSettings } from "./isl/types";
 import { DEFAULT_POINT_STYLE, type SatellitePointStyle } from "./satellitePointStyle";
+import {
+  DEFAULT_SATELLITE_ATTITUDE,
+  DEFAULT_SOLAR_ARRAY_TYPE,
+  type SatelliteAttitudeSettings,
+  type SolarArrayType,
+} from "./attitude/types";
+import { isSolarArrayType, sanitizeSatelliteAttitude } from "./attitude/settings";
 
 /**
  * Persistence of the current "view" — camera framing plus display settings —
@@ -96,6 +103,16 @@ export interface DisplaySettings {
   satelliteVisibleColor: string;
   satelliteHiddenColor: string;
   satelliteSelectedColor: string;
+  /** Attitude law of the editor satellites (通信タブ). Absent in older views. */
+  satelliteAttitude?: SatelliteAttitudeSettings;
+  /** Solar array of the editor satellites (電力解析 / 3D model). Absent in older views. */
+  solarArrayType?: SolarArrayType;
+  /** Body axes triad in the close-up camera. Absent in older views. */
+  showBodyAxes?: boolean;
+  /** Sun direction seen from the body in the close-up camera. Absent in older views. */
+  showBodySunDirection?: boolean;
+  /** 地上局アクセス設計 「衛星の視野も可視条件に加える」. Absent in older views. */
+  stationAccessUseSatelliteFov?: boolean;
   speedExp: number;
   isl: IslSettings;
 }
@@ -131,6 +148,11 @@ export interface DisplayOptions {
   satelliteVisibleColor: string;
   satelliteHiddenColor: string;
   satelliteSelectedColor: string;
+  satelliteAttitude: SatelliteAttitudeSettings;
+  solarArrayType: SolarArrayType;
+  showBodyAxes: boolean;
+  showBodySunDirection: boolean;
+  stationAccessUseSatelliteFov: boolean;
 }
 
 /** Apply a partial (saved, remote or named-view) display record onto `prev`. */
@@ -172,6 +194,11 @@ export function mergeDisplayOptions(
     satelliteVisibleColor: pick("satelliteVisibleColor"),
     satelliteHiddenColor: pick("satelliteHiddenColor"),
     satelliteSelectedColor: pick("satelliteSelectedColor"),
+    satelliteAttitude: d.satelliteAttitude ? sanitizeSatelliteAttitude(d.satelliteAttitude) ?? prev.satelliteAttitude : prev.satelliteAttitude,
+    solarArrayType: isSolarArrayType(d.solarArrayType) ? d.solarArrayType : prev.solarArrayType,
+    showBodyAxes: pick("showBodyAxes"),
+    showBodySunDirection: pick("showBodySunDirection"),
+    stationAccessUseSatelliteFov: pick("stationAccessUseSatelliteFov"),
   };
 }
 
@@ -203,6 +230,11 @@ export function defaultDisplayOptions(satRadius: number): DisplayOptions {
     satelliteVisibleColor: "#00ff00",
     satelliteHiddenColor: "#ff0000",
     satelliteSelectedColor: "#00ffff",
+    satelliteAttitude: DEFAULT_SATELLITE_ATTITUDE,
+    solarArrayType: DEFAULT_SOLAR_ARRAY_TYPE,
+    showBodyAxes: false,
+    showBodySunDirection: false,
+    stationAccessUseSatelliteFov: false,
   };
 }
 
@@ -329,7 +361,7 @@ function isIslEndpoint(v: unknown): v is IslEndpoint {
     [e.latitudeDeg, e.longitudeDeg, e.heightKm, e.minElevationDeg].every((n) => typeof n === "number" && Number.isFinite(n));
 }
 
-const CAMERA_MODES: readonly SatelliteCameraMode[] = ["free", "earthCenter", "thirdPerson"];
+const CAMERA_MODES: readonly SatelliteCameraMode[] = ["free", "earthCenter", "thirdPerson", "closeUp"];
 
 /**
  * Stored views are only ever written by this app, but a value captured in a
@@ -346,6 +378,13 @@ function sanitizeView(v: ViewSettings): ViewSettings {
   for (const [key, t] of Object.entries(template)) {
     if (key !== "isl" && key in display && !isLike(display[key], t)) delete display[key];
   }
+  // Object / enum fields need more than a typeof check (null is an "object").
+  if ("satelliteAttitude" in display) {
+    const attitude = sanitizeSatelliteAttitude(display.satelliteAttitude);
+    if (attitude) display.satelliteAttitude = attitude;
+    else delete display.satelliteAttitude;
+  }
+  if ("solarArrayType" in display && !isSolarArrayType(display.solarArrayType)) delete display.solarArrayType;
   const isl = conformTo(display.isl, template.isl);
   isl.endpointA = isIslEndpoint(isl.endpointA) ? isl.endpointA : null;
   isl.endpointB = isIslEndpoint(isl.endpointB) ? isl.endpointB : null;

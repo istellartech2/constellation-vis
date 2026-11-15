@@ -1,7 +1,7 @@
 import type { RemoteDisplaySettings } from "./lib/remoteDisplay";
 import { useRef, useEffect, useLayoutEffect, useState, useCallback, useMemo } from "react";
 import PlaybackBar from "./components/ui/PlaybackBar";
-import SatelliteEditor from "./components/ui/SatelliteEditor";
+import SatelliteEditor, { type OpenTabRequest } from "./components/ui/SatelliteEditor";
 import IslHud from "./components/ui/IslHud";
 import { useSatelliteScene } from "./components/useSatelliteScene";
 import { SATELLITES as INITIAL_SATS, INITIAL_SHELL_RANGES } from "./lib/satellites";
@@ -12,6 +12,7 @@ import { useCatalogLayers } from "./lib/useCatalogLayers";
 import { isMassMode } from "./lib/massSatelliteLayer";
 import { formatGroundStationInfo } from "./lib/formatGroundStationInfo";
 import { type SatelliteCameraMode } from "./lib/visualization";
+import { reconcileAttitudeStation } from "./lib/attitude/satelliteAttitude";
 import type { TrajectoryTrack } from "./lib/trajectory/types";
 import type { TrajectoryPlayback } from "./components/ui/TrajectorySection";
 import {
@@ -83,11 +84,13 @@ function App() {
   // at the same moment (Update click) — never a stale localStorage snapshot.
   // Not part of DisplaySettings: it's not persisted.
   const [islShellRanges, setIslShellRanges] = useState<IslShellRange[]>(INITIAL_SHELL_RANGES);
-  // External "open the panel on this tab" request (e.g. clicking the ISL HUD card)
-  const [openTabRequest, setOpenTabRequest] = useState<{
-    tab: "editor" | "analysis" | "isl" | "option";
-    nonce: number;
-  } | null>(null);
+  // External "open the panel on this tab" request (e.g. clicking the ISL HUD
+  // card), optionally scrolled to a section anchor or opening an analysis.
+  const [openTabRequest, setOpenTabRequest] = useState<OpenTabRequest | null>(null);
+  const requestTab = useCallback(
+    (request: Omit<OpenTabRequest, "nonce">) => setOpenTabRequest((p) => ({ ...request, nonce: (p?.nonce ?? 0) + 1 })),
+    [],
+  );
 
   // Track cumulative path switches and time-since-last-switch for the ISL result
   // card. switchedFromPrevious is only meaningful once a path
@@ -129,9 +132,22 @@ function App() {
     speedRef.current = isPaused || userPaused ? 0 : Math.pow(10, speedExp);
   }, [speedExp, isPaused, userPaused]);
 
-  useEffect(() => {
-    loadGroundStations().then((stations) => { if (!scenarioCommittedRef.current) setGroundStations(stations); });
+  // Keep the 地上局指向 station reference in step with a new station list
+  // (like reconcileIslEndpoints): called wherever the stations are replaced.
+  const reconcileAttitude = useCallback((stations: readonly GroundStation[]) => {
+    setDisplay((prev) => {
+      const next = reconcileAttitudeStation(prev.satelliteAttitude, stations);
+      return next === prev.satelliteAttitude ? prev : { ...prev, satelliteAttitude: next };
+    });
   }, []);
+
+  useEffect(() => {
+    loadGroundStations().then((stations) => {
+      if (scenarioCommittedRef.current) return;
+      setGroundStations(stations);
+      reconcileAttitude(stations);
+    });
+  }, [reconcileAttitude]);
 
   // Latest camera framing, seeded from the saved view. Kept in a ref so it can
   // be applied on every scene (re)build without triggering rebuilds itself.
@@ -196,6 +212,8 @@ function App() {
   // clears it via onTrajectoryFollowEnd when it drops the follow itself.
   const [trajectoryFollowId, setTrajectoryFollowId] = useState<string | null>(null);
   const handleTrajectoryFollowEnd = useCallback(() => setTrajectoryFollowId(null), []);
+  // The scene left 近接 on its own (no selected editor satellite after a rebuild…).
+  const handleCloseUpEnd = useCallback(() => setCameraMode((m) => (m === "closeUp" ? "free" : m)), []);
   const visibleLayerCount = catalogLayers.reduce((sum, l) => sum + (l.visible ? l.catalog.count : 0), 0);
   const filingCount = useMemo(
     () => satellites.filter(s => s.meta?.dataStatus === "filing").length
@@ -226,6 +244,11 @@ function App() {
     trajectories,
     trajectoryFollowId,
     onTrajectoryFollowEnd: handleTrajectoryFollowEnd,
+    onCloseUpEnd: handleCloseUpEnd,
+    satelliteAttitude: display.satelliteAttitude,
+    solarArrayType: display.solarArrayType,
+    showBodyAxes: display.showBodyAxes,
+    showBodySunDirection: display.showBodySunDirection,
     groundStations,
     satRadius: display.satRadius,
     pointStyle: display.pointStyle,
@@ -370,6 +393,13 @@ function App() {
         cameraMode={cameraMode}
         onCameraModeChange={setCameraMode}
         onClose={() => handleSelectSatellite(null)}
+        satelliteAttitude={display.satelliteAttitude}
+        solarArrayType={display.solarArrayType}
+        groundStations={groundStations}
+        fovAlongTrackDeg={display.fovConeAlongTrackDeg}
+        fovCrossTrackDeg={display.fovConeCrossTrackDeg}
+        onOpenAttitudeSettings={() => requestTab({ tab: "isl", anchor: "comm-attitude" })}
+        onOpenPowerAnalysis={() => requestTab({ tab: "analysis", analysis: "日照・電力成立性評価" })}
       />
       {gsInfoText && (
         <pre
@@ -400,9 +430,7 @@ function App() {
         islSettings={islSettings}
         islResult={islResult}
         islSwitchCount={islSwitchCount}
-        onClick={() =>
-          setOpenTabRequest((p) => ({ tab: "isl", nonce: (p?.nonce ?? 0) + 1 }))
-        }
+        onClick={() => requestTab({ tab: "isl" })}
       />
       <SatelliteEditor
         display={display}
@@ -410,9 +438,12 @@ function App() {
         fovConeMinHeight={fovConeMinHeight}
         groundStations={groundStations}
         sceneRef={sceneRef}
+        selectedSatelliteIndex={selectedIdx !== null && selectedIdx < satellites.length ? selectedIdx : null}
         onUpdate={(scenario) => {
           scenarioCommittedRef.current = true;
           setSelectedIdx(null);
+          // The selection is gone, so 近接 ends (the rebuilt scene would drop it too).
+          setCameraMode((m) => (m === "closeUp" ? "free" : m));
           setSelectedGsIdx(null);
           setSatellites(scenario.satellites);
           setGroundStations(scenario.groundStations);
@@ -421,6 +452,7 @@ function App() {
           // 地点 A/B の地上局参照を新しい局リストへ整合(同名局は座標を最新化、
           // 消えた局は未設定へ初期化)。過去の局が endpoint に残る不整合を防ぐ
           setIslSettings((prev) => reconcileIslEndpoints(prev, scenario.groundStations));
+          reconcileAttitude(scenario.groundStations);
         }}
         onAnalysisStart={handleAnalysisStart}
         onAnalysisEnd={handleAnalysisEnd}

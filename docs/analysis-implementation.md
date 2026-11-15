@@ -15,6 +15,7 @@
 | ISL 経路探索 | [isl-routing.md](isl-routing.md)（理論+実装で自己完結） | 位置づけと他モジュールとの境界（§7） |
 | コンステレーション設計方式（6 方式）と TOML | [constellation-patterns.md](constellation-patterns.md) | 解析側から見た `shellRanges` 等の意味（§11） |
 | ミッション駆動の設計オプティマイザ | [constellation-design.md](constellation-design.md) | 「解析的カバレッジ」と「サンプリングカバレッジ」の使い分け（§11） |
+| 衛星の姿勢（5 モード）、機体座標、太陽電池パネル入射 | [satellite-attitude.md](satellite-attitude.md) | FOV 判定への組み込みと既定値（§1.2, §3.1.1） |
 | CLI（`constelation-cli`）の使い方 | [constelation-cli-SKILLS.md](constelation-cli-SKILLS.md) | 解析エンジンとの関係（§12） |
 | **座標系・時刻系、プロパゲータ、可視性、リンク幾何、デューティ、日照** | **（本ドキュメント）** | §1〜§6, §10 |
 
@@ -58,6 +59,8 @@ nadir      = -radial
 2. クロストラック傾斜（ロール）: `alongTrack` 軸まわりに `+crossTrackAngleRad`
 
 符号規約は「正のアロングトラック角 = 前方（速度方向）へ傾斜」「正のクロストラック角 = 左（角運動量方向）へ傾斜」。
+
+地球指向（LVLH）以外の姿勢では、センサ指向は機体 +Z を同じ 2 段の取付角で傾けたもの（機体座標で `(sin a, −cos a·sin c, cos a·cos c)`）を姿勢クォータニオンで ECI へ回したものになる（`sensorBoresightEci`、[satellite-attitude.md](satellite-attitude.md)）。地球指向では機体軸 = LVLH 軸（+Z = nadir, +X = alongTrack, +Y = −crossTrack）なので、上の式と一致する。地球指向の経路は従来関数をそのまま通る（`tests/fov-golden.test.ts` が変更前の出力をビット一致で固定）。
 
 FOV 円錐の描画長は `computeTiltedConeHeight` が決める。円錐の遠端（`+halfAngle`）から近端（`-halfAngle`）へ **5°刻み**（`EDGE_SCAN_STEP_DEG`）でレイ・球交差を走査し、最初に地球と交わった位置で高さを決める。地平線を越えて傾けたときに円錐長が不連続に飛ぶのを避けるための実装。
 
@@ -206,7 +209,7 @@ offNadir  = acos( clamp( nadir_hat . toStation_hat, -1, 1 ) )
 
 ### 3.1.1 衛星 FOV（局アクセス解析で任意に追加）
 
-`StationAccessAnalysis.tsx` の「衛星の視野」条件は既定 OFF。ON のときだけ、表示設定の半角・along-track/cross-track 傾きを `SatelliteFovCriteria` として渡し、局の条件に AND する。
+`StationAccessAnalysis.tsx` の「衛星の視野」条件は既定 OFF。ON のときだけ、通信タブ › 衛星の姿勢とセンサの半角・進行方向／横方向への取付角を `SatelliteFovCriteria` として、姿勢を `FovAttitude`（設定＋シナリオの地上局）として渡し、局の条件に AND する。姿勢は FOV が OFF のときは結果に影響しない。
 
 ```
 b = computeSensorDirectionEci(r, v, alongTrackDeg, crossTrackDeg)
@@ -215,7 +218,9 @@ FOV条件 = acos(clamp(b_ecf_hat · (r_station-r_sat)_hat, -1, 1)) <= halfAngle
 可視 = 局の可視条件 && FOV条件
 ```
 
-速度が使えない場合は純 nadir にフォールバックする。円錐の半角は全開口角の半分。全球アクセス UI、CLI の `calculateLinkGeometry`、ISL、ミッション設計はこの表示設定の FOV を渡さないので、同じ衛星でも結果が一致するとは限らない。
+地球指向以外の姿勢では `b = sensorBoresightEci(satelliteAttitudeEci(...), alongTrackDeg, crossTrackDeg)`。太陽方向・地上局 ECI などの時刻依存部分は `attitudeContextFor` で時刻ステップごとに 1 回だけ計算し、全衛星で共有する（`accessGrid.ts` も同じ）。
+
+地球指向で速度が使えない場合は純 nadir にフォールバックする（取付角は無視）。円錐の半角は全開口角の半分。全球アクセス UI、CLI の `calculateLinkGeometry`、ISL、ミッション設計はこの表示設定の FOV・姿勢を渡さないので、同じ衛星でも結果が一致するとは限らない。コンステレーション設計比較は比較条件に保存した FOV を使い、姿勢は常に地球指向で評価する。
 
 ### 3.2 時系列と統計
 
@@ -649,6 +654,10 @@ Worker 越しに渡すものはすべて structured-clone 可能なプレーン�
 | 最大オフナディア（既定） | +Infinity | `normalizeVisibilityCriteria` |
 | 全球アクセス緯度刻み | 1 deg（181 局） | `GlobalAccessAnalysis.tsx` |
 | FOV 円錐の縁走査刻み | 5 deg | `orbitalCoordinates.ts` |
+| 衛星の姿勢 | 地球指向（LVLH）。全エディタ衛星に共通 | `attitude/types.ts` `DEFAULT_SATELLITE_ATTITUDE` |
+| 慣性指向の赤経／赤緯 | 0 deg / 0 deg | 同上 |
+| 地上局指向の切替仰角 | 指定局自身の `minElevationDeg`（瞬時切替） | `attitude/satelliteAttitude.ts` |
+| 太陽電池パネル | 固定（−Z 面） | `attitude/types.ts` `DEFAULT_SOLAR_ARRAY_TYPE` |
 | ISL 最大距離 | 5000 km | `isl/types.ts` `DEFAULT_LINK_MODEL` |
 | ISL 視線余裕 | 80 km | 同上 |
 | ISL ホップペナルティ | 2 ms | `DEFAULT_COST_SETTINGS` |
@@ -682,6 +691,7 @@ Worker 越しに渡すものはすべて structured-clone 可能なプレーン�
 | 通信経路 | 単一 A/B 間の経路コスト。帯域・輻輳・冗長経路・パケット動作を扱わず、地上リンクのデューティとも統合しない | [ISL の制限](isl-routing.md#limitations) |
 | 寿命・推進剤 | 簡易大気とレート積分。密度モデル・楕円軌道近似・刻みの誤差保証はない | §8・[摂動モデル](perturbation.md) |
 | 日照・電力 | 太陽円盤の遮蔽率で半影を含む発電を評価。固定の日照追尾係数、代表 4 日の比較。年間全日の最悪条件は評価しない | §10 |
+| 衛星の姿勢 | 全エディタ衛星に 1 つの姿勢則（シェル・衛星ごとの姿勢は未対応）。時間によるモード切替（日陰で太陽指向など）、旋回角速度・角加速度の制限（地上局指向は瞬時に切り替わる）、姿勢誤差・擾乱、ヨー制御の 180° 反転時の旋回、パネルの自己影・アンテナパターンは扱わない。表示レイヤー（GPU J2）には姿勢がない。設計比較は常に地球指向 | [satellite-attitude.md](satellite-attitude.md) |
 | ミッション設計 | Walker Delta / Star の全球・緯度帯探索。Flower 系、任意ポリゴン、需要分布、ISL 接続性は対象外 | [設計の限界](constellation-design.md#limitations) |
 
 RGT/J2 補正と J3 は [RGT §4.1](RGTorbit.md#implemented-rates)・[摂動モデル](perturbation.md)、長期維持・電力サイジングの近似は §8・§10 を参照。エポックから離れた解析では、入力データの有効性も確認すること。
@@ -696,7 +706,8 @@ RGT/J2 補正と J3 は [RGT §4.1](RGTorbit.md#implemented-rates)・[摂動モ�
 | --- | --- | --- |
 | `src/lib/satellites.ts` | `toSatrec` | （間接：`orbitalCoordinates.test.ts` 他） |
 | `src/lib/astronomy.ts` | `gmstDeg`, `sunVectorECI`, `geoElementsFromLongitude`, `createGraticule` | — |
-| `src/lib/orbitalCoordinates.ts` | `computeLVLHFrame`, `computeSensorDirection`, `computeFovConeQuaternion`, `computeTiltedConeHeight` | `tests/orbitalCoordinates.test.ts` |
+| `src/lib/orbitalCoordinates.ts` | `computeLVLHFrame`, `computeSensorDirection`, `computeFovConeQuaternion`, `computeTiltedConeHeight`, `fovConeQuaternionForAttitude`, `computeConeHeightForBoresight`, `boresightPointsAtEarth` | `tests/orbitalCoordinates.test.ts`, `tests/fov-golden.test.ts` |
+| `src/lib/attitude/satelliteAttitude.ts` | `satelliteAttitudeEci`, `effectiveAttitudeMode`, `sensorBoresightEci`, `solarArrayIncidence`, `reconcileAttitudeStation` | `tests/satellite-attitude.test.ts` |
 | `src/lib/satelliteDerivedInfo.ts` | `getSatelliteDerivedInfo`, `isInEarthShadow` | `src/lib/satelliteDerivedInfo.test.ts` |
 | `src/lib/visibility.ts` | `passesVisibilityCriteria`, `visibilityStats`, `calculateStationAccessData`, `calculateAvailabilityMetrics`, `generateVisibilityReport` | `tests/visibility-criteria.test.ts` |
 | `src/lib/accessGrid.ts` | `computeAccessGrid`, `gridStationCounts`, `gridToSamples` | `tests/accessGrid.test.ts`（`calculateStationAccessData` との照合） |
@@ -733,5 +744,6 @@ RGT/J2 補正と J3 は [RGT §4.1](RGTorbit.md#implemented-rates)・[摂動モ�
 - [isl-routing.md](isl-routing.md) — ISL 経路探索の理論・実装・既定値・性能
 - [constellation-patterns.md](constellation-patterns.md) — 6 設計方式と TOML スキーマ
 - [constellation-design.md](constellation-design.md) — ミッション駆動オプティマイザ（2 段パイプライン）
+- [satellite-attitude.md](satellite-attitude.md) — 衛星の姿勢モード、機体座標、タイブレーク、UI
 - [constelation-cli-SKILLS.md](constelation-cli-SKILLS.md) — CLI エージェント向けガイド（`dist/SKILLS.md` の元）
 - `AGENTS.md` — プロジェクト運用ルール

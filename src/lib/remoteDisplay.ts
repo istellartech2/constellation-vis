@@ -1,13 +1,23 @@
 import { normalizeEarthTextureMode } from "./earthTextures";
 import type { DisplaySettings } from "./viewState";
+import { isSolarArrayType, SOLAR_ARRAY_TYPES, validateSatelliteAttitude } from "./attitude/settings";
 
 /** Scalar rendering settings; camera framing and ISL configuration stay local. */
 export type RemoteDisplaySettings = Partial<Omit<DisplaySettings, "isl">>;
 const booleans = new Set([
   "showCountryBorders", "showClouds", "showGraticule", "showEcliptic", "showGeoOrbit", "showSunDirection", "ecef", "gse", "satSunlitShading", "satGlint",
   "showPerturbation", "brightEarth", "whiteBackground",
-  "showGroundStationCones", "showSatelliteFovCones",
+  "showGroundStationCones", "showSatelliteFovCones", "showBodyAxes", "showBodySunDirection",
+  "stationAccessUseSatelliteFov",
 ]);
+/** Enum-valued fields and their allowed values. */
+const enums: Record<string, { allowed: readonly string[]; check: (v: unknown) => boolean }> = {
+  solarArrayType: { allowed: SOLAR_ARRAY_TYPES, check: isSolarArrayType },
+};
+/** Object-valued fields, validated (and normalised) as a whole. */
+const objects: Record<string, (v: unknown, key: string) => unknown> = {
+  satelliteAttitude: validateSatelliteAttitude,
+};
 /** Retired fields still accepted (and dropped) so older clients keep working. */
 const legacyBooleans = new Set(["showDerivedSatelliteInfo"]);
 /** Ground cones now follow each station's own minimum elevation. */
@@ -43,8 +53,14 @@ export function validateRemoteDisplay(value: unknown): RemoteDisplaySettings {
       result[key] = mode;
       continue;
     }
+    if (Object.hasOwn(objects, key)) {
+      result[key] = objects[key](v, key);
+      continue;
+    }
     if (booleans.has(key)) {
       if (typeof v !== "boolean") throw new Error(`${key} must be boolean`);
+    } else if (Object.hasOwn(enums, key)) {
+      if (!enums[key].check(v)) throw new Error(`${key} must be one of ${enums[key].allowed.join(", ")}`);
     } else if (colors.has(key)) {
       if (typeof v !== "string" || !/^#[0-9a-f]{6}$/i.test(v)) throw new Error(`${key} requires #RRGGBB`);
     } else if (Object.hasOwn(ranges, key)) {

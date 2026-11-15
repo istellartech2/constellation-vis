@@ -41,7 +41,7 @@ export const TRAJECTORY_MODELS: readonly TrajectoryModelInfo[] = [
   { key: "starship-v3-booster", label: "Starship V3 ブースター", lengthM: 72.3 },
   { key: "starship-v3-ship", label: "Starship V3 シップ", lengthM: 52.1 },
   { key: "generic-rocket", label: "汎用ロケット", lengthM: 40 },
-  { key: "satellite-bus", label: "衛星バス", lengthM: 10.4 },
+  { key: "satellite-bus", label: "標準バス", lengthM: 10.4 },
 ];
 
 const GLB_KEYS = new Set(["starship-v3-booster", "starship-v3-ship"]);
@@ -197,29 +197,63 @@ function buildGenericRocket(): TrajectoryModelTemplate {
   return { model: "generic-rocket", root, lengthM, pivotBody: new THREE.Vector3(lengthM / 2, 0, 0), anchor: "base" };
 }
 
-/** Box bus with two solar wings along body ±Y (≈10.4 m span) and an antenna on +Z. Origin = centre. */
+/** Name of the solar-wing pivot nodes of the satellite bus (rotated about body Y by a 1-axis drive). */
+export const SOLAR_WING_NODE_NAME = "solar-wing";
+
+/**
+ * Box bus with two solar wings along body ±Y (≈10.4 m span) and an antenna
+ * dish on +Z (the sensor / nadir side). Origin = centre.
+ *
+ * Each wing (panel + arm) hangs under its own pivot group named
+ * {@link SOLAR_WING_NODE_NAME}, sitting on the body Y axis, so a single-axis
+ * drive is just `pivot.rotation.y = driveAngleRad` (see
+ * {@link setSolarArrayDrive}). At drive angle 0 the cell face is the −Z side
+ * (zenith under Earth pointing), matching the attitude body frame.
+ */
 function buildSatelliteBus(): TrajectoryModelTemplate {
   const foil = new THREE.MeshStandardMaterial({ color: 0xc9a54a, metalness: 0.7, roughness: 0.35 });
-  const panel = new THREE.MeshStandardMaterial({ color: 0x1f3a7a, metalness: 0.5, roughness: 0.35, side: THREE.DoubleSide });
+  const cells = new THREE.MeshStandardMaterial({ color: 0x1f3a7a, metalness: 0.5, roughness: 0.35 });
+  const backing = new THREE.MeshStandardMaterial({ color: 0xb8bcc4, metalness: 0.3, roughness: 0.6 });
   const metal = new THREE.MeshStandardMaterial({ color: 0xd0d4da, metalness: 0.6, roughness: 0.4 });
   const root = new THREE.Group();
   root.name = "TrajectoryModel:satellite-bus";
   root.add(new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.8, 1.8), foil));
+  // Box face order: +X, −X, +Y, −Y, +Z, −Z → cells on −Z, backing elsewhere.
+  const wingMaterials = [backing, backing, backing, backing, backing, cells];
   const wingGeometry = new THREE.BoxGeometry(1.6, 4, 0.06);
   const armGeometry = new THREE.CylinderGeometry(0.06, 0.06, 0.3, 8);
   for (const side of [-1, 1]) {
-    const wing = new THREE.Mesh(wingGeometry, panel);
+    const pivot = new THREE.Group();
+    pivot.name = SOLAR_WING_NODE_NAME;
+    pivot.userData.side = side;
+    const wing = new THREE.Mesh(wingGeometry, wingMaterials);
     wing.position.set(0, side * (0.9 + 0.3 + 2), 0);
     const arm = new THREE.Mesh(armGeometry, metal);
     arm.position.set(0, side * 1.05, 0);
-    root.add(wing, arm);
+    pivot.add(wing, arm);
+    root.add(pivot);
   }
-  // Antenna dish toward the belly (+Z, nadir in a belly-down attitude).
+  // Antenna dish toward +Z (sensor side; nadir under Earth pointing).
   const dish = new THREE.Mesh(new THREE.ConeGeometry(0.6, 0.35, 24, 1, true), metal);
   dish.rotation.x = Math.PI / 2;
   dish.position.z = 0.9 + 0.2;
   root.add(dish);
   return { model: "satellite-bus", root, lengthM: 10.4, pivotBody: new THREE.Vector3(), anchor: "center" };
+}
+
+/**
+ * Turn every solar-wing pivot of a model instance (a clone of the satellite
+ * bus) to `driveAngleRad` about body +Y (right-handed). No-op for models
+ * without wings. Returns the number of wings turned.
+ */
+export function setSolarArrayDrive(object: THREE.Object3D, driveAngleRad: number): number {
+  let n = 0;
+  object.traverse((node) => {
+    if (node.name !== SOLAR_WING_NODE_NAME) return;
+    node.rotation.set(0, driveAngleRad, 0);
+    n += 1;
+  });
+  return n;
 }
 
 // ---------------------------------------------------------------------------

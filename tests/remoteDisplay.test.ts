@@ -30,3 +30,39 @@ describe("validateRemoteDisplay", () => {
     expect(() => validateRemoteDisplay({ groundConeMinElevationDeg: 120 })).toThrow("0–85");
   });
 });
+
+describe("validateRemoteDisplay: attitude fields", () => {
+  it("accepts the attitude object, filling missing angles", () => {
+    expect(validateRemoteDisplay({ satelliteAttitude: { mode: "sun" } })).toEqual({
+      satelliteAttitude: { mode: "sun", inertialRaDeg: 0, inertialDecDeg: 0 },
+    });
+    expect(validateRemoteDisplay({ satelliteAttitude: { mode: "station", stationName: "Tokyo", inertialRaDeg: 10, inertialDecDeg: -5 } })).toEqual({
+      satelliteAttitude: { mode: "station", stationName: "Tokyo", inertialRaDeg: 10, inertialDecDeg: -5 },
+    });
+  });
+
+  it("accepts an undefined stationName (in-memory snapshots) and drops it", () => {
+    expect(validateRemoteDisplay({ satelliteAttitude: { mode: "lvlh", stationName: undefined, inertialRaDeg: 0, inertialDecDeg: 0 } })).toEqual({
+      satelliteAttitude: { mode: "lvlh", inertialRaDeg: 0, inertialDecDeg: 0 },
+    });
+  });
+
+  it("rejects bad attitude objects", () => {
+    expect(() => validateRemoteDisplay({ satelliteAttitude: null })).toThrow("must be an object");
+    expect(() => validateRemoteDisplay({ satelliteAttitude: [] })).toThrow("must be an object");
+    expect(() => validateRemoteDisplay({ satelliteAttitude: { mode: "spin" } })).toThrow("satelliteAttitude.mode");
+    expect(() => validateRemoteDisplay({ satelliteAttitude: { mode: "inertial", inertialDecDeg: 95 } })).toThrow("inertialDecDeg");
+    expect(() => validateRemoteDisplay({ satelliteAttitude: { mode: "station", stationName: 3 } })).toThrow("stationName");
+    expect(() => validateRemoteDisplay({ satelliteAttitude: { mode: "lvlh", extra: 1 } })).toThrow("Unknown satelliteAttitude field");
+  });
+
+  it("checks the solar array enum and the body overlay toggles", () => {
+    expect(validateRemoteDisplay({ solarArrayType: "singleAxis", showBodyAxes: true, showBodySunDirection: false })).toEqual({
+      solarArrayType: "singleAxis", showBodyAxes: true, showBodySunDirection: false,
+    });
+    expect(() => validateRemoteDisplay({ solarArrayType: "dual" })).toThrow("solarArrayType must be one of fixed, singleAxis");
+    expect(() => validateRemoteDisplay({ showBodyAxes: 1 })).toThrow("showBodyAxes must be boolean");
+    expect(validateRemoteDisplay({ stationAccessUseSatelliteFov: true })).toEqual({ stationAccessUseSatelliteFov: true });
+    expect(() => validateRemoteDisplay({ stationAccessUseSatelliteFov: "on" })).toThrow("stationAccessUseSatelliteFov must be boolean");
+  });
+});

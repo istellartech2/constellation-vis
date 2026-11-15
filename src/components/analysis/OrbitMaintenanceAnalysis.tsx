@@ -35,6 +35,7 @@ import {
   valueXAxis,
 } from "./utils/chartBase";
 import { ChartCard, EmptyState, KpiStrip, MetricList, Verdict, type Kpi, type VerdictTone } from "./AnalysisLayout";
+import { satellitePickerLabel } from "../../lib/analysisSatellites";
 
 interface Props {
   satText: string;
@@ -483,7 +484,11 @@ function NumberInputRow({ label, help, value, onChange, step, disabled }: { labe
 }
 
 export default function OrbitMaintenanceAnalysis({ satText, constText, startTime }: Props) {
-  const templates = useMemo(() => buildSelectableSatellites(satText, constText), [satText, constText]);
+  // Same satellite names as the satellite card and the power analysis.
+  const templates = useMemo(
+    () => buildSelectableSatellites(satText, constText).map((item, index) => ({ ...item, label: satellitePickerLabel(item.spec, index) })),
+    [satText, constText],
+  );
   const [templateId, setTemplateId] = useState("");
   const [caseName, setCaseName] = useState("100kg級LEO設計ケース");
   const [input, setInput] = useState<MaintenanceAnalysisInput>(() => createDefaultMaintenanceInput());

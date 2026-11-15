@@ -50,6 +50,18 @@ import { serializeGroundStations } from "../../lib/groundStationSerializer";
  * callback.
  */
 
+/**
+ * External request to open the panel on a tab (e.g. from the ISL HUD or the
+ * satellite card). `anchor` scrolls to an element id inside the tab once it
+ * is shown (e.g. "comm-attitude"); `analysis` opens that analysis modal.
+ */
+export interface OpenTabRequest {
+  tab: "editor" | "analysis" | "isl" | "option";
+  nonce: number;
+  anchor?: string;
+  analysis?: AnalysisType;
+}
+
 interface Props {
   /** Called when the user clicks Update, with the newly committed scenario. */
   onUpdate: (scenario: CommittedScenario) => void;
@@ -91,7 +103,9 @@ interface Props {
   /** Current simulation time (ms), used to compute elapsed time since last switch */
   currentSimMs: number;
   /** External request to open the panel on a specific tab (e.g. from the ISL HUD). */
-  openTabRequest?: { tab: "editor" | "analysis" | "isl" | "option"; nonce: number } | null;
+  openTabRequest?: OpenTabRequest | null;
+  /** Editor satellite selected in 3D (null for none or a display-layer row); default of the power analysis. */
+  selectedSatelliteIndex?: number | null;
   /** Display layers drawn by the GPU overlay after the editor satellites. */
   catalogLayers: CatalogLayer[];
   onCatalogLayerAdd: (layer: NewLayer) => void;
@@ -149,6 +163,7 @@ export default function SatelliteEditor({
   trajectories,
   onTrajectoriesChange,
   trajectoryPlayback,
+  selectedSatelliteIndex = null,
 }: Props) {
   const [importSource, setImportSource] = useState<ImportSource>("celestrak");
   const [uiTheme, setUiTheme] = useUiTheme();
@@ -219,16 +234,36 @@ export default function SatelliteEditor({
   );
 
   const [islFocusRequested, setIslFocusRequested] = useState(false);
+  const [anchorRequest, setAnchorRequest] = useState<string | null>(null);
   const [handledTabRequest, setHandledTabRequest] = useState<typeof openTabRequest>(undefined);
   if (openTabRequest !== handledTabRequest) {
     setHandledTabRequest(openTabRequest);
     if (openTabRequest) {
       setOpen(true);
       setTab(openTabRequest.tab);
-      // The ISL HUD opens the 通信 tab for its route: bring that part into view.
-      if (openTabRequest.tab === "isl") setIslFocusRequested(true);
+      if (openTabRequest.anchor) {
+        // A section anchor (e.g. the satellite card's attitude line) wins
+        // over the ISL focus, which would scroll elsewhere.
+        setAnchorRequest(openTabRequest.anchor);
+      } else if (openTabRequest.tab === "isl") {
+        // The ISL HUD opens the 通信 tab for its route: bring that part into view.
+        setIslFocusRequested(true);
+      }
+      const analysis = openTabRequest.analysis;
+      if (analysis) setAnalysisRequest((p) => ({ type: analysis, nonce: (p?.nonce ?? 0) + 1 }));
     }
   }
+
+  // Scroll to the requested anchor once the tab content is mounted; a missing
+  // id is ignored.
+  useEffect(() => {
+    if (!anchorRequest) return;
+    const frame = requestAnimationFrame(() => {
+      document.getElementById(anchorRequest)?.scrollIntoView({ block: "start" });
+      setAnchorRequest(null);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [anchorRequest, tab]);
 
   // Reset the transient "更新しました" badge after it's had a moment to be seen.
   useEffect(() => {
@@ -522,6 +557,12 @@ export default function SatelliteEditor({
                 satellites={satellites}
                 islSettings={islSettings}
                 islShellRanges={islShellRanges}
+                attitude={display.satelliteAttitude}
+                stationAccessUseSatelliteFov={display.stationAccessUseSatelliteFov}
+                onStationAccessUseSatelliteFovChange={(stationAccessUseSatelliteFov) => onDisplayChange({ stationAccessUseSatelliteFov })}
+                solarArrayType={display.solarArrayType}
+                onSolarArrayTypeChange={(solarArrayType) => onDisplayChange({ solarArrayType })}
+                selectedSatelliteIndex={selectedSatelliteIndex}
                 onAnalysisStart={onAnalysisStart}
                 onAnalysisEnd={onAnalysisEnd}
                 requestedAnalysis={analysisRequest}

@@ -4,6 +4,16 @@ import type { SatelliteSpec } from "./satellites";
 import { getSatelliteDerivedInfo } from "./satelliteDerivedInfo";
 import { toSatrec } from "./satellites";
 import * as satellite from "satellite.js";
+import { sunVectorECI } from "./astronomy";
+import type { GroundStation } from "./groundStations";
+import {
+  DEFAULT_SATELLITE_ATTITUDE,
+  DEFAULT_SOLAR_ARRAY_TYPE,
+  type AttitudeQuaternion,
+  type SatelliteAttitudeSettings,
+  type SolarArrayType,
+} from "./attitude/types";
+import { satelliteAttitudeEci, solarArrayIncidence } from "./attitude/satelliteAttitude";
 export { buildSelectableSatellites, type SelectableSatellite } from "./analysisSatellites";
 
 export type SolarSweepParameter =
@@ -13,11 +23,20 @@ export type SolarSweepParameter =
   | "payloadLoadW"
   | "missionYears";
 
+/** 手入力: sunTrackingFactor を一定値で使う / 姿勢から計算: サンプルごとの入射角 cos × その他の損失係数. */
+export type GenerationFactorMode = "manual" | "attitude";
+
 export interface SolarPowerAnalysisInput {
   orbitStepSeconds: number;
   dayStepSeconds: number;
   solarArrayPowerBOL_W: number;
   sunTrackingFactor: number;
+  /** Default "manual" (sunTrackingFactor). "attitude" derives the factor from the attitude law and array type. */
+  generationFactorMode: GenerationFactorMode;
+  solarArrayType: SolarArrayType;
+  attitude: SatelliteAttitudeSettings;
+  /** 姿勢から計算 時に入射角 cos へ掛ける、その他の損失係数 (default 1.0). */
+  otherLossFactor: number;
   powerPathEfficiency: number;
   degradationPerYear: number;
   missionYears: number;
@@ -46,6 +65,12 @@ export interface SolarPowerSample {
   inSunlight: boolean;
   /** Visible solar disc fraction, including penumbra. */
   sunlightFraction: number;
+  /** Panel incidence cosine (clamped ≥ 0); only computed for orbit samples or in attitude mode. */
+  incidenceFactor?: number;
+  /** Array drive angle about body Y [rad] (0 for a fixed panel). */
+  driveAngleRad?: number;
+  /** Generation factor actually applied this sample (sunTrackingFactor or incidence × otherLoss). */
+  generationFactor: number;
   generationW: number;
   loadW: number;
   netPowerW: number;
@@ -96,6 +121,20 @@ export interface SolarPowerAnalysisResult {
   currentOrbit: SolarPowerKpi;
   currentDay: SolarPowerKpi;
   worstRepresentativeDay: SolarRepresentativeDayResult;
+  /** Orbit-average (sunlit samples) incidence factor from the attitude law, and the manual factor, for side-by-side display. */
+  factorComparison: {
+    /** Mean incidence cosine × otherLossFactor over the sunlit samples of the current orbit. */
+    attitudeFactor: number;
+    /** The manual 追尾/姿勢係数. */
+    manualFactor: number;
+    /** Which one drove the generation numbers. */
+    applied: GenerationFactorMode;
+  };
+}
+
+export interface SolarPowerAnalysisOptions {
+  /** Ground stations, only needed for the 地上局指向 attitude. */
+  stations?: GroundStation[];
 }
 
 const MINUTES_PER_DAY = 24 * 60;
@@ -115,6 +154,10 @@ export function createDefaultSolarPowerInput(): SolarPowerAnalysisInput {
     dayStepSeconds: 120,
     solarArrayPowerBOL_W: 250,
     sunTrackingFactor: 0.78,
+    generationFactorMode: "manual",
+    solarArrayType: DEFAULT_SOLAR_ARRAY_TYPE,
+    attitude: DEFAULT_SATELLITE_ATTITUDE,
+    otherLossFactor: 1,
     powerPathEfficiency: 0.9,
     degradationPerYear: 0.025,
     missionYears: 3,
@@ -143,6 +186,10 @@ function normalizeInput(input: SolarPowerAnalysisInput): SolarPowerAnalysisInput
     dayStepSeconds: clamp(Math.round(input.dayStepSeconds), 10, 1800),
     solarArrayPowerBOL_W: Math.max(input.solarArrayPowerBOL_W, 0),
     sunTrackingFactor: clamp(input.sunTrackingFactor, 0, 1.2),
+    generationFactorMode: input.generationFactorMode === "attitude" ? "attitude" : "manual",
+    solarArrayType: input.solarArrayType ?? DEFAULT_SOLAR_ARRAY_TYPE,
+    attitude: input.attitude ?? DEFAULT_SATELLITE_ATTITUDE,
+    otherLossFactor: clamp(input.otherLossFactor ?? 1, 0, 1.2),
     powerPathEfficiency: clamp(input.powerPathEfficiency, 0.01, 1),
     degradationPerYear: clamp(input.degradationPerYear, 0, 0.3),
     missionYears: clamp(input.missionYears, 0, 20),
@@ -174,9 +221,32 @@ function computeLoadW(input: SolarPowerAnalysisInput, inSunlight: boolean): numb
   return (input.baseLoadW + payloadLoad + sunlightLoad) * marginFactor;
 }
 
-function computeGenerationW(input: SolarPowerAnalysisInput, sunlightFraction: number): number {
+function computeGenerationW(input: SolarPowerAnalysisInput, sunlightFraction: number, generationFactor: number): number {
   const degradationFactor = computeDegradationFactor(input);
-  return input.solarArrayPowerBOL_W * degradationFactor * input.sunTrackingFactor * input.powerPathEfficiency * sunlightFraction;
+  return input.solarArrayPowerBOL_W * degradationFactor * generationFactor * input.powerPathEfficiency * sunlightFraction;
+}
+
+/** Mean generation factor over the sample set, weighted by visible sun fraction (the energy-relevant average). */
+function meanGenerationFactor(samples: SolarPowerSample[], fallback: number): number {
+  let weighted = 0;
+  let weight = 0;
+  for (const sample of samples) {
+    weighted += sample.generationFactor * sample.sunlightFraction;
+    weight += sample.sunlightFraction;
+  }
+  return weight > EPSILON ? weighted / weight : fallback;
+}
+
+/** Mean incidence cosine over sunlit (mode flag) samples; null if no sample carries one. */
+function meanIncidenceFactor(samples: SolarPowerSample[]): number | null {
+  let sum = 0;
+  let count = 0;
+  for (const sample of samples) {
+    if (!sample.inSunlight || sample.incidenceFactor === undefined) continue;
+    sum += sample.incidenceFactor;
+    count += 1;
+  }
+  return count > 0 ? sum / count : null;
 }
 
 function getRepresentativeDates(startTime: Date): Array<{ key: string; label: string; start: Date }> {
@@ -199,12 +269,16 @@ function simulateSolarPower(
   durationMinutes: number,
   stepSeconds: number,
   input: SolarPowerAnalysisInput,
+  stations: GroundStation[],
+  alwaysIncidence: boolean,
 ): SolarPowerSample[] {
   const rec = toSatrec(spec);
   const batteryCapacityWh = Math.max(input.batteryCapacityWh, 1);
   let batteryEnergyWh = batteryCapacityWh * (input.initialSocPercent / 100);
   const samples: SolarPowerSample[] = [];
   const times = analysisTimes(startTime.getTime(), durationMinutes * 60, stepSeconds);
+  const attitudeMode = input.generationFactorMode === "attitude";
+  const wantIncidence = attitudeMode || alwaysIncidence;
 
   for (let step = 0; step < times.length; step += 1) {
     const date = new Date(times[step]);
@@ -213,7 +287,24 @@ function simulateSolarPower(
 
     const sunlightFraction = 1 - earthShadowFraction(pv.position, date);
     const inSunlight = sunlightFraction > 0.5;
-    const generationW = computeGenerationW(input, sunlightFraction);
+    let incidenceFactor: number | undefined;
+    let driveAngleRad: number | undefined;
+    if (wantIncidence && pv.velocity) {
+      const q: AttitudeQuaternion = satelliteAttitudeEci(
+        pv.position as unknown as { x: number; y: number; z: number },
+        pv.velocity as unknown as { x: number; y: number; z: number },
+        date,
+        input.attitude,
+        stations,
+      );
+      const incidence = solarArrayIncidence(q, sunVectorECI(date), input.solarArrayType);
+      incidenceFactor = incidence.cosIncidence;
+      driveAngleRad = incidence.driveAngleRad;
+    }
+    const generationFactor = attitudeMode
+      ? (incidenceFactor ?? 0) * input.otherLossFactor
+      : input.sunTrackingFactor;
+    const generationW = computeGenerationW(input, sunlightFraction, generationFactor);
     const loadW = computeLoadW(input, inSunlight);
     const netPowerW = generationW - loadW;
     const deltaHours = step === 0 ? 0 : (times[step] - times[step - 1]) / 3_600_000;
@@ -238,6 +329,9 @@ function simulateSolarPower(
       elapsedMinutes: (times[step] - times[0]) / 60_000,
       inSunlight,
       sunlightFraction,
+      incidenceFactor,
+      driveAngleRad,
+      generationFactor,
       generationW,
       loadW,
       netPowerW,
@@ -266,12 +360,17 @@ function computeMaxContinuousEclipseMinutes(samples: SolarPowerSample[]): number
   return max;
 }
 
-function computeMinSolarArrayRequirement(input: SolarPowerAnalysisInput, sunlightRatio: number, effectiveSunlightRatio: number): number {
+function computeMinSolarArrayRequirement(
+  input: SolarPowerAnalysisInput,
+  sunlightRatio: number,
+  effectiveSunlightRatio: number,
+  generationFactorValue: number,
+): number {
   if (effectiveSunlightRatio <= EPSILON) return Number.POSITIVE_INFINITY;
   const averageLoadW =
     ((input.baseLoadW + input.payloadLoadW * input.payloadDutyCycle) * (1 + input.designMarginPercent / 100))
     + (input.sunlightExtraLoadW * sunlightRatio + input.eclipseExtraLoadW * (1 - sunlightRatio)) * (1 + input.designMarginPercent / 100);
-  const generationFactor = computeDegradationFactor(input) * input.sunTrackingFactor * input.powerPathEfficiency * effectiveSunlightRatio;
+  const generationFactor = computeDegradationFactor(input) * generationFactorValue * input.powerPathEfficiency * effectiveSunlightRatio;
   if (generationFactor <= EPSILON) return Number.POSITIVE_INFINITY;
   return averageLoadW / generationFactor;
 }
@@ -281,6 +380,7 @@ function computeKpi(
   input: SolarPowerAnalysisInput,
   orbitPeriodMinutes: number,
   orbitEclipseMinutes: number,
+  generationFactor: number,
 ): SolarPowerKpi {
   // Same right-endpoint quadrature as the SOC integration; no extra endpoint step.
   const integral = (value: (sample: SolarPowerSample) => number) => samples.slice(1).reduce(
@@ -298,7 +398,7 @@ function computeKpi(
     ? computeLoadW(input, false) * (orbitEclipseMinutes / 60) / Math.max(input.minSocPercent > 0 ? 1 - input.minSocPercent / 100 : 1, 0.05)
     : 0;
   const effectiveSunlightRatio = durationHours > 0 ? integral((s) => s.sunlightFraction) / durationHours : 0;
-  const minSolarArrayPowerRequiredW = computeMinSolarArrayRequirement(input, sunlightRatio, effectiveSunlightRatio);
+  const minSolarArrayPowerRequiredW = computeMinSolarArrayRequirement(input, sunlightRatio, effectiveSunlightRatio, generationFactor);
   const designStatus =
     minSocPercent <= input.minSocPercent
       ? "critical"
@@ -329,6 +429,7 @@ function simulateForDate(
   spec: SatelliteSpec,
   startTime: Date,
   input: SolarPowerAnalysisInput,
+  stations: GroundStation[],
 ): { orbitSamples: SolarPowerSample[]; daySamples: SolarPowerSample[]; orbitKpi: SolarPowerKpi; dayKpi: SolarPowerKpi } {
   const derived = getSatelliteDerivedInfo(spec, startTime);
   const orbitPeriodMinutes = derived.periodMinutes;
@@ -340,6 +441,8 @@ function simulateForDate(
     orbitPeriodMinutes,
     input.orbitStepSeconds,
     input,
+    stations,
+    true,
   );
   const daySamples = simulateSolarPower(
     spec,
@@ -347,13 +450,17 @@ function simulateForDate(
     MINUTES_PER_DAY,
     input.dayStepSeconds,
     input,
+    stations,
+    false,
   );
 
   return {
     orbitSamples,
     daySamples,
-    orbitKpi: computeKpi(orbitSamples, input, orbitPeriodMinutes, eclipseMinutes),
-    dayKpi: computeKpi(daySamples, input, orbitPeriodMinutes, eclipseMinutes),
+    orbitKpi: computeKpi(orbitSamples, input, orbitPeriodMinutes, eclipseMinutes,
+      meanGenerationFactor(orbitSamples, input.sunTrackingFactor)),
+    dayKpi: computeKpi(daySamples, input, orbitPeriodMinutes, eclipseMinutes,
+      meanGenerationFactor(daySamples, input.sunTrackingFactor)),
   };
 }
 
@@ -361,6 +468,7 @@ function computeSweep(
   spec: SatelliteSpec,
   startTime: Date,
   input: SolarPowerAnalysisInput,
+  stations: GroundStation[],
 ): SolarSweepPoint[] {
   const start = input.sweepStart;
   const end = input.sweepEnd;
@@ -373,7 +481,7 @@ function computeSweep(
       ...input,
       [input.sweepParameter]: value,
     });
-    const { dayKpi } = simulateForDate(spec, startTime, adjustedInput);
+    const { dayKpi } = simulateForDate(spec, startTime, adjustedInput, stations);
     return {
       inputValue: value,
       minSocPercent: dayKpi.minSocPercent,
@@ -389,11 +497,13 @@ export function analyzeSolarPower(
   satelliteLabel: string,
   startTime: Date,
   rawInput: SolarPowerAnalysisInput,
+  options: SolarPowerAnalysisOptions = {},
 ): SolarPowerAnalysisResult {
   const input = normalizeInput(rawInput);
-  const current = simulateForDate(spec, startTime, input);
+  const stations = options.stations ?? [];
+  const current = simulateForDate(spec, startTime, input, stations);
   const representativeDays = getRepresentativeDates(startTime).map(({ key, label, start }) => {
-    const { dayKpi } = simulateForDate(spec, start, input);
+    const { dayKpi } = simulateForDate(spec, start, input, stations);
     return {
       key,
       label,
@@ -412,9 +522,14 @@ export function analyzeSolarPower(
     orbitSamples: current.orbitSamples,
     daySamples: current.daySamples,
     representativeDays,
-    sweep: computeSweep(spec, startTime, input),
+    sweep: computeSweep(spec, startTime, input, stations),
     currentOrbit: current.orbitKpi,
     currentDay: current.dayKpi,
     worstRepresentativeDay,
+    factorComparison: {
+      attitudeFactor: (meanIncidenceFactor(current.orbitSamples) ?? 0) * input.otherLossFactor,
+      manualFactor: input.sunTrackingFactor,
+      applied: input.generationFactorMode,
+    },
   };
 }

@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Info } from "lucide-react";
 import { Checkbox } from "./checkbox";
 import { Label } from "./label";
+import { parseNumericInput } from "../../lib/numericInput";
 
 /**
  * Compact control primitives shared by the 通信 / 表示 tabs.
@@ -121,6 +122,52 @@ export function InlineSlider({
   );
 }
 
+/**
+ * Small numeric field for exact values next to a slider. Keeps the typed
+ * text as a draft (so it can be cleared or hold "-" mid-edit), commits only
+ * finite values clamped to [min, max], and shows the committed value again
+ * on blur.
+ */
+export function CompactNumberInput({
+  value,
+  min,
+  max,
+  step,
+  ariaLabel,
+  onChange,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  ariaLabel: string;
+  onChange: (v: number) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <input
+      type="number"
+      inputMode="decimal"
+      data-slot="input"
+      aria-label={ariaLabel}
+      min={min}
+      max={max}
+      step={step}
+      value={draft ?? String(value)}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        const n = parseNumericInput(e.target.value);
+        if (Number.isFinite(n)) onChange(Math.min(max, Math.max(min, n)));
+      }}
+      onBlur={() => setDraft(null)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") setDraft(null);
+      }}
+      className="w-16 rounded border border-line-strong bg-sunken px-1.5 py-0.5 text-right text-xs tabular-nums text-fg focus:border-brand focus:outline-none"
+    />
+  );
+}
+
 /** ラベルと値を上の行、スライダーを全幅で下の行に置く、読みやすさ優先のスライダー。 */
 export function FieldSlider({
   label,
@@ -131,6 +178,7 @@ export function FieldSlider({
   format,
   help,
   onChange,
+  numberInput,
 }: {
   label: string;
   value: number;
@@ -140,6 +188,8 @@ export function FieldSlider({
   format: (v: number) => string;
   help?: string;
   onChange: (v: number) => void;
+  /** Show a number field (with this unit after it) instead of the formatted value, for typing exact values. */
+  numberInput?: { unit: string; step?: number };
 }) {
   return (
     <div className="space-y-1">
@@ -148,7 +198,21 @@ export function FieldSlider({
           {label}
           {help && <HelpTip text={help} />}
         </span>
-        <span className="text-xs font-medium tabular-nums text-fg">{format(value)}</span>
+        {numberInput ? (
+          <span className="inline-flex items-center gap-1 text-xs text-fg">
+            <CompactNumberInput
+              value={value}
+              min={min}
+              max={max}
+              step={numberInput.step ?? step}
+              ariaLabel={`${label}（${numberInput.unit}）`}
+              onChange={onChange}
+            />
+            {numberInput.unit}
+          </span>
+        ) : (
+          <span className="text-xs font-medium tabular-nums text-fg">{format(value)}</span>
+        )}
       </div>
       <input
         type="range"

@@ -127,3 +127,56 @@ describe("TrajectoryRenderer vehicle pass", () => {
     r.dispose();
   });
 });
+
+describe("TrajectoryRenderer satellite vehicle (近接)", () => {
+  it("draws the ad-hoc satellite camera-relative with its wings driven and overlays on top", async () => {
+    const scene = new THREE.Scene();
+    const r = new TrajectoryRenderer(scene);
+    const date = new Date(T0);
+    r.update(date, 0);
+    const satX = 1.1;
+    const state = {
+      model: "satellite-bus",
+      x: satX,
+      y: 0,
+      z: 0,
+      bodyToWorld: new THREE.Quaternion(),
+      driveAngleRad: 0.5,
+      up: { x: 1, y: 0, z: 0 },
+      showAxes: true,
+      sunDirection: { x: 0, y: 1, z: 0 },
+    };
+    r.setSatelliteVehicle(state);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    r.setSatelliteVehicle(state);
+    const camera = cameraAt([satX + 30 / RE_M, 0, 5 / RE_M], [satX, 0, 0]);
+    const { renderer, calls } = stubRenderer();
+    r.renderVehicles(renderer, camera, date, 0);
+    expect(calls.length).toBe(1);
+    let model: THREE.Object3D | undefined;
+    let overlay: THREE.Object3D | undefined;
+    calls[0].scene.traverse((o) => {
+      if (o.name === "TrajectoryModel:satellite-bus") model = o;
+      if (o.name === "SatelliteAttitudeOverlay") overlay = o;
+    });
+    expect(model?.visible).toBe(true);
+    const expected = new THREE.Vector3(satX, 0, 0).sub(camera.position).multiplyScalar(RE_M);
+    expect(model!.position.distanceTo(expected)).toBeLessThan(0.01);
+    const wings: THREE.Object3D[] = [];
+    model!.traverse((o) => {
+      if (o.name === "solar-wing") wings.push(o);
+    });
+    expect(wings.length).toBe(2);
+    for (const w of wings) expect(w.rotation.y).toBeCloseTo(0.5, 9);
+    expect(overlay?.visible).toBe(true);
+    expect(r.satelliteVehicleCoversMarker()).toBe(true);
+    expect(r.satelliteVehicleLengthM("satellite-bus")).toBeCloseTo(10.4, 6);
+    // Cleared: not drawn any more.
+    r.setSatelliteVehicle(null);
+    const second = stubRenderer();
+    r.renderVehicles(second.renderer, camera, date, 0);
+    expect(second.calls.length).toBe(0);
+    expect(r.satelliteVehicleCoversMarker()).toBe(false);
+    r.dispose();
+  });
+});

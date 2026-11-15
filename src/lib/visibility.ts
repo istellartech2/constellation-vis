@@ -6,6 +6,13 @@ import type { SatelliteSpec } from "./satellites";
 import { toSatrec } from "./satellites";
 import type { GroundStation, VisibilityMode } from "./groundStations";
 import { computeSensorDirectionEci } from "./orbitalCoordinates";
+import type { SatelliteAttitudeSettings } from "./attitude/types";
+import {
+  prepareAttitudeContext,
+  satelliteAttitudeFromContext,
+  sensorBoresightEci,
+  type AttitudeTimeContext,
+} from "./attitude/satelliteAttitude";
 
 /** Convert a list of satellite specs to satrec objects. */
 function toSatrecs(sats: SatelliteSpec[]): satellite.SatRec[] {
@@ -37,18 +44,51 @@ export interface SatelliteFovCriteria {
 }
 
 /**
+ * The satellite attitude law applied to the FOV boresight (通信タブ ›
+ * 衛星の姿勢とセンサ). Optional everywhere: omitted, or 地球指向, keeps the
+ * legacy LVLH pointing bit for bit. `stations` are the scenario's ground
+ * stations (for 地上局指向), which need not be the stations being evaluated.
+ */
+export interface FovAttitude {
+  settings: SatelliteAttitudeSettings;
+  stations: readonly GroundStation[];
+}
+
+/**
+ * Time-only attitude data for one step, or undefined when the legacy LVLH
+ * path applies (no attitude, or an effective mode of 地球指向).
+ */
+export function attitudeContextFor(attitude: FovAttitude | undefined, date: Date): AttitudeTimeContext | undefined {
+  if (!attitude || attitude.settings.mode === "lvlh") return undefined;
+  const ctx = prepareAttitudeContext(date, attitude.settings, attitude.stations);
+  return ctx.mode === "lvlh" ? undefined : ctx;
+}
+
+/**
  * Boresight of one satellite in **ECF**, or null when the state is degenerate.
  *
  * Station-independent, so callers compute it once per satellite per time step
  * and reuse it for every ground station. `eciToEcf` is a rotation about the
  * Z axis, which is valid for a direction vector (no origin shift involved).
+ *
+ * `attitude` (from {@link attitudeContextFor}, or a {@link FovAttitude} plus
+ * date) applies a non-LVLH attitude law; without it the legacy LVLH pointing
+ * and its no-velocity nadir fallback are used unchanged.
  */
 export function computeFovBoresightEcf(
   positionEci: satellite.EciVec3<number>,
   velocityEci: satellite.EciVec3<number> | undefined,
   gmst: number,
   fov: SatelliteFovCriteria,
+  attitude?: AttitudeTimeContext | (FovAttitude & { date: Date }),
 ): satellite.EcfVec3<number> | null {
+  const ctx = attitude && "date" in attitude ? attitudeContextFor(attitude, attitude.date) : attitude;
+  if (ctx && ctx.mode !== "lvlh") {
+    const q = satelliteAttitudeFromContext(positionEci, velocityEci, ctx);
+    const b = sensorBoresightEci(q, fov.alongTrackDeg, fov.crossTrackDeg);
+    return satellite.eciToEcf(b, gmst);
+  }
+
   if (velocityEci) {
     const boresight = computeSensorDirectionEci(
       positionEci,
@@ -191,8 +231,10 @@ function countVisibleSatellitesForObserver(
   prepared: PreparedObserver,
   date: Date,
   fov?: SatelliteFovCriteria,
+  attitude?: FovAttitude,
 ): number {
   const gmst = satellite.gstime(date);
+  const ctx = fov ? attitudeContextFor(attitude, date) : undefined;
   let count = 0;
 
   for (const rec of satRecs) {
@@ -201,7 +243,7 @@ function countVisibleSatellitesForObserver(
 
     const ecf = satellite.eciToEcf(pv.position, gmst);
     const boresightEcf = fov
-      ? computeFovBoresightEcf(pv.position, pv.velocity || undefined, gmst, fov)
+      ? computeFovBoresightEcf(pv.position, pv.velocity || undefined, gmst, fov, ctx)
       : null;
     if (isVisibleFromPreparedObserver(ecf, prepared, fov, boresightEcf)) {
       count++;
@@ -236,8 +278,9 @@ export function countVisibleSatellites(
   station: GroundStation,
   date: Date,
   fov?: SatelliteFovCriteria,
+  attitude?: FovAttitude,
 ): number {
-  return countVisibleSatellitesForObserver(satRecs, prepareObserver(station), date, fov);
+  return countVisibleSatellitesForObserver(satRecs, prepareObserver(station), date, fov, attitude);
 }
 
 /**
@@ -263,6 +306,7 @@ export function visibilityStats(
   durationHours = 12,
   stepSec = 10,
   fov?: SatelliteFovCriteria,
+  attitude?: FovAttitude,
 ): VisibilityStats {
   const satRecs = toSatrecs(sats);
   const prepared = prepareObserver(station);
@@ -270,7 +314,7 @@ export function visibilityStats(
   const times = analysisTimes(startMs, durationHours * 3600, stepSec);
   const counts: number[] = [];
   for (const ms of times) {
-    counts.push(countVisibleSatellitesForObserver(satRecs, prepared, new Date(ms), fov));
+    counts.push(countVisibleSatellitesForObserver(satRecs, prepared, new Date(ms), fov, attitude));
   }
   const weighted = counts.slice(0, -1).map((count, i) => ({ count, seconds: (times[i + 1] - times[i]) / 1000 }));
   const totalSeconds = durationHours * 3600;
@@ -296,8 +340,9 @@ export function averageVisibility(
   durationHours = 12,
   stepSec = 10,
   fov?: SatelliteFovCriteria,
+  attitude?: FovAttitude,
 ): number {
-  return visibilityStats(sats, station, start, durationHours, stepSec, fov).avg;
+  return visibilityStats(sats, station, start, durationHours, stepSec, fov, attitude).avg;
 }
 
 /**
@@ -326,6 +371,7 @@ export function calculateStationAccessData(
   durationHours = 24,
   stepSeconds = 10,
   fov?: SatelliteFovCriteria,
+  attitude?: FovAttitude,
 ): StationVisibilitySample[] {
   const satRecs = toSatrecs(sats);
   const observers = stations.map((gs) => prepareObserver(gs));
@@ -336,6 +382,7 @@ export function calculateStationAccessData(
   for (const ms of analysisTimes(startMs, durationHours * 3600, stepSeconds)) {
     const current = new Date(ms);
     const gmst = satellite.gstime(current);
+    const ctx = fov ? attitudeContextFor(attitude, current) : undefined;
     const counts = observers.map(() => 0);
 
     satRecs.forEach((rec) => {
@@ -346,7 +393,7 @@ export function calculateStationAccessData(
       // Station-independent, so the boresight is computed once per satellite
       // per step and reused for every observer.
       const boresightEcf = fov
-        ? computeFovBoresightEcf(pv.position, pv.velocity || undefined, gmst, fov)
+        ? computeFovBoresightEcf(pv.position, pv.velocity || undefined, gmst, fov, ctx)
         : null;
       observers.forEach((obs, gi) => {
         if (isVisibleFromPreparedObserver(ecf, obs, fov, boresightEcf)) counts[gi]++;
@@ -437,6 +484,7 @@ export function generateVisibilityReport(
   durationHours = 24,
   stepSec = 10,
   fov?: SatelliteFovCriteria,
+  attitude?: FovAttitude,
 ): string {
   const satRecs = toSatrecs(sats);
   const observers = stations.map((gs) => prepareObserver(gs));
@@ -450,7 +498,7 @@ export function generateVisibilityReport(
     const current = new Date(ms);
     const counts = observers.map(() => 0);
     observers.forEach((obs, gi) => {
-      counts[gi] = countVisibleSatellitesForObserver(satRecs, obs, current, fov);
+      counts[gi] = countVisibleSatellitesForObserver(satRecs, obs, current, fov, attitude);
     });
     lines.push([String(t), ...counts.map(String)].join(","));
   }

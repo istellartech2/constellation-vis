@@ -152,3 +152,43 @@ describe("model → world chain", () => {
     expect(n.distanceTo(expected)).toBeLessThan(1e-9);
   });
 });
+
+describe("satellite bus (標準バス) solar wings", () => {
+  it("is labelled 標準バス and has two wing pivots whose cell face follows the drive like solarArrayIncidence", async () => {
+    const { acquireTrajectoryModel, instantiateTrajectoryModel, setSolarArrayDrive, releaseTrajectoryModel } = await import(
+      "../src/lib/trajectory/models"
+    );
+    const { solarArrayIncidence, satelliteAttitudeEci } = await import("../src/lib/attitude/satelliteAttitude");
+    expect(TRAJECTORY_MODELS.find((m) => m.key === "satellite-bus")?.label).toBe("標準バス");
+    const template = await acquireTrajectoryModel("satellite-bus");
+    const object = instantiateTrajectoryModel(template);
+    // An arbitrary attitude and Sun.
+    const q = satelliteAttitudeEci(
+      { x: 7000, y: 0, z: 0 },
+      { x: 0, y: 5, z: 5 },
+      new Date(Date.UTC(2026, 10, 15)),
+      { mode: "lvlh", inertialRaDeg: 0, inertialDecDeg: 0 },
+      [],
+    );
+    const sun = new THREE.Vector3(0.3, -0.5, 0.8).normalize();
+    const { cosIncidence, driveAngleRad } = solarArrayIncidence(q, sun, "singleAxis");
+    expect(setSolarArrayDrive(object, driveAngleRad)).toBe(2);
+    object.updateMatrixWorld(true);
+    const qBody = new THREE.Quaternion(q.x, q.y, q.z, q.w);
+    object.traverse((o) => {
+      if (o.name !== "solar-wing") return;
+      // Cell face normal (wing −Z) in body axes, then ECI.
+      const n = new THREE.Vector3(0, 0, -1).applyQuaternion(o.quaternion).applyQuaternion(qBody);
+      expect(n.dot(sun)).toBeCloseTo(cosIncidence, 9);
+    });
+    // Body→ECI to the scene at GMST-free rotation: ECI (x, y, z) → scene (x, z, −y).
+    const world = bodyToWorldQuaternion(q, 0, new THREE.Quaternion());
+    const zBody = new THREE.Vector3(0, 0, 1);
+    const zEci = zBody.clone().applyQuaternion(qBody);
+    const zWorld = zBody.clone().applyQuaternion(world);
+    expect(zWorld.x).toBeCloseTo(zEci.x, 9);
+    expect(zWorld.y).toBeCloseTo(zEci.z, 9);
+    expect(zWorld.z).toBeCloseTo(-zEci.y, 9);
+    releaseTrajectoryModel("satellite-bus");
+  });
+});

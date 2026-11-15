@@ -3,6 +3,13 @@
  * for satellite sensor pointing calculations.
  */
 import * as THREE from "three";
+import type { GroundStation } from "./groundStations";
+import type { AttitudeVec3, SatelliteAttitudeSettings } from "./attitude/types";
+import {
+  effectiveAttitudeMode,
+  satelliteAttitudeEci,
+  sensorBoresightEci,
+} from "./attitude/satelliteAttitude";
 
 /**
  * LVLH coordinate frame axes.
@@ -319,6 +326,22 @@ export function computeTiltedConeHeight(
     -positionECI.y, // -Y_eci -> Z_scene
   );
 
+  return coneHeightCore(satPos, sensorDir, frame.alongTrack, halfAngleDeg, earthRadiusKm);
+}
+
+/**
+ * Shared body of {@link computeTiltedConeHeight} and
+ * {@link computeConeHeightForBoresight}. All vectors in one frame;
+ * `nadirPerp` is any unit vector ⟂ the axis, used only when the axis is
+ * exactly nadir (the cone is then symmetric).
+ */
+function coneHeightCore(
+  satPos: THREE.Vector3,
+  sensorDir: THREE.Vector3,
+  nadirPerp: THREE.Vector3,
+  halfAngleDeg: number,
+  earthRadiusKm: number,
+): number | null {
   const halfAngleRad = THREE.MathUtils.degToRad(halfAngleDeg);
   const cosHalfAngle = Math.cos(halfAngleRad);
   const rSq = earthRadiusKm * earthRadiusKm;
@@ -337,7 +360,7 @@ export function computeTiltedConeHeight(
   if (dotRS < -0.9999) {
     // Special case: sensor is pointing exactly nadir
     // Any perpendicular direction works since the cone is symmetric
-    perpDir = _tmpVec2.copy(frame.alongTrack);
+    perpDir = _tmpVec2.copy(nadirPerp);
   } else {
     perpDir = _tmpVec2
       .copy(radialDir)
@@ -389,4 +412,104 @@ export function computeTiltedConeHeight(
 
   // No part of the cone intersects Earth
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Satellite attitude (docs/satellite-attitude.md)
+
+/** ECI (satellite.js) → scene axes, as everywhere in this module. */
+function eciToScene(v: AttitudeVec3, out = new THREE.Vector3()): THREE.Vector3 {
+  return out.set(v.x, v.z, -v.y);
+}
+
+/**
+ * Sensor boresight (unit, ECI) under an attitude law, or null when it cannot
+ * be defined. 地球指向 (and a missing/unusable attitude) goes through the legacy
+ * {@link computeSensorDirectionEci} so its results stay bit-identical; it
+ * returns null without a usable velocity, where callers keep their own nadir
+ * fallback. Other modes always return a direction (their own fallbacks are in
+ * satelliteAttitude.ts).
+ */
+export function sensorBoresightEciForAttitude(
+  positionECI: AttitudeVec3,
+  velocityECI: AttitudeVec3 | undefined,
+  date: Date,
+  attitude: SatelliteAttitudeSettings | undefined,
+  stations: readonly GroundStation[],
+  alongTrackDeg: number,
+  crossTrackDeg: number,
+): AttitudeVec3 | null {
+  if (!attitude || effectiveAttitudeMode(attitude, stations) === "lvlh") {
+    if (!velocityECI) return null;
+    const d = computeSensorDirectionEci(positionECI, velocityECI, alongTrackDeg, crossTrackDeg);
+    return d ? { x: d.x, y: d.y, z: d.z } : null;
+  }
+  const q = satelliteAttitudeEci(
+    positionECI,
+    velocityECI ?? { x: 0, y: 0, z: 0 },
+    date,
+    attitude,
+    stations,
+  );
+  return sensorBoresightEci(q, alongTrackDeg, crossTrackDeg);
+}
+
+/**
+ * Cone orientation for the 3D FOV cone (axis along local −Y, as
+ * {@link computeFovConeQuaternion}) under an attitude law. 地球指向 returns
+ * exactly `computeFovConeQuaternion(...)`, including null without a usable
+ * velocity (the renderer then points the cone at nadir as before).
+ */
+export function fovConeQuaternionForAttitude(
+  positionECI: AttitudeVec3,
+  velocityECI: AttitudeVec3 | undefined,
+  date: Date,
+  attitude: SatelliteAttitudeSettings | undefined,
+  stations: readonly GroundStation[],
+  alongTrackDeg: number,
+  crossTrackDeg: number,
+): THREE.Quaternion | null {
+  if (!attitude || effectiveAttitudeMode(attitude, stations) === "lvlh") {
+    return velocityECI ? computeFovConeQuaternion(positionECI, velocityECI, alongTrackDeg, crossTrackDeg) : null;
+  }
+  const dir = sensorBoresightEciForAttitude(positionECI, velocityECI, date, attitude, stations, alongTrackDeg, crossTrackDeg);
+  return dir ? computeConeQuaternion(eciToScene(dir).normalize()) : null;
+}
+
+/**
+ * Whether the boresight *axis* (a ray from the satellite) hits the Earth
+ * sphere. A cone whose axis misses may still graze the limb with its edge;
+ * use {@link computeConeHeightForBoresight} for "any part of the cone".
+ */
+export function boresightPointsAtEarth(
+  positionECI: AttitudeVec3,
+  boresightECI: AttitudeVec3,
+  earthRadiusKm: number,
+): boolean {
+  const n = Math.hypot(boresightECI.x, boresightECI.y, boresightECI.z);
+  if (n === 0) return false;
+  const p = eciToScene(positionECI, new THREE.Vector3());
+  const d = eciToScene(boresightECI, new THREE.Vector3()).divideScalar(n);
+  return raySphereIntersection(p, d, earthRadiusKm * earthRadiusKm) !== null;
+}
+
+/**
+ * Cone height (km along the axis) for an arbitrary boresight, with the same
+ * far-edge-first scan as {@link computeTiltedConeHeight}; null when no part
+ * of the cone reaches the Earth.
+ */
+export function computeConeHeightForBoresight(
+  positionECI: AttitudeVec3,
+  boresightECI: AttitudeVec3,
+  halfAngleDeg: number,
+  earthRadiusKm: number,
+): number | null {
+  const satPos = eciToScene(positionECI, new THREE.Vector3());
+  const dir = eciToScene(boresightECI, new THREE.Vector3());
+  if (dir.lengthSq() === 0 || satPos.lengthSq() === 0) return null;
+  dir.normalize();
+  // Any perpendicular works for an exactly nadir axis.
+  const helper = Math.abs(dir.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+  const perp = new THREE.Vector3().crossVectors(dir, helper).normalize();
+  return coneHeightCore(satPos, dir, perp, halfAngleDeg, earthRadiusKm);
 }

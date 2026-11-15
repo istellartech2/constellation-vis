@@ -37,6 +37,7 @@ import {
   bodyToWorldQuaternion,
   instantiateTrajectoryModel,
   releaseTrajectoryModel,
+  setSolarArrayDrive,
   trajectoryModelLengthM,
   type TrajectoryModelTemplate,
 } from "./models";
@@ -179,6 +180,63 @@ interface VehicleSlot {
   released: boolean;
 }
 
+/**
+ * An ad-hoc vehicle placed by the caller every frame (the selected editor
+ * satellite in the 近接 camera), drawn by the same camera-relative metre pass
+ * as the trajectory models. Positions are plain float64 numbers in scene
+ * (world) units; the camera difference is taken before scaling to metres.
+ */
+export interface SatelliteVehicleState {
+  /** Built-in key or GLB URL (today always "satellite-bus" = 標準バス). */
+  model: string;
+  /** Model centre in world scene units (Earth radii). */
+  x: number;
+  y: number;
+  z: number;
+  /** Body → world rotation (see bodyToWorldQuaternion with rotAngle = 0 for ECI). */
+  bodyToWorld: { x: number; y: number; z: number; w: number };
+  /** Single-axis solar-array drive angle about body +Y (0 for body-fixed panels). */
+  driveAngleRad: number;
+  /** Local vertical in world axes (unit), for the sky/ground fill light. */
+  up: { x: number; y: number; z: number };
+  /** Draw the body X/Y/Z triad (red/green/blue, labelled). */
+  showAxes: boolean;
+  /** Unit Sun direction in world axes for the Sun arrow, or null for none. */
+  sunDirection: { x: number; y: number; z: number } | null;
+}
+
+interface SatelliteSlot {
+  model: string;
+  template: TrajectoryModelTemplate | null;
+  object: THREE.Object3D | null;
+  released: boolean;
+}
+
+/** Overlay arrows / labels drawn on top of the satellite model (no depth test). */
+interface SatelliteOverlay {
+  group: THREE.Group;
+  axes: THREE.ArrowHelper[];
+  sun: THREE.ArrowHelper;
+  axisLabels: Label[];
+  sunLabel: Label | null;
+}
+
+const OVERLAY_AXIS_COLORS = [0xff4d4d, 0x4dd65a, 0x4d8dff] as const;
+const OVERLAY_AXIS_NAMES = ["X", "Y", "Z"] as const;
+const OVERLAY_SUN_COLOR = 0xffc233;
+/**
+ * Axis arrow length / Sun arrow length, in model lengths (the 標準バス is
+ * 10.4 m across its wings, so the Sun arrow is ≈1.5× the model's half-span).
+ * Both are further capped so arrowhead and label stay inside the frame
+ * (OVERLAY_FRAME_FILL of the visible half-extent, minus the label), which
+ * matters on narrow portrait screens where the model nearly fills the width.
+ */
+const OVERLAY_AXIS_LENGTHS = 0.55;
+const OVERLAY_SUN_LENGTHS = 0.75;
+const OVERLAY_FRAME_FILL = 0.9;
+/** Never shorter than this (model lengths), so the arrows stay readable when zoomed right in. */
+const OVERLAY_MIN_LENGTHS = 0.3;
+
 interface TrackEntry {
   track: TrajectoryTrack;
   group: THREE.Group;
@@ -236,6 +294,13 @@ export class TrajectoryRenderer {
   private readonly sunLight = new THREE.DirectionalLight(0xffffff, 2.6);
   private readonly fillLight = new THREE.HemisphereLight(0xc4d6ff, 0x3a332c, 0.9);
   private readonly ambientLight = new THREE.AmbientLight(0xffffff, 0.15);
+
+  // Ad-hoc satellite vehicle (see setSatelliteVehicle).
+  private satelliteState: SatelliteVehicleState | null = null;
+  private satelliteSlot: SatelliteSlot | null = null;
+  private satelliteOverlay: SatelliteOverlay | null = null;
+  private satelliteCoversMarker = false;
+  private readonly tmpQuat = new THREE.Quaternion();
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -371,6 +436,47 @@ export class TrajectoryRenderer {
   }
 
   /**
+   * Place (or with null, hide) the ad-hoc satellite vehicle for the next
+   * {@link renderVehicles} call. Call every frame while it should be drawn.
+   * The model is loaded once and kept (hidden) until the model string
+   * changes or the renderer is disposed.
+   */
+  setSatelliteVehicle(state: SatelliteVehicleState | null): void {
+    this.satelliteState = state;
+    if (!state) return;
+    if (this.satelliteSlot?.model === state.model) return;
+    if (this.satelliteSlot) this.releaseSatelliteSlot(this.satelliteSlot);
+    const slot: SatelliteSlot = { model: state.model, template: null, object: null, released: false };
+    this.satelliteSlot = slot;
+    acquireTrajectoryModel(state.model).then(
+      (template) => {
+        if (slot.released) return;
+        slot.template = template;
+        const object = instantiateTrajectoryModel(template);
+        object.visible = false;
+        slot.object = object;
+        this.vehicleScene.add(object);
+      },
+      (error: unknown) => {
+        if (slot.released) return;
+        console.warn(`Satellite model "${state.model}" could not be loaded.`, error);
+      },
+    );
+  }
+
+  /** Whether the satellite model was drawn large enough (last frame) to replace its marker dot. */
+  satelliteVehicleCoversMarker(): boolean {
+    return this.satelliteState !== null && this.satelliteCoversMarker;
+  }
+
+  /** Length of the satellite model in metres (loaded, else registry, else 50). */
+  satelliteVehicleLengthM(model: string): number {
+    const slot = this.satelliteSlot;
+    if (slot?.model === model && slot.template) return slot.template.lengthM;
+    return trajectoryModelLengthM(model) ?? DEFAULT_VEHICLE_LENGTH_M;
+  }
+
+  /**
    * Second render pass for 3D models; call right after
    * `renderer.render(scene, camera)`. Leaves renderer state as found. Also
    * refreshes label pixel scale and Earth occlusion (applied next frame).
@@ -491,6 +597,42 @@ export class TrajectoryRenderer {
         }
       }
     }
+    // Ad-hoc satellite (近接 camera): same camera-relative placement.
+    this.satelliteCoversMarker = false;
+    const sat = this.satelliteState;
+    const satSlot = this.satelliteSlot;
+    if (satSlot?.object) satSlot.object.visible = false;
+    if (this.satelliteOverlay) this.satelliteOverlay.group.visible = false;
+    if (sat && satSlot?.object && satSlot.template && satSlot.model === sat.model
+      && !this.occludedByEarth(this.tmp.set(camX, camY, camZ), sat.x, sat.y, sat.z)) {
+      const dx = (sat.x - camX) * SCENE_UNIT_M;
+      const dy = (sat.y - camY) * SCENE_UNIT_M;
+      const dz = (sat.z - camZ) * SCENE_UNIT_M;
+      const dist = Math.hypot(dx, dy, dz);
+      const lengthM = satSlot.template.lengthM;
+      const px = (lengthM * pxPerRad) / Math.max(dist, 1e-3);
+      if (px >= MODEL_MIN_PX) {
+        const object = satSlot.object;
+        const q = this.tmpQuat.set(sat.bodyToWorld.x, sat.bodyToWorld.y, sat.bodyToWorld.z, sat.bodyToWorld.w).normalize();
+        object.quaternion.copy(q);
+        object.position.set(dx, dy, dz).sub(this.tmpPivot.copy(satSlot.template.pivotBody).applyQuaternion(q));
+        setSolarArrayDrive(object, Number.isFinite(sat.driveAngleRad) ? sat.driveAngleRad : 0);
+        object.visible = true;
+        this.satelliteCoversMarker = px >= MODEL_HIDE_MARKER_PX;
+        drawn += 1;
+        if (dist - lengthM < nearest) {
+          nearest = dist - lengthM;
+          this.fillLight.position.set(sat.up.x, sat.up.y, sat.up.z);
+          nearestUpSet = true;
+        }
+        farthest = Math.max(farthest, dist + lengthM);
+        if (sat.showAxes || sat.sunDirection) {
+          // Visible half-extent at the model's distance (the narrower of width / height).
+          const frameHalfM = dist / Math.max(camera.projectionMatrix.elements[0], p5);
+          this.placeSatelliteOverlay(sat, q, dx, dy, dz, lengthM, dist, frameHalfM);
+        }
+      }
+    }
     if (drawn === 0) return;
 
     // Lights: real sun direction (ECI (x, y, z) → world (x, z, −y)) plus a
@@ -555,6 +697,10 @@ export class TrajectoryRenderer {
   }
 
   dispose(): void {
+    if (this.satelliteSlot) this.releaseSatelliteSlot(this.satelliteSlot);
+    this.satelliteSlot = null;
+    this.satelliteState = null;
+    this.disposeSatelliteOverlay();
     for (const entry of this.entries.values()) this.disposeEntry(entry);
     this.entries.clear();
     this.tracks = [];
@@ -806,6 +952,109 @@ export class TrajectoryRenderer {
     this.discScene.remove(slot.disc);
     slot.discDisposables.forEach((d) => d.dispose());
     releaseTrajectoryModel(slot.model);
+  }
+
+  // --- satellite vehicle ---------------------------------------------------------
+
+  private releaseSatelliteSlot(slot: SatelliteSlot) {
+    if (slot.released) return;
+    slot.released = true;
+    if (slot.object) this.vehicleScene.remove(slot.object);
+    slot.object = null;
+    releaseTrajectoryModel(slot.model);
+  }
+
+  /** Axes triad and Sun arrow at the satellite centre (camera-relative metres), drawn over the model. */
+  private placeSatelliteOverlay(
+    sat: SatelliteVehicleState,
+    q: THREE.Quaternion,
+    dx: number,
+    dy: number,
+    dz: number,
+    lengthM: number,
+    dist: number,
+    frameHalfM: number,
+  ) {
+    const overlay = this.ensureSatelliteOverlay();
+    overlay.group.visible = true;
+    overlay.group.position.set(dx, dy, dz);
+    // Room for an arrow plus its label (metres per pixel at the model's distance).
+    const mPerPx = dist * this.labelScalePerPx;
+    const fit = (lengths: number, label: Label | null | undefined) =>
+      Math.max(
+        OVERLAY_MIN_LENGTHS * lengthM,
+        Math.min(lengths * lengthM, OVERLAY_FRAME_FILL * frameHalfM - ((label?.widthPx ?? 0) + 4) * mPerPx),
+      );
+    const axisLength = fit(OVERLAY_AXIS_LENGTHS, overlay.axisLabels[0]);
+    for (let i = 0; i < 3; i += 1) {
+      const arrow = overlay.axes[i];
+      arrow.visible = sat.showAxes;
+      const label = overlay.axisLabels[i];
+      if (label) label.sprite.visible = sat.showAxes;
+      if (!sat.showAxes) continue;
+      const dir = this.tmp.set(i === 0 ? 1 : 0, i === 1 ? 1 : 0, i === 2 ? 1 : 0).applyQuaternion(q);
+      arrow.setDirection(dir);
+      arrow.setLength(axisLength, 0.18 * axisLength, 0.08 * axisLength);
+      if (label) {
+        label.sprite.position.copy(dir).multiplyScalar(axisLength * 1.04);
+        this.scaleLabel(label);
+      }
+    }
+    const sun = sat.sunDirection;
+    overlay.sun.visible = sun !== null;
+    if (overlay.sunLabel) overlay.sunLabel.sprite.visible = sun !== null;
+    if (sun) {
+      const sunLength = fit(OVERLAY_SUN_LENGTHS, overlay.sunLabel);
+      const dir = this.tmp.set(sun.x, sun.y, sun.z).normalize();
+      overlay.sun.setDirection(dir);
+      overlay.sun.setLength(sunLength, 0.16 * sunLength, 0.07 * sunLength);
+      if (overlay.sunLabel) {
+        overlay.sunLabel.sprite.position.copy(dir).multiplyScalar(sunLength * 1.04);
+        this.scaleLabel(overlay.sunLabel);
+      }
+    }
+  }
+
+  private ensureSatelliteOverlay(): SatelliteOverlay {
+    if (this.satelliteOverlay) return this.satelliteOverlay;
+    const group = new THREE.Group();
+    group.name = "SatelliteAttitudeOverlay";
+    const onTop = (arrow: THREE.ArrowHelper) => {
+      for (const material of [arrow.line.material, arrow.cone.material] as THREE.Material[]) {
+        material.depthTest = false;
+        material.depthWrite = false;
+      }
+      arrow.line.renderOrder = 10;
+      arrow.cone.renderOrder = 10;
+      return arrow;
+    };
+    const origin = new THREE.Vector3();
+    const axes = OVERLAY_AXIS_COLORS.map((color) => onTop(new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), origin, 1, color)));
+    const sun = onTop(new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), origin, 1, OVERLAY_SUN_COLOR));
+    const toCss = (hex: number) => `#${hex.toString(16).padStart(6, "0")}`;
+    const axisLabels = OVERLAY_AXIS_NAMES.map((name, i) => createLabel(name, toCss(OVERLAY_AXIS_COLORS[i]))).filter(
+      (l): l is Label => l !== null,
+    );
+    const sunLabel = createLabel("太陽", toCss(OVERLAY_SUN_COLOR));
+    group.add(...axes, sun);
+    for (const label of [...axisLabels, sunLabel]) {
+      if (!label) continue;
+      label.sprite.renderOrder = 11;
+      group.add(label.sprite);
+    }
+    this.vehicleScene.add(group);
+    this.satelliteOverlay = { group, axes, sun, axisLabels: axisLabels.length === 3 ? axisLabels : [], sunLabel };
+    return this.satelliteOverlay;
+  }
+
+  private disposeSatelliteOverlay() {
+    const overlay = this.satelliteOverlay;
+    if (!overlay) return;
+    this.satelliteOverlay = null;
+    overlay.group.removeFromParent();
+    for (const arrow of [...overlay.axes, overlay.sun]) arrow.dispose();
+    overlay.axisLabels.forEach(disposeLabel);
+    disposeLabel(overlay.sunLabel);
   }
 
   // --- build / dispose ---------------------------------------------------------

@@ -28,7 +28,7 @@ import {
   EARTH_FLATTENING,
 } from "./astronomy";
 import { KMLRenderer } from "./kmlRenderer";
-import { TrajectoryRenderer } from "./trajectory/renderer";
+import { TrajectoryRenderer, type SatelliteVehicleState } from "./trajectory/renderer";
 import type { TrajectoryTrack } from "./trajectory/types";
 import {
   POINT_STYLE_FRAGMENT_PARS,
@@ -40,7 +40,27 @@ import {
   type SatellitePointStyle,
 } from "./satellitePointStyle";
 import { loadKMLFromURL } from "./kml";
-import { computeFovConeQuaternion, computeTiltedConeHeight } from "./orbitalCoordinates";
+import {
+  boresightPointsAtEarth,
+  computeConeHeightForBoresight,
+  computeFovConeQuaternion,
+  computeTiltedConeHeight,
+} from "./orbitalCoordinates";
+import {
+  prepareAttitudeContext,
+  satelliteAttitudeFromContext,
+  sensorBoresightEci,
+  solarArrayIncidence,
+  type AttitudeTimeContext,
+} from "./attitude/satelliteAttitude";
+import {
+  DEFAULT_SATELLITE_ATTITUDE,
+  DEFAULT_SOLAR_ARRAY_TYPE,
+  type AttitudeQuaternion,
+  type SatelliteAttitudeSettings,
+  type SolarArrayType,
+} from "./attitude/types";
+import { bodyToWorldQuaternion } from "./trajectory/models";
 import {
   DARK_MONOCHROME_EARTH_MODE,
   EARTH_ASSETS,
@@ -138,6 +158,28 @@ const TRAJECTORY_FOLLOW_START_LENGTHS = 3;
 const TRAJECTORY_FOLLOW_MAX_DISTANCE = 2_500_000 * SCENE_UNITS_PER_M;
 /** Initial camera elevation above the local horizon, seen from the side. */
 const TRAJECTORY_FOLLOW_START_ELEVATION = THREE.MathUtils.degToRad(12);
+/** Satellite 近接: farthest zoom (a regional view of the ground below). */
+const SATELLITE_FOLLOW_MAX_DISTANCE = 2_000_000 * SCENE_UNITS_PER_M;
+/** Satellite 近接: initial camera direction, behind (−along-track) and above, a little to the side. */
+const SATELLITE_FOLLOW_START_ELEVATION = THREE.MathUtils.degToRad(25);
+const SATELLITE_FOLLOW_START_AZIMUTH = THREE.MathUtils.degToRad(35);
+/** Frames the selected dot stays hidden on entering 近接 while the model loads / is first measured (~0.5 s). */
+const CLOSE_UP_DOT_GRACE_FRAMES = 30;
+/** Model drawn for editor satellites in the 近接 camera (標準バス). */
+const SATELLITE_MODEL = "satellite-bus";
+/** FOV cones whose boresight misses the Earth: grey, fainter. */
+const FOV_CONE_MISS_COLOR = 0x9aa0a6;
+const FOV_CONE_OPACITY = 0.16;
+const FOV_CONE_MISS_OPACITY = 0.08;
+/**
+ * Dashed boresight drawn along each grey cone (same length as the cone), so a
+ * sensor that does not look at the Earth reads as "pointing elsewhere" even
+ * on the black sky where the faint grey cone almost disappears. Dash and gap
+ * in Earth radii (~45 km / ~30 km).
+ */
+const FOV_MISS_BORESIGHT_OPACITY = 0.75;
+const FOV_MISS_BORESIGHT_DASH = 0.007;
+const FOV_MISS_BORESIGHT_GAP = 0.0047;
 /** Below ~5 m/s of horizontal speed the flight direction is taken from the track ahead. */
 const TRAJECTORY_FOLLOW_MIN_HORIZONTAL_SPEED_SQ = (5 * SCENE_UNITS_PER_M) ** 2;
 const TRAJECTORY_FOLLOW_ZOOM_SPEED = 3;
@@ -239,7 +281,16 @@ type TextureLoaderFn = (
   fallback?: Rgba,
 ) => THREE.Texture;
 
-export type SatelliteCameraMode = "free" | "earthCenter" | "thirdPerson";
+/**
+ * Satellite camera modes of the info card (全体／地球中心／後方追跡／近接).
+ * "closeUp" (近接) rides rigidly with the selected editor satellite in its
+ * LVLH frame and draws its 3D model; it is never persisted — snapshots report
+ * the free framing to return to, like the trajectory follow.
+ */
+export type SatelliteCameraMode = "free" | "earthCenter" | "thirdPerson" | "closeUp";
+
+/** What the ride-along camera follows: a trajectory track (追従) or the selected satellite (近接). */
+type RideSubject = { kind: "trajectory"; id: string } | { kind: "satellite" };
 
 export interface SatelliteSceneParams {
   mountRef: React.RefObject<HTMLDivElement | null>;
@@ -277,6 +328,19 @@ export interface SatelliteSceneParams {
    * in a satellite mode). Not fired for an explicit setTrajectoryFollow(null).
    */
   onTrajectoryFollowEnd?: () => void;
+  /**
+   * Fired when the scene leaves the 近接 (closeUp) camera on its own (no
+   * selected editor satellite, propagation failed); the scene is then in
+   * "free". Not fired for setCameraMode.
+   */
+  onCloseUpEnd?: () => void;
+  /** Attitude law of the editor satellites (FOV cones, 近接 model). Applied live. Default 地球指向. */
+  satelliteAttitude?: SatelliteAttitudeSettings;
+  /** Solar array type of the 近接 model (1軸追尾 turns the wings). Applied live. Default fixed. */
+  solarArrayType?: SolarArrayType;
+  /** 近接 camera overlays: body X/Y/Z triad and the Sun direction seen from the satellite. Applied live. */
+  showBodyAxes?: boolean;
+  showBodySunDirection?: boolean;
   groundStations: GroundStation[];
   satRadius: number;
   /** Fixed-pixel dots, shadow dimming and glint for every satellite renderer. Applied live. */
@@ -423,6 +487,19 @@ export default class SatelliteScene {
   /** One instance per drawn FOV cone (every satellite in CPU mode, the focus subset in mass mode). */
   private readonly fovCones: THREE.InstancedMesh;
   private fovConeCount = 0;
+  /** Cones whose boresight misses the Earth (non-地球指向 attitudes): grey, fainter; shares the geometry. */
+  private readonly fovMissMaterial: THREE.MeshBasicMaterial;
+  private readonly fovMissCones: THREE.InstancedMesh;
+  private fovMissCount = 0;
+  /** Dashed boresight line per grey cone (2 vertices each, filled in pushAttitudeFovCone). */
+  private readonly fovMissBoresightGeometry: THREE.BufferGeometry;
+  private readonly fovMissBoresightPositions: Float32Array;
+  private readonly fovMissBoresightDistances: Float32Array;
+  private readonly fovMissBoresightMaterial: THREE.LineDashedMaterial;
+  private readonly fovMissBoresights: THREE.LineSegments;
+  /** Attitude context of this frame for the cones (null: 地球指向, today's code path). */
+  private frameAttitude: AttitudeTimeContext | null = null;
+  private readonly attitudeQuat: AttitudeQuaternion = { w: 1, x: 0, y: 0, z: 0 };
   private readonly fovConeColor: THREE.Color;
   private readonly satelliteVisibleColor: THREE.Color;
   private readonly satelliteHiddenColor: THREE.Color;
@@ -507,23 +584,46 @@ export default class SatelliteScene {
   private thirdPersonPitch = THIRDPERSON_DEFAULT_PITCH;
   private cameraMode: SatelliteCameraMode;
 
-  // --- Trajectory follow camera (see setTrajectoryFollow) ---
-  private trajectoryFollowId: string | null = null;
-  /** Free-camera framing to restore when the follow ends; also what saved views see meanwhile. */
-  private trajectoryFollowReturn: CameraSnapshot | null = null;
-  /** Frame the vehicle from scratch on the next followed frame. */
-  private trajectoryFollowNeedsFraming = false;
-  private readonly trajectoryFollowPos = new THREE.Vector3();
-  private readonly trajectoryFollowVel = new THREE.Vector3();
-  private readonly trajectoryFollowUp = new THREE.Vector3(0, 1, 0);
-  private readonly trajectoryFollowPrevUp = new THREE.Vector3(0, 1, 0);
-  private trajectoryFollowShellsBiased = false;
+  // --- Ride-along camera: trajectory 追従 (setTrajectoryFollow) or satellite 近接 (closeUp) ---
+  private ride: RideSubject | null = null;
+  /** Free-camera framing to restore when the ride ends; also what saved views see meanwhile. */
+  private rideReturn: CameraSnapshot | null = null;
+  /** Frame the subject from scratch on the next ridden frame. */
+  private rideNeedsFraming = false;
+  /** Subject position / velocity in camera-holder coordinates (scene units, per second). */
+  private readonly ridePos = new THREE.Vector3();
+  private readonly rideVel = new THREE.Vector3();
+  private readonly rideUp = new THREE.Vector3(0, 1, 0);
+  private readonly ridePrevUp = new THREE.Vector3(0, 1, 0);
+  private rideShellsBiased = false;
+  /** 近接: this frame's state of the selected satellite (ECI km, km/s; world scene units). */
+  private rideSatValid = false;
+  private readonly rideSatEciPos = { x: 0, y: 0, z: 0 };
+  private readonly rideSatEciVel = { x: 0, y: 0, z: 0 };
+  private readonly rideSatWorld = new THREE.Vector3();
+  private readonly rideSatWorldVel = new THREE.Vector3();
+  private readonly rideBodyToWorld = new THREE.Quaternion();
+  /** Whether the selected satellite's dot is currently hidden under its 近接 model. */
+  private selectedDotHidden = false;
+  /**
+   * Frames left during which 近接 keeps the selected dot hidden even before
+   * the model reports it covers the dot (its size is measured one frame late
+   * and the model may still be loading): without it the first close frame
+   * shows the dot as a screen-filling disc.
+   */
+  private closeUpDotGraceFrames = 0;
+  private readonly cpuHideSelectedUniform = { value: 0 };
   /** Tracks last handed to setTrajectories. */
   private trajectoryTracks: TrajectoryTrack[] = [];
   /** Track whose event labels the renderer currently shows. */
   private focusedTrajectoryTrack: string | null = null;
 
   private params: SatelliteSceneParams;
+
+  /** Track id of the trajectory follow, or null (also null while in 近接). */
+  private get trajectoryFollowId(): string | null {
+    return this.ride?.kind === "trajectory" ? this.ride.id : null;
+  }
 
   constructor(params: SatelliteSceneParams) {
     this.params = params;
@@ -573,7 +673,7 @@ export default class SatelliteScene {
     // that framing is never persisted (getCameraSnapshot reports the framing
     // to return to instead), so skip the report altogether.
     const handleControlsEnd = () => {
-      if (this.trajectoryFollowId !== null) return;
+      if (this.ride !== null) return;
       this.params.onCameraChange?.(this.getCameraSnapshot());
     };
     this.controls.addEventListener("end", handleControlsEnd);
@@ -678,14 +778,19 @@ export default class SatelliteScene {
     // the normal visibility colours but draw as a hollow ring, like a planned
     // object on a map, so they never read as a tracked satellite.
     this.satMaterial.onBeforeCompile = shader => {
-      Object.assign(shader.uniforms, this.pointStyleUniforms, { uSelectedPoint: this.cpuSelectedUniform });
-      shader.vertexShader = "attribute float filingMarker; varying float vFilingMarker; uniform float uSelectedPoint;\n" + POINT_STYLE_VERTEX_PARS + shader.vertexShader;
+      Object.assign(shader.uniforms, this.pointStyleUniforms, {
+        uSelectedPoint: this.cpuSelectedUniform,
+        uHideSelectedPoint: this.cpuHideSelectedUniform,
+      });
+      shader.vertexShader = "attribute float filingMarker; varying float vFilingMarker; uniform float uSelectedPoint; uniform float uHideSelectedPoint;\n" + POINT_STYLE_VERTEX_PARS + shader.vertexShader;
       shader.vertexShader = shader.vertexShader.replace("gl_PointSize = size;", "vFilingMarker = filingMarker; gl_PointSize = size * (filingMarker > 0.5 ? 1.35 : 1.0);");
       shader.vertexShader = shader.vertexShader.replace("#include <logdepthbuf_vertex>", `
         {
           vec3 styled = vColor.rgb;
           bool selectedPoint = abs(float(gl_VertexID) - uSelectedPoint) < 0.5;
           gl_PointSize = styleSatPoint(transformed, float(gl_VertexID), selectedPoint, filingMarker > 0.5, gl_PointSize, styled);
+          // 近接: the 3D model replaces the selected dot (a world-size dot would fill the view).
+          if (selectedPoint && uHideSelectedPoint > 0.5) gl_PointSize = 0.0;
           vColor.rgb = styled;
         }
         #include <logdepthbuf_vertex>
@@ -803,7 +908,7 @@ export default class SatelliteScene {
     this.fovConeMaterial = new THREE.MeshBasicMaterial({
       color: this.fovConeColor,
       transparent: true,
-      opacity: 0.16,
+      opacity: FOV_CONE_OPACITY,
       depthWrite: false,
       side: THREE.DoubleSide,
     });
@@ -816,6 +921,44 @@ export default class SatelliteScene {
     this.fovCones.frustumCulled = false;
     this.fovCones.count = 0;
     this.scene.add(this.fovCones);
+    this.fovMissMaterial = new THREE.MeshBasicMaterial({
+      color: FOV_CONE_MISS_COLOR,
+      transparent: true,
+      opacity: FOV_CONE_MISS_OPACITY,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    this.fovMissCones = new THREE.InstancedMesh(
+      this.fovConeGeometry,
+      this.fovMissMaterial,
+      Math.max(1, this.massLayer ? MASS_FOCUS_LIMIT + 1 : this.satRecs.length),
+    );
+    this.fovMissCones.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.fovMissCones.frustumCulled = false;
+    this.fovMissCones.count = 0;
+    this.scene.add(this.fovMissCones);
+    const missCapacity = this.fovMissCones.instanceMatrix.count;
+    this.fovMissBoresightPositions = new Float32Array(missCapacity * 2 * 3);
+    this.fovMissBoresightDistances = new Float32Array(missCapacity * 2);
+    this.fovMissBoresightGeometry = new THREE.BufferGeometry();
+    const boresightPos = new THREE.BufferAttribute(this.fovMissBoresightPositions, 3);
+    boresightPos.setUsage(THREE.DynamicDrawUsage);
+    const boresightDist = new THREE.BufferAttribute(this.fovMissBoresightDistances, 1);
+    boresightDist.setUsage(THREE.DynamicDrawUsage);
+    this.fovMissBoresightGeometry.setAttribute("position", boresightPos);
+    this.fovMissBoresightGeometry.setAttribute("lineDistance", boresightDist);
+    this.fovMissBoresightGeometry.setDrawRange(0, 0);
+    this.fovMissBoresightMaterial = new THREE.LineDashedMaterial({
+      color: FOV_CONE_MISS_COLOR,
+      transparent: true,
+      opacity: FOV_MISS_BORESIGHT_OPACITY,
+      depthWrite: false,
+      dashSize: FOV_MISS_BORESIGHT_DASH,
+      gapSize: FOV_MISS_BORESIGHT_GAP,
+    });
+    this.fovMissBoresights = new THREE.LineSegments(this.fovMissBoresightGeometry, this.fovMissBoresightMaterial);
+    this.fovMissBoresights.frustumCulled = false;
+    this.scene.add(this.fovMissBoresights);
 
     this.scene.add(satPoints);
     this.scene.add(groundPoints);
@@ -834,6 +977,9 @@ export default class SatelliteScene {
     this.trajectoryRenderer = new TrajectoryRenderer(this.scene);
     this.setTrajectories(this.params.trajectories ?? []);
     if (this.params.trajectoryFollowId) this.setTrajectoryFollow(this.params.trajectoryFollowId);
+    // 近接 survives a rebuild only while a satellite is selected; the first
+    // frame drops it (onCloseUpEnd) otherwise.
+    if (this.cameraMode === "closeUp") this.startSatelliteRide(null);
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
@@ -944,6 +1090,9 @@ export default class SatelliteScene {
         ? overlay.pick(this.camera, rect, event.clientX, event.clientY, radius, simMs, (i) => overlay.isRowVisible(i))
         : [];
       const nextIndex = pickSatelliteHitIndex(mergePickHits(editorHits, catalogHits, this.satCount), this.selectedIndex);
+      // 近接: a tap on the model (the selected satellite itself) or on empty
+      // space keeps the close-up; only another satellite changes selection.
+      if (this.cameraMode === "closeUp" && (nextIndex === null || nextIndex === this.selectedIndex)) return;
       if (nextIndex !== null) {
         this.selectSatellite(nextIndex);
       } else {
@@ -1005,6 +1154,23 @@ export default class SatelliteScene {
     if (mode === this.cameraMode) return;
     // The satellite camera modes take precedence over a trajectory follow.
     if (mode !== "free") this.endTrajectoryFollow(true);
+    const previous = this.cameraMode;
+    if (previous === "closeUp") {
+      // Leaving 近接: back to the free framing from before it (like the end
+      // of a trajectory follow), or hand over to another satellite mode.
+      this.endRide(false, mode === "free");
+      this.cameraMode = mode;
+      if (mode === "free") {
+        this.params.onCameraChange?.(this.getCameraSnapshot());
+        return;
+      }
+    } else if (mode === "closeUp") {
+      const back = previous === "free" ? this.getCameraSnapshot() : null;
+      this.cameraMode = mode;
+      this.startSatelliteRide(back);
+      this.params.onCameraChange?.(this.getCameraSnapshot());
+      return;
+    }
     this.cameraMode = mode;
     if (mode === "free") {
       this.resetFreeCamera();
@@ -1080,7 +1246,7 @@ export default class SatelliteScene {
    * trajectory, in the satellite camera modes, or for unknown ids.
    */
   focusTrajectory(id: string) {
-    if (this.cameraMode !== "free" || this.trajectoryFollowId !== null) return;
+    if (this.cameraMode !== "free" || this.ride !== null) return;
     // Right after a follow ends the holder still has the Earth-fixed follow
     // rotation; bring it to the free-camera frame first so the framing below
     // is computed in the frame the next frame will render with.
@@ -1139,9 +1305,40 @@ export default class SatelliteScene {
       this.params.onTrajectoryFollowEnd?.();
       return;
     }
-    if (this.trajectoryFollowId === null) this.trajectoryFollowReturn = this.getCameraSnapshot();
-    this.trajectoryFollowId = id;
-    this.trajectoryFollowNeedsFraming = true;
+    if (this.ride === null) this.rideReturn = this.getCameraSnapshot();
+    this.ride = { kind: "trajectory", id };
+    this.rideNeedsFraming = true;
+  }
+
+  /**
+   * Start the 近接 ride with the selected satellite (cameraMode is already
+   * "closeUp"). `back` is the free framing to return to; null means the
+   * default framing (entered from another satellite mode or a rebuild).
+   */
+  private startSatelliteRide(back: CameraSnapshot | null) {
+    this.rideReturn = back && back.mode === "free" && isFiniteCameraSnapshot(back) ? back : this.defaultFreeSnapshot();
+    this.ride = { kind: "satellite" };
+    this.rideNeedsFraming = true;
+    this.rideSatValid = false;
+    // Hide the dot before the camera moves in (see closeUpDotGraceFrames).
+    this.closeUpDotGraceFrames = CLOSE_UP_DOT_GRACE_FRAMES;
+    this.setSelectedDotHidden(true);
+  }
+
+  /** The default free framing (resetFreeCamera) as a snapshot, without moving the camera. */
+  private defaultFreeSnapshot(): CameraSnapshot {
+    const vHalf = THREE.MathUtils.degToRad(this.camera.fov / 2);
+    const hHalf = Math.atan(Math.tan(vHalf) * this.camera.aspect);
+    const fitDistance = 1.15 / Math.sin(Math.min(vHalf, hHalf));
+    const position = DEFAULT_CAMERA_POSITION.clone().setLength(Math.max(DEFAULT_CAMERA_POSITION.length(), fitDistance));
+    return {
+      mode: "free",
+      position: [position.x, position.y, position.z],
+      target: [DEFAULT_CAMERA_TARGET.x, DEFAULT_CAMERA_TARGET.y, DEFAULT_CAMERA_TARGET.z],
+      earthCenterDistance: this.earthCenterDistance,
+      thirdPersonDistance: this.thirdPersonDistance,
+      thirdPersonPitch: this.thirdPersonPitch,
+    };
   }
 
   getTrajectoryFollow(): string | null {
@@ -1191,9 +1388,10 @@ export default class SatelliteScene {
   }
 
   getCameraSnapshot(): CameraSnapshot {
-    // Never expose the close follow framing (saved views, persistence): it
-    // would restore a camera metres above some point on the ground.
-    if (this.trajectoryFollowId !== null && this.trajectoryFollowReturn) return { ...this.trajectoryFollowReturn };
+    // Never expose the close ride framing (saved views, persistence): it
+    // would restore a camera metres above some point on the ground. 近接 is
+    // not persisted either: the free framing to return to is reported.
+    if (this.ride !== null && this.rideReturn) return { ...this.rideReturn };
     return {
       mode: this.cameraMode,
       position: [this.camera.position.x, this.camera.position.y, this.camera.position.z],
@@ -1210,15 +1408,22 @@ export default class SatelliteScene {
    * pitch drive {@link updateCameraFollow} on subsequent frames.
    */
   applyCameraSnapshot(snap: CameraSnapshot) {
-    if (this.trajectoryFollowId !== null) {
-      // While following, a free framing (e.g. the saved view re-applied after
+    if (this.ride !== null) {
+      // While riding, a free framing (e.g. the saved view re-applied after
       // a rebuild) becomes the framing to return to; a satellite mode ends
-      // the follow first.
-      if (snap.mode === "free" && isFiniteCameraSnapshot(snap)) {
-        this.trajectoryFollowReturn = snap;
+      // the ride first.
+      if ((snap.mode === "free" || snap.mode === "closeUp") && isFiniteCameraSnapshot(snap)) {
+        this.rideReturn = { ...snap, mode: "free" };
         return;
       }
-      this.endTrajectoryFollow(true);
+      if (this.ride.kind === "trajectory") this.endTrajectoryFollow(true);
+      else this.endRide(false, false);
+    }
+    if (snap.mode === "closeUp") {
+      // Never written by this scene; treat it as "close up again, returning here".
+      this.cameraMode = "closeUp";
+      this.startSatelliteRide({ ...snap, mode: "free" });
+      return;
     }
     if (!isFiniteCameraSnapshot(snap)) {
       // A broken saved view (see isFiniteCameraSnapshot): fall back to the
@@ -1342,6 +1547,7 @@ export default class SatelliteScene {
       this.fovConeGeometry.dispose();
       this.fovConeGeometry = geo;
       this.fovCones.geometry = geo;
+      this.fovMissCones.geometry = geo;
     }
 
     // Ground-station cone geometry depends on the drawn length (the opening
@@ -1960,6 +2166,9 @@ export default class SatelliteScene {
     ));
     this.linkCount = 0;
     this.fovConeCount = 0;
+    this.fovMissCount = 0;
+    // One attitude context per frame for every cone (null: 地球指向 → today's path).
+    this.frameAttitude = this.params.showSatelliteFovCones ? this.coneAttitudeContext(simDate) : null;
     const satPosition = this.tempVectorB;
 
     const julianDate = satellite.jday(simDate);
@@ -2057,6 +2266,13 @@ export default class SatelliteScene {
     (this.linkGeometry.getAttribute("position") as THREE.BufferAttribute).needsUpdate = true;
     this.fovCones.count = this.fovConeCount;
     this.fovCones.instanceMatrix.needsUpdate = true;
+    this.fovMissCones.count = this.fovMissCount;
+    if (this.fovMissCount > 0) this.fovMissCones.instanceMatrix.needsUpdate = true;
+    this.fovMissBoresightGeometry.setDrawRange(0, this.fovMissCount * 2);
+    if (this.fovMissCount > 0) {
+      this.fovMissBoresightGeometry.getAttribute("position").needsUpdate = true;
+      this.fovMissBoresightGeometry.getAttribute("lineDistance").needsUpdate = true;
+    }
 
     if (this.satRecs.length > 0) {
       this.satPosAttr.needsUpdate = true;
@@ -2072,11 +2288,12 @@ export default class SatelliteScene {
     if (this.params.timeRef.current) this.params.timeRef.current.textContent = this.formatTime(simDate);
 
     this.updateCameraFollow(hasSelectedSat, hasSelectedVelocity);
-    const followingTrajectory = following && this.updateTrajectoryFollow(simDate.getTime());
-    if (this.cameraMode === "free") {
+    const riding = following && this.updateRide(simDate.getTime());
+    if (this.cameraMode === "free" || this.cameraMode === "closeUp") {
       this.controls.update();
     }
-    if (followingTrajectory) this.finishTrajectoryFollowFrame();
+    if (riding) this.finishRideFrame();
+    this.updateSatelliteVehicle(simDate, riding);
     if (this.focusedTrajectoryTrack !== this.trajectoryFollowId) {
       this.focusedTrajectoryTrack = this.trajectoryFollowId;
       this.trajectoryRenderer.setFocusedTrack(this.trajectoryFollowId);
@@ -2088,53 +2305,73 @@ export default class SatelliteScene {
   };
 
   /**
-   * Per-frame trajectory follow, before OrbitControls.update(): fetch the
-   * vehicle's Earth-fixed state at `simMs` (clamped into the track span, so a
-   * seek just before lift-off holds on the pad), move the orbit target onto
-   * it and translate the camera by the same amount — no lag. The camera's
-   * offset is carried along with the local vertical so its view of the
-   * horizon stays put over a long downrange flight. Returns false (and ends
-   * the follow) when the track is gone or hidden.
+   * Per-frame ride-along camera, before OrbitControls.update(): fetch the
+   * subject's state at `simMs` in camera-holder coordinates, move the orbit
+   * target onto it and translate the camera by the same amount — no lag.
+   *   - trajectory (追従): Earth-fixed holder, state from the track (clamped
+   *     into its span, so a seek just before lift-off holds on the pad);
+   *   - satellite (近接): LVLH holder set in {@link syncCameraHolder} from this
+   *     frame's state, so the satellite sits still at (0, r, 0) and the Earth
+   *     turns below.
+   * The camera's offset is carried along with the local vertical so its view
+   * of the horizon stays put. Returns false (and ends the ride) when the
+   * subject is gone.
    */
-  private updateTrajectoryFollow(simMs: number): boolean {
-    const id = this.trajectoryFollowId;
-    if (id === null) return false;
-    const track = this.trajectoryTracks.find((t) => t.id === id);
-    if (!track || !track.visible || track.samples.length === 0) {
-      this.endTrajectoryFollow(true);
-      return false;
+  private updateRide(simMs: number): boolean {
+    const ride = this.ride;
+    if (ride === null) return false;
+    const pos = this.ridePos;
+    const vel = this.rideVel;
+    let lengthM: number;
+    let maxDistance: number;
+    let track: TrajectoryTrack | null = null;
+    let t = simMs;
+    if (ride.kind === "trajectory") {
+      track = this.trajectoryTracks.find((tr) => tr.id === ride.id) ?? null;
+      if (!track || !track.visible || track.samples.length === 0) {
+        this.endTrajectoryFollow(true);
+        return false;
+      }
+      const first = track.samples[0].timeMs;
+      const last = track.samples[track.samples.length - 1].timeMs;
+      t = Math.min(Math.max(simMs, first), last);
+      // Not drawable (e.g. a degenerate track the renderer skipped): hold the
+      // camera where it is rather than dropping the follow on a transient.
+      if (!this.trajectoryRenderer.localStateAt(ride.id, t, pos, vel)) return true;
+      if (t !== simMs) vel.set(0, 0, 0);
+      lengthM = Math.max(this.trajectoryRenderer.vehicleLengthM(ride.id), 1);
+      maxDistance = TRAJECTORY_FOLLOW_MAX_DISTANCE;
+    } else {
+      if (!this.rideSatValid) return true;
+      // World → holder-local (the holder is the satellite's LVLH frame).
+      this.tempQuaternionA.copy(this.cameraHolder.quaternion).invert();
+      pos.copy(this.rideSatWorld).applyQuaternion(this.tempQuaternionA);
+      vel.copy(this.rideSatWorldVel).applyQuaternion(this.tempQuaternionA);
+      lengthM = Math.max(this.trajectoryRenderer.satelliteVehicleLengthM(SATELLITE_MODEL), 1);
+      maxDistance = SATELLITE_FOLLOW_MAX_DISTANCE;
     }
-    const first = track.samples[0].timeMs;
-    const last = track.samples[track.samples.length - 1].timeMs;
-    const t = Math.min(Math.max(simMs, first), last);
-    const pos = this.trajectoryFollowPos;
-    const vel = this.trajectoryFollowVel;
-    // Not drawable (e.g. a degenerate track the renderer skipped): hold the
-    // camera where it is rather than dropping the follow on a transient.
-    if (!this.trajectoryRenderer.localStateAt(id, t, pos, vel)) return true;
-    if (t !== simMs) vel.set(0, 0, 0);
     if (pos.lengthSq() < 1e-12) return true;
-    const up = this.trajectoryFollowUp.copy(pos).normalize();
-    const lengthM = Math.max(this.trajectoryRenderer.vehicleLengthM(id), 1);
+    const up = this.rideUp.copy(pos).normalize();
     const length = lengthM * SCENE_UNITS_PER_M;
     this.controls.minDistance = TRAJECTORY_FOLLOW_MIN_LENGTHS * length;
-    this.controls.maxDistance = Math.max(TRAJECTORY_FOLLOW_MAX_DISTANCE, 10 * length);
+    this.controls.maxDistance = Math.max(maxDistance, 10 * length);
     // The zoom range spans ~5 decades (metres to a regional view): faster
     // wheel/pinch steps so it does not take hundreds of notches.
     this.controls.zoomSpeed = TRAJECTORY_FOLLOW_ZOOM_SPEED;
 
     const offset = this.tempVectorD;
-    if (this.trajectoryFollowNeedsFraming) {
-      this.trajectoryFollowNeedsFraming = false;
-      this.trajectoryFollowDirection(track, t, up, vel, offset);
+    if (this.rideNeedsFraming) {
+      this.rideNeedsFraming = false;
+      if (track) this.trajectoryFollowDirection(track, t, up, vel, offset);
+      else this.satelliteFollowDirection(up, vel, offset);
       offset.multiplyScalar(TRAJECTORY_FOLLOW_START_LENGTHS * length);
       this.controls.enabled = true;
     } else {
       offset.subVectors(this.camera.position, this.controls.target);
-      this.tempQuaternionB.setFromUnitVectors(this.trajectoryFollowPrevUp, up);
+      this.tempQuaternionB.setFromUnitVectors(this.ridePrevUp, up);
       offset.applyQuaternion(this.tempQuaternionB);
     }
-    this.trajectoryFollowPrevUp.copy(up);
+    this.ridePrevUp.copy(up);
     this.controls.target.copy(pos);
     this.camera.position.copy(pos).add(offset);
     // Near the ground keep the camera above the vehicle's local horizontal
@@ -2187,6 +2424,28 @@ export default class SatelliteScene {
   }
 
   /**
+   * 近接 initial camera direction (unit, holder-local): behind the satellite
+   * (against the along-track direction), raised above its local horizontal
+   * and turned a little to the side so the bus is seen obliquely with the
+   * Earth below.
+   */
+  private satelliteFollowDirection(up: THREE.Vector3, vel: THREE.Vector3, out: THREE.Vector3): THREE.Vector3 {
+    const along = this.tempVectorB.copy(vel).addScaledVector(up, -vel.dot(up));
+    if (along.lengthSq() < 1e-20) along.crossVectors(UP_AXIS, up);
+    if (along.lengthSq() < 1e-20) along.set(1, 0, 0);
+    along.normalize();
+    const side = this.tempVectorC.crossVectors(along, up).normalize();
+    const el = SATELLITE_FOLLOW_START_ELEVATION;
+    const az = SATELLITE_FOLLOW_START_AZIMUTH;
+    return out
+      .copy(along)
+      .multiplyScalar(-Math.cos(el) * Math.cos(az))
+      .addScaledVector(side, Math.cos(el) * Math.sin(az))
+      .addScaledVector(up, Math.sin(el))
+      .normalize();
+  }
+
+  /**
    * OrbitControls caches the rotation from `object.up` to +Y at construction
    * (`_quat` / `_quatInverse`, three r186) and orbits about that axis. Point
    * it at the holder-local vertical `up` while following; identity restores
@@ -2200,14 +2459,14 @@ export default class SatelliteScene {
   }
 
   /**
-   * After OrbitControls.update() while following: re-aim the camera (its
+   * After OrbitControls.update() while riding: re-aim the camera (its
    * lookAt reads the target as a world point and camera.up in world space;
    * both are holder-local here), then fit the near plane and the thin Earth
    * shells to the close range.
    */
-  private finishTrajectoryFollowFrame() {
+  private finishRideFrame() {
     const target = this.controls.target;
-    const up = this.trajectoryFollowUp;
+    const up = this.rideUp;
     this.tempMatrix.lookAt(this.camera.position, target, up);
     this.camera.quaternion.setFromRotationMatrix(this.tempMatrix);
     this.camera.up.copy(up).applyQuaternion(this.cameraHolder.quaternion);
@@ -2240,12 +2499,12 @@ export default class SatelliteScene {
   /**
    * Pull the thin overlays drawn on the globe (country borders, night
    * lights) a few depth steps toward the camera, so they keep winning the
-   * depth test against the surface under the tiny near plane of the follow
-   * camera. Unchanged outside the follow.
+   * depth test against the surface under the tiny near plane of the ride-along
+   * camera. Unchanged outside it.
    */
   private setSurfaceShellDepthBias(on: boolean) {
-    if (!on && !this.trajectoryFollowShellsBiased) return;
-    this.trajectoryFollowShellsBiased = on;
+    if (!on && !this.rideShellsBiased) return;
+    this.rideShellsBiased = on;
     for (const child of this.earthGroup.children) {
       const mesh = child as THREE.Mesh;
       if (!mesh.isMesh) continue;
@@ -2261,20 +2520,32 @@ export default class SatelliteScene {
   }
 
   /**
-   * Stop the trajectory follow (no-op when not following): restore the free
-   * framing from before it, the near plane, zoom limits, OrbitControls' up
-   * axis, clouds and shell depth bias. `notify` fires onTrajectoryFollowEnd
-   * (the scene dropped it on its own).
-   */
-  /**
    * Orient the camera holder for this frame: Earth-fixed while following a
    * trajectory (the holder then matches the trajectory overlay group exactly,
    * same rotation.y about the origin, so overlay-local positions are
-   * holder-local positions), else the free-camera view frame (ECI / ECEF /
-   * GSE), else ECI for the satellite camera modes. Returns whether a
-   * trajectory is being followed.
+   * holder-local positions); the selected satellite's LVLH frame in 近接
+   * (+X along-track, +Y radial up, propagated here at `simDate` so the ride
+   * has no one-frame lag); else the free-camera view frame (ECI / ECEF /
+   * GSE), else ECI for the other satellite camera modes. Returns whether a
+   * ride (trajectory follow or 近接) is active. 近接 without a usable
+   * selected editor satellite is dropped here (onCloseUpEnd).
    */
   private syncCameraHolder(simDate: Date, rotAngle: number): boolean {
+    if (this.ride?.kind === "satellite" && this.cameraMode === "closeUp") {
+      if (this.updateSatelliteRideState(simDate)) {
+        const radial = this.tempVectorA.copy(this.rideSatWorld).normalize();
+        const along = this.tempVectorB.copy(this.rideSatWorldVel).addScaledVector(radial, -this.rideSatWorldVel.dot(radial));
+        if (along.lengthSq() > 1e-24) {
+          along.normalize();
+          const third = this.tempVectorC.crossVectors(along, radial);
+          this.tempMatrix.makeBasis(along, radial, third);
+          this.cameraHolder.quaternion.setFromRotationMatrix(this.tempMatrix);
+        }
+        this.cameraHolder.updateMatrixWorld();
+        return true;
+      }
+      this.dropCloseUp();
+    }
     const following = this.trajectoryFollowId !== null && this.cameraMode === "free";
     const frame = following ? "ecef" : this.cameraMode === "free" ? this.params.viewFrame : "eci";
     if (frame === "gse") {
@@ -2287,12 +2558,56 @@ export default class SatelliteScene {
     return following;
   }
 
+  /**
+   * 近接: propagate the selected editor satellite at `simDate` with the
+   * propagator that draws it (SGP4, or the GPU layer's J2 twin in mass mode).
+   * False without a selected editor satellite or a velocity.
+   */
+  private updateSatelliteRideState(simDate: Date): boolean {
+    this.rideSatValid = false;
+    const sel = this.selectedIndex;
+    if (sel === null || sel >= this.satCount) return false;
+    const st = this.propagateIndex(sel, simDate);
+    if (!st || !st.velocity) return false;
+    const p = st.position;
+    const v = st.velocity;
+    if (![p.x, p.y, p.z, v.x, v.y, v.z].every(Number.isFinite)) return false;
+    this.rideSatEciPos.x = p.x; this.rideSatEciPos.y = p.y; this.rideSatEciPos.z = p.z;
+    this.rideSatEciVel.x = v.x; this.rideSatEciVel.y = v.y; this.rideSatEciVel.z = v.z;
+    // Same mapping as the drawn point (x/Re, z/Rp, −y/Re); velocity in scene units per second.
+    this.rideSatWorld.set(p.x / EARTH_RADIUS_EQUATOR_KM, p.z / EARTH_RADIUS_POLAR_KM, -p.y / EARTH_RADIUS_EQUATOR_KM);
+    this.rideSatWorldVel.set(v.x / EARTH_RADIUS_EQUATOR_KM, v.z / EARTH_RADIUS_POLAR_KM, -v.y / EARTH_RADIUS_EQUATOR_KM);
+    this.rideSatValid = true;
+    return true;
+  }
+
+  /** Leave 近接 on the scene's own initiative: back to the free framing, and tell the app. */
+  private dropCloseUp() {
+    this.endRide(false, true);
+    this.params.onCloseUpEnd?.();
+    this.params.onCameraChange?.(this.getCameraSnapshot());
+  }
+
+  /** End a trajectory follow (no-op otherwise); `notify` fires onTrajectoryFollowEnd. */
   private endTrajectoryFollow(notify: boolean) {
-    if (this.trajectoryFollowId === null) return;
-    this.trajectoryFollowId = null;
-    this.trajectoryFollowNeedsFraming = false;
-    const back = this.trajectoryFollowReturn;
-    this.trajectoryFollowReturn = null;
+    if (this.ride?.kind !== "trajectory") return;
+    this.endRide(false, this.cameraMode === "free");
+    if (notify) this.params.onTrajectoryFollowEnd?.();
+  }
+
+  /**
+   * Stop the ride (no-op when not riding): restore the near plane, zoom
+   * limits, OrbitControls' up axis, clouds, shell depth bias and the selected
+   * dot. With `restore`, switch to the free camera and put back the framing
+   * from before the ride (in the free view frame).
+   */
+  private endRide(_notify: boolean, restore: boolean) {
+    if (this.ride === null) return;
+    this.ride = null;
+    this.rideNeedsFraming = false;
+    this.rideSatValid = false;
+    const back = this.rideReturn;
+    this.rideReturn = null;
     this.setOrbitControlsUp(UP_AXIS);
     this.controls.minDistance = 1.05;
     this.controls.maxDistance = 30;
@@ -2301,11 +2616,96 @@ export default class SatelliteScene {
     this.setCameraNear(DEFAULT_CAMERA_NEAR);
     this.setCloudsVisible(this.params.showClouds);
     this.setSurfaceShellDepthBias(false);
-    if (this.cameraMode === "free") {
+    this.closeUpDotGraceFrames = 0;
+    this.setSelectedDotHidden(false);
+    this.trajectoryRenderer.setSatelliteVehicle(null);
+    if (restore) {
+      this.cameraMode = "free";
+      // Re-orient the holder to the free view frame first, so the framing is
+      // applied in the frame the next frame renders with.
+      this.syncCameraHolder(this.currentSimDate, satellite.gstime(this.currentSimDate));
       if (back && back.mode === "free" && isFiniteCameraSnapshot(back)) this.applyCameraSnapshot(back);
       else this.resetFreeCamera();
     }
-    if (notify) this.params.onTrajectoryFollowEnd?.();
+  }
+
+  // --- 近接: satellite model, attitude overlays, attitude cones ---------------
+
+  /**
+   * Attitude settings of the editor satellites (defaults when unset).
+   */
+  private attitudeSettings(): SatelliteAttitudeSettings {
+    return this.params.satelliteAttitude ?? DEFAULT_SATELLITE_ATTITUDE;
+  }
+
+  /** Per-frame attitude context for the FOV cones; null for 地球指向 (today's exact code path). */
+  private coneAttitudeContext(simDate: Date): AttitudeTimeContext | null {
+    const settings = this.params.satelliteAttitude;
+    if (!settings || settings.mode === "lvlh") return null;
+    const ctx = prepareAttitudeContext(simDate, settings, this.params.groundStations);
+    return ctx.mode === "lvlh" ? null : ctx;
+  }
+
+  /**
+   * After the camera is final: hand the selected satellite's model state to
+   * the vehicle pass while in 近接 (attitude, 1軸追尾 drive, overlays), else
+   * clear it. Hides the selected dot once the model covers it.
+   */
+  private updateSatelliteVehicle(simDate: Date, riding: boolean) {
+    if (!riding || this.ride?.kind !== "satellite" || !this.rideSatValid) {
+      this.trajectoryRenderer.setSatelliteVehicle(null);
+      // Still entering 近接 (no propagated state yet): keep the dot hidden.
+      const entering = this.ride?.kind === "satellite" && this.closeUpDotGraceFrames > 0;
+      if (entering) this.closeUpDotGraceFrames--;
+      this.setSelectedDotHidden(entering);
+      return;
+    }
+    const settings = this.attitudeSettings();
+    const ctx = prepareAttitudeContext(simDate, settings, this.params.groundStations);
+    const q = satelliteAttitudeFromContext(this.rideSatEciPos, this.rideSatEciVel, ctx, this.attitudeQuat);
+    const bodyToWorld = bodyToWorldQuaternion(q, 0, this.rideBodyToWorld);
+    const sun = sunVectorECI(simDate);
+    const sunNorm = Math.hypot(sun.x, sun.y, sun.z) || 1;
+    const sunUnit = { x: sun.x / sunNorm, y: sun.y / sunNorm, z: sun.z / sunNorm };
+    const { driveAngleRad } = solarArrayIncidence(q, sunUnit, this.params.solarArrayType ?? DEFAULT_SOLAR_ARRAY_TYPE);
+    const w = this.rideSatWorld;
+    const r = w.length() || 1;
+    const state: SatelliteVehicleState = {
+      model: SATELLITE_MODEL,
+      x: w.x,
+      y: w.y,
+      z: w.z,
+      bodyToWorld,
+      driveAngleRad,
+      up: { x: w.x / r, y: w.y / r, z: w.z / r },
+      showAxes: this.params.showBodyAxes === true,
+      // ECI (x, y, z) → world (x, z, −y).
+      sunDirection: this.params.showBodySunDirection ? { x: sunUnit.x, y: sunUnit.z, z: -sunUnit.y } : null,
+    };
+    this.trajectoryRenderer.setSatelliteVehicle(state);
+    // Last frame's size decides (one-frame lag, as for trajectory markers);
+    // right after entering, hide regardless until the model has been measured.
+    const covers = this.trajectoryRenderer.satelliteVehicleCoversMarker();
+    if (covers) this.closeUpDotGraceFrames = 0;
+    else if (this.closeUpDotGraceFrames > 0) this.closeUpDotGraceFrames--;
+    this.setSelectedDotHidden(covers || this.closeUpDotGraceFrames > 0);
+  }
+
+  /**
+   * Hide the selected satellite's dot (CPU points: a shader uniform; GPU
+   * layer: its selected size) while the 近接 model replaces it. A world-size
+   * dot ~100 km across would otherwise fill the view metres from the camera.
+   */
+  private setSelectedDotHidden(hidden: boolean) {
+    if (hidden === this.selectedDotHidden && !hidden) return;
+    this.selectedDotHidden = hidden;
+    this.cpuHideSelectedUniform.value = hidden ? 1 : 0;
+    if (this.massLayer) {
+      // MassSatelliteLayer has no setter for this; its uniform is reset by
+      // setSatRadius, so it is re-applied every frame while hidden.
+      const uniforms = (this.massLayer as unknown as { material?: THREE.ShaderMaterial }).material?.uniforms;
+      if (uniforms?.uSelectedSize) uniforms.uSelectedSize.value = hidden ? 0 : this.params.satRadius * 2 * 1.8;
+    }
   }
 
   private ensureLinkCapacity(links: number) {
@@ -2349,7 +2749,13 @@ export default class SatelliteScene {
   private readonly coneScale = new THREE.Vector3();
   private readonly coneDirection = new THREE.Vector3();
 
-  /** Append one FOV cone instance; skipped when the cone does not reach the Earth. */
+  /**
+   * Append one FOV cone instance. 地球指向 (the default): today's exact
+   * geometry, skipped when the cone does not reach the Earth. Other
+   * attitudes: the boresight of this frame's attitude law; a cone whose axis
+   * misses the Earth is drawn grey and fainter (to its edge's Earth
+   * intersection, else to the satellite's altitude).
+   */
   private pushFovCone(
     positionEci: Vec3,
     velocityEci: Vec3 | null,
@@ -2357,6 +2763,10 @@ export default class SatelliteScene {
     sinHalfAngle: number,
     cosHalfAngle: number,
   ) {
+    if (this.frameAttitude) {
+      this.pushAttitudeFovCone(this.frameAttitude, positionEci, velocityEci, satPosition);
+      return;
+    }
     if (this.fovConeCount >= this.fovCones.instanceMatrix.count) return;
     const hasTilt = this.params.fovConeAlongTrackDeg !== 0 || this.params.fovConeCrossTrackDeg !== 0;
     let coneHeightKm: number | null = null;
@@ -2403,6 +2813,47 @@ export default class SatelliteScene {
     this.coneScale.setScalar(Math.max(normalizedHeight, this.fovConeMinHeight));
     this.coneMatrix.compose(satPosition, this.coneQuaternion, this.coneScale);
     this.fovCones.setMatrixAt(this.fovConeCount++, this.coneMatrix);
+  }
+
+  private readonly boresightScratch = { x: 0, y: 0, z: 0 };
+
+  private pushAttitudeFovCone(ctx: AttitudeTimeContext, positionEci: Vec3, velocityEci: Vec3 | null, satPosition: THREE.Vector3) {
+    const q = satelliteAttitudeFromContext(positionEci, velocityEci ?? undefined, ctx, this.attitudeQuat);
+    const dir = sensorBoresightEci(q, this.params.fovConeAlongTrackDeg, this.params.fovConeCrossTrackDeg, this.boresightScratch);
+    const hits = boresightPointsAtEarth(positionEci, dir, EARTH_RADIUS_EQUATOR_KM);
+    const mesh = hits ? this.fovCones : this.fovMissCones;
+    const count = hits ? this.fovConeCount : this.fovMissCount;
+    if (count >= mesh.instanceMatrix.count) return;
+    let heightKm = computeConeHeightForBoresight(positionEci, dir, this.params.fovConeHalfAngleDeg, EARTH_RADIUS_EQUATOR_KM);
+    if (heightKm === null || heightKm <= 0) {
+      if (hits) return;
+      const r = Math.hypot(positionEci.x, positionEci.y, positionEci.z);
+      heightKm = Math.max(r - EARTH_RADIUS_EQUATOR_KM, 0);
+    }
+    this.coneDirection.set(dir.x, dir.z, -dir.y);
+    if (this.coneDirection.lengthSq() === 0) return;
+    this.coneQuaternion.setFromUnitVectors(DOWN_AXIS, this.coneDirection.normalize());
+    const height = Math.max(heightKm / EARTH_RADIUS_EQUATOR_KM, this.fovConeMinHeight);
+    this.coneScale.setScalar(height);
+    this.coneMatrix.compose(satPosition, this.coneQuaternion, this.coneScale);
+    mesh.setMatrixAt(count, this.coneMatrix);
+    if (hits) {
+      this.fovConeCount++;
+      return;
+    }
+    // Dashed boresight from the satellite along the cone axis, cone height long.
+    const pos = this.fovMissBoresightPositions;
+    const d = this.coneDirection;
+    const o = count * 6;
+    pos[o] = satPosition.x;
+    pos[o + 1] = satPosition.y;
+    pos[o + 2] = satPosition.z;
+    pos[o + 3] = satPosition.x + d.x * height;
+    pos[o + 4] = satPosition.y + d.y * height;
+    pos[o + 5] = satPosition.z + d.z * height;
+    this.fovMissBoresightDistances[count * 2] = 0;
+    this.fovMissBoresightDistances[count * 2 + 1] = height;
+    this.fovMissCount++;
   }
 
   private readonly drawingBufferSize = new THREE.Vector2();
@@ -2465,7 +2916,8 @@ export default class SatelliteScene {
     hasSelectedSat: boolean,
     hasSelectedVelocity: boolean,
   ) {
-    const isFreeCamera = this.cameraMode === "free" || !hasSelectedSat;
+    // 近接 is driven by the ride (OrbitControls orbit/zoom about the satellite).
+    const isFreeCamera = this.cameraMode === "free" || this.cameraMode === "closeUp" || !hasSelectedSat;
     this.controls.enabled = isFreeCamera;
     if (isFreeCamera) return;
 
@@ -2644,6 +3096,8 @@ export default class SatelliteScene {
     this.fovConeGeometry.dispose();
     this.linkGeometry.dispose();
     this.fovCones.dispose();
+    this.fovMissCones.dispose();
+    this.fovMissBoresightGeometry.dispose();
     this.massLayer?.dispose();
     this.catalogLayer?.dispose();
     this.catalogLayer = null;
@@ -2658,6 +3112,8 @@ export default class SatelliteScene {
     this.stationMat.dispose();
     this.stationConeMaterials.forEach((m) => m.dispose());
     this.fovConeMaterial.dispose();
+    this.fovMissMaterial.dispose();
+    this.fovMissBoresightMaterial.dispose();
     this.linkMaterial.dispose();
     this.islPathMaterial.dispose();
     this.islEndpointMatA.dispose();

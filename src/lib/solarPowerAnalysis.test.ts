@@ -88,3 +88,50 @@ it("integrates exactly 24 hours of constant load and ends the orbit at its bound
   // Date stores integer milliseconds; allow less than one millisecond of energy.
   expect(Math.abs(r.currentOrbit.dailyLoadWh - 100 * r.currentOrbit.orbitPeriodMinutes / 60)).toBeLessThan(100 / 3_600_000);
 });
+
+describe("solarPowerAnalysis generation factor from attitude", () => {
+  const start = TEST_SATELLITE.elements.epoch;
+  const base = { ...createDefaultSolarPowerInput(), sweepSteps: 2 };
+  const attitudeInput = (over: Partial<typeof base>) => ({ ...base, generationFactorMode: "attitude" as const, ...over });
+  const lvlh = { mode: "lvlh" as const, inertialRaDeg: 0, inertialDecDeg: 0 };
+
+  it("keeps manual mode on the constant 追尾/姿勢係数 and reports the comparison", () => {
+    const r = analyzeSolarPower(TEST_SATELLITE, "m", start, base);
+    expect(base.generationFactorMode).toBe("manual");
+    for (const s of r.orbitSamples) expect(s.generationFactor).toBe(base.sunTrackingFactor);
+    expect(r.factorComparison.applied).toBe("manual");
+    expect(r.factorComparison.manualFactor).toBe(base.sunTrackingFactor);
+    expect(r.factorComparison.attitudeFactor).toBeGreaterThanOrEqual(0);
+    expect(r.factorComparison.attitudeFactor).toBeLessThanOrEqual(1);
+  });
+
+  it("uses incidence cosine x other loss per sample in attitude mode", () => {
+    const r = analyzeSolarPower(TEST_SATELLITE, "a", start,
+      attitudeInput({ attitude: lvlh, solarArrayType: "fixed", otherLossFactor: 0.9 }));
+    expect(r.factorComparison.applied).toBe("attitude");
+    for (const s of r.orbitSamples) {
+      expect(s.incidenceFactor).toBeDefined();
+      expect(s.generationFactor).toBeCloseTo(s.incidenceFactor! * 0.9, 12);
+    }
+    const mean = r.factorComparison.attitudeFactor;
+    // Fixed -Z panel under Earth pointing never gets a full-Sun view: well below ideal tracking.
+    expect(mean).toBeGreaterThan(0.05);
+    expect(mean).toBeLessThan(0.7);
+  });
+
+  it("single-axis tracking collects at least as much as a fixed panel", () => {
+    const fixed = analyzeSolarPower(TEST_SATELLITE, "f", start, attitudeInput({ attitude: lvlh, solarArrayType: "fixed" }));
+    const single = analyzeSolarPower(TEST_SATELLITE, "s", start, attitudeInput({ attitude: lvlh, solarArrayType: "singleAxis" }));
+    expect(single.factorComparison.attitudeFactor).toBeGreaterThanOrEqual(fixed.factorComparison.attitudeFactor - 1e-9);
+    expect(single.currentDay.dailyGenerationWh).toBeGreaterThanOrEqual(fixed.currentDay.dailyGenerationWh - 1e-6);
+  });
+
+  it("sun pointing puts the panel normal on the Sun while sunlit", () => {
+    const r = analyzeSolarPower(TEST_SATELLITE, "sun", start,
+      attitudeInput({ attitude: { ...lvlh, mode: "sun" }, solarArrayType: "fixed" }));
+    for (const s of r.orbitSamples.filter((x) => x.sunlightFraction === 1)) {
+      expect(s.incidenceFactor!).toBeGreaterThan(0.999);
+    }
+    expect(r.factorComparison.attitudeFactor).toBeGreaterThan(0.99);
+  });
+});

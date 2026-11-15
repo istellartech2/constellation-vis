@@ -259,7 +259,7 @@ a `.glb` URL / object URL.
   `onSimTimeChange` at once, restarts the selected satellite's ground-track
   trail and orbit line from the new time (no back-filling on forward jumps)
   and forces an ISL recompute. The editor's start time is not touched.
-- **Follow.** Scene param `trajectoryFollowId` (applied in the constructor and
+- **Follow.** One follow mechanism ("ride") serves both a trajectory track and the selected satellite's 「近接」 camera (see [satellite attitude](satellite-attitude.md)); for tracks: scene param `trajectoryFollowId` (applied in the constructor and
   live, so it survives rebuilds) with `onTrajectoryFollowEnd` when the scene
   drops it (track removed or hidden, a satellite camera mode chosen, a
   satellite-mode view applied). While following:

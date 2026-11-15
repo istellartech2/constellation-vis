@@ -13,9 +13,12 @@ import { analysisTimes } from "./analysisTime";
 import type { SatelliteSpec } from "./satellites";
 import { toSatrec } from "./satellites";
 import type { GroundStation } from "./groundStations";
+import type { AttitudeTimeContext } from "./attitude/satelliteAttitude";
 import {
+  attitudeContextFor,
   computeFovBoresightEcf,
   normalizeVisibilityCriteria,
+  type FovAttitude,
   type SatelliteFovCriteria,
   type StationVisibilitySample,
 } from "./visibility";
@@ -37,6 +40,13 @@ export interface AccessGridOptions {
   durationHours: number;
   stepSeconds: number;
   fov?: SatelliteFovCriteria;
+  /**
+   * Attitude law for the FOV boresight (only used with `fov`). Omitted or
+   * 地球指向 keeps the legacy LVLH pointing. Its `stations` are the scenario's
+   * ground stations, independent of the grid's `stations` (which may be
+   * latitude probes).
+   */
+  attitude?: FovAttitude;
   /** Comparison must not silently accept a missing satellite state. */
   strictPropagation?: boolean;
   /** Called after each satellite with the completed fraction (0–1). */
@@ -210,7 +220,7 @@ export function computeAccessGrid(
   sats: SatelliteSpec[],
   stations: GroundStation[],
   start: Date,
-  { durationHours, stepSeconds, fov, onProgress, strictPropagation }: AccessGridOptions,
+  { durationHours, stepSeconds, fov, attitude, onProgress, strictPropagation }: AccessGridOptions,
 ): AccessGrid {
   const startMs = start.getTime();
   const stepMs = stepSeconds * 1000;
@@ -243,6 +253,10 @@ export function computeAccessGrid(
   // Interpolate only when knots are coarser than the output step.
   const knotMs = KNOT_SECONDS * 1000;
   const interpolate = stepMs < knotMs;
+  // Sun / station data per step, shared by every satellite (undefined = LVLH).
+  const attitudeCtx: (AttitudeTimeContext | undefined)[] | null = fov && attitude && attitude.settings.mode !== "lvlh"
+    ? times.map((ms) => attitudeContextFor(attitude, new Date(ms)))
+    : null;
   const cosHalf = fov ? Math.cos(satellite.degreesToRadians(fov.halfAngleDeg)) : 0;
   const recs = sats.map((s) => toSatrec(s));
 
@@ -332,6 +346,7 @@ export function computeAccessGrid(
               { x: vx, y: vy, z: vz },
               gmst[step],
               fov,
+              attitudeCtx?.[step],
             );
           }
           if (!boresight || !insideFov(o, sx, sy, sz, boresight.x, boresight.y, boresight.z, cosHalf)) continue;
