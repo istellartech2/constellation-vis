@@ -152,7 +152,7 @@ Detected by a `CCSDS_OEM_VERS =` line. XML OEM is rejected.
   pieces). Straight coasts get nothing; a flip or bank turn tabulated at 1 s
   gets many. If the total would exceed `maxPoints`, both tolerances are
   relaxed together (×1.5 steps) until it fits, so the tightest curves keep
-  their share. Flight 15's ship (5 679 samples, 22 h) draws ~47 000 points
+  their share. Flight 15's ship (5 894 samples, 22 h) draws ~47 000 points
   (~1 m chord error); the old fixed cap of 4000 decimated it to every
   ~1.4th sample, so entry and approach curves were drawn as coarse corners.
   Source samples are only dropped (decimated, endpoints kept) when the table
