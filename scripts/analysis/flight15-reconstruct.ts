@@ -26,8 +26,11 @@
  *    acceleration profiles, hover above the water, shut-down, free fall.
  *  - Ship orbit: numerical propagation (J2 + drag) for ~22 h; a retrograde
  *    deorbit burn at 21:35:57–21:36:07 solved so the trajectory crosses the
- *    entry interface at 22:10:46; lifting entry (physics) to a gate 150 s
- *    before transonic; then a kinematic terminal phase (speed / altitude
+ *    entry interface at 22:10:46; lifting entry (physics, bank-angle
+ *    control: |bank| for energy, its sign steering — heading alignment toward
+ *    the aim plus a short S-turn weave of bank reversals over northern Mexico
+ *    and across the border at Laredo, BANK_PLAN) to a gate 150 s before
+ *    transonic; then a kinematic terminal phase (speed / altitude
  *    fitted to the published transonic, subsonic, landing burn and catch
  *    times) with ONE bank-limited right turn (continuous heading rate) that
  *    crosses the coast north of South Padre Island and ends at the tower.
@@ -648,18 +651,74 @@ interface LatLon {
   lonDeg: number;
 }
 /**
- * Lifting entry: vertical-lift fraction cv0 (with ḣ damping) and lateral lift
- * steering toward `aim` (a point north of the coast crossing, solved so that
- * the bank-limited terminal turn that follows crosses the coast at
- * COAST_CROSSING).
+ * Bank-reversal plan of the hypersonic entry (estimate, shaped on the
+ * illustrated corridor of the explainer video and on the Shuttle's roll
+ * reversals; see docs/demos/flight15.md, Revision 3). Times are seconds after
+ * lift-off.
+ *
+ * Budget: the cross-range from the orbit's ground track to Starbase takes the
+ * whole lateral lift until ≈EI+810 s (the heading-alignment steering is
+ * saturated at the full bank σ to the right, heading error 5–7°), and σ itself
+ * is fixed by the energy that the published entry / transonic times leave. A
+ * left arc before that cannot be recovered. The weave is therefore placed where
+ * spare authority appears (D ≈ 1.5–2 g, 5→3 km/s): the bank SIGN is open loop,
+ * right (as the alignment already is) from `on`, reversed to the left at
+ * reversals[0], back to the right at reversals[1] (one short left arc: the
+ * crest north of the unreversed path), and to the left again at reversals[2]
+ * (partial: the envelope closes and the alignment steering levels the wings). Each
+ * reversal rolls through wings-level in `flipS` (smoothstep: peak roll rate
+ * 1.5·2σ/flipS ≈ 7°/s at σ ≈ 55°). The bank MAGNITUDE σ = acos(cv) stays the
+ * range/energy control (cv = cv0 − 4·ḣ). Outside the envelope (before `on`,
+ * after `off`) the lateral lift steers toward the aim point.
  */
-function entryAccel(dv: number, cv0: number, beta: number, aim: LatLon): AccelFn {
+export const BANK_PLAN = {
+  s0: 1 as 1 | -1, // bank sign when the weave takes over: right, as the alignment steering
+  on: [T.entry + 700, T.entry + 730] as [number, number],
+  /**
+   * Reversal times (design choice). The first two bracket one short left arc
+   * (much earlier or longer and the gate cannot be reached: report
+   * `dpsiOffDegVariants`); the third, as the envelope closes, is cut short by
+   * the hand-over (peak ≈23° left), which trims the residual heading error.
+   */
+  reversals: [T.entry + 785, T.entry + 810, T.entry + 910],
+  off: [T.entry + 905, T.entry + 935] as [number, number],
+  flipS: 24,
+} as const;
+interface BankPlan {
+  s0: 1 | -1;
+  on: readonly [number, number];
+  reversals: readonly number[];
+  off: readonly [number, number];
+  flipS: number;
+}
+
+function bankSign(plan: BankPlan, t: number): number {
+  let s: number = plan.s0;
+  for (const tr of plan.reversals) s *= 1 - 2 * smoothstep(tr - plan.flipS / 2, tr + plan.flipS / 2, t);
+  return s;
+}
+function weaveWeight(plan: BankPlan, t: number): number {
+  return smoothstep(plan.on[0], plan.on[1], t) * (1 - smoothstep(plan.off[0], plan.off[1], t));
+}
+
+interface EntryModel {
+  accel: AccelFn;
+  /** Bank angle (rad, + = lift to the right of the velocity) and non-gravitational load parts at (t, r, v). */
+  aero: (t: number, r: V3, v: V3) => { bank: number; dragG: number; liftLatG: number; liftVertG: number; dpsi: number };
+}
+/**
+ * Lifting entry. Lift L = (L/D)·D is rolled about the Earth-relative velocity
+ * by the bank angle φ: vertical part L·cos φ, lateral part L·sin φ. Inside the
+ * weave envelope φ = ±σ (open-loop sign, see BANK_PLAN); outside it the
+ * lateral part steers toward `aim` (a point north of the coast crossing,
+ * solved so that the bank-limited terminal turn that follows crosses the
+ * coast at COAST_CROSSING) while the vertical part keeps cv.
+ */
+function entryModel(dv: number, cv0: number, beta: number, aim: LatLon, plan: BankPlan | null): EntryModel {
   const orbit = orbitAccel(dv);
   const target = llaToEcef({ ...aim, altKm: 0 });
-  return (t, r, v) => {
+  const parts = (t: number, r: V3, v: V3) => {
     const h = altFast(r);
-    if (h > 130) return orbit(t, r, v);
-    const g = gravity(r);
     const vr = vRelEci(r, v);
     const vn = norm(vr);
     const rho = density(h);
@@ -676,17 +735,41 @@ function entryAccel(dv: number, cv0: number, beta: number, aim: LatLon): AccelFn
     const dpsi = -Math.atan2(dot(cross(hv, b), up), dot(hv, b));
     const hdot = dot(vr, up);
     const cv = clamp(cv0 - 4 * hdot, -1, 1);
-    const cl = Math.sqrt(Math.max(0, 1 - cv * cv)) * Math.tanh(dpsi / 0.03);
+    const sv = Math.sqrt(Math.max(0, 1 - cv * cv));
+    const w = plan ? weaveWeight(plan, t) : 0;
+    let cVert = cv;
+    let cLat = sv * Math.tanh(dpsi / 0.03);
+    if (w > 0 && plan) {
+      const phi = Math.acos(cv) * bankSign(plan, t);
+      cVert = w * Math.cos(phi) + (1 - w) * cVert;
+      cLat = w * Math.sin(phi) + (1 - w) * cLat;
+    }
     const lMag = ENTRY_LD * dMag;
-    return add(add(g, scale(vhat, -dMag)), add(scale(lv, lMag * cv), scale(right, lMag * cl)));
+    return { vhat, lv, right, dMag, lMag, cVert, cLat, dpsi };
+  };
+  return {
+    accel: (t, r, v) => {
+      if (altFast(r) > 130) return orbit(t, r, v);
+      const p = parts(t, r, v);
+      return add(add(gravity(r), scale(p.vhat, -p.dMag)), add(scale(p.lv, p.lMag * p.cVert), scale(p.right, p.lMag * p.cLat)));
+    },
+    aero: (t, r, v) => {
+      const p = parts(t, r, v);
+      return { bank: Math.atan2(p.cLat, p.cVert), dragG: p.dMag / G0, liftLatG: (p.lMag * p.cLat) / G0, liftVertG: (p.lMag * p.cVert) / G0, dpsi: p.dpsi };
+    },
   };
 }
+const entryAccel = (dv: number, cv0: number, beta: number, aim: LatLon, plan: BankPlan | null): AccelFn =>
+  entryModel(dv, cv0, beta, aim, plan).accel;
 
-function flyEntry(preBurn: State, dv: number, cv0: number, beta: number, aim: LatLon, onStep?: (s: State) => void): State {
-  const f = entryAccel(dv, cv0, beta, aim);
-  let s = propagate(preBurn, T.deorbitEnd, 0.5, f, onStep);
-  s = propagate(s, T.entry - 200, 5, f, onStep);
-  return propagate(s, GATE.t, 0.5, f, onStep);
+/** Fly deorbit + entry to the gate; also returns the heading error to the aim where the weave ends. */
+function flyEntry(preBurn: State, dv: number, cv0: number, beta: number, aim: LatLon, onStep?: (s: State) => void) {
+  const m = entryModel(dv, cv0, beta, aim, BANK_PLAN);
+  let s = propagate(preBurn, T.deorbitEnd, 0.5, m.accel, onStep);
+  s = propagate(s, T.entry - 200, 5, m.accel, onStep);
+  const off = propagate(s, BANK_PLAN.off[0], 0.5, m.accel, onStep);
+  const gate = propagate(off, GATE.t, 0.5, m.accel, onStep);
+  return { gate, dpsiOff: m.aero(off.t, off.r, off.v).dpsi };
 }
 
 function gateResidual(s: State, aim: LatLon): number[] {
@@ -745,17 +828,21 @@ function coastStateAt(table: CoastTable, t: number, shift: number): State {
   return { t, r: s.r, v: s.v };
 }
 
-export function solveEntry(table: CoastTable, aim: LatLon, x0: [number, number] = [200, 0.3]) {
+/**
+ * Solve the phase shift and the vertical-lift setting cv0 so that the entry
+ * (with the fixed BANK_PLAN) reaches the gate at GATE.speedKmS,
+ * GATE.distToCoastKm before the aim point.
+ */
+export function solveEntry(table: CoastTable, aim: LatLon, x0: [number, number] = [283, 0.3]) {
   const BETA = 250; // kg/m^2, belly-first (estimate)
   const run = (shift: number, cv0: number) => {
     const preBurn = coastStateAt(table, T.deorbitStart - 60, shift);
     const dv = solveDeorbit(preBurn);
-    return { preBurn, dv, gate: flyEntry(preBurn, dv, cv0, BETA, aim) };
+    return { preBurn, dv, plan: BANK_PLAN, ...flyEntry(preBurn, dv, cv0, BETA, aim) };
   };
-  const sol = newton(x0, ([shift, cv0]) => gateResidual(run(shift, cv0).gate, aim), [1, 1e-3], 40, 1e-4);
-  const [shift, cv0] = sol;
-  const { preBurn, dv, gate } = run(shift, cv0);
-  return { shift, cv0, beta: BETA, dv, preBurn, gate, aim };
+  const [shift, cv0] = newton(x0, ([shift, cv0]) => gateResidual(run(shift, cv0).gate, aim), [1, 1e-3], 40, 1e-4);
+  const r = run(shift, cv0);
+  return { shift, cv0, beta: BETA, aim, ...r };
 }
 
 // ---------------------------------------------------------------------------
@@ -994,6 +1081,8 @@ export function buildShipTerminal(gate: State, stateAt: (t: number) => State) {
     positionAt,
     hdotAt,
     vhAt: route.vh,
+    /** Lateral (turn) acceleration of the kinematic route, km/s² (+ = right turn). */
+    aLatAt: route.aLat,
     crossLatDeg,
     diag: {
       gate: g,
@@ -1367,6 +1456,97 @@ export function axisGapM(a: V3, na: V3, la: number, b: V3, nb: V3, lb: number): 
   return best;
 }
 
+/** Presidio, TX (a likely sonic boom was reported there at the return time). */
+export const PRESIDIO = { latDeg: 29.56, lonDeg: -104.37 } as const;
+
+/**
+ * Diagnostics of the S-turns: bank angle timeline (from the same entry model
+ * as the dynamics), reversals (bank sign changes), peak roll rate and lateral
+ * lift, and the lateral excursion from the unreversed path (same shift, cv0,
+ * deorbit and aim, heading-alignment steering only, flown from BANK_PLAN.on).
+ */
+function describeWeave(ent: ReturnType<typeof solveEntry>, entRec: Recorder, entF: AccelFn, gate: State) {
+  const model = entryModel(ent.dv, ent.cv0, ent.beta, ent.aim, ent.plan);
+  const refF = entryAccel(ent.dv, ent.cv0, ent.beta, ent.aim, null);
+  const bankAt = (t: number) => {
+    const s = entRec.at(t, entF);
+    return model.aero(t, s.r, s.v);
+  };
+  const DT = 0.5;
+  const reversals: { t: number; tEntryS: number; latDeg: number; lonDeg: number; altKm: number; from: string }[] = [];
+  let peakRollDegS = 0;
+  let peakLatG = 0;
+  let maxBankDeg = 0;
+  let prev = bankAt(T.entry);
+  let lastSide = 0;
+  let zeroT = 0;
+  for (let t = T.entry + DT; t <= gate.t + 1e-9; t += DT) {
+    const a = bankAt(t);
+    peakRollDegS = Math.max(peakRollDegS, Math.abs(a.bank - prev.bank) / DT / DEG);
+    peakLatG = Math.max(peakLatG, Math.abs(a.liftLatG));
+    if (t >= BANK_PLAN.on[0]) maxBankDeg = Math.max(maxBankDeg, Math.abs(a.bank) / DEG);
+    // a reversal: the bank changes side (|bank| > 20° on both sides, as the data test counts); time = zero crossing
+    if (Math.abs(a.bank) > 20 * DEG) {
+      const side = Math.sign(a.bank);
+      if (lastSide !== 0 && side !== lastSide && t > BANK_PLAN.on[0]) {
+        reversals.push({ t: zeroT, tEntryS: zeroT - T.entry, ...llaOf(entRec.at(zeroT, entF)), from: side < 0 ? "right→left" : "left→right" });
+      }
+      lastSide = side;
+    }
+    if (prev.bank !== 0 && Math.sign(a.bank) !== Math.sign(prev.bank)) zeroT = t - DT + (DT * prev.bank) / (prev.bank - a.bank);
+    prev = a;
+  }
+  // lateral excursion from the unreversed path (+ = right of it, i.e. south for the ESE track)
+  let ref = entRec.at(BANK_PLAN.on[0], entF);
+  let north = { km: 0, t: 0 };
+  let south = { km: 0, t: 0 };
+  for (let t = BANK_PLAN.on[0] + 5; t <= gate.t + 1e-9; t += 5) {
+    ref = propagate(ref, t, 0.5, refF);
+    const w = entRec.at(t, entF);
+    const pr = eciToEcef(ref.r, t);
+    const up = unit(pr);
+    const v = vEcefOf(ref.r, ref.v, t);
+    const right = unit(cross(sub(v, scale(up, dot(v, up))), up));
+    const d = dot(sub(eciToEcef(w.r, t), pr), right);
+    if (d < north.km) north = { km: d, t };
+    if (d > south.km) south = { km: d, t };
+  }
+  const bankDeg = (t: number) => bankAt(t).bank / DEG;
+  // the budget: heading error to the aim where the weave ends, for variants of the plan flown from `on`
+  const atOn = entRec.at(BANK_PLAN.on[0], entF);
+  const dpsiOffFor = (reversals: number[]) => {
+    const m = entryModel(ent.dv, ent.cv0, ent.beta, ent.aim, { ...BANK_PLAN, reversals });
+    const e = propagate(atOn, BANK_PLAN.off[0], 0.5, m.accel);
+    return m.aero(e.t, e.r, e.v).dpsi / DEG;
+  };
+  const [r1, r2, r3] = BANK_PLAN.reversals;
+  let thirdPeakDeg = 0;
+  for (let t = r3; t <= gate.t; t += DT) thirdPeakDeg = Math.min(thirdPeakDeg, bankDeg(t));
+  return {
+    plan: { ...ent.plan, onEntryS: ent.plan.on.map((t) => t - T.entry), offEntryS: ent.plan.off.map((t) => t - T.entry), reversalsEntryS: ent.plan.reversals.map((t) => t - T.entry) },
+    dpsiOffDeg: ent.dpsiOff / DEG,
+    /** + = still left of the aim heading (needs more right bank): no further left arc can fix that. */
+    dpsiOffDegVariants: {
+      allRight: dpsiOffFor([]),
+      withoutThirdReversal: dpsiOffFor([r1, r2]),
+      leftArc10sEarlierWithoutThird: dpsiOffFor([r1 - 10, r2 - 10]),
+    },
+    /** Deepest left bank after the third reversal (it is cut short by the hand-over to the alignment). */
+    thirdReversalPeakBankDeg: thirdPeakDeg,
+    reversals,
+    bankDegSamples: Object.fromEntries([600, 700, 760, 795, 840, 880, 920, 960].map((s) => [`EI+${s}`, Math.round(bankDeg(T.entry + s))])),
+    maxBankDeg,
+    peakRollDegS,
+    peakLateralLiftG: peakLatG,
+    excursionFromUnreversedKm: {
+      north: -north.km,
+      northAt: { tEntryS: north.t - T.entry, ...llaOf(entRec.at(north.t, entF)) },
+      south: south.km,
+      southAt: { tEntryS: south.t - T.entry, ...llaOf(entRec.at(south.t, entF)) },
+    },
+  };
+}
+
 export function build(): BuildResult {
   const asc = solveAscent();
   // --- re-fly ascent with recording
@@ -1400,15 +1580,15 @@ export function build(): BuildResult {
   // --- entry + terminal: the entry aim point is moved north of the coast crossing until the
   //     bank-limited terminal turn (which starts at the gate) crosses the coast at COAST_CROSSING.
   const [ce, cn] = latLonToEn(COAST_CROSSING);
-  let entX0: [number, number] = [200, 0.3];
+  let entX0: [number, number] = [283, 0.3];
   const attempt = (dn: number) => {
     const aim = enToLatLon(ce, cn + dn);
     const ent = solveEntry(table, aim, entX0);
     entX0 = [ent.shift, ent.cv0];
-    const entF = entryAccel(ent.dv, ent.cv0, ent.beta, aim);
+    const entF = entryAccel(ent.dv, ent.cv0, ent.beta, aim, ent.plan);
     const entRec = new Recorder();
     entRec.push(ent.preBurn);
-    const gate = flyEntry(ent.preBurn, ent.dv, ent.cv0, ent.beta, aim, entRec.push);
+    const { gate } = flyEntry(ent.preBurn, ent.dv, ent.cv0, ent.beta, aim, entRec.push);
     const term = buildShipTerminal(gate, (t) => entRec.at(t, entF));
     return { dn, ent, entF, entRec, gate, term, miss: term.crossLatDeg - COAST_CROSSING.latDeg };
   };
@@ -1433,6 +1613,7 @@ export function build(): BuildResult {
       peakQ = Math.max(peakQ, 0.5 * density(h) * vr * vr);
     }
   }
+  const weave = describeWeave(ent, entRec, entF, gate);
 
   // --- booster: the boostback aims the ballistic arc so that the landing burn ends over the
   //     contingency point (fixed point on the landing-burn drift).
@@ -1554,16 +1735,35 @@ export function build(): BuildResult {
     ...header("Starship S42「Don't Panic」（推定再現）", "starship-v3-ship"),
     "# attitude_frame: ECEF",
     "# Track point = the ship's base (engine end). Stacked ascent: booster base + stack axis x 72.3 m (booster length), the booster's attitude.",
-    "# Attitude is tabulated in the qw..qz columns (body to ECEF): stack attitude, then prograde ascent and orbit; retrograde for the deorbit burn; aoa 67 deg entry; level belly flop; vertical flip.",
+    "# Attitude is tabulated in the qw..qz columns (body to ECEF): stack attitude, then prograde ascent and orbit; retrograde for the deorbit burn; aoa 67 deg entry, banked (rolled about the velocity) as the entry's lift vector, incl. the S-turn bank reversals; level belly flop; vertical flip.",
     ...SHIP_EVENTS.map(([t, l]) => `# event: ${fmtT(t)}, ${l}`),
   ];
   const plainTrack = parseTrack(rowsToCsv(shipHead.filter((l) => !l.startsWith("# attitude_frame")), ship, false), "ship.csv");
   type Spec = (t: number) => THREE.Quaternion;
   const pro: Spec = (t) => modeQuat(plainTrack, "prograde", t);
+  // entry: aoa 67° rolled about the velocity by the bank angle (+ = right wing down, lift to the right).
+  // Physics entry: the bank of the lift vector in the entry model. Terminal phase: bank = atan2(a_lat, L_v)
+  // with the vertical lift L_v blended from the entry's value at the gate to 1 g over 30 s.
+  const entModel = entryModel(ent.dv, ent.cv0, ent.beta, ent.aim, ent.plan);
+  const gateAero = entModel.aero(gate.t, gate.r, gate.v);
+  const bankAtT = (t: number): number => {
+    if (t <= gate.t) {
+      const s = entRec.at(t, entF);
+      return entModel.aero(t, s.r, s.v).bank;
+    }
+    const lv = gateAero.liftVertG + (1 - gateAero.liftVertG) * smoothstep(gate.t, gate.t + 30, t);
+    return Math.atan2(term.aLatAt(t) / G0, lv);
+  };
+  const bankedAoa: Spec = (t) => {
+    const st = trajectoryStateAt(plainTrack, EPOCH_MS + t * 1000);
+    if (!st) throw new Error(`no state at ${t}`);
+    const v = new THREE.Vector3(st.velocity.x, st.velocity.y, st.velocity.z).normalize();
+    return new THREE.Quaternion().setFromAxisAngle(v, bankAtT(t)).multiply(modeQuat(plainTrack, "aoa", t, ENTRY_AOA_DEG));
+  };
   const schedule: [number, number, Spec][] = [
     [T.deorbitStart - 50, 30, (t) => modeQuat(plainTrack, "retrograde", t)],
     [T.deorbitEnd + 20, 60, pro],
-    [T.entry - 400, 120, (t) => modeQuat(plainTrack, "aoa", t, ENTRY_AOA_DEG)],
+    [T.entry - 400, 120, bankedAoa],
     [T.subsonic - 5, 15, (t) => bellyFlopQuat(plainTrack, t)],
     [T.shipLandingBurn, T.flip - T.shipLandingBurn + 3, (t) => modeQuat(plainTrack, "vertical", t)],
   ];
@@ -1592,6 +1792,12 @@ export function build(): BuildResult {
   }
 
   // --- report
+  let presidio = { km: Infinity, t: 0, latDeg: 0, lonDeg: 0, altKm: 0 };
+  for (const r of ship) {
+    if (r.t < T.entry || r.t > gate.t) continue;
+    const d = groundDistanceKm(r.lla, PRESIDIO);
+    if (d < presidio.km) presidio = { km: d, t: r.t, ...r.lla };
+  }
   const stagingL = toLocal(staging);
   const secoL = llaOf(seco);
   const report = {
@@ -1608,6 +1814,7 @@ export function build(): BuildResult {
     deorbitDvMs: ent.dv * 1000,
     deorbitPoint: llaOf(ent.preBurn),
     entryInterface: { t: eiCross, ...llaOf(entRec.at(T.entry, entF)) },
+    weave: { ...weave, presidioClosest: presidio },
     entry: { cv0: ent.cv0, beta: ent.beta, peakNonGravG: peakEntryG, peakQkPa: peakQ / 1000, aim: ent.aim, aimNorthOfCrossingKm: a1.dn },
     gate: { t: gate.t, ...llaOf(gate), speedKmS: norm(vRelEci(gate.r, gate.v)) },
     terminal: term.diag,

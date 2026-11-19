@@ -127,11 +127,16 @@ atmosphere (Vallado table), RK4. Output is geodetic LLA (WGS84).
 4. **Orbit coast.** Numerical J2 + drag propagation for ~21 h.
 5. **Deorbit and entry (physics).** A retrograde burn at T+21:35:57–21:36:07,
    ≈60 m/s, solved so the trajectory crosses 100 km at T+22:10:46 (west of
-   Hawaii). Lifting entry with L/D 0.5 and ballistic coefficient 250 kg/m²:
-   vertical-lift fraction with ḣ damping, lateral lift steering toward the
-   aim point ≈12 km north of the coast crossing (see 6). Peak non-gravitational load ≈2.1 g. The physics ends at a
-   gate 150 s before the transonic time (≈39 km, 1.3 km/s, 26.67° N 97.78° W, over
-   Willacy county, north of the Rio Grande Valley cities, heading ESE).
+   Hawaii). Lifting entry with L/D 0.5 and ballistic coefficient 250 kg/m²,
+   flown with **bank-angle control**: the lift is rolled about the velocity by
+   the bank angle; its magnitude σ = acos(cv) (vertical-lift fraction with ḣ
+   damping) manages range and energy, its sign steers — toward the aim point
+   ≈12 km north of the coast crossing (see 6), with S-turn bank reversals
+   over northern Mexico and across the border at Laredo in between (see
+   Revision 3). Peak
+   non-gravitational load ≈2.2 g. The physics ends at a gate 150 s before
+   the transonic time (≈39 km, 1.3 km/s, 26.69° N 97.76° W, over Willacy
+   county, north of the Rio Grande Valley cities, heading ESE).
 6. **Terminal phase (kinematic).** From the gate the horizontal path is
    integrated from a speed profile and a **bank-limited turn**: lateral
    acceleration rolled in over 25 s from the entry's value at the gate, held
@@ -141,9 +146,9 @@ atmosphere (Vallado table), RK4. Output is geodetic LLA (WGS84).
    (Newton) so the track ends at the tower on heading 195° (final leg from
    bearing 15°, NNE); the entry aim point is moved ≈12 km north of the coast
    crossing (secant) so that the turn, which starts at the gate, crosses the
-   coast at 26.30° N, 97.19° W. Result: one right turn from heading 116°
-   (ESE) to 195° (SSW) over T+22:27:04–22:30:06, lateral 0.42 g
-   (equivalent bank 23°), radius ≥ 20.9 km; the path runs north of the Rio
+   coast at 26.30° N, 97.19° W. Result: one right turn from heading 119°
+   (ESE) to 195° (SSW) over T+22:27:04–22:30:08, lateral 0.40 g
+   (equivalent bank 22°), radius ≥ 20.7 km; the path runs north of the Rio
    Grande Valley cities (≈26.6° N over Willacy county), crosses the coast
    north of South Padre Island heading SE, swings south ~3 km off the beach
    and comes to the tower from the NNE. Speed and altitude profiles are
@@ -158,7 +163,7 @@ atmosphere (Vallado table), RK4. Output is geodetic LLA (WGS84).
 Propagating the published orbit from the reconstructed insertion puts the
 ship ~2,200 km too far uprange at the entry time: no plausible lifting entry
 can then reach Starbase by the catch time. The ship is therefore advanced
-along its own orbit by **≈283 s (≈2,190 km)**, spread smoothly over the coast
+along its own orbit by **≈287 s (≈2,220 km)**, spread smoothly over the coast
 between T+1:47 and T+21:06 (smoothstep). This is ≈0.4 % faster apparent
 motion along the same orbit (plane and shape unchanged; no RAAN change); it is
 invisible in playback and the speeds shown stay within ~30 m/s of the
@@ -168,7 +173,7 @@ setting and printed by the script (`phaseShiftS`, `phaseShiftKm`).
 Consequences: the deorbit burn is over the southern Indian Ocean
 (≈30° S, 70° E), not over the Pacific — with a 35-minute coast to entry and a
 22-minute entry the burn has to be about half a revolution before Starbase.
-Entry interface (100 km) is just west of Hawaii (≈22.6° N, 156.9° W).
+Entry interface (100 km) is just west of Hawaii (≈22.7° N, 156.7° W).
 
 ## Estimates (summary)
 
@@ -184,9 +189,10 @@ Entry interface (100 km) is just west of Hawaii (≈22.6° N, 156.9° W).
 | Booster offshore aim point | 25.9945° N, 97.1217° W: ~3.5 km east of the pad, ~2.5–3 km off the beach — clear of pad and beach if the booster fails in the landing burn, yet a short (~3–4 km) divert to the tower when the catch is go |
 | Booster hover / impact | 20 m above the water T+6:31–6:35, shut-down T+6:35, impact T+6:37.3 |
 | Ship orbit drag | β ≈ 1,000 kg/m² (negligible at 277 km) |
-| Entry | interface = 100 km; L/D 0.5; β 250 kg/m²; aoa 67° |
-| Phase adjustment | ≈ +283 s along-track (see above) |
-| Terminal route | coast crossing 26.30° N 97.19° W; one right turn, lateral ≤ 0.42 g (bank ≈ 23°), radius ≥ 20.9 km; final leg from bearing 15° |
+| Entry | interface = 100 km; L/D 0.5; β 250 kg/m²; aoa 67°; bank ≈ 52–63° (energy), sign for steering |
+| Entry S-turns | bank reversals at T+22:23:51 / 22:24:16 / 22:25:56, roll ≤ 7.5°/s; crest ≈16 km north of the unreversed path (see Revision 3) |
+| Phase adjustment | ≈ +287 s along-track (see above) |
+| Terminal route | coast crossing 26.30° N 97.19° W; one right turn, lateral ≤ 0.40 g (bank ≈ 22°), radius ≥ 20.7 km; final leg from bearing 15° |
 | Belly flop | terminal velocity ≈73 m/s at sea level, Mach 0.8 at ≈15 km |
 | Catch height | ship base 65 m above the pad |
 
@@ -201,16 +207,22 @@ Entry interface (100 km) is just west of Hawaii (≈22.6° N, 156.9° W).
   computed by the script with the library's own rule modes
   (`trajectoryAttitudeAt`) plus one custom mode: the booster's attitude while
   stacked (identical quaternions, so the stack stays aligned), prograde ascent and orbit,
-  retrograde around the deorbit burn, `aoa` 67° for the entry, a **level belly
+  retrograde around the deorbit burn, `aoa` 67° for the entry **rolled about
+  the velocity by the entry's bank angle** (the side of the lift vector in the
+  entry model; + = lift to the right), a **level belly
   flop** (nose along the horizontal velocity, belly down) from subsonic, and
   `vertical` from the landing burn / flip. Tabulated attitude is used because
   rule-based velocity modes blend to vertical below 150 m/s, which would stand
   the ship half upright during the ~75–100 m/s belly flop.
   What this looks like: the 67° is measured from the velocity, which is
-  nearly horizontal from entry interface to ~30 km, so the nose stays ~23°
-  from vertical (pitched ~67° above the horizon, belly forward) until the
-  path steepens below ~30 km; the nose then comes down to level by the
-  subsonic time (≈15 km, T+22:30:13). The tour caption describes it that way.
+  nearly horizontal from entry interface to ~30 km. Wings-level the nose
+  would stand ~67° above the horizon, belly forward; banked by φ it leans to
+  the side of the turn, so its elevation is ≈ asin(sin 67°·cos φ) — ≈30–35°
+  at the 50–60° bank flown for most of the entry, ~67° only for the moment
+  the ship rolls through wings-level in a reversal. From the gate the bank
+  follows the terminal turn (φ = atan2(a_lat, L_v), L_v blended from the
+  entry's vertical lift to 1 g over 30 s, ≈22° in the final turn); the nose
+  comes down to level by the subsonic time (≈15 km, T+22:30:13).
 
 ## Sampling
 
@@ -246,6 +258,100 @@ booster ≈ 20 KB, ship ≈ 435 KB.
 - **Sampling.** Ship 1 s for the last 10 minutes (was from T+22:28:34),
   booster 0.25 s for the landing burn.
 
+## Revision 3 — entry S-turns
+
+**Evidence (none of it is measured telemetry).**
+
+- *Illustrative:* explainer video by @farzyness, 2026-11-18, "Why Starship
+  Zigzagged Home Instead of Flying Straight"
+  ([x.com/farzyness/status/2123026399787184615](https://x.com/farzyness/status/2123026399787184615)),
+  chapter "3/7 STEERING WITH NO ENGINE" (~12:46–13:02). An illustration,
+  not data: during entry the ship rolls its lift vector left and right (bank
+  angle) to steer and bleed energy inside a corridor across northern Mexico
+  toward Starbase; the drawn track enters from the west and makes an S-turn
+  (about three bank reversals) before the corridor reaches the coast; the
+  video compares it with the Space Shuttle's roll reversals (1981–2011).
+- *Secondary (reporting):* [Aerospace America](https://aerospaceamerica.aiaa.org/spacex-achieves-first-starship-tower-catch/)
+  — path across Baja and northern Mexico, north of South Padre Island, then a
+  "swoosh" to come to Starbase from over the Gulf.
+  [NASASpaceFlight](https://www.nasaspaceflight.com/2026/11/starship-flight-15-spacex-history/)
+  (via summaries) — flaps steered the ship away from population centres;
+  subsonic over the Rio Grande Valley.
+  [First Alert 7](https://www.firstalert7.com/2026/11/15/presidio-police-say-loud-boom-may-have-been-starship-sonic-boom/?outputType=amp)
+  — Presidio, TX police reported a likely sonic boom at the return time.
+  [forte.news](https://forte.news/era-la-starship-15-cimbra-la-ciudad-boom-sonico/)
+  (summary only) — Nuevo Laredo / northern Tamaulipas inside the descent
+  corridor. [airlive](https://airlive.net/tracking/2026/11/15/flight-path-of-boeing-737-800-from-austin-changed-due-to-current-re-entry-of-starship/)
+  — entry ~2:58 PM CST, catch 3:20 PM CST, consistent with T+22:10:46 /
+  T+22:32:28.
+
+**Method.** Inside a weave envelope (T+22:22:26–22:26:21, smooth on/off
+over 30 s) the entry model rolls the full lift L = 0.5·D by a bank angle φ:
+vertical L·cos φ, lateral L·sin φ, |φ| = acos(cv) — the range/energy control
+as before (cv = cv0 − 4·ḣ) — and the sign from an open-loop plan: right,
+then reversals at fixed times, each a smooth roll through wings-level over
+24 s. Outside the envelope the heading-alignment steering of Revision 2 is
+kept (vertical L·cv, lateral L·√(1−cv²)·tanh(Δψ/0.03) toward the aim). The
+drawn bank is the angle of the resulting lift vector about the velocity in
+both cases. Everything is a pure function of (t, r, v), so the `[shift,
+cv0]` Newton, the aim secant and the terminal phase are unchanged.
+
+Side effect on the picture: the ship is now drawn banked from entry
+interface on — ≈52–63° to the right for most of the entry (the saturated
+turn toward Starbase, which the Revision 2 attitude did not show), then
+the reversals.
+
+**Why the S-turns are where they are, and why they are not larger.** The
+cross-range from the orbit's ground track to Starbase is large: with no
+weave, the heading-alignment steering is saturated (full bank ≈53–63° to the
+right, heading error 5–7°) from entry interface until ≈EI+810 s; only then is
+the ship heading at the aim. |φ| itself is fixed by the energy the published
+entry and transonic times leave, so no extra lateral lift is available
+earlier, and the phase shift cannot help (it moves the track along, not
+across). At the solved setting (report `dpsiOffDegVariants`, heading error
+to the aim where the weave ends; + = still left of it): all-right from
+EI+700 s gives −14.3° (spare authority appears only late, at D ≈ 1.5–2 g);
+the left arc of reversals 1–2 alone leaves +0.06°, the same arc 10 s
+earlier +0.68°, still trimmed by the alignment before the gate (crest 18 km).
+Starting it 25 s earlier (EI+760 / 795 s) or making it longer, the gate
+cannot be reached any more: the `[shift, cv0]` solve fails. Exploratory
+symmetric L-R-L-R weaves starting over the Pacific (EI+470 s) ended
+~100–250 km north of the line to the aim and 18–55° off its heading. A
+left arc can therefore only be short and late, and the crest is ~16 km, not
+tens of km. Tens-of-km weaving across all of northern Mexico is not
+reachable with L/D 0.5 at aoa 67° (a Newtonian flat plate gives
+L/D = cot 67° ≈ 0.42); it would need a lower angle of attack with a higher
+L/D, which the sources do not support, so it was not changed.
+
+**Numbers (script report `weave`, `entry`, `terminal`).**
+
+| Item | Value |
+| --- | --- |
+| Bank magnitude | 52–63° from entry interface to EI+760 s; 38–58° in the weave; ≈0 at the gate (aligned) |
+| Reversal 1 (right → left) | T+22:23:51 (EI+785 s), 28.63° N 103.07° W, 58 km (Coahuila, south of Big Bend) |
+| Reversal 2 (left → right) | T+22:24:16 (EI+810 s), 28.34° N 102.00° W, 57 km (Coahuila) |
+| Reversal 3 (right → left, partial) | T+22:25:56 (EI+910 s), 27.23° N 98.87° W, 47 km (South Texas, ~20 km WSW of Hebbronville); centred as the envelope closes, so it peaks at only ≈23° left before the alignment levels the wings — two full reversals plus a partial third |
+| Hand-over | heading-alignment from T+22:25:51 (blend 30 s); the bank is back to ~0 by T+22:26:36 |
+| Residual heading error where the weave ends | 0.18° (trimmed by the alignment; gate lateral load 0.014 g) |
+| Roll rate | ≤ 7.5°/s (24 s per reversal) |
+| Lateral lift | ≤ 0.72 g (kinematic lateral acceleration ≤ 0.75 g incl. Earth-rotation terms) |
+| Lateral excursion | crest 15.7 km north of the unreversed path at T+22:25:21 (27.62° N 99.75° W); the trough back to it ≈0 km; whole track within 33 km of the chord EI+700 s → gate |
+| Presidio, TX | closest approach ≈63 km (T+22:23:20, 29.01° N 104.53° W, ~61 km altitude): within audible range of a sonic boom, not overhead |
+| Nuevo Laredo | the track passes within ~4 km (T+22:25:30, ~50 km altitude), then crosses the Rio Grande at Laredo — consistent with the forte.news summary |
+| Phase adjustment | 283 → 287 s (+4 s, ≈30 km along-track; re-solved with the new lift law, not tuned) |
+| Gate | 26.69° N 97.76° W, heading 119° (was 116°); terminal turn 0.40 g (was 0.42 g) |
+
+The orbit's own ground track supplies the big northern "crest": the
+unreversed path already climbs to ≈30.3° N over Baja California / Sonora
+and curves down across Chihuahua, so the drawn corridor (enter from the
+west, north, then south toward Starbase) is mostly orbital geometry plus the
+right-bank steering; the reversals add the short S near the end.
+
+**Still estimated.** The reversal times and the weave envelope (design
+choices shaped on the video, not data); bank magnitude, L/D 0.5, aoa 67°,
+β; the corridor width; the hand-over to the terminal turn. The real flight's
+number and timing of reversals were not published.
+
 ## Tests
 
 `tests/flight15-data.test.ts` checks: both files parse with zero warnings and
@@ -257,7 +363,12 @@ from the inertial velocity) after insertion; 100 km at entry, Mach 1.2 / 0.8
 at the transonic / subsonic times; arrival from the west, north of South
 Padre Island, south-bound over the Gulf; the final turn (lateral ≤ 0.5 g,
 bank < 30°, radius > 15 km, no kinks in the lateral acceleration, final
-heading 195 ± 5°); sample spacing; catch within 100 m of the pad at
+heading 195 ± 5°); the entry S-turns (2–4 bank reversals counted from the
+drawn attitude with |bank| > 20° on both sides, all between 106° W and
+98.3° W; roll rate < 10°/s; |bank| < 70°; a bank > 30° turns the track to
+that side; lateral load < 1 g with < 0.2 g change per second; track within
+±40 km of the chord EI+700 s → gate; closest approach to Presidio 30–150 km);
+sample spacing; catch within 100 m of the pad at
 T+22:32:28 with a level belly flop and a vertical nose at the catch; the
 booster staying > 3 km from the pad and < 1 km from its aim point from the
 landing burn on, hovering 15–60 m above the water at T+6:31–6:35, vertical,
